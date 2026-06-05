@@ -201,6 +201,8 @@ export default function App() {
         .animate-slide-in { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        /* Hide arrows on number inputs */
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       `}</style>
 
       {/* --- Header --- */}
@@ -257,6 +259,7 @@ export default function App() {
               <h4 className="font-bold text-sm">{t.title}</h4>
               <p className="text-sm text-slate-300 font-medium mt-0.5">{t.message}</p>
             </div>
+            <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="ml-auto text-slate-400 hover:text-white"><X size={16}/></button>
           </div>
         ))}
       </div>
@@ -264,13 +267,15 @@ export default function App() {
   );
 }
 
-// --- Login Screen (Email/Password) ---
+// --- Login Screen (With Forced Password Reset) ---
 const LoginScreen = ({ users, setAppUser }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [resetUser, setResetUser] = useState(null); // Triggers the setup password screen
 
   const isFirstUser = users.length === 0;
 
@@ -279,13 +284,17 @@ const LoginScreen = ({ users, setAppUser }) => {
     try {
       if (isFirstUser) {
         if (!name.trim()) return setError("Name is required for the first admin account.");
-        const newUser = { name: name.trim(), email: email.toLowerCase().trim(), password, role: 'Kitchen', isAdmin: true, isActive: true };
+        const newUser = { name: name.trim(), email: email.toLowerCase().trim(), password, role: 'Kitchen', isAdmin: true, isActive: true, forcePasswordChange: false };
         const docRef = await addDoc(collection(db, "users"), newUser);
         setAppUser({ id: docRef.id, ...newUser });
       } else {
         const user = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
         if (user) {
-          setAppUser(user);
+          if (user.forcePasswordChange) {
+            setResetUser(user); // Move to set password screen
+          } else {
+            setAppUser(user);
+          }
         } else {
           setError("Invalid email or password.");
         }
@@ -293,6 +302,37 @@ const LoginScreen = ({ users, setAppUser }) => {
     } catch (err) { setError("Database connection error."); console.error(err); }
     setIsLoading(false);
   };
+
+  const handlePasswordSetup = async (e) => {
+    e.preventDefault(); setError(''); setIsLoading(true);
+    if(newPassword.length < 5) { setError("Password must be at least 5 characters."); setIsLoading(false); return; }
+    try {
+      await updateDoc(doc(db, "users", resetUser.id), { password: newPassword, forcePasswordChange: false });
+      setAppUser({ ...resetUser, password: newPassword, forcePasswordChange: false });
+    } catch (err) { setError("Failed to update password."); console.error(err); }
+    setIsLoading(false);
+  };
+
+  if (resetUser) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 max-w-md w-full">
+          <h2 className="text-2xl font-black text-center mb-2 text-slate-900 tracking-tight">Welcome, {resetUser.name}!</h2>
+          <p className="text-center text-slate-500 mb-6 font-medium">Please set your permanent password to continue.</p>
+          <form onSubmit={handlePasswordSetup} className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-600 mb-1.5">New Password</label>
+              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full p-3.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required />
+            </div>
+            {error && <p className="text-red-600 text-sm font-bold bg-red-50 p-3 rounded-xl border border-red-200">{error}</p>}
+            <button type="submit" disabled={isLoading} className="w-full bg-slate-900 text-white p-4 rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-md flex justify-center items-center gap-2">
+              {isLoading ? <Loader2 className="animate-spin" size={20}/> : 'Save Password & Login'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -341,17 +381,17 @@ const TabTeam = ({ appUser, users, addToast }) => {
     e.preventDefault(); if (!name.trim() || !email.trim() || !password.trim()) return;
     try {
       await addDoc(collection(db, "users"), { 
-        name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password, role, isAdmin, isActive: true 
+        name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password, role, isAdmin, isActive: true, forcePasswordChange: true 
       });
-      addToast('Team Member Added', `${name.trim()} can now log in.`);
+      addToast('Team Member Added', `${name.trim()} will be prompted to set a new password on their first login.`);
       setName(''); setEmail(''); setPhone(''); setPassword(''); setIsAdmin(false);
     } catch (err) { console.error(err); }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Remove this staff member?")) {
+    if (window.confirm("Remove this staff member? This cannot be undone.")) {
       await deleteDoc(doc(db, "users", id));
-      addToast('Staff Removed', 'Account deleted.');
+      addToast('Staff Removed', 'Account permanently deleted.');
     }
   };
 
@@ -362,13 +402,13 @@ const TabTeam = ({ appUser, users, addToast }) => {
           <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-800"><Users size={20}/> Add Staff Member</h3>
           <form onSubmit={handleAdd} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:border-blue-500" required /></div>
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:border-blue-500" required /></div>
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:border-blue-500" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Initial Password</label><input type="text" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:border-blue-500" required /></div>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:border-blue-500" required /></div>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:border-blue-500" required /></div>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:border-blue-500" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Temporary Password</label><input type="text" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:border-blue-500" required /></div>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="w-full sm:w-48"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Role</label><select value={role} onChange={e => setRole(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
+              <div className="w-full sm:w-48"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Role</label><select value={role} onChange={e => setRole(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
               <label className="flex items-center gap-2 text-sm font-bold text-slate-700 mt-4 cursor-pointer flex-1"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" /> Grant Admin Access</label>
               <button type="submit" className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 w-full sm:w-auto shadow-sm mt-4 sm:mt-0">Add Staff</button>
             </div>
@@ -385,7 +425,7 @@ const TabTeam = ({ appUser, users, addToast }) => {
                 <td className="p-4"><div className="font-bold text-slate-900 text-lg">{u.name}</div></td>
                 <td className="p-4 hidden sm:table-cell"><div className="text-sm font-medium text-slate-600">{u.email}</div><div className="text-sm text-slate-400">{u.phone}</div></td>
                 <td className="p-4"><span className={`text-sm font-bold px-3 py-1 rounded-full ${u.role === 'Bartender' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>{u.role}</span>{u.isAdmin && <span className="ml-2 text-xs font-bold bg-slate-800 text-white px-2 py-1 rounded-full"><Shield size={10} className="inline mr-1 pb-0.5"/>Admin</span>}</td>
-                <td className="p-4 text-right">{appUser?.isAdmin && u.id !== appUser.id && (<button onClick={() => handleDelete(u.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"><Trash2 size={18}/></button>)}</td>
+                <td className="p-4 text-right">{appUser?.isAdmin && (<button onClick={() => handleDelete(u.id)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"><Trash2 size={20}/></button>)}</td>
               </tr>
             ))}
           </tbody>
@@ -592,11 +632,12 @@ const TabTimeOff = ({ appUser, users, timeOff, addToast }) => {
   );
 };
 
-// --- Tab: Inventory (Fully Restored) ---
+// --- Tab: Inventory (With Manual Ordering) ---
 const TabInventory = ({ inventoryItems, addToast }) => {
-  const [invTab, setInvTab] = useState('count'); 
+  const [invTab, setInvTab] = useState('order'); 
   const [newItemName, setNewItemName] = useState('');
   const [newItemCat, setNewItemCat] = useState('Produce');
+  const [orderOverrides, setOrderOverrides] = useState({});
 
   const handleAddItem = async (e) => {
     e.preventDefault(); if (!newItemName.trim()) return;
@@ -610,6 +651,15 @@ const TabInventory = ({ inventoryItems, addToast }) => {
 
   const deleteItem = async (id) => {
     if(window.confirm("Remove this item from the master list?")) await deleteDoc(doc(db, "inventoryItems", id));
+  };
+
+  const handleOrderChange = (id, value) => {
+    setOrderOverrides(prev => ({ ...prev, [id]: parseInt(value) || 0 }));
+  };
+
+  const submitOrder = () => {
+    setOrderOverrides({});
+    addToast('Order Compiled', 'Order sheet has been cleared for the next cycle.');
   };
 
   // Group items for Count tab
@@ -668,19 +718,37 @@ const TabInventory = ({ inventoryItems, addToast }) => {
           {itemsToOrder.length === 0 ? (
             <div className="p-12 text-center font-bold text-slate-400">All inventory levels meet or exceed par.</div>
           ) : (
-            <table className="w-full text-left">
-              <thead><tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider"><th className="p-4">Item</th><th className="p-4 text-center hidden sm:table-cell">On Hand</th><th className="p-4 text-center hidden sm:table-cell">Par</th><th className="p-4 text-right">Order Qty</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {itemsToOrder.map(item => (
-                  <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="p-4"><span className="font-bold text-slate-800 block text-lg">{item.name}</span><span className="text-xs text-slate-400 font-bold uppercase tracking-wider">{item.category}</span></td>
-                    <td className="p-4 text-center font-medium text-slate-500 hidden sm:table-cell">{item.currentStock}</td>
-                    <td className="p-4 text-center font-medium text-slate-500 hidden sm:table-cell">{item.parLevel}</td>
-                    <td className="p-4 text-right"><span className="font-black text-blue-600 text-xl bg-blue-50 border border-blue-200 px-4 py-2 rounded-xl">+{item.parLevel - item.currentStock}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div>
+              <table className="w-full text-left">
+                <thead><tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider"><th className="p-4">Item</th><th className="p-4 text-center hidden sm:table-cell">On Hand</th><th className="p-4 text-center hidden sm:table-cell">Par</th><th className="p-4 text-right">Order Qty</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {itemsToOrder.map(item => {
+                    const defaultOrder = Math.max(0, item.parLevel - item.currentStock);
+                    const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : defaultOrder;
+                    
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="p-4"><span className="font-bold text-slate-800 block text-lg">{item.name}</span><span className="text-xs text-slate-400 font-bold uppercase tracking-wider">{item.category}</span></td>
+                        <td className="p-4 text-center font-medium text-slate-500 hidden sm:table-cell">{item.currentStock}</td>
+                        <td className="p-4 text-center font-medium text-slate-500 hidden sm:table-cell">{item.parLevel}</td>
+                        <td className="p-4 text-right">
+                          <input 
+                            type="number" 
+                            min="0"
+                            value={currentOrder} 
+                            onChange={e => handleOrderChange(item.id, e.target.value)}
+                            className="font-black text-blue-600 text-xl bg-blue-50 border border-blue-200 px-4 py-2 rounded-xl w-24 text-center outline-none focus:ring-2 focus:ring-blue-500" 
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="p-6 bg-slate-50 border-t border-slate-200 flex justify-end">
+                <button onClick={submitOrder} className="bg-slate-900 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 transition-colors">Mark as Ordered</button>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -690,10 +758,10 @@ const TabInventory = ({ inventoryItems, addToast }) => {
           <div className="bg-white p-6 border border-slate-200 rounded-3xl shadow-sm">
              <h3 className="text-xl font-bold text-slate-800 border-b border-slate-100 pb-3 mb-4">Add to Master List</h3>
              <form onSubmit={handleAddItem} className="space-y-4">
-               <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Name</label><input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none" required /></div>
+               <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Name</label><input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:border-blue-500" required /></div>
                <div>
                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Category</label>
-                 <select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none">
+                 <select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:border-blue-500">
                    <option>Meat</option><option>Produce</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option>
                  </select>
                </div>
@@ -724,15 +792,35 @@ const TabInventory = ({ inventoryItems, addToast }) => {
 
 // --- Tab: Settings ---
 const TabSettings = ({ addToast }) => {
+  const [settings, setSettings] = useState({ shiftReminders: true, overtimeAlerts: false, autoApprove: false, muteOffShift: false });
+  const toggle = (key) => setSettings(prev => ({ ...prev, [key]: !prev[key] }));
+
   return (
     <div className="max-w-2xl mx-auto bg-white border border-slate-200 rounded-3xl p-8 shadow-sm space-y-8">
       <div>
-        <h3 className="text-2xl font-black text-slate-900 mb-1">Portal Diagnostics</h3>
-        <p className="text-slate-500 font-medium">System connection and alert testing.</p>
+        <h3 className="text-2xl font-black text-slate-900 mb-1">Application Settings</h3>
+        <p className="text-slate-500 font-medium">Manage alerts and interface preferences.</p>
       </div>
+
+      <div className="space-y-4 border-y border-slate-100 py-6">
+        {[
+          { id: 'shiftReminders', label: 'Send 24-hour Shift Reminders' },
+          { id: 'overtimeAlerts', label: 'Alert Manager Before Overtime (40h)' },
+          { id: 'autoApprove', label: 'Auto-Approve Peer Shift Swaps' },
+          { id: 'muteOffShift', label: 'Mute Message Notifications Off-Shift' }
+        ].map(setting => (
+          <div key={setting.id} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer" onClick={() => toggle(setting.id)}>
+            <span className="font-bold text-slate-700">{setting.label}</span>
+            <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${settings[setting.id] ? 'bg-blue-600' : 'bg-slate-300'}`}>
+               <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${settings[setting.id] ? 'translate-x-6' : 'translate-x-0'}`}></div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl">
-        <h4 className="font-bold text-blue-900 mb-2">Live Alert Engine</h4>
-        <button onClick={() => addToast('System Test', 'Database connection established successfully.')} className="bg-white border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white px-6 py-3 rounded-xl font-bold transition-all shadow-sm w-full">
+        <h4 className="font-bold text-blue-900 mb-2">System Diagnostics</h4>
+        <button onClick={() => addToast('Diagnostic Test', 'Live Firebase database connected successfully.')} className="bg-white border border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white px-6 py-3 rounded-xl font-bold transition-all shadow-sm w-full">
           Trigger Test Alert
         </button>
       </div>
