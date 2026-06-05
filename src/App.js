@@ -19,6 +19,21 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+// --- 2026 Master Holiday Database ---
+const HOLIDAYS_2026 = {
+  "2026-01-01": "New Year's Day",
+  "2026-01-19": "Martin Luther King Jr. Day",
+  "2026-02-16": "Presidents' Day",
+  "2026-05-25": "Memorial Day",
+  "2026-06-19": "Juneteenth",
+  "2026-07-04": "Independence Day",
+  "2026-09-07": "Labor Day",
+  "2026-10-12": "Columbus Day",
+  "2026-11-11": "Veterans Day",
+  "2026-11-26": "Thanksgiving Day",
+  "2026-12-25": "Christmas Day"
+};
+
 // --- Custom Hook to Sync Live Database ---
 const useLiveCollection = (collectionName) => {
   const [data, setData] = useState([]);
@@ -201,7 +216,6 @@ export default function App() {
         .animate-slide-in { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        /* Hide arrows on number inputs */
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
       `}</style>
 
@@ -259,7 +273,6 @@ export default function App() {
               <h4 className="font-bold text-sm">{t.title}</h4>
               <p className="text-sm text-slate-300 font-medium mt-0.5">{t.message}</p>
             </div>
-            <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="ml-auto text-slate-400 hover:text-white"><X size={16}/></button>
           </div>
         ))}
       </div>
@@ -267,7 +280,7 @@ export default function App() {
   );
 }
 
-// --- Login Screen (With Forced Password Reset) ---
+// --- Login Screen (Email/Password) ---
 const LoginScreen = ({ users, setAppUser }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -275,7 +288,7 @@ const LoginScreen = ({ users, setAppUser }) => {
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [resetUser, setResetUser] = useState(null); // Triggers the setup password screen
+  const [resetUser, setResetUser] = useState(null);
 
   const isFirstUser = users.length === 0;
 
@@ -291,7 +304,7 @@ const LoginScreen = ({ users, setAppUser }) => {
         const user = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
         if (user) {
           if (user.forcePasswordChange) {
-            setResetUser(user); // Move to set password screen
+            setResetUser(user);
           } else {
             setAppUser(user);
           }
@@ -450,8 +463,15 @@ const TabMonth = ({ currentDate, users, shifts, setCurrentDate }) => {
           const date = `${monthStr}-${String(i + 1).padStart(2, '0')}`;
           return (
             <div key={date} onClick={() => setCurrentDate(date)} className="p-2 border-b border-r min-h-[120px] hover:bg-slate-50 cursor-pointer flex flex-col justify-between transition-colors">
-              <div className="text-right text-sm font-bold text-slate-400">{i+1}</div>
-              <div className="space-y-1 max-h-[85px] overflow-hidden">
+              <div className="flex flex-col items-end gap-1 w-full">
+                <span className="text-right text-sm font-bold text-slate-400">{i+1}</span>
+                {HOLIDAYS_2026[date] && (
+                  <span className="text-[9px] font-black tracking-tight text-red-700 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded truncate w-full text-center" title={HOLIDAYS_2026[date]}>
+                    🎉 {HOLIDAYS_2026[date]}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1 max-h-[65px] overflow-hidden mt-1 w-full">
                 {shifts.filter(s => s.date === date).map(s => {
                   const emp = displayUsers.find(u => u.id === s.employeeId);
                   return <div key={s.id} className={`text-[10px] font-bold px-1.5 py-0.5 rounded truncate ${s.role === 'Bartender' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>{emp?.name.split(' ')[0]}</div>
@@ -531,7 +551,17 @@ const TabSchedule = ({ currentDate, appUser, users, shifts }) => {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {HOLIDAYS_2026[currentDate] && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-2xl font-bold flex items-center gap-4 shadow-sm border-l-4 border-l-amber-500">
+          <AlertTriangle className="text-amber-600 flex-shrink-0" size={24} />
+          <div>
+            <span className="text-amber-900 block font-black text-base">⚠️ {HOLIDAYS_2026[currentDate]} Notice</span>
+            <span className="text-sm font-semibold text-amber-700">Today is a recognized holiday. Review specialized coverage limits, bar/kitchen holiday operations, or custom shift hours.</span>
+          </div>
+        </div>
+      )}
+
       {appUser?.isAdmin && (
         <div className="bg-white p-6 border border-slate-200 rounded-2xl shadow-sm space-y-4">
           <h3 className="font-bold text-xl flex items-center gap-2 text-slate-800 mb-2"><Calendar size={20}/> Assign Shift</h3>
@@ -549,7 +579,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts }) => {
         </div>
       )}
       
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 gap-6 pt-2">
         {['Bartender', 'Kitchen'].map(role => (
           <div key={role} className="space-y-3">
             <h3 className={`text-lg font-black uppercase tracking-wider pl-2 ${role === 'Bartender' ? 'text-blue-600' : 'text-orange-600'}`}>{role}s</h3>
@@ -632,7 +662,7 @@ const TabTimeOff = ({ appUser, users, timeOff, addToast }) => {
   );
 };
 
-// --- Tab: Inventory (With Manual Ordering) ---
+// --- Tab: Inventory ---
 const TabInventory = ({ inventoryItems, addToast }) => {
   const [invTab, setInvTab] = useState('order'); 
   const [newItemName, setNewItemName] = useState('');
@@ -662,14 +692,12 @@ const TabInventory = ({ inventoryItems, addToast }) => {
     addToast('Order Compiled', 'Order sheet has been cleared for the next cycle.');
   };
 
-  // Group items for Count tab
   const groupedItems = inventoryItems.reduce((acc, item) => {
     if (!acc[item.category]) acc[item.category] = [];
     acc[item.category].push(item);
     return acc;
   }, {});
 
-  // Items that need ordering
   const itemsToOrder = inventoryItems.filter(i => i.currentStock < i.parLevel);
 
   return (
