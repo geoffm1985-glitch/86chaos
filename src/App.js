@@ -294,6 +294,47 @@ const LoginScreen = ({ users, setAppUser, isDark }) => {
   );
 };
 
+// --- Tab: Message Board ---
+const TabMessages = ({ events, appUser, addToast }) => {
+  const [shiftNote, setShiftNote] = useState('');
+  const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  const handleBroadcastNote = async (e) => {
+    e.preventDefault(); if(!shiftNote.trim()) return;
+    const today = new Date().toISOString().split('T')[0];
+    await addDoc(collection(db, "events"), { date: today, title: shiftNote.trim(), type: 'note', author: appUser.name });
+    setShiftNote(''); addToast('Note Posted', 'Message added to the board.');
+  };
+
+  const handleDeleteEvent = async (id) => { if(window.confirm("Delete this message?")) await deleteDoc(doc(db, "events", id)); };
+
+  return (
+    <div className="max-w-3xl mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 sm:p-6 rounded-3xl shadow-sm space-y-6">
+      <h3 className="font-black text-2xl text-slate-800 dark:text-white flex items-center gap-3"><MessageSquare className="text-blue-500" size={28}/> Staff Message Board</h3>
+      <form onSubmit={handleBroadcastNote} className="flex flex-col sm:flex-row gap-2">
+        <input type="text" value={shiftNote} onChange={e => setShiftNote(e.target.value)} placeholder="Type a message to the team..." className="flex-1 w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-medium" required />
+        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-xl font-bold transition-colors shadow-sm w-full sm:w-auto">Post Message</button>
+      </form>
+      <div className="space-y-3">
+        {allNotes.length === 0 && <p className="text-center text-slate-400 font-medium py-8">No messages yet.</p>}
+        {allNotes.map(note => (
+          <div key={note.id} className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 flex justify-between items-start shadow-sm">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-bold text-xs text-blue-600 dark:text-blue-400 uppercase tracking-wider">{note.author}</span>
+                <span className="text-[10px] text-slate-400 font-bold">• {formatDisplayDate(note.date)}</span>
+              </div>
+              <span className="text-slate-800 dark:text-slate-200 font-medium text-lg leading-snug">{note.title}</span>
+            </div>
+            {appUser?.isAdmin && <button onClick={() => handleDeleteEvent(note.id)} className="text-slate-300 hover:text-red-500 transition-colors ml-4"><Trash2 size={18}/></button>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
 // --- Tab: Team ---
 const TabTeam = ({ appUser, users, addToast }) => {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [password, setPassword] = useState(''); const [role, setRole] = useState('Bartender'); const [isAdmin, setIsAdmin] = useState(false);
@@ -327,10 +368,10 @@ const TabTeam = ({ appUser, users, addToast }) => {
       <Modal isOpen={!!editModalUser} onClose={() => setEditModalUser(null)} title={`Edit Profile: ${editModalUser?.name}`}>
         {editModalUser && (
           <form onSubmit={handleUpdateUser} className="space-y-4">
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Name</label><input type="text" value={editModalUser.name} onChange={e => setEditModalUser({...editModalUser, name: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email (Hidden from Staff)</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Phone</label><input type="tel" value={editModalUser.phone || ''} onChange={e => setEditModalUser({...editModalUser, phone: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Role</label><select value={editModalUser.role} onChange={e => setEditModalUser({...editModalUser, role: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
+            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Name</label><input type="text" value={editModalUser.name} onChange={e => setEditModalUser({...editModalUser, name: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
+            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email (Hidden from Staff)</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
+            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Phone</label><input type="tel" value={editModalUser.phone || ''} onChange={e => setEditModalUser({...editModalUser, phone: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
+            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Role</label><select value={editModalUser.role} onChange={e => setEditModalUser({...editModalUser, role: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
             <div className="pt-4 border-t border-slate-200 dark:border-slate-600">
                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 text-red-500">Force Password Reset (Leave blank to keep current)</label>
                <input type="text" placeholder="Enter new temporary password..." value={editModalUser.newPassword || ''} onChange={e => setEditModalUser({...editModalUser, newPassword: e.target.value})} className="w-full p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl outline-none" />
@@ -345,13 +386,13 @@ const TabTeam = ({ appUser, users, addToast }) => {
           <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><Users size={20}/> Add Staff Member</h3>
           <form onSubmit={handleAdd} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-              <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-              <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Temporary Password</label><input type="text" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
+              <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
+              <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
+              <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Temporary Password</label><input type="text" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="w-full sm:w-48"><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Role</label><select value={role} onChange={e => setRole(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
+              <div className="w-full sm:w-48"><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Role</label><select value={role} onChange={e => setRole(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
               <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mt-4 cursor-pointer flex-1"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-blue-600" /> Grant Admin Access</label>
               <button type="submit" className="bg-slate-900 dark:bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 w-full sm:w-auto shadow-sm mt-4 sm:mt-0">Add Staff</button>
             </div>
@@ -370,7 +411,12 @@ const TabTeam = ({ appUser, users, addToast }) => {
               return (
               <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                 <td className="p-4"><div className="font-bold text-slate-900 dark:text-white text-lg">{u.name}</div></td>
-                <td className="p-4"><div className="text-sm font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-lg w-max border border-slate-200 dark:border-slate-600">{u.phone || 'No phone listed'}</div></td>
+                <td className="p-4">
+                  <div className="text-sm font-bold bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-lg w-max border border-slate-200 dark:border-slate-600 flex items-center gap-2">
+                    <Phone size={14} className="text-slate-400" />
+                    {u.phone ? <a href={`tel:${u.phone}`} className="text-blue-600 dark:text-blue-400 hover:underline">{u.phone}</a> : <span className="text-slate-500">No phone</span>}
+                  </div>
+                </td>
                 <td className="p-4">
                   <span className={`text-sm font-bold px-3 py-1 rounded-full inline-block ${u.role === 'Bartender' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'}`}>{u.role}</span>
                   {appUser?.isAdmin && !isMaster && (
@@ -394,6 +440,7 @@ const TabTeam = ({ appUser, users, addToast }) => {
     </div>
   );
 };
+
 
 
 // --- Tab: Month View ---
@@ -476,6 +523,7 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
 // --- Tab: Prep List ---
 const TabPrep = ({ currentDate, prepItems }) => {
   const [text, setText] = useState(''); const [isMaster, setIsMaster] = useState(true);
+  const [printItem, setPrintItem] = useState(null);
   
   const handleAdd = async (e) => { 
     e.preventDefault(); if (!text.trim()) return; 
@@ -495,36 +543,56 @@ const TabPrep = ({ currentDate, prepItems }) => {
   
   const handleDelete = async (id) => await deleteDoc(doc(db, "prepItems", id));
 
+  const triggerPrint = (item) => {
+    setPrintItem(item);
+    setTimeout(() => { window.print(); setPrintItem(null); }, 300);
+  };
+
   const displayItems = prepItems.filter(p => p.date === currentDate || p.isMaster);
 
   const getExpDate = (dateStr) => {
-    const d = new Date(dateStr + 'T12:00:00');
-    d.setDate(d.getDate() + 6);
+    const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + 6);
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 pl-4 rounded-2xl flex flex-col sm:flex-row gap-2 shadow-sm items-center">
-        <input type="text" value={text} onChange={e => setText(e.target.value)} className="flex-1 w-full p-2 bg-transparent outline-none font-medium text-slate-900 dark:text-white placeholder:text-slate-400" placeholder="Add a new prep task (e.g., Dice Onions - 4 Qt)..." required />
+    <div className="max-w-2xl mx-auto space-y-4">
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .label-print-zone, .label-print-zone * { visibility: visible !important; }
+          .label-print-zone { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: white; padding: 10px; }
+        }
+      `}</style>
+
+      {printItem && (
+        <div className="label-print-zone bg-white text-black z-[100]">
+           <h1 className="text-4xl font-black uppercase mb-4 text-black">{printItem.text}</h1>
+           <h2 className="text-2xl font-bold text-black">Prepped: {formatDisplayDate(currentDate)}</h2>
+           <h2 className="text-2xl font-black mt-2">Discard By: {getExpDate(currentDate)}</h2>
+        </div>
+      )}
+
+      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 pl-4 rounded-2xl flex flex-col sm:flex-row gap-2 shadow-sm items-center no-print">
+        <input type="text" value={text} onChange={e => setText(e.target.value)} className="flex-1 w-full p-2 bg-transparent outline-none font-medium text-slate-900 dark:text-white placeholder:text-slate-400" placeholder="Add prep task (e.g., Dice Onions)..." required />
         <div className="flex items-center gap-4 w-full sm:w-auto justify-between border-t sm:border-t-0 border-slate-100 dark:border-slate-700 pt-2 sm:pt-0">
           <label className="flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-400 cursor-pointer ml-2 sm:ml-0"><input type="checkbox" checked={isMaster} onChange={e => setIsMaster(e.target.checked)} className="w-4 h-4 rounded border-slate-300" /> Master List</label>
-          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-bold transition-colors shadow-sm"><Plus size={20}/></button>
+          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-xl font-bold transition-colors shadow-sm"><Plus size={20}/></button>
         </div>
       </form>
       
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm divide-y divide-slate-100 dark:divide-slate-700">
-        {displayItems.length === 0 ? (<div className="p-8 text-center text-slate-400 font-medium">No prep tasks scheduled.</div>) : (
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm divide-y divide-slate-100 dark:divide-slate-700 no-print">
+        {displayItems.length === 0 ? (<div className="p-6 text-center text-slate-400 font-medium">No prep tasks scheduled.</div>) : (
           displayItems.map(item => {
             const isDone = item.isMaster ? !!item.completedDates?.[currentDate] : item.isCompleted;
             return (
-            <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group gap-4">
+            <div key={item.id} className="p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors gap-3">
               <div>
-                <span className={`text-lg transition-all ${isDone ? 'line-through text-slate-300 dark:text-slate-500' : 'font-bold text-slate-800 dark:text-white'}`}>{item.text}</span>
-                {item.isMaster && <span className="block text-[10px] font-bold text-blue-500 uppercase tracking-widest mt-0.5">Master Task</span>}
-                {isDone && <span className="block text-[11px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(currentDate)} (7-Day FDA)</span>}
+                <span className={`text-base transition-all ${isDone ? 'line-through text-slate-300 dark:text-slate-500' : 'font-bold text-slate-800 dark:text-white'}`}>{item.text}</span>
+                {item.isMaster && <span className="block text-[9px] font-bold text-blue-500 uppercase tracking-widest mt-0.5">Master Task</span>}
+                {isDone && <span className="block text-[10px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(currentDate)} (7-Day FDA)</span>}
               </div>
-              <div className="flex gap-2"><button onClick={() => toggleStatus(item)} className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`}>{isDone ? 'Undo' : <><Check size={16}/> Done</>}</button><button onClick={() => handleDelete(item.id)} className="p-2 text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-xl transition-colors"><Trash2 size={18}/></button></div>
+              <div className="flex gap-1.5"><button onClick={() => triggerPrint(item)} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-blue-500 rounded-lg transition-colors"><Printer size={18}/></button><button onClick={() => toggleStatus(item)} className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-sm transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`}>{isDone ? 'Undo' : <><Check size={16}/> Done</>}</button><button onClick={() => handleDelete(item.id)} className="p-2 text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors"><Trash2 size={18}/></button></div>
             </div>
           )}))}
       </div>
@@ -532,23 +600,26 @@ const TabPrep = ({ currentDate, prepItems }) => {
   );
 };
 
+
 // --- Tab: Schedule ---
 const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff, events, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('23:00');
   const [assignDates, setAssignDates] = useState([currentDate]);
-  const [shiftNote, setShiftNote] = useState('');
   
   const [eventTitle, setEventTitle] = useState(''); const [eventStart, setEventStart] = useState(''); const [eventEnd, setEventEnd] = useState('');
 
   const displayUsers = users.length > 0 ? users : (appUser && appUser.id !== 'dev-backdoor' ? [appUser] : []);
   const displayShifts = shifts.filter(s => s.date === currentDate && (s.isPublished || appUser?.isAdmin));
-  
   const dayEvents = events.filter(e => e.date === currentDate && e.type !== 'note');
-  const dayNotes = events.filter(e => e.date === currentDate && e.type === 'note');
   
   const year = parseInt(currentDate.split('-')[0], 10); const holidayMap = getHolidays(year); const todayHoliday = holidayMap[currentDate];
 
   const handleToggleDate = (d) => { if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x !== d)); else setAssignDates([...assignDates, d].sort()); };
+
+  // Filter out users who have requested time off for ANY of the currently selected assignDates
+  const availableUsers = displayUsers.filter(u => {
+     return !timeOff.some(t => t.employeeId === u.id && assignDates.includes(t.startDate));
+  });
 
   const handleSaveShift = async () => {
     if (!selectedEmp || assignDates.length === 0) return;
@@ -556,7 +627,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
     let count = 0;
     for (const d of assignDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime, endTime, isPublished: false }); count++; }
     setSelectedEmp(''); setAssignDates([currentDate]);
-    addToast('Shifts Assigned', `Assigned ${count} shifts to ${emp.name}. (Unpublished)`);
+    addToast('Shifts Assigned', `Assigned ${count} shifts to ${emp.name}.`);
   };
 
   const handleAddEvent = async (e) => {
@@ -565,63 +636,34 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
     setEventTitle(''); setEventStart(''); setEventEnd(''); addToast('Event Added', 'Saved to calendar.');
   };
 
-  const handleBroadcastNote = async (e) => {
-    e.preventDefault(); if(!shiftNote.trim()) return;
-    await addDoc(collection(db, "events"), { date: currentDate, title: shiftNote.trim(), type: 'note', author: appUser.name });
-    triggerPushNotification("New Shift Note", `${appUser.name} posted: ${shiftNote.trim()}`);
-    setShiftNote(''); addToast('Note Posted', 'Sent to all staff for this date.');
-  };
-
   const handleDeleteShift = async (id) => await deleteDoc(doc(db, "shifts", id));
   const handleDeleteEvent = async (id) => await deleteDoc(doc(db, "events", id));
 
   const handleOfferSwap = async (shift) => {
     if (window.confirm("Offer this shift on the Trade Board?")) {
       await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
-      triggerPushNotification("Trade Board", `A new ${shift.role} shift is available to claim.`);
       addToast('Trade Board', 'Shift posted successfully.');
     }
   };
 
   const handleClaimSwap = async (swap) => {
     await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'pending_approval', claimedById: appUser.id });
-    triggerPushNotification("Shift Claimed", `${appUser.name} requested to cover a shift.`);
     addToast('Shift Claimed', 'Awaiting manager approval.');
   };
 
   const handleApproveSwap = async (swap) => {
     await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: swap.claimedById });
     await deleteDoc(doc(db, "shiftSwaps", swap.id));
-    triggerPushNotification("Trade Approved", `Your shift swap was approved.`);
     addToast('Trade Approved', 'Master schedule updated automatically.');
   };
 
   const handleDenySwap = async (swap) => {
     await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'available', claimedById: null });
-    addToast('Trade Denied', 'Shift sent back to the Trade Board.');
   };
 
   const pendingApprovals = shiftSwaps.filter(sw => sw.status === 'pending_approval');
   const availableSwaps = shiftSwaps.filter(sw => sw.status === 'available');
 
-  const getMonday = (d) => { const date = new Date(d + 'T12:00:00'); const day = date.getDay(); const diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
-  const weekStartObj = getMonday(currentDate);
-  const weekDays = Array.from({length: 7}).map((_, i) => { const d = new Date(weekStartObj); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
-  
-  const calculateHours = (start, end) => {
-     if(!start || !end) return 0;
-     const [sh, sm] = start.split(':').map(Number); const [eh, em] = end.split(':').map(Number);
-     let diff = (eh + em/60) - (sh + sm/60);
-     return diff > 0 ? diff : diff + 24;
-  };
-
-  const weeklyHours = displayUsers.map(u => {
-    const userShifts = shifts.filter(s => s.employeeId === u.id && weekDays.includes(s.date));
-    const total = userShifts.reduce((sum, s) => sum + calculateHours(s.startTime, s.endTime), 0);
-    return { ...u, totalHours: total.toFixed(1) };
-  }).sort((a,b) => b.totalHours - a.totalHours);
-
-  // --- Mini Calendar Generation Math ---
   const monthStr = getMonthStr(currentDate);
   const monthFirstDay = new Date(monthStr + '-01T12:00:00').getDay();
   const daysInMonth = getDaysInMonth(monthStr);
@@ -630,28 +672,10 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
       
-      {/* Daily Shift Notes Broadcast Board */}
-      <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 p-5 rounded-2xl shadow-sm">
-        <h3 className="font-black text-yellow-900 dark:text-yellow-400 flex items-center gap-2 mb-3"><MessageSquare size={20}/> Daily Pass-Down Notes</h3>
-        <div className="space-y-3 mb-4">
-          {dayNotes.length === 0 && <p className="text-sm text-yellow-700 dark:text-yellow-600 font-medium italic">No notes for this shift.</p>}
-          {dayNotes.map(note => (
-            <div key={note.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-yellow-100 dark:border-yellow-700/50 flex justify-between items-start shadow-sm">
-              <div><span className="font-bold text-xs text-yellow-600 uppercase tracking-wider block mb-0.5">{note.author}</span><span className="text-slate-800 dark:text-slate-200 font-medium">{note.title}</span></div>
-              {appUser?.isAdmin && <button onClick={() => handleDeleteEvent(note.id)} className="text-yellow-400 hover:text-red-500 transition-colors"><X size={16}/></button>}
-            </div>
-          ))}
-        </div>
-        <form onSubmit={handleBroadcastNote} className="flex flex-col sm:flex-row gap-2">
-          <input type="text" value={shiftNote} onChange={e => setShiftNote(e.target.value)} placeholder="Type a message to the floor..." className="flex-1 w-full p-3 rounded-xl bg-white dark:bg-slate-800 border border-yellow-200 dark:border-yellow-700 outline-none focus:ring-2 focus:ring-yellow-400 dark:text-white" required />
-          <button type="submit" className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap">Broadcast</button>
-        </form>
-      </div>
-
       {todayHoliday && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-400 p-4 rounded-2xl font-bold flex items-center gap-4 shadow-sm border-l-4 border-l-amber-500">
           <AlertTriangle className="text-amber-600 dark:text-amber-500 flex-shrink-0" size={24} />
-          <div><span className="text-amber-900 dark:text-amber-300 block font-black text-base">⚠️ {todayHoliday} Notice</span><span className="text-sm font-semibold">Today is a recognized holiday. Review specialized coverage limits.</span></div>
+          <div><span className="text-amber-900 dark:text-amber-300 block font-black text-base">⚠️ {todayHoliday} Notice</span><span className="text-sm font-semibold">Today is a recognized holiday.</span></div>
         </div>
       )}
 
@@ -672,30 +696,24 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
         </div>
       )}
 
-      {/* Trade Board UI */}
       {(pendingApprovals.length > 0 || availableSwaps.length > 0) && (
         <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800 p-6 rounded-3xl shadow-sm space-y-4">
           <h3 className="font-black text-xl text-indigo-900 dark:text-indigo-300 flex items-center gap-2"><Repeat size={20}/> Shift Trade Board</h3>
-          
           {appUser?.isAdmin && pendingApprovals.length > 0 && (
             <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-700 space-y-3">
-              <h4 className="font-bold text-sm uppercase tracking-wider text-indigo-500">Manager Approvals Needed</h4>
+              <h4 className="font-bold text-sm uppercase tracking-wider text-indigo-500">Approvals Needed</h4>
               {pendingApprovals.map(sw => {
                 const orig = displayUsers.find(u => u.id === sw.originalEmployeeId);
                 const claimer = displayUsers.find(u => u.id === sw.claimedById);
                 return (
                   <div key={sw.id} className="flex flex-col sm:flex-row justify-between items-center bg-indigo-50/50 dark:bg-slate-700 p-3 rounded-xl border border-indigo-100 dark:border-slate-600 gap-3">
-                    <div className="text-sm font-medium text-slate-700 dark:text-slate-300"><strong>{claimer?.name}</strong> wants to cover <strong>{orig?.name}'s</strong> {formatDisplayDate(sw.date)} shift ({formatTime12Hour(sw.startTime)} - {formatTime12Hour(sw.endTime)}).</div>
-                    <div className="flex gap-2 w-full sm:w-auto">
-                      <button onClick={() => handleApproveSwap(sw)} className="flex-1 sm:flex-none bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-colors">Approve</button>
-                      <button onClick={() => handleDenySwap(sw)} className="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-500 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-colors">Deny</button>
-                    </div>
+                    <div className="text-sm font-medium text-slate-700 dark:text-slate-300"><strong>{claimer?.name}</strong> wants to cover <strong>{orig?.name}'s</strong> {formatDisplayDate(sw.date)} shift.</div>
+                    <div className="flex gap-2"><button onClick={() => handleApproveSwap(sw)} className="bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold text-sm">Approve</button><button onClick={() => handleDenySwap(sw)} className="bg-white border text-slate-600 px-4 py-2 rounded-lg font-bold text-sm">Deny</button></div>
                   </div>
                 )
               })}
             </div>
           )}
-
           {availableSwaps.length > 0 && (
              <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-700 space-y-3">
                <h4 className="font-bold text-sm uppercase tracking-wider text-indigo-500">Available to Claim</h4>
@@ -704,11 +722,8 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
                  const canClaim = appUser.id !== sw.originalEmployeeId && appUser.role === sw.role;
                  return (
                    <div key={sw.id} className="flex justify-between items-center bg-indigo-50/50 dark:bg-slate-700 p-3 rounded-xl border border-indigo-100 dark:border-slate-600 gap-2">
-                     <div>
-                       <span className="font-bold text-indigo-900 dark:text-indigo-300 block">{orig?.name || 'Unknown'} - {sw.role}</span>
-                       <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{formatDisplayDate(sw.date)} | {formatTime12Hour(sw.startTime)} - {formatTime12Hour(sw.endTime)}</span>
-                     </div>
-                     {canClaim && <button onClick={() => handleClaimSwap(sw)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-indigo-700 transition-colors whitespace-nowrap">Claim Shift</button>}
+                     <div><span className="font-bold text-indigo-900 dark:text-indigo-300 block">{orig?.name || 'Unknown'} - {sw.role}</span><span className="text-sm font-medium text-slate-600 dark:text-slate-400">{formatDisplayDate(sw.date)}</span></div>
+                     {canClaim && <button onClick={() => handleClaimSwap(sw)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm">Claim Shift</button>}
                    </div>
                  )
                })}
@@ -720,65 +735,60 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
       {appUser?.isAdmin && (
         <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm space-y-6">
           
-          {/* Weekly Hours Tracker */}
-          <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-            <h4 className="font-bold text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2"><Clock size={16}/> Weekly Hours ({new Date(weekDays[0]+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} - {new Date(weekDays[6]+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})})</h4>
-            <div className="flex flex-wrap gap-2">
-              {weeklyHours.map(u => (
-                <div key={u.id} className={`px-3 py-1.5 rounded-lg border text-sm font-bold shadow-sm transition-colors ${u.totalHours >= 40 ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400' : 'bg-white border-slate-200 text-slate-700 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300'}`}>
-                  {u.name.split(' ')[0]}: {u.totalHours}h
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Shift Assignment Tool */}
           <div>
-            <h3 className="font-bold text-xl flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={20}/> Mass-Assign Shifts</h3>
+            <h3 className="font-bold text-xl flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={20}/> The God-View Scheduler</h3>
             
-            {/* NEW 30-DAY MONTH CALENDAR GRID */}
-            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mb-4">
-              <div className="grid grid-cols-7 gap-2 text-center mb-2">
-                {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{d}</div>)}
-                {Array.from({length: monthFirstDay}).map((_, i) => <div key={`empty-${i}`} />)}
-                {monthDaysArray.map(d => {
-                  const isSel = assignDates.includes(d);
-                  const dayNum = parseInt(d.split('-')[2], 10);
-                  return <button key={d} onClick={() => handleToggleDate(d)} className={`py-2 rounded-md text-sm font-bold transition-all border ${isSel ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-400 hover:text-blue-600'}`}>{dayNum}</button>
-                })}
-              </div>
+            <div className="overflow-x-auto bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700 mb-4 no-scrollbar">
+              <table className="w-full text-left text-[10px] min-w-[800px]">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-700">
+                    <th className="p-2 font-bold text-slate-600 dark:text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10 w-24">Staff</th>
+                    {monthDaysArray.map(d => <th key={d} className={`p-1 text-center font-bold text-slate-400 ${assignDates.includes(d) ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : ''}`}>{parseInt(d.split('-')[2], 10)}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                  {displayUsers.map(u => (
+                    <tr key={u.id} className="hover:bg-white dark:hover:bg-slate-800 transition-colors">
+                      <td className="p-2 font-bold text-slate-800 dark:text-slate-200 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10 truncate">{u.name.split(' ')[0]}</td>
+                      {monthDaysArray.map(d => {
+                        const shift = shifts.find(s => s.date === d && s.employeeId === u.id);
+                        const off = timeOff.some(t => t.employeeId === u.id && t.startDate === d);
+                        return (
+                          <td key={d} onClick={() => handleToggleDate(d)} className={`p-1 text-center border-l border-slate-100 dark:border-slate-700/50 cursor-pointer transition-colors ${off ? 'bg-red-50 dark:bg-red-900/20' : 'hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}>
+                             {off ? <span className="text-red-400 font-black">X</span> : (shift ? <div className={`w-full h-full rounded ${shift.isPublished ? 'bg-emerald-500' : 'bg-blue-400'} text-white font-black py-1`}>✓</div> : <span className="text-slate-200 dark:text-slate-600">•</span>)}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
             
-            <div className="flex flex-col sm:flex-row gap-4">
-              <select value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} className="flex-1 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-medium outline-none">
-                <option value="">Select Staff Member...</option>
-                {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-medium outline-none">
+                <option value="">Select Staff (Filtered by Availability)...</option>
+                {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
               </select>
               <div className="flex gap-2">
-                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full sm:w-32 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
-                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full sm:w-32 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full sm:w-28 p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
+                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full sm:w-28 p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
               </div>
-              <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm disabled:opacity-50 transition-colors">Assign</button>
+              <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-sm disabled:opacity-50">Assign Selected</button>
             </div>
           </div>
 
           <hr className="border-slate-100 dark:border-slate-700"/>
 
-          {/* Add Event Form */}
           <div>
             <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={18}/> Add Event to {formatDisplayDate(currentDate)}</h3>
-            <form onSubmit={handleAddEvent} className="flex flex-col sm:flex-row gap-3">
-              <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Event Name (e.g. Miller Wedding)" className="flex-1 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none font-medium w-full" required />
-              <div className="flex gap-2"><input type="time" value={eventStart} onChange={e => setEventStart(e.target.value)} className="w-full sm:w-32 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" /><input type="time" value={eventEnd} onChange={e => setEventEnd(e.target.value)} className="w-full sm:w-32 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" /></div>
-              <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold shadow-sm w-full sm:w-auto">Add Event</button>
+            <form onSubmit={handleAddEvent} className="flex flex-col sm:flex-row gap-2">
+              <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Event Name" className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required />
+              <div className="flex gap-2"><input type="time" value={eventStart} onChange={e => setEventStart(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /><input type="time" value={eventEnd} onChange={e => setEventEnd(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /></div>
+              <button type="submit" className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold">Add Event</button>
             </form>
           </div>
-
         </div>
-      )}
-      
-      {!appUser?.isAdmin && shifts.some(s => s.date === currentDate && !s.isPublished) && (
-        <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-2xl text-center text-slate-500 dark:text-slate-400 font-bold border border-dashed border-slate-300 dark:border-slate-600">The schedule for this date has not been published yet.</div>
       )}
 
       <div className="grid md:grid-cols-2 gap-6 pt-2">
@@ -794,18 +804,14 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
                 const isSwappedOut = shiftSwaps.some(sw => sw.shiftId === s.id);
                 
                 return (
-                  <div key={s.id} className={`bg-white dark:bg-slate-800 border p-5 rounded-2xl shadow-sm flex flex-col hover:border-slate-300 dark:hover:border-slate-500 transition-colors group gap-3 ${!s.isPublished ? 'border-dashed border-blue-300 dark:border-blue-700' : 'border-slate-200 dark:border-slate-700'}`}>
+                  <div key={s.id} className={`bg-white dark:bg-slate-800 border p-4 rounded-2xl shadow-sm flex flex-col gap-2 ${!s.isPublished ? 'border-dashed border-blue-300' : 'border-slate-200'}`}>
                     <div className="flex justify-between items-center w-full">
-                      <div className="font-black text-xl text-slate-800 dark:text-white flex items-center gap-2">{emp?.name || 'Unknown'} {!s.isPublished && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded uppercase tracking-widest">Draft</span>}</div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-sm font-bold text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">{formatTime12Hour(s.startTime)} - {formatTime12Hour(s.endTime)}</div>
-                        {appUser?.isAdmin && <button onClick={() => handleDeleteShift(s.id)} className="text-slate-300 dark:text-slate-500 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>}
+                      <div className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">{emp?.name || 'Unknown'} {!s.isPublished && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase">Draft</span>}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-lg border">{formatTime12Hour(s.startTime)} - {formatTime12Hour(s.endTime)}</div>
+                        {appUser?.isAdmin && <button onClick={() => handleDeleteShift(s.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>}
                       </div>
                     </div>
-                    {isMyShift && !isSwappedOut && s.isPublished && (
-                      <button onClick={() => handleOfferSwap(s)} className="w-full text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 py-1.5 rounded-lg transition-colors flex justify-center items-center gap-1"><Repeat size={14}/> Offer on Trade Board</button>
-                    )}
-                    {isSwappedOut && <div className="text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded-md text-center border border-orange-200 dark:border-orange-800">Pending on Trade Board</div>}
                   </div>
                 )
               })
@@ -817,43 +823,67 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
   );
 };
 
+
+
 // --- Tab: Time Off ---
 const TabTimeOff = ({ appUser, users, timeOff, addToast }) => {
-  const [startDate, setStartDate] = useState(getToday()); const [isPartial, setIsPartial] = useState(false); const [startTime, setStartTime] = useState('09:00'); const [endTime, setEndTime] = useState('14:00');
+  const [selectedDates, setSelectedDates] = useState([]); const [isPartial, setIsPartial] = useState(false); const [startTime, setStartTime] = useState('09:00'); const [endTime, setEndTime] = useState('14:00');
   const displayUsers = users.length > 0 ? users : (appUser ? [appUser] : []);
+  
+  const today = getToday();
+  const monthStr = getMonthStr(today);
+  const daysInMonth = getDaysInMonth(monthStr);
+  const monthFirstDay = new Date(monthStr + '-01T12:00:00').getDay();
+  const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
+
+  const handleToggleDate = (d) => { if (selectedDates.includes(d)) setSelectedDates(selectedDates.filter(x => x !== d)); else setSelectedDates([...selectedDates, d].sort()); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await addDoc(collection(db, "timeOff"), { employeeId: appUser.id, startDate, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null });
-    addToast('Time Off Logged', `Requested ${formatDisplayDate(startDate)}`);
+    if(selectedDates.length === 0) return addToast('Error', 'Select at least one date.');
+    for(const d of selectedDates) {
+      await addDoc(collection(db, "timeOff"), { employeeId: appUser.id, startDate: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null });
+    }
+    addToast('Time Off Logged', `Requested ${selectedDates.length} days off.`);
+    setSelectedDates([]);
   };
 
   const handleDelete = async (id) => await deleteDoc(doc(db, "timeOff", id));
 
   return (
     <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 sm:p-8 rounded-3xl shadow-sm space-y-6 self-start">
-        <h3 className="text-2xl font-black flex items-center gap-3 text-slate-800 dark:text-white"><Calendar className="text-blue-500" size={28}/> Log Unavailability</h3>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div><label className="block text-sm font-bold text-slate-600 dark:text-slate-400 mb-2">Select Date</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold focus:ring-2 focus:ring-blue-500 outline-none" required /></div>
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-3xl shadow-sm space-y-6 self-start">
+        <h3 className="text-xl font-black flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-blue-500" size={24}/> Request Time Off</h3>
+        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">{formatDisplayMonth(monthStr)}</div>
+           <div className="grid grid-cols-7 gap-1 text-center">
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{d}</div>)}
+              {Array.from({length: monthFirstDay}).map((_, i) => <div key={`empty-${i}`} />)}
+              {monthDaysArray.map(d => {
+                 const isSel = selectedDates.includes(d);
+                 return <button key={d} onClick={() => handleToggleDate(d)} className={`py-2 rounded-lg text-sm font-bold transition-all border ${isSel ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-400'}`}>{parseInt(d.split('-')[2], 10)}</button>
+              })}
+           </div>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="p-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-4">
-            <label className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300 cursor-pointer"><input type="checkbox" checked={isPartial} onChange={e => setIsPartial(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-blue-600" /> This is a partial day / specific time window</label>
-            {isPartial && (<div className="flex gap-4 pt-2 border-t border-slate-200 dark:border-slate-600"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-3 border dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl font-bold" /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">End Time</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-3 border dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl font-bold" /></div></div>)}
+            <label className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300 cursor-pointer"><input type="checkbox" checked={isPartial} onChange={e => setIsPartial(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-blue-600" /> Partial Day / specific times</label>
+            {isPartial && (<div className="flex gap-4 pt-2 border-t border-slate-200 dark:border-slate-600"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg font-bold" /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">End Time</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg font-bold" /></div></div>)}
           </div>
-          <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 shadow-md transition-all">Submit Request</button>
+          <button type="submit" disabled={selectedDates.length === 0} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50">Submit Request</button>
         </form>
       </div>
 
       <div className="space-y-4">
-        <h3 className="text-2xl font-black text-slate-800 dark:text-white pl-2">Upcoming Roster</h3>
+        <h3 className="text-xl font-black text-slate-800 dark:text-white pl-2">Upcoming Roster</h3>
         <div className="space-y-3">
-          {timeOff.length === 0 ? <p className="p-6 bg-slate-100 dark:bg-slate-800 rounded-2xl text-slate-500 font-medium">No time off logged.</p> : null}
+          {timeOff.length === 0 ? <p className="p-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-500 font-medium">No time off logged.</p> : null}
           {timeOff.filter(t => appUser.isAdmin || t.employeeId === appUser.id).map(t => {
             const emp = displayUsers.find(u => u.id === t.employeeId);
             return (
-              <div key={t.id} className="bg-white dark:bg-slate-800 p-5 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-l-4 border-l-orange-500">
-                <div><strong className="text-lg text-slate-900 dark:text-white block">{emp?.name || 'Unknown'}</strong><span className="text-slate-500 dark:text-slate-400 font-medium">{formatDisplayDate(t.startDate)}</span>{t.isPartial && <div className="mt-1 text-sm font-bold bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-3 py-1 rounded-lg border border-orange-200 dark:border-orange-800 w-max">{formatTime12Hour(t.startTime)} - {formatTime12Hour(t.endTime)}</div>}</div>
-                {(appUser.isAdmin || t.employeeId === appUser.id) && <button onClick={() => handleDelete(t.id)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 p-2 rounded-xl transition-colors"><Trash2 size={20}/></button>}
+              <div key={t.id} className="bg-white dark:bg-slate-800 p-4 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm flex justify-between items-center gap-4 border-l-4 border-l-orange-500">
+                <div><strong className="text-base text-slate-900 dark:text-white block">{emp?.name || 'Unknown'}</strong><span className="text-slate-500 dark:text-slate-400 font-medium text-sm">{formatDisplayDate(t.startDate)}</span>{t.isPartial && <div className="mt-1 text-[10px] font-bold bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800 w-max">{formatTime12Hour(t.startTime)} - {formatTime12Hour(t.endTime)}</div>}</div>
+                {(appUser.isAdmin || t.employeeId === appUser.id) && <button onClick={() => handleDelete(t.id)} className="text-slate-400 hover:text-red-500 p-2 rounded-xl transition-colors"><Trash2 size={18}/></button>}
               </div>
             )
           })}
@@ -863,19 +893,16 @@ const TabTimeOff = ({ appUser, users, timeOff, addToast }) => {
   );
 };
 
+
 // --- Tab: Inventory ---
 const TabInventory = ({ inventoryItems, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); 
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // New Item State
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState('PFG'); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState('');
-  
   const [orderOverrides, setOrderOverrides] = useState({});
   const [editItem, setEditItem] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, items: [] });
 
-  // --- Handlers ---
   const handleAddItem = async (e) => {
     e.preventDefault(); if (!newItemName.trim()) return;
     await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplier: newItemSupplier, packSize: newItemPackSize.trim(), price: parseFloat(newItemPrice) || 0, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null });
@@ -894,7 +921,6 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
   const deleteItem = async (id) => { if(window.confirm("Remove this item from the master list?")) await deleteDoc(doc(db, "inventoryItems", id)); };
   const handleOrderChange = (id, value) => setOrderOverrides(prev => ({ ...prev, [id]: parseInt(value) || 0 }));
 
-  // --- Math & Filtering ---
   const itemsToOrder = inventoryItems.filter(i => {
     const override = orderOverrides[i.id];
     if (override !== undefined) return override > 0;
@@ -915,7 +941,6 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
   const executeOrder = async () => {
     const { type, items } = confirmModal;
     let bodyText = "";
-
     if (type === 'PFG') {
       bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}): ${i.orderQty}`).join('%0D%0A');
       const subject = encodeURIComponent("PFG Order - Cheers Chilton (Acct 39228)");
@@ -926,10 +951,8 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
       const body = encodeURIComponent("Cheers Chilton Order:\n\n") + bodyText;
       window.location.href = `sms:555-555-5555?body=${body}`;
     }
-
     const today = new Date().toISOString().split('T')[0];
     for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedDate: today }); }
-
     setOrderOverrides({}); setConfirmModal({ isOpen: false, type: null, items: [] });
     addToast('Order Sent', `${type} order dispatched. Pending inventory updated.`);
   };
@@ -943,15 +966,11 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
 
   const filteredItems = inventoryItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)));
   const groupedItems = filteredItems.reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
-
-  // Missing Starred Math
   const missedStarred = confirmModal.isOpen ? inventoryItems.filter(i => i.isStarred && i.supplier === confirmModal.type && !confirmModal.items.some(oi => oi.id === i.id)) : [];
   const pfgOrderTotal = getFinalOrderList('PFG').reduce((sum, item) => sum + ((item.price || 0) * item.orderQty), 0);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      
-      {/* --- Confirmation Modal --- */}
+    <div className="max-w-5xl mx-auto space-y-4">
       <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, type: null, items: [] })} title={`Review ${confirmModal.type} Order`}>
          <div className="space-y-4">
            {missedStarred.length > 0 && (
@@ -978,47 +997,44 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
          </div>
       </Modal>
 
-      {/* --- Header --- */}
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-slate-200 dark:border-slate-700 pb-4">
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 border-b border-slate-200 dark:border-slate-700 pb-3">
         <h2 className="text-2xl font-black flex items-center gap-2 text-slate-900 dark:text-white"><Package size={24}/> Inventory</h2>
         {appUser?.isAdmin && (
           <div className="bg-slate-200/50 dark:bg-slate-800 p-1 rounded-xl flex border border-slate-200 dark:border-slate-700 w-full sm:w-auto">
             {['count', 'order', 'manage'].map(tab => (
-              <button key={tab} onClick={() => setInvTab(tab)} className={`flex-1 sm:flex-none px-6 py-2 rounded-lg text-sm font-bold capitalize transition-all ${invTab === tab ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>{tab}</button>
+              <button key={tab} onClick={() => setInvTab(tab)} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-sm font-bold capitalize transition-all ${invTab === tab ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>{tab}</button>
             ))}
           </div>
         )}
       </div>
       
-      {/* --- Count Tab --- */}
       {invTab === 'count' && (
-        <div className="space-y-6">
-          <input type="text" placeholder="Search inventory by name or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-white rounded-2xl font-bold shadow-sm outline-none focus:border-blue-500 transition-all" />
-          
+        <div className="space-y-4">
+          <input type="text" placeholder="Search inventory by name or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-white rounded-xl font-bold shadow-sm outline-none focus:border-blue-500 transition-all" />
           {Object.keys(groupedItems).length === 0 && <div className="p-8 text-center text-slate-400 font-medium">No items match your search.</div>}
           {Object.entries(groupedItems).map(([category, items]) => (
-            <div key={category} className="space-y-3">
-              <h4 className="text-xl font-black text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">{category}</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div key={category} className="space-y-2">
+              <h4 className="text-lg font-black text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-1">{category}</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {items.map(item => (
-                  <div key={item.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-4 relative overflow-hidden">
-                    <div className="flex-1 z-10">
-                      <div className="flex items-center gap-2"><div className="font-bold text-slate-900 dark:text-white text-lg leading-tight">{item.name}</div>{item.isStarred && <span className="text-amber-500">⭐</span>}</div>
-                      <div className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">{item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG: ${item.pfgCode}` : 'PFG')} • {item.packSize || '1 CS'}</div>
-                      {(item.pendingQty || 0) > 0 && <span className="text-[10px] font-black bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-0.5 rounded-full mt-1.5 inline-block border border-blue-200 dark:border-blue-800">(+{item.pendingQty} Pending)</span>}
+                  <div key={item.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-3">
+                    <div className="flex-1">
+                      <div className="font-bold text-slate-900 dark:text-white text-base leading-tight">{item.name}</div>
+                      <div className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider">{item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG: ${item.pfgCode}` : 'PFG')} • {item.packSize || '1 CS'}</div>
+                      {(item.pendingQty || 0) > 0 && <span className="text-[9px] font-black bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full mt-1 inline-block border border-blue-200 dark:border-blue-800">(+{item.pendingQty} Pending)</span>}
                     </div>
-                    <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-700/50 p-2 rounded-xl border border-slate-200 dark:border-slate-700 w-full sm:w-auto justify-between sm:justify-start z-10">
-                      <div className="flex flex-col items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">PAR</span>
-                        <input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className="w-12 text-center font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md py-1 outline-none focus:border-blue-500 disabled:bg-transparent disabled:text-slate-500 disabled:border-transparent" />
+                    <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700/50 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 w-full sm:w-auto justify-between sm:justify-start">
+                      <div className="flex flex-col items-center px-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">PAR</span>
+                        <input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className="w-10 text-center font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded py-0.5 outline-none focus:border-blue-500" />
                       </div>
-                      <div className="h-8 w-px bg-slate-300 dark:bg-slate-600"></div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">STOCK</span>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => updateStock(item.id, item.currentStock - 1)} className="w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-md font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">-</button>
-                          <span className={`w-8 text-center font-black text-xl ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}>{item.currentStock}</span>
-                          <button onClick={() => updateStock(item.id, item.currentStock + 1)} className="w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-md font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">+</button>
+                      <div className="h-6 w-px bg-slate-300 dark:bg-slate-600"></div>
+                      <div className="flex flex-col items-center px-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">STOCK</span>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => updateStock(item.id, item.currentStock - 1)} className="w-6 h-6 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded font-bold hover:bg-slate-100 dark:hover:bg-slate-700">-</button>
+                          <span className={`w-6 text-center font-black text-lg ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}>{item.currentStock}</span>
+                          <button onClick={() => updateStock(item.id, item.currentStock + 1)} className="w-6 h-6 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded font-bold hover:bg-slate-100 dark:hover:bg-slate-700">+</button>
                         </div>
                       </div>
                     </div>
@@ -1030,50 +1046,41 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
         </div>
       )}
 
-      {/* --- Order Tab --- */}
       {appUser?.isAdmin && invTab === 'order' && (
         <div className="space-y-4">
           <div className="flex justify-end mb-2">
-            {inventoryItems.some(i => i.pendingQty > 0) && (
-              <button onClick={handleReceivePending} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-4 py-2 rounded-xl font-bold text-sm hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors flex items-center gap-2"><Package size={16}/> Receive Pending Stock</button>
-            )}
+            {inventoryItems.some(i => i.pendingQty > 0) && (<button onClick={handleReceivePending} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"><Package size={16}/> Receive Pending</button>)}
           </div>
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
-            <div className="p-6 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-              <h3 className="font-black text-xl text-slate-800 dark:text-white">Deficit Report</h3>
-              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-3 py-1 rounded-lg font-bold text-sm">{itemsToOrder.length} Items Needed</span>
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+              <h3 className="font-black text-lg text-slate-800 dark:text-white">Deficit Report</h3>
+              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-2 py-1 rounded-lg font-bold text-xs">{itemsToOrder.length} Needed</span>
             </div>
-            {itemsToOrder.length === 0 ? (
-              <div className="p-12 text-center font-bold text-slate-400">All inventory levels meet or exceed par.</div>
-            ) : (
+            {itemsToOrder.length === 0 ? (<div className="p-12 text-center font-bold text-slate-400">All inventory levels meet par.</div>) : (
               <div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left min-w-[600px]">
-                    <thead><tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 uppercase tracking-wider"><th className="p-4">Item</th><th className="p-4 text-center">Deficit Math</th><th className="p-4 text-center">Price</th><th className="p-4 text-right">Order Qty</th></tr></thead>
+                  <table className="w-full text-left min-w-[650px]">
+                    <thead><tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-500 uppercase tracking-wider"><th className="p-3">Item</th><th className="p-3 text-center">Deficit Math</th><th className="p-3 text-center">Last Ordered</th><th className="p-3 text-right">Order Qty</th></tr></thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                       {itemsToOrder.map(item => {
-                        const defaultOrder = Math.max(0, item.parLevel - item.currentStock);
-                        const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : defaultOrder;
+                        const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
                         return (
                           <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                            <td className="p-4"><span className="font-bold text-slate-800 dark:text-white block text-lg leading-tight mb-1">{item.name} {item.isStarred && <span className="text-amber-500 text-sm">⭐</span>}</span><span className="text-[10px] font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded uppercase tracking-wider">{item.packSize || '1 CS'} • {item.supplier === 'Badger' ? 'BADGER' : 'PFG'}</span>{item.lastOrderedDate && <div className="text-[10px] text-slate-400 mt-1 font-bold">Last Ordered: {formatDisplayDate(item.lastOrderedDate)}</div>}</td>
-                            <td className="p-4 text-center font-medium text-slate-500 dark:text-slate-400"><div className="flex flex-col items-center"><span className="text-[10px] uppercase tracking-widest mb-0.5">Par - Stock</span><span className="font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">{item.parLevel} - {item.currentStock} = {item.parLevel - item.currentStock}</span></div></td>
-                            <td className="p-4 text-center font-bold text-emerald-600 dark:text-emerald-400">{item.price > 0 ? `$${item.price.toFixed(2)}` : '--'}</td>
-                            <td className="p-4 text-right"><input type="number" min="0" value={currentOrder} onChange={e => handleOrderChange(item.id, e.target.value)} className="font-black text-blue-600 dark:text-blue-400 text-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-2 rounded-xl w-24 text-center outline-none focus:ring-2 focus:ring-blue-500" /></td>
+                            <td className="p-3"><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight mb-0.5">{item.name}</span><span className="text-[9px] font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded uppercase tracking-wider">{item.packSize || '1 CS'} • {item.supplier === 'Badger' ? 'BADGER' : 'PFG'}</span></td>
+                            <td className="p-3 text-center font-medium text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs">{item.parLevel} - {item.currentStock} = {item.parLevel - item.currentStock}</span></td>
+                            <td className="p-3 text-center font-bold text-slate-500 dark:text-slate-400 text-xs">{item.lastOrderedDate ? formatDisplayDate(item.lastOrderedDate) : '--'}</td>
+                            <td className="p-3 text-right"><input type="number" min="0" value={currentOrder} onChange={e => handleOrderChange(item.id, e.target.value)} className="font-black text-blue-600 dark:text-blue-400 text-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-1.5 rounded-lg w-20 text-center outline-none" /></td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
-                <div className="p-6 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4">
-                  <div className="text-left w-full sm:w-auto">
-                    <span className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">PFG Order Total</span>
-                    <span className="font-black text-2xl text-slate-900 dark:text-white">${pfgOrderTotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                    <button onClick={() => handleReviewOrder('Badger')} className="bg-slate-900 dark:bg-slate-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors flex items-center justify-center gap-2"><MessageSquare size={20}/> Text Badger Rep</button>
-                    <button onClick={() => handleReviewOrder('PFG')} className="bg-blue-600 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><Send size={20}/> Email PFG Rep</button>
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div className="text-left w-full sm:w-auto"><span className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">PFG Total</span><span className="font-black text-xl text-slate-900 dark:text-white">${pfgOrderTotal.toFixed(2)}</span></div>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <button onClick={() => handleReviewOrder('Badger')} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"><MessageSquare size={16}/> Text Badger</button>
+                    <button onClick={() => handleReviewOrder('PFG')} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><Send size={16}/> Email PFG</button>
                   </div>
                 </div>
               </div>
@@ -1082,55 +1089,54 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
         </div>
       )}
 
-      {/* --- Manage Tab --- */}
       {appUser?.isAdmin && invTab === 'manage' && (
-        <div className="max-w-2xl mx-auto space-y-8">
+        <div className="max-w-2xl mx-auto space-y-6">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Inventory Item">
             {editItem && (
-              <form onSubmit={handleSaveEdit} className="space-y-4">
-                <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Product Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Category</label><select value={editItem.category} onChange={e => setEditItem({...editItem, category: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div>
-                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Supplier</label><select value={editItem.supplier || 'PFG'} onChange={e => setEditItem({...editItem, supplier: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div>
+              <form onSubmit={handleSaveEdit} className="space-y-3">
+                <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</label><select value={editItem.category} onChange={e => setEditItem({...editItem, category: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div>
+                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier</label><select value={editItem.supplier || 'PFG'} onChange={e => setEditItem({...editItem, supplier: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Pack Size (UOM)</label><input type="text" value={editItem.packSize || ''} onChange={e => setEditItem({...editItem, packSize: e.target.value})} placeholder="e.g., 1 CS, 6/10#" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Pack Size</label><input type="text" value={editItem.packSize || ''} onChange={e => setEditItem({...editItem, packSize: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
+                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
                 </div>
-                <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Item Code (Optional)</label><input type="text" value={editItem.pfgCode || ''} onChange={e => setEditItem({...editItem, pfgCode: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-                <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors mt-2">Save Changes</button>
+                <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Item Code</label><input type="text" value={editItem.pfgCode || ''} onChange={e => setEditItem({...editItem, pfgCode: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
+                <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3 rounded-xl font-bold hover:bg-slate-800 transition-colors mt-2">Save Changes</button>
               </form>
             )}
           </Modal>
 
-          <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm">
-             <h3 className="text-xl font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-3 mb-4">Add Single Item</h3>
-             <form onSubmit={handleAddItem} className="space-y-4">
-               <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Product Name</label><input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-               <div className="grid grid-cols-2 gap-4">
-                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Category</label><select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div>
-                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Supplier</label><select value={newItemSupplier} onChange={e => setNewItemSupplier(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div>
+          <div className="bg-white dark:bg-slate-800 p-5 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
+             <h3 className="text-lg font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2 mb-3">Add Single Item</h3>
+             <form onSubmit={handleAddItem} className="space-y-3">
+               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Name</label><input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
+               <div className="grid grid-cols-2 gap-3">
+                 <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</label><select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div>
+                 <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier</label><select value={newItemSupplier} onChange={e => setNewItemSupplier(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div>
                </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Pack Size (UOM)</label><input type="text" value={newItemPackSize} onChange={e => setNewItemPackSize(e.target.value)} placeholder="e.g., 1 CS, 6/10#" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Price ($)</label><input type="number" step="0.01" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
+               <div className="grid grid-cols-2 gap-3">
+                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Pack Size</label><input type="text" value={newItemPackSize} onChange={e => setNewItemPackSize(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
+                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Price ($)</label><input type="number" step="0.01" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
                </div>
-               <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Item Code (Optional)</label><input type="text" value={newItemCode} onChange={e => setNewItemCode(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-               <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold shadow-md hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Add Item</button>
+               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Item Code</label><input type="text" value={newItemCode} onChange={e => setNewItemCode(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
+               <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3 rounded-xl font-bold shadow-md transition-colors">Add Item</button>
              </form>
           </div>
 
-          <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm">
-            <h3 className="text-xl font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-3 mb-4">Current Master List</h3>
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-              {inventoryItems.length === 0 && <p className="text-slate-400 font-medium">List is empty.</p>}
+          <div className="bg-white dark:bg-slate-800 p-5 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2 mb-3">Current Master List</h3>
+            <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-2">
+              {inventoryItems.length === 0 && <p className="text-slate-400 font-medium text-sm">List is empty.</p>}
               {inventoryItems.map(item => (
-                <div key={item.id} className="flex justify-between items-center p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all">
-                  <div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md mt-1 inline-block uppercase tracking-wider">{item.category} • {item.packSize || '1 CS'}</span></div>
-                  <div className="flex gap-1">
-                    <button onClick={() => toggleStar(item)} className={`p-2 rounded-lg transition-colors ${item.isStarred ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'text-slate-400 hover:text-amber-500'}`} title="Star for Order Suggestion">⭐</button>
-                    <button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 rounded-lg transition-colors"><Edit size={16}/></button>
-                    <button onClick={() => deleteItem(item.id)} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-2 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                <div key={item.id} className="flex justify-between items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all">
+                  <div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded mt-0.5 inline-block uppercase tracking-wider">{item.category} • {item.packSize || '1 CS'}</span></div>
+                  <div className="flex gap-1 items-center">
+                    <button onClick={() => toggleStar(item)} className={`p-1.5 rounded-md transition-colors ${item.isStarred ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : 'text-slate-300 hover:text-yellow-400'}`} title="Star Item"><Star size={16} fill={item.isStarred ? 'currentColor' : 'none'} strokeWidth={item.isStarred ? 1 : 2}/></button>
+                    <button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-indigo-500 p-1.5 rounded-md transition-colors"><Edit size={16}/></button>
+                    <button onClick={() => deleteItem(item.id)} className="text-slate-400 hover:text-red-500 p-1.5 rounded-md transition-colors"><Trash2 size={16}/></button>
                   </div>
                 </div>
               ))}
@@ -1141,6 +1147,10 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
     </div>
   );
 };
+
+
+
+ 
 
 // --- Tab: Settings ---
 const TabSettings = ({ addToast, inventoryItems, appUser }) => {
