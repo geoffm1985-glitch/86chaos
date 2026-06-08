@@ -568,8 +568,8 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
   const handleBroadcastNote = async (e) => {
     e.preventDefault(); if(!shiftNote.trim()) return;
     await addDoc(collection(db, "events"), { date: currentDate, title: shiftNote.trim(), type: 'note', author: appUser.name });
-    triggerPushNotification("New Shift Note", `Manager broadcast: ${shiftNote.trim()}`);
-    setShiftNote(''); addToast('Note Broadcasted', 'Sent to all staff for this date.');
+    triggerPushNotification("New Shift Note", `${appUser.name} posted: ${shiftNote.trim()}`);
+    setShiftNote(''); addToast('Note Posted', 'Sent to all staff for this date.');
   };
 
   const handleDeleteShift = async (id) => await deleteDoc(doc(db, "shifts", id));
@@ -634,7 +634,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
       <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 p-5 rounded-2xl shadow-sm">
         <h3 className="font-black text-yellow-900 dark:text-yellow-400 flex items-center gap-2 mb-3"><MessageSquare size={20}/> Daily Pass-Down Notes</h3>
         <div className="space-y-3 mb-4">
-          {dayNotes.length === 0 && <p className="text-sm text-yellow-700 dark:text-yellow-600 font-medium italic">No manager notes for this shift.</p>}
+          {dayNotes.length === 0 && <p className="text-sm text-yellow-700 dark:text-yellow-600 font-medium italic">No notes for this shift.</p>}
           {dayNotes.map(note => (
             <div key={note.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-yellow-100 dark:border-yellow-700/50 flex justify-between items-start shadow-sm">
               <div><span className="font-bold text-xs text-yellow-600 uppercase tracking-wider block mb-0.5">{note.author}</span><span className="text-slate-800 dark:text-slate-200 font-medium">{note.title}</span></div>
@@ -642,12 +642,10 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
             </div>
           ))}
         </div>
-        {appUser?.isAdmin && (
-          <form onSubmit={handleBroadcastNote} className="flex gap-2">
-            <input type="text" value={shiftNote} onChange={e => setShiftNote(e.target.value)} placeholder="Type a message to the floor..." className="flex-1 p-3 rounded-xl bg-white dark:bg-slate-800 border border-yellow-200 dark:border-yellow-700 outline-none focus:ring-2 focus:ring-yellow-400 dark:text-white" required />
-            <button type="submit" className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 rounded-xl font-bold transition-colors shadow-sm">Broadcast</button>
-          </form>
-        )}
+        <form onSubmit={handleBroadcastNote} className="flex flex-col sm:flex-row gap-2">
+          <input type="text" value={shiftNote} onChange={e => setShiftNote(e.target.value)} placeholder="Type a message to the floor..." className="flex-1 w-full p-3 rounded-xl bg-white dark:bg-slate-800 border border-yellow-200 dark:border-yellow-700 outline-none focus:ring-2 focus:ring-yellow-400 dark:text-white" required />
+          <button type="submit" className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap">Broadcast</button>
+        </form>
       </div>
 
       {todayHoliday && (
