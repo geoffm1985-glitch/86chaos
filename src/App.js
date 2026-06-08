@@ -396,62 +396,6 @@ const TabTeam = ({ appUser, users, addToast }) => {
 };
 
 // --- Tab: Month View ---
-const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate, addToast }) => {
-  const monthStr = getMonthStr(currentDate);
-  const year = parseInt(monthStr.split('-')[0], 10);
-  const holidayMap = getHolidays(year);
-  const firstDay = new Date(monthStr + '-01T12:00:00').getDay();
-  const displayUsers = users.length > 0 ? users : [];
-
-  const handlePublishMonth = async () => {
-    if(!window.confirm(`Publish all shifts for ${formatDisplayMonth(monthStr)}? Non-admins will now see their schedules.`)) return;
-    try {
-      const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && !s.isPublished);
-      for (const shift of monthShifts) { await updateDoc(doc(db, "shifts", shift.id), { isPublished: true }); }
-      triggerPushNotification("Schedule Published", `The schedule for ${formatDisplayMonth(monthStr)} is now live.`);
-      addToast('Schedule Published', `Staff can now view ${formatDisplayMonth(monthStr)} shifts.`);
-    } catch(err) { console.error(err); addToast('Error', 'Failed to publish schedule.'); }
-  };
-
-  const unpublishedCount = shifts.filter(s => s.date.startsWith(monthStr) && !s.isPublished).length;
-
-  return (
-    <div className="space-y-4">
-      {appUser?.isAdmin && unpublishedCount > 0 && (
-         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 rounded-2xl flex justify-between items-center shadow-sm">
-           <div><h4 className="font-bold text-blue-900 dark:text-blue-300">Unpublished Shifts</h4><p className="text-sm font-medium text-blue-700 dark:text-blue-400">There are {unpublishedCount} hidden shifts this month.</p></div>
-           <button onClick={handlePublishMonth} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold shadow-sm transition-colors">Publish Schedule</button>
-         </div>
-      )}
-
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm grid grid-cols-7 border-t border-l">
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <div key={d} className="p-3 bg-slate-50 dark:bg-slate-800 text-center font-bold text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 border-r uppercase tracking-wider">{d}</div>)}
-        {Array.from({length: firstDay}).map((_, i) => <div key={i} className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-r border-slate-200 dark:border-slate-700 min-h-[100px]" />)}
-        {Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => {
-          const date = `${monthStr}-${String(i + 1).padStart(2, '0')}`;
-          const isUnpub = shifts.some(s => s.date === date && !s.isPublished);
-          return (
-            <div key={date} onClick={() => setCurrentDate(date)} className={`p-2 border-b border-r border-slate-200 dark:border-slate-700 min-h-[120px] hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer flex flex-col justify-between transition-colors ${isUnpub && appUser?.isAdmin ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
-              <div className="flex flex-col items-end gap-1 w-full">
-                <span className="text-right text-sm font-bold text-slate-400 dark:text-slate-500">{i+1}</span>
-                {holidayMap[date] && (<span className="text-[9px] font-black tracking-tight text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 px-1.5 py-0.5 rounded truncate w-full text-center" title={holidayMap[date]}>🎉 {holidayMap[date]}</span>)}
-                {events.filter(e => e.date === date).map(ev => (
-                  <span key={ev.id} className="text-[9px] font-black tracking-tight text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded truncate w-full text-center mt-0.5" title={ev.title}>📅 {ev.title}</span>
-                ))}
-              </div>
-              <div className="space-y-1 max-h-[65px] overflow-hidden mt-1 w-full">
-                {shifts.filter(s => s.date === date && (s.isPublished || appUser?.isAdmin)).map(s => {
-                  const emp = displayUsers.find(u => u.id === s.employeeId);
-                  return <div key={s.id} className={`text-[10px] font-bold px-1.5 py-0.5 rounded truncate ${!s.isPublished ? 'border border-dashed border-blue-400 bg-transparent text-blue-500' : (s.role === 'Bartender' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300' : 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300')}`}>{emp?.name?.split(' ')[0] || '?'}</div>
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  );
-};
 
 // --- Tab: Prep List ---
 const TabPrep = ({ currentDate, prepItems }) => {
