@@ -328,7 +328,7 @@ const TabTeam = ({ appUser, users, addToast }) => {
         {editModalUser && (
           <form onSubmit={handleUpdateUser} className="space-y-4">
             <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Name</label><input type="text" value={editModalUser.name} onChange={e => setEditModalUser({...editModalUser, name: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
+            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email (Hidden from Staff)</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
             <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Phone</label><input type="tel" value={editModalUser.phone || ''} onChange={e => setEditModalUser({...editModalUser, phone: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
             <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Role</label><select value={editModalUser.role} onChange={e => setEditModalUser({...editModalUser, role: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
             <div className="pt-4 border-t border-slate-200 dark:border-slate-600">
@@ -369,7 +369,7 @@ const TabTeam = ({ appUser, users, addToast }) => {
               const showMasterBadge = isMaster && appUser?.email === MASTER_ADMIN_EMAIL;
               return (
               <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                <td className="p-4"><div className="font-bold text-slate-900 dark:text-white text-lg">{u.name}</div><div className="text-sm font-medium text-slate-500 dark:text-slate-400">{u.email}</div></td>
+                <td className="p-4"><div className="font-bold text-slate-900 dark:text-white text-lg">{u.name}</div></td>
                 <td className="p-4"><div className="text-sm font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-lg w-max border border-slate-200 dark:border-slate-600">{u.phone || 'No phone listed'}</div></td>
                 <td className="p-4">
                   <span className={`text-sm font-bold px-3 py-1 rounded-full inline-block ${u.role === 'Bartender' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'}`}>{u.role}</span>
@@ -397,6 +397,82 @@ const TabTeam = ({ appUser, users, addToast }) => {
 
 // --- Tab: Month View ---
 
+// --- Tab: Month View ---
+const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate, addToast }) => {
+  const monthStr = getMonthStr(currentDate);
+  const year = parseInt(monthStr.split('-')[0], 10);
+  const holidayMap = getHolidays(year);
+  const firstDay = new Date(monthStr + '-01T12:00:00').getDay();
+  const displayUsers = users.length > 0 ? users : [];
+
+  const handlePublishMonth = async () => {
+    if(!window.confirm(`Publish all shifts for ${formatDisplayMonth(monthStr)}? Non-admins will now see their schedules.`)) return;
+    try {
+      const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && !s.isPublished);
+      for (const shift of monthShifts) { await updateDoc(doc(db, "shifts", shift.id), { isPublished: true }); }
+      triggerPushNotification("Schedule Published", `The schedule for ${formatDisplayMonth(monthStr)} is now live.`);
+      addToast('Schedule Published', `Staff can now view ${formatDisplayMonth(monthStr)} shifts.`);
+    } catch(err) { console.error(err); addToast('Error', 'Failed to publish schedule.'); }
+  };
+
+  const unpublishedCount = shifts.filter(s => s.date.startsWith(monthStr) && !s.isPublished).length;
+
+  return (
+    <div className="space-y-4 print-container">
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .print-container, .print-container * { visibility: visible !important; }
+          .print-container { position: absolute; left: 0; top: 0; width: 100vw; margin: 0; padding: 0; }
+          .no-print { display: none !important; }
+          .print-grid { border: 2px solid #000 !important; }
+          .print-cell { border: 1px solid #000 !important; min-height: 80px; }
+          .print-text { color: #000 !important; background: transparent !important; border: none !important; font-size: 11px !important; }
+        }
+      `}</style>
+      
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
+        {appUser?.isAdmin && unpublishedCount > 0 ? (
+           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 rounded-2xl flex-1 flex justify-between items-center shadow-sm w-full">
+             <div><h4 className="font-bold text-blue-900 dark:text-blue-300">Unpublished Shifts</h4><p className="text-sm font-medium text-blue-700 dark:text-blue-400">There are {unpublishedCount} hidden shifts this month.</p></div>
+             <button onClick={handlePublishMonth} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold shadow-sm transition-colors">Publish Schedule</button>
+           </div>
+        ) : <div className="flex-1"></div>}
+        
+        <button onClick={() => window.print()} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-3.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 transition-colors w-full sm:w-auto">🖨️ Print Roster</button>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm grid grid-cols-7 border-t border-l print-grid">
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <div key={d} className="p-3 bg-slate-50 dark:bg-slate-800 text-center font-bold text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 border-r uppercase tracking-wider print-cell">{d}</div>)}
+        {Array.from({length: firstDay}).map((_, i) => <div key={i} className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-r border-slate-200 dark:border-slate-700 min-h-[100px] print-cell" />)}
+        {Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => {
+          const date = `${monthStr}-${String(i + 1).padStart(2, '0')}`;
+          const isUnpub = shifts.some(s => s.date === date && !s.isPublished);
+          return (
+            <div key={date} onClick={() => setCurrentDate(date)} className={`p-2 border-b border-r border-slate-200 dark:border-slate-700 min-h-[120px] hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer flex flex-col justify-between transition-colors print-cell ${isUnpub && appUser?.isAdmin ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+              <div className="flex flex-col items-end gap-1 w-full">
+                <span className="text-right text-sm font-bold text-slate-400 dark:text-slate-500 print-text">{i+1}</span>
+                {holidayMap[date] && (<span className="text-[9px] font-black tracking-tight text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 px-1.5 py-0.5 rounded truncate w-full text-center no-print" title={holidayMap[date]}>🎉 {holidayMap[date]}</span>)}
+              </div>
+              <div className="space-y-1 max-h-[65px] overflow-hidden mt-1 w-full">
+                {shifts.filter(s => s.date === date && (s.isPublished || appUser?.isAdmin)).map(s => {
+                  const emp = displayUsers.find(u => u.id === s.employeeId);
+                  
+                  // The exact fix: safely handling missing start/end times
+                  const startFmt = formatTime12Hour(s.startTime) || '';
+                  const endFmt = formatTime12Hour(s.endTime) || '';
+                  
+                  return <div key={s.id} className={`text-[10px] font-bold px-1.5 py-0.5 rounded truncate print-text ${!s.isPublished ? 'border border-dashed border-blue-400 bg-transparent text-blue-500' : (s.role === 'Bartender' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300' : 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300')}`}>{emp?.name?.split(' ')[0] || '?'} {startFmt.replace(/(AM|PM| )/g, '')}-{endFmt.replace(/(AM|PM| )/g, '')}</div>
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  );
+};
+
 // --- Tab: Prep List ---
 const TabPrep = ({ currentDate, prepItems }) => {
   const [text, setText] = useState(''); const [isMaster, setIsMaster] = useState(true);
@@ -421,10 +497,16 @@ const TabPrep = ({ currentDate, prepItems }) => {
 
   const displayItems = prepItems.filter(p => p.date === currentDate || p.isMaster);
 
+  const getExpDate = (dateStr) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + 6);
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 pl-4 rounded-2xl flex flex-col sm:flex-row gap-2 shadow-sm items-center">
-        <input type="text" value={text} onChange={e => setText(e.target.value)} className="flex-1 w-full p-2 bg-transparent outline-none font-medium text-slate-900 dark:text-white placeholder:text-slate-400" placeholder="Add a new prep task..." required />
+        <input type="text" value={text} onChange={e => setText(e.target.value)} className="flex-1 w-full p-2 bg-transparent outline-none font-medium text-slate-900 dark:text-white placeholder:text-slate-400" placeholder="Add a new prep task (e.g., Dice Onions - 4 Qt)..." required />
         <div className="flex items-center gap-4 w-full sm:w-auto justify-between border-t sm:border-t-0 border-slate-100 dark:border-slate-700 pt-2 sm:pt-0">
           <label className="flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-400 cursor-pointer ml-2 sm:ml-0"><input type="checkbox" checked={isMaster} onChange={e => setIsMaster(e.target.checked)} className="w-4 h-4 rounded border-slate-300" /> Master List</label>
           <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-bold transition-colors shadow-sm"><Plus size={20}/></button>
@@ -436,12 +518,13 @@ const TabPrep = ({ currentDate, prepItems }) => {
           displayItems.map(item => {
             const isDone = item.isMaster ? !!item.completedDates?.[currentDate] : item.isCompleted;
             return (
-            <div key={item.id} className="p-4 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+            <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group gap-4">
               <div>
                 <span className={`text-lg transition-all ${isDone ? 'line-through text-slate-300 dark:text-slate-500' : 'font-bold text-slate-800 dark:text-white'}`}>{item.text}</span>
                 {item.isMaster && <span className="block text-[10px] font-bold text-blue-500 uppercase tracking-widest mt-0.5">Master Task</span>}
+                {isDone && <span className="block text-[11px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(currentDate)} (7-Day FDA)</span>}
               </div>
-              <div className="flex gap-2"><button onClick={() => toggleStatus(item)} className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`}>{isDone ? 'Undo' : <><Check size={16}/> Done</>}</button><button onClick={() => handleDelete(item.id)} className="p-2 text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-xl transition-colors"><Trash2 size={18}/></button></div>
+              <div className="flex gap-2"><button onClick={() => toggleStatus(item)} className={`flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`}>{isDone ? 'Undo' : <><Check size={16}/> Done</>}</button><button onClick={() => handleDelete(item.id)} className="p-2 text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-xl transition-colors"><Trash2 size={18}/></button></div>
             </div>
           )}))}
       </div>
