@@ -395,7 +395,6 @@ const TabTeam = ({ appUser, users, addToast }) => {
   );
 };
 
-// --- Tab: Month View ---
 
 // --- Tab: Month View ---
 const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate, addToast }) => {
@@ -421,6 +420,7 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
     <div className="space-y-4 print-container">
       <style>{`
         @media print {
+          @page { size: landscape; margin: 0.5in; }
           body * { visibility: hidden !important; }
           .print-container, .print-container * { visibility: visible !important; }
           .print-container { position: absolute; left: 0; top: 0; width: 100vw; margin: 0; padding: 0; }
@@ -428,8 +428,11 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
           .print-grid { border: 2px solid #000 !important; }
           .print-cell { border: 1px solid #000 !important; min-height: 80px; }
           .print-text { color: #000 !important; background: transparent !important; border: none !important; font-size: 11px !important; }
+          .print-header { display: block !important; text-align: center; font-size: 28px; font-weight: 900; margin-bottom: 20px; color: #000; letter-spacing: 1px; }
         }
       `}</style>
+      
+      <div className="hidden print-header">{formatDisplayMonth(monthStr)} Schedule</div>
       
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
         {appUser?.isAdmin && unpublishedCount > 0 ? (
@@ -452,16 +455,13 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
             <div key={date} onClick={() => setCurrentDate(date)} className={`p-2 border-b border-r border-slate-200 dark:border-slate-700 min-h-[120px] hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer flex flex-col justify-between transition-colors print-cell ${isUnpub && appUser?.isAdmin ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
               <div className="flex flex-col items-end gap-1 w-full">
                 <span className="text-right text-sm font-bold text-slate-400 dark:text-slate-500 print-text">{i+1}</span>
-                {holidayMap[date] && (<span className="text-[9px] font-black tracking-tight text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 px-1.5 py-0.5 rounded truncate w-full text-center no-print" title={holidayMap[date]}>🎉 {holidayMap[date]}</span>)}
+                {holidayMap[date] && (<span className="text-[9px] font-black tracking-tight text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 px-1.5 py-0.5 rounded truncate w-full text-center print-text" title={holidayMap[date]}>{holidayMap[date]}</span>)}
               </div>
               <div className="space-y-1 max-h-[65px] overflow-hidden mt-1 w-full">
                 {shifts.filter(s => s.date === date && (s.isPublished || appUser?.isAdmin)).map(s => {
                   const emp = displayUsers.find(u => u.id === s.employeeId);
-                  
-                  // The exact fix: safely handling missing start/end times
                   const startFmt = formatTime12Hour(s.startTime) || '';
                   const endFmt = formatTime12Hour(s.endTime) || '';
-                  
                   return <div key={s.id} className={`text-[10px] font-bold px-1.5 py-0.5 rounded truncate print-text ${!s.isPublished ? 'border border-dashed border-blue-400 bg-transparent text-blue-500' : (s.role === 'Bartender' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300' : 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300')}`}>{emp?.name?.split(' ')[0] || '?'} {startFmt.replace(/(AM|PM| )/g, '')}-{endFmt.replace(/(AM|PM| )/g, '')}</div>
                 })}
               </div>
