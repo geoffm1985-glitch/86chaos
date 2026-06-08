@@ -771,66 +771,119 @@ const TabTimeOff = ({ appUser, users, timeOff, addToast }) => {
 // --- Tab: Inventory ---
 const TabInventory = ({ inventoryItems, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); 
-  const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState('PFG');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // New Item State
+  const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState('PFG'); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState('');
+  
   const [orderOverrides, setOrderOverrides] = useState({});
   const [editItem, setEditItem] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, items: [] });
 
+  // --- Handlers ---
   const handleAddItem = async (e) => {
     e.preventDefault(); if (!newItemName.trim()) return;
-    await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplier: newItemSupplier, parLevel: 10, currentStock: 0 });
-    setNewItemName(''); setNewItemCode(''); setNewItemSupplier('PFG'); addToast('Inventory Updated', `${newItemName} added to master list.`);
+    await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplier: newItemSupplier, packSize: newItemPackSize.trim(), price: parseFloat(newItemPrice) || 0, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null });
+    setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemPackSize('1 CS'); addToast('Inventory Updated', `${newItemName} added to master list.`);
   };
 
   const handleSaveEdit = async (e) => {
     e.preventDefault(); if (!editItem.name.trim()) return;
-    await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category, pfgCode: editItem.pfgCode.trim(), supplier: editItem.supplier });
+    await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category, pfgCode: editItem.pfgCode.trim(), supplier: editItem.supplier, packSize: editItem.packSize, price: parseFloat(editItem.price) || 0 });
     setEditItem(null); addToast('Item Updated', 'Master list modified.');
   };
 
   const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseInt(newStock) || 0) });
   const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseInt(newPar) || 0) });
+  const toggleStar = async (item) => await updateDoc(doc(db, "inventoryItems", item.id), { isStarred: !item.isStarred });
   const deleteItem = async (id) => { if(window.confirm("Remove this item from the master list?")) await deleteDoc(doc(db, "inventoryItems", id)); };
   const handleOrderChange = (id, value) => setOrderOverrides(prev => ({ ...prev, [id]: parseInt(value) || 0 }));
 
+  // --- Math & Filtering ---
   const itemsToOrder = inventoryItems.filter(i => {
     const override = orderOverrides[i.id];
     if (override !== undefined) return override > 0;
     return i.currentStock < i.parLevel;
   });
 
-  const handleEmailOrder = () => {
-    const pfgItems = itemsToOrder.filter(i => !i.supplier || i.supplier === 'PFG');
-    const bodyText = pfgItems.map(item => {
-      const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
-      if (qty === 0) return null;
-      return `${item.pfgCode ? `[${item.pfgCode}] ` : ''}${item.name}: ${qty}`;
-    }).filter(Boolean).join('%0D%0A');
+  const getFinalOrderList = (type) => itemsToOrder.filter(i => type === 'PFG' ? (!i.supplier || i.supplier === 'PFG') : i.supplier === 'Badger').map(item => {
+    const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
+    return { ...item, orderQty: qty };
+  }).filter(i => i.orderQty > 0);
 
-    if (!bodyText) return addToast('Order Empty', 'No PFG items need ordering.');
-    const subject = encodeURIComponent("PFG Order - Cheers Chilton (Acct 39228)");
-    const body = encodeURIComponent("Performance Foodservice Order\nAccount: 39228\nLocation: Cheers-Chilton\n\nItems to Order:\n") + bodyText;
-    window.location.href = `mailto:geoffm1985@gmail.com?subject=${subject}&body=${body}`;
-    setOrderOverrides({}); addToast('Email Client Opened', 'Drafting PFG order.');
+  const handleReviewOrder = (type) => {
+    const list = getFinalOrderList(type);
+    if (list.length === 0) return addToast('Order Empty', `No ${type} items need ordering.`);
+    setConfirmModal({ isOpen: true, type, items: list });
   };
 
-  const handleTextBadger = () => {
-    const badgerItems = itemsToOrder.filter(i => i.supplier === 'Badger');
-    const bodyText = badgerItems.map(item => {
-      const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
-      if (qty === 0) return null;
-      return `${item.name}: ${qty}`;
-    }).filter(Boolean).join('%0A');
+  const executeOrder = async () => {
+    const { type, items } = confirmModal;
+    let bodyText = "";
 
-    if (!bodyText) return addToast('Order Empty', 'No Badger items need ordering.');
-    const body = encodeURIComponent("Cheers Chilton Order:\n\n") + bodyText;
-    window.location.href = `sms:555-555-5555?body=${body}`;
-    setOrderOverrides({}); addToast('Text Client Opened', 'Drafting Badger order.');
+    if (type === 'PFG') {
+      bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}): ${i.orderQty}`).join('%0D%0A');
+      const subject = encodeURIComponent("PFG Order - Cheers Chilton (Acct 39228)");
+      const body = encodeURIComponent("Performance Foodservice Order\nAccount: 39228\nLocation: Cheers-Chilton\n\nItems to Order:\n") + bodyText;
+      window.location.href = `mailto:geoffm1985@gmail.com?subject=${subject}&body=${body}`;
+    } else {
+      bodyText = items.map(i => `${i.name} (${i.packSize || '1 CS'}): ${i.orderQty}`).join('%0A');
+      const body = encodeURIComponent("Cheers Chilton Order:\n\n") + bodyText;
+      window.location.href = `sms:555-555-5555?body=${body}`;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedDate: today }); }
+
+    setOrderOverrides({}); setConfirmModal({ isOpen: false, type: null, items: [] });
+    addToast('Order Sent', `${type} order dispatched. Pending inventory updated.`);
   };
 
-  const groupedItems = inventoryItems.reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
+  const handleReceivePending = async () => {
+    if(!window.confirm("Move all pending items into active stock?")) return;
+    const pendingItems = inventoryItems.filter(i => (i.pendingQty || 0) > 0);
+    for (const item of pendingItems) { await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: item.currentStock + item.pendingQty, pendingQty: 0 }); }
+    addToast('Stock Updated', 'Pending items moved to active stock.');
+  };
+
+  const filteredItems = inventoryItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)));
+  const groupedItems = filteredItems.reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
+
+  // Missing Starred Math
+  const missedStarred = confirmModal.isOpen ? inventoryItems.filter(i => i.isStarred && i.supplier === confirmModal.type && !confirmModal.items.some(oi => oi.id === i.id)) : [];
+  const pfgOrderTotal = getFinalOrderList('PFG').reduce((sum, item) => sum + ((item.price || 0) * item.orderQty), 0);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      
+      {/* --- Confirmation Modal --- */}
+      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, type: null, items: [] })} title={`Review ${confirmModal.type} Order`}>
+         <div className="space-y-4">
+           {missedStarred.length > 0 && (
+             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 rounded-xl flex items-start gap-3">
+               <AlertTriangle className="text-amber-500 mt-0.5 flex-shrink-0" size={18} />
+               <div><span className="font-bold text-amber-800 dark:text-amber-400 text-sm block">Starred Items Not Included:</span><span className="text-xs text-amber-700 dark:text-amber-500 font-medium">{missedStarred.map(i => i.name).join(', ')}</span></div>
+             </div>
+           )}
+           <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-700">
+             {confirmModal.items.map(item => (
+                <div key={item.id} className="p-3 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
+                  <div><span className="font-bold text-sm block dark:text-white">{item.name}</span><span className="text-xs text-slate-500">{item.packSize}</span></div>
+                  <div className="font-black text-blue-600 dark:text-blue-400 text-lg">{item.orderQty}</div>
+                </div>
+             ))}
+           </div>
+           {confirmModal.type === 'PFG' && (
+             <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800">
+               <span className="font-bold text-blue-900 dark:text-blue-300">Estimated Total:</span>
+               <span className="font-black text-xl text-blue-700 dark:text-blue-400">${pfgOrderTotal.toFixed(2)}</span>
+             </div>
+           )}
+           <button onClick={executeOrder} className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-bold shadow-md transition-all flex items-center justify-center gap-2"><Send size={20}/> Send via {confirmModal.type === 'PFG' ? 'Email' : 'SMS'}</button>
+         </div>
+      </Modal>
+
+      {/* --- Header --- */}
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-slate-200 dark:border-slate-700 pb-4">
         <h2 className="text-2xl font-black flex items-center gap-2 text-slate-900 dark:text-white"><Package size={24}/> Inventory</h2>
         {appUser?.isAdmin && (
@@ -842,20 +895,24 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
         )}
       </div>
       
+      {/* --- Count Tab --- */}
       {invTab === 'count' && (
-        <div className="space-y-8">
-          {Object.keys(groupedItems).length === 0 && <div className="p-8 text-center text-slate-400 font-medium">Master list is empty.</div>}
+        <div className="space-y-6">
+          <input type="text" placeholder="Search inventory by name or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-white rounded-2xl font-bold shadow-sm outline-none focus:border-blue-500 transition-all" />
+          
+          {Object.keys(groupedItems).length === 0 && <div className="p-8 text-center text-slate-400 font-medium">No items match your search.</div>}
           {Object.entries(groupedItems).map(([category, items]) => (
             <div key={category} className="space-y-3">
               <h4 className="text-xl font-black text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {items.map(item => (
-                  <div key={item.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-4">
-                    <div className="flex-1">
-                      <div className="font-bold text-slate-900 dark:text-white text-lg leading-tight">{item.name}</div>
-                      <div className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">{item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG: ${item.pfgCode}` : 'PFG')}</div>
+                  <div key={item.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-4 relative overflow-hidden">
+                    <div className="flex-1 z-10">
+                      <div className="flex items-center gap-2"><div className="font-bold text-slate-900 dark:text-white text-lg leading-tight">{item.name}</div>{item.isStarred && <span className="text-amber-500">⭐</span>}</div>
+                      <div className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">{item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG: ${item.pfgCode}` : 'PFG')} • {item.packSize || '1 CS'}</div>
+                      {(item.pendingQty || 0) > 0 && <span className="text-[10px] font-black bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-0.5 rounded-full mt-1.5 inline-block border border-blue-200 dark:border-blue-800">(+{item.pendingQty} Pending)</span>}
                     </div>
-                    <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-700/50 p-2 rounded-xl border border-slate-200 dark:border-slate-700 w-full sm:w-auto justify-between sm:justify-start">
+                    <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-700/50 p-2 rounded-xl border border-slate-200 dark:border-slate-700 w-full sm:w-auto justify-between sm:justify-start z-10">
                       <div className="flex flex-col items-center">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">PAR</span>
                         <input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className="w-12 text-center font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md py-1 outline-none focus:border-blue-500 disabled:bg-transparent disabled:text-slate-500 disabled:border-transparent" />
@@ -865,7 +922,7 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">STOCK</span>
                         <div className="flex items-center gap-2">
                           <button onClick={() => updateStock(item.id, item.currentStock - 1)} className="w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-md font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">-</button>
-                          <span className="w-8 text-center font-black text-xl text-slate-800 dark:text-white">{item.currentStock}</span>
+                          <span className={`w-8 text-center font-black text-xl ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}>{item.currentStock}</span>
                           <button onClick={() => updateStock(item.id, item.currentStock + 1)} className="w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-md font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">+</button>
                         </div>
                       </div>
@@ -878,44 +935,59 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
         </div>
       )}
 
+      {/* --- Order Tab --- */}
       {appUser?.isAdmin && invTab === 'order' && (
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
-          <div className="p-6 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-            <h3 className="font-black text-xl text-slate-800 dark:text-white">Deficit Report</h3>
-            <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-3 py-1 rounded-lg font-bold text-sm">{itemsToOrder.length} Items Needed</span>
+        <div className="space-y-4">
+          <div className="flex justify-end mb-2">
+            {inventoryItems.some(i => i.pendingQty > 0) && (
+              <button onClick={handleReceivePending} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-4 py-2 rounded-xl font-bold text-sm hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors flex items-center gap-2"><Package size={16}/> Receive Pending Stock</button>
+            )}
           </div>
-          {itemsToOrder.length === 0 ? (
-            <div className="p-12 text-center font-bold text-slate-400">All inventory levels meet or exceed par.</div>
-          ) : (
-            <div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left min-w-[500px]">
-                  <thead><tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 uppercase tracking-wider"><th className="p-4">Item</th><th className="p-4 text-center hidden sm:table-cell">On Hand</th><th className="p-4 text-center hidden sm:table-cell">Par</th><th className="p-4 text-right">Order Qty</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                    {itemsToOrder.map(item => {
-                      const defaultOrder = Math.max(0, item.parLevel - item.currentStock);
-                      const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : defaultOrder;
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                          <td className="p-4"><span className="font-bold text-slate-800 dark:text-white block text-lg leading-tight mb-1">{item.name}</span><span className="text-[10px] font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded uppercase tracking-wider">{item.category} • {item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG #${item.pfgCode}` : 'PFG')}</span></td>
-                          <td className="p-4 text-center font-medium text-slate-500 dark:text-slate-400 hidden sm:table-cell">{item.currentStock}</td>
-                          <td className="p-4 text-center font-medium text-slate-500 dark:text-slate-400 hidden sm:table-cell">{item.parLevel}</td>
-                          <td className="p-4 text-right"><input type="number" min="0" value={currentOrder} onChange={e => handleOrderChange(item.id, e.target.value)} className="font-black text-blue-600 dark:text-blue-400 text-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-2 rounded-xl w-24 text-center outline-none focus:ring-2 focus:ring-blue-500" /></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="p-6 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-end gap-3">
-                <button onClick={handleTextBadger} className="bg-slate-900 dark:bg-slate-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors flex items-center justify-center gap-2"><MessageSquare size={20}/> Text Badger Rep</button>
-                <button onClick={handleEmailOrder} className="bg-blue-600 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><Send size={20}/> Email PFG Rep</button>
-              </div>
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+              <h3 className="font-black text-xl text-slate-800 dark:text-white">Deficit Report</h3>
+              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-3 py-1 rounded-lg font-bold text-sm">{itemsToOrder.length} Items Needed</span>
             </div>
-          )}
+            {itemsToOrder.length === 0 ? (
+              <div className="p-12 text-center font-bold text-slate-400">All inventory levels meet or exceed par.</div>
+            ) : (
+              <div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[600px]">
+                    <thead><tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 uppercase tracking-wider"><th className="p-4">Item</th><th className="p-4 text-center">Deficit Math</th><th className="p-4 text-center">Price</th><th className="p-4 text-right">Order Qty</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                      {itemsToOrder.map(item => {
+                        const defaultOrder = Math.max(0, item.parLevel - item.currentStock);
+                        const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : defaultOrder;
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                            <td className="p-4"><span className="font-bold text-slate-800 dark:text-white block text-lg leading-tight mb-1">{item.name} {item.isStarred && <span className="text-amber-500 text-sm">⭐</span>}</span><span className="text-[10px] font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded uppercase tracking-wider">{item.packSize || '1 CS'} • {item.supplier === 'Badger' ? 'BADGER' : 'PFG'}</span>{item.lastOrderedDate && <div className="text-[10px] text-slate-400 mt-1 font-bold">Last Ordered: {formatDisplayDate(item.lastOrderedDate)}</div>}</td>
+                            <td className="p-4 text-center font-medium text-slate-500 dark:text-slate-400"><div className="flex flex-col items-center"><span className="text-[10px] uppercase tracking-widest mb-0.5">Par - Stock</span><span className="font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">{item.parLevel} - {item.currentStock} = {item.parLevel - item.currentStock}</span></div></td>
+                            <td className="p-4 text-center font-bold text-emerald-600 dark:text-emerald-400">{item.price > 0 ? `$${item.price.toFixed(2)}` : '--'}</td>
+                            <td className="p-4 text-right"><input type="number" min="0" value={currentOrder} onChange={e => handleOrderChange(item.id, e.target.value)} className="font-black text-blue-600 dark:text-blue-400 text-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-2 rounded-xl w-24 text-center outline-none focus:ring-2 focus:ring-blue-500" /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="p-6 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div className="text-left w-full sm:w-auto">
+                    <span className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">PFG Order Total</span>
+                    <span className="font-black text-2xl text-slate-900 dark:text-white">${pfgOrderTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <button onClick={() => handleReviewOrder('Badger')} className="bg-slate-900 dark:bg-slate-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors flex items-center justify-center gap-2"><MessageSquare size={20}/> Text Badger Rep</button>
+                    <button onClick={() => handleReviewOrder('PFG')} className="bg-blue-600 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><Send size={20}/> Email PFG Rep</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
+      {/* --- Manage Tab --- */}
       {appUser?.isAdmin && invTab === 'manage' && (
         <div className="max-w-2xl mx-auto space-y-8">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Inventory Item">
@@ -925,6 +997,10 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Category</label><select value={editItem.category} onChange={e => setEditItem({...editItem, category: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div>
                   <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Supplier</label><select value={editItem.supplier || 'PFG'} onChange={e => setEditItem({...editItem, supplier: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Pack Size (UOM)</label><input type="text" value={editItem.packSize || ''} onChange={e => setEditItem({...editItem, packSize: e.target.value})} placeholder="e.g., 1 CS, 6/10#" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
+                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
                 </div>
                 <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Item Code (Optional)</label><input type="text" value={editItem.pfgCode || ''} onChange={e => setEditItem({...editItem, pfgCode: e.target.value})} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
                 <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors mt-2">Save Changes</button>
@@ -940,6 +1016,10 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Category</label><select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div>
                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Supplier</label><select value={newItemSupplier} onChange={e => setNewItemSupplier(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div>
                </div>
+               <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Pack Size (UOM)</label><input type="text" value={newItemPackSize} onChange={e => setNewItemPackSize(e.target.value)} placeholder="e.g., 1 CS, 6/10#" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
+                  <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Price ($)</label><input type="number" step="0.01" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
+               </div>
                <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Item Code (Optional)</label><input type="text" value={newItemCode} onChange={e => setNewItemCode(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
                <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold shadow-md hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Add Item</button>
              </form>
@@ -951,8 +1031,9 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
               {inventoryItems.length === 0 && <p className="text-slate-400 font-medium">List is empty.</p>}
               {inventoryItems.map(item => (
                 <div key={item.id} className="flex justify-between items-center p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all">
-                  <div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md mt-1 inline-block uppercase tracking-wider">{item.category} • {item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG #${item.pfgCode}` : 'PFG')}</span></div>
+                  <div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md mt-1 inline-block uppercase tracking-wider">{item.category} • {item.packSize || '1 CS'}</span></div>
                   <div className="flex gap-1">
+                    <button onClick={() => toggleStar(item)} className={`p-2 rounded-lg transition-colors ${item.isStarred ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'text-slate-400 hover:text-amber-500'}`} title="Star for Order Suggestion">⭐</button>
                     <button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 rounded-lg transition-colors"><Edit size={16}/></button>
                     <button onClick={() => deleteItem(item.id)} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-2 rounded-lg transition-colors"><Trash2 size={16}/></button>
                   </div>
