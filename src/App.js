@@ -1081,57 +1081,111 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
   const toggle = (key) => setSettings(prev => ({ ...prev, [key]: !prev[key] }));
   const isMasterAdmin = appUser?.email === MASTER_ADMIN_EMAIL;
 
-  const handleImportCatalog = async () => {
-    if(!window.confirm("This will inject the PFG Test Batch into your database. Continue?")) return;
-    setIsImporting(true); let count = 0;
-    try { // Empty block for now, avoiding catalog inclusion per your request
-      addToast('Import Complete', `Successfully loaded items.`);
-    } catch (err) { addToast('Import Error', 'Something went wrong during import.'); console.error(err); }
-    setIsImporting(false);
+  const handleCsvUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if(!window.confirm("This will scan the CSV and update your live inventory prices. Continue?")) {
+      e.target.value = ''; return;
+    }
+    
+    setIsImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        // Basic CSV parse (Splits by newline, then by comma)
+        const rows = text.split('\n').map(row => row.split(','));
+        let updateCount = 0; let addCount = 0;
+        
+        // Loop through data (Skipping the header row)
+        for (let i = 1; i < rows.length; i++) {
+           const cols = rows[i];
+           if (cols.length < 2) continue; // Skip empty rows
+           
+           // Expected CSV Format: Name, Category, Supplier, PackSize, Price, Code
+           const name = cols[0]?.trim();
+           const category = cols[1]?.trim() || 'Dry Goods';
+           const supplier = cols[2]?.trim() || 'PFG';
+           const packSize = cols[3]?.trim() || '1 CS';
+           const price = parseFloat(cols[4]) || 0;
+           const pfgCode = cols[5]?.trim() || '';
+
+           if (!name) continue;
+
+           // Check if item already exists to update price, or add new if it doesn't
+           const existingItem = inventoryItems.find(item => item.name.toLowerCase() === name.toLowerCase());
+           if (existingItem) {
+              await updateDoc(doc(db, "inventoryItems", existingItem.id), { price, packSize, category, supplier, pfgCode });
+              updateCount++;
+           } else {
+              await addDoc(collection(db, "inventoryItems"), { name, category, supplier, packSize, price, pfgCode, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null });
+              addCount++;
+           }
+        }
+        addToast('Catalog Synced', `Updated ${updateCount} prices and added ${addCount} new items.`);
+      } catch (error) {
+        addToast('Upload Failed', 'Ensure your file is a valid CSV.');
+        console.error(error);
+      }
+      setIsImporting(false);
+      e.target.value = ''; // Reset input
+    };
+    reader.readAsText(file);
   };
 
   return (
-    <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-8 shadow-sm space-y-8">
-      <div><h3 className="text-2xl font-black text-slate-900 dark:text-white mb-1">Application Settings</h3><p className="text-slate-500 dark:text-slate-400 font-medium">Manage alerts and interface preferences.</p></div>
+    <div className="max-w-2xl mx-auto space-y-8 pb-12">
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-8 shadow-sm space-y-8">
+        <div><h3 className="text-2xl font-black text-slate-900 dark:text-white mb-1">Application Settings</h3><p className="text-slate-500 dark:text-slate-400 font-medium">Manage alerts and interface preferences.</p></div>
 
-      <div className="space-y-4 border-y border-slate-100 dark:border-slate-700 py-6">
-        <div className="flex justify-between items-center p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors cursor-pointer" onClick={() => toggle('shiftReminders')}>
-          <span className="font-bold text-slate-700 dark:text-slate-200">Send Shift Reminders</span>
-          <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${settings.shiftReminders ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'} shadow-inner`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${settings.shiftReminders ? 'translate-x-6' : 'translate-x-0'}`}></div></div>
-        </div>
-        {settings.shiftReminders && (
-           <div className="flex items-center gap-4 px-3 py-2">
-             <label className="text-sm font-bold text-slate-500 dark:text-slate-400 flex-1">Hours before shift to notify:</label>
-             <input type="number" min="1" max="48" value={settings.leadTime} onChange={e => setSettings({...settings, leadTime: parseInt(e.target.value)||1})} className="w-20 p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold text-center outline-none" />
-           </div>
-        )}
-        
-        {isMasterAdmin && [
-          { id: 'overtimeAlerts', label: 'Alert Manager Before Overtime (40h)' },
-          { id: 'autoApprove', label: 'Auto-Approve Peer Shift Swaps' },
-          { id: 'muteOffShift', label: 'Mute Message Notifications Off-Shift' }
-        ].map(setting => (
-          <div key={setting.id} className="flex justify-between items-center p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors cursor-pointer" onClick={() => toggle(setting.id)}>
-            <span className="font-bold text-slate-700 dark:text-slate-200">{setting.label}</span>
-            <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${settings[setting.id] ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'} shadow-inner`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${settings[setting.id] ? 'translate-x-6' : 'translate-x-0'}`}></div></div>
+        <div className="space-y-4 border-y border-slate-100 dark:border-slate-700 py-6">
+          <div className="flex justify-between items-center p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors cursor-pointer" onClick={() => toggle('shiftReminders')}>
+            <span className="font-bold text-slate-700 dark:text-slate-200">Send Shift Reminders</span>
+            <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${settings.shiftReminders ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'} shadow-inner`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${settings.shiftReminders ? 'translate-x-6' : 'translate-x-0'}`}></div></div>
           </div>
-        ))}
-      </div>
-
-      {appUser?.isAdmin && (
-        <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 p-6 rounded-2xl shadow-sm relative overflow-hidden">
-          <div className="absolute -right-4 -top-4 opacity-10"><CheckCircle size={100} /></div>
-          <h4 className="font-black text-emerald-900 dark:text-emerald-400 mb-2 text-lg">PFG Integration Engine</h4>
-          <p className="text-sm text-emerald-800 dark:text-emerald-500 mb-5 font-medium leading-relaxed max-w-[90%]">Inject the Performance Foodservice Master Catalog directly into your live database.</p>
-          <button onClick={handleImportCatalog} disabled={isImporting} className="bg-emerald-600 text-white hover:bg-emerald-700 px-6 py-3.5 rounded-xl font-bold transition-all shadow-md w-full flex items-center justify-center gap-2 relative z-10">
-            {isImporting ? <Loader2 className="animate-spin" size={20}/> : <><Package size={20} /> Inject PFG Catalog</>}
-          </button>
+          {settings.shiftReminders && (
+             <div className="flex items-center gap-4 px-3 py-2">
+               <label className="text-sm font-bold text-slate-500 dark:text-slate-400 flex-1">Hours before shift to notify:</label>
+               <input type="number" min="1" max="48" value={settings.leadTime} onChange={e => setSettings({...settings, leadTime: parseInt(e.target.value)||1})} className="w-20 p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold text-center outline-none" />
+             </div>
+          )}
+          
+          {isMasterAdmin && [
+            { id: 'overtimeAlerts', label: 'Alert Manager Before Overtime (40h)' },
+            { id: 'autoApprove', label: 'Auto-Approve Peer Shift Swaps' },
+            { id: 'muteOffShift', label: 'Mute Message Notifications Off-Shift' }
+          ].map(setting => (
+            <div key={setting.id} className="flex justify-between items-center p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors cursor-pointer" onClick={() => toggle(setting.id)}>
+              <span className="font-bold text-slate-700 dark:text-slate-200">{setting.label}</span>
+              <div className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${settings[setting.id] ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'} shadow-inner`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${settings[setting.id] ? 'translate-x-6' : 'translate-x-0'}`}></div></div>
+            </div>
+          ))}
         </div>
-      )}
 
-      <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 p-6 rounded-2xl">
-        <h4 className="font-bold text-blue-900 dark:text-blue-400 mb-2">System Diagnostics</h4>
-        <button onClick={() => { addToast('Diagnostic Test', 'Live Firebase database connected successfully.'); triggerPushNotification('Test Ping', 'Push systems online.'); }} className="bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-600 hover:text-white px-6 py-3 rounded-xl font-bold transition-all shadow-sm w-full">Trigger Test Alert</button>
+        {appUser?.isAdmin && (
+          <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 p-6 rounded-2xl shadow-sm relative overflow-hidden">
+            <div className="absolute -right-4 -top-4 opacity-10"><Check size={100} /></div>
+            <h4 className="font-black text-emerald-900 dark:text-emerald-400 mb-2 text-lg">No-Code Catalog Importer</h4>
+            <p className="text-sm text-emerald-800 dark:text-emerald-500 mb-5 font-medium leading-relaxed max-w-[90%]">Upload a standard CSV file from your rep to automatically update prices and add new items. (Format: Name, Category, Supplier, PackSize, Price, Code)</p>
+            
+            <div className="relative">
+              <input type="file" accept=".csv" onChange={handleCsvUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" />
+              <button disabled={isImporting} className="bg-emerald-600 text-white hover:bg-emerald-700 px-6 py-3.5 rounded-xl font-bold transition-all shadow-md w-full flex items-center justify-center gap-2 relative z-10">
+                {isImporting ? <Loader2 className="animate-spin" size={20}/> : <><Package size={20} /> Upload CSV Price Sheet</>}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 p-6 rounded-2xl">
+          <h4 className="font-bold text-blue-900 dark:text-blue-400 mb-2">System Diagnostics</h4>
+          <button onClick={() => { addToast('Diagnostic Test', 'Live Firebase database connected successfully.'); triggerPushNotification('Test Ping', 'Push systems online.'); }} className="bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-600 hover:text-white px-6 py-3 rounded-xl font-bold transition-all shadow-sm w-full">Trigger Test Alert</button>
+        </div>
+      </div>
+      
+      {/* Version Tracker */}
+      <div className="text-center text-slate-400 dark:text-slate-600 font-bold text-sm tracking-widest uppercase">
+        Cheers Management OS • v4.0.0
       </div>
     </div>
   );
