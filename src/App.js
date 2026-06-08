@@ -536,12 +536,16 @@ const TabPrep = ({ currentDate, prepItems }) => {
 const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff, events, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('23:00');
   const [assignDates, setAssignDates] = useState([currentDate]);
+  const [shiftNote, setShiftNote] = useState('');
   
   const [eventTitle, setEventTitle] = useState(''); const [eventStart, setEventStart] = useState(''); const [eventEnd, setEventEnd] = useState('');
 
   const displayUsers = users.length > 0 ? users : (appUser && appUser.id !== 'dev-backdoor' ? [appUser] : []);
   const displayShifts = shifts.filter(s => s.date === currentDate && (s.isPublished || appUser?.isAdmin));
-  const dayEvents = events.filter(e => e.date === currentDate);
+  
+  const dayEvents = events.filter(e => e.date === currentDate && e.type !== 'note');
+  const dayNotes = events.filter(e => e.date === currentDate && e.type === 'note');
+  
   const year = parseInt(currentDate.split('-')[0], 10); const holidayMap = getHolidays(year); const todayHoliday = holidayMap[currentDate];
 
   const handleToggleDate = (d) => { if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x !== d)); else setAssignDates([...assignDates, d].sort()); };
@@ -557,8 +561,15 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
 
   const handleAddEvent = async (e) => {
     e.preventDefault(); if(!eventTitle.trim()) return;
-    await addDoc(collection(db, "events"), { date: currentDate, title: eventTitle.trim(), startTime: eventStart, endTime: eventEnd });
+    await addDoc(collection(db, "events"), { date: currentDate, title: eventTitle.trim(), startTime: eventStart, endTime: eventEnd, type: 'event' });
     setEventTitle(''); setEventStart(''); setEventEnd(''); addToast('Event Added', 'Saved to calendar.');
+  };
+
+  const handleBroadcastNote = async (e) => {
+    e.preventDefault(); if(!shiftNote.trim()) return;
+    await addDoc(collection(db, "events"), { date: currentDate, title: shiftNote.trim(), type: 'note', author: appUser.name });
+    triggerPushNotification("New Shift Note", `Manager broadcast: ${shiftNote.trim()}`);
+    setShiftNote(''); addToast('Note Broadcasted', 'Sent to all staff for this date.');
   };
 
   const handleDeleteShift = async (id) => await deleteDoc(doc(db, "shifts", id));
@@ -593,10 +604,52 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
   const pendingApprovals = shiftSwaps.filter(sw => sw.status === 'pending_approval');
   const availableSwaps = shiftSwaps.filter(sw => sw.status === 'available');
 
-  const upcomingDays = Array.from({length: 7}).map((_, i) => addDays(currentDate, i));
+  const getMonday = (d) => { const date = new Date(d + 'T12:00:00'); const day = date.getDay(); const diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
+  const weekStartObj = getMonday(currentDate);
+  const weekDays = Array.from({length: 7}).map((_, i) => { const d = new Date(weekStartObj); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
+  
+  const calculateHours = (start, end) => {
+     if(!start || !end) return 0;
+     const [sh, sm] = start.split(':').map(Number); const [eh, em] = end.split(':').map(Number);
+     let diff = (eh + em/60) - (sh + sm/60);
+     return diff > 0 ? diff : diff + 24;
+  };
+
+  const weeklyHours = displayUsers.map(u => {
+    const userShifts = shifts.filter(s => s.employeeId === u.id && weekDays.includes(s.date));
+    const total = userShifts.reduce((sum, s) => sum + calculateHours(s.startTime, s.endTime), 0);
+    return { ...u, totalHours: total.toFixed(1) };
+  }).sort((a,b) => b.totalHours - a.totalHours);
+
+  // --- Mini Calendar Generation Math ---
+  const monthStr = getMonthStr(currentDate);
+  const monthFirstDay = new Date(monthStr + '-01T12:00:00').getDay();
+  const daysInMonth = getDaysInMonth(monthStr);
+  const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
+      
+      {/* Daily Shift Notes Broadcast Board */}
+      <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 p-5 rounded-2xl shadow-sm">
+        <h3 className="font-black text-yellow-900 dark:text-yellow-400 flex items-center gap-2 mb-3"><MessageSquare size={20}/> Daily Pass-Down Notes</h3>
+        <div className="space-y-3 mb-4">
+          {dayNotes.length === 0 && <p className="text-sm text-yellow-700 dark:text-yellow-600 font-medium italic">No manager notes for this shift.</p>}
+          {dayNotes.map(note => (
+            <div key={note.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-yellow-100 dark:border-yellow-700/50 flex justify-between items-start shadow-sm">
+              <div><span className="font-bold text-xs text-yellow-600 uppercase tracking-wider block mb-0.5">{note.author}</span><span className="text-slate-800 dark:text-slate-200 font-medium">{note.title}</span></div>
+              {appUser?.isAdmin && <button onClick={() => handleDeleteEvent(note.id)} className="text-yellow-400 hover:text-red-500 transition-colors"><X size={16}/></button>}
+            </div>
+          ))}
+        </div>
+        {appUser?.isAdmin && (
+          <form onSubmit={handleBroadcastNote} className="flex gap-2">
+            <input type="text" value={shiftNote} onChange={e => setShiftNote(e.target.value)} placeholder="Type a message to the floor..." className="flex-1 p-3 rounded-xl bg-white dark:bg-slate-800 border border-yellow-200 dark:border-yellow-700 outline-none focus:ring-2 focus:ring-yellow-400 dark:text-white" required />
+            <button type="submit" className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 rounded-xl font-bold transition-colors shadow-sm">Broadcast</button>
+          </form>
+        )}
+      </div>
+
       {todayHoliday && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-400 p-4 rounded-2xl font-bold flex items-center gap-4 shadow-sm border-l-4 border-l-amber-500">
           <AlertTriangle className="text-amber-600 dark:text-amber-500 flex-shrink-0" size={24} />
@@ -669,28 +722,45 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
       {appUser?.isAdmin && (
         <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm space-y-6">
           
+          {/* Weekly Hours Tracker */}
+          <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+            <h4 className="font-bold text-sm uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2"><Clock size={16}/> Weekly Hours ({new Date(weekDays[0]+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} - {new Date(weekDays[6]+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})})</h4>
+            <div className="flex flex-wrap gap-2">
+              {weeklyHours.map(u => (
+                <div key={u.id} className={`px-3 py-1.5 rounded-lg border text-sm font-bold shadow-sm transition-colors ${u.totalHours >= 40 ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400' : 'bg-white border-slate-200 text-slate-700 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300'}`}>
+                  {u.name.split(' ')[0]}: {u.totalHours}h
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Shift Assignment Tool */}
           <div>
-            <h3 className="font-bold text-xl flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={20}/> Assign Shift (Multi-Day)</h3>
-            <div className="space-y-4">
-              {/* Multi-Date Selector */}
-              <div className="flex flex-wrap gap-2">
-                {upcomingDays.map(d => {
+            <h3 className="font-bold text-xl flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={20}/> Mass-Assign Shifts</h3>
+            
+            {/* NEW 30-DAY MONTH CALENDAR GRID */}
+            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mb-4">
+              <div className="grid grid-cols-7 gap-2 text-center mb-2">
+                {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{d}</div>)}
+                {Array.from({length: monthFirstDay}).map((_, i) => <div key={`empty-${i}`} />)}
+                {monthDaysArray.map(d => {
                   const isSel = assignDates.includes(d);
-                  return <button key={d} onClick={() => handleToggleDate(d)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-400'}`}>{new Date(d+'T12:00:00').toLocaleDateString('en-US',{weekday:'short', month:'numeric',day:'numeric'})}</button>
+                  const dayNum = parseInt(d.split('-')[2], 10);
+                  return <button key={d} onClick={() => handleToggleDate(d)} className={`py-2 rounded-md text-sm font-bold transition-all border ${isSel ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-400 hover:text-blue-600'}`}>{dayNum}</button>
                 })}
               </div>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <select value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} className="flex-1 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-medium outline-none">
-                  <option value="">Select Staff Member...</option>
-                  {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-                </select>
-                <div className="flex gap-2">
-                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full sm:w-32 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
-                  <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full sm:w-32 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
-                </div>
-                <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm disabled:opacity-50 transition-colors">Assign</button>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-4">
+              <select value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} className="flex-1 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-medium outline-none">
+                <option value="">Select Staff Member...</option>
+                {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+              </select>
+              <div className="flex gap-2">
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full sm:w-32 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
+                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full sm:w-32 p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
               </div>
+              <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-sm disabled:opacity-50 transition-colors">Assign</button>
             </div>
           </div>
 
