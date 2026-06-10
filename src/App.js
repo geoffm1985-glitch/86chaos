@@ -923,74 +923,52 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, addToast })
 
 // --- Tab: Settings ---
 const TabSettings = ({ addToast, inventoryItems, appUser }) => {
-  const [settings, setSettings] = useState({ shiftReminders: true, overtimeAlerts: false, autoApprove: false, muteOffShift: false, leadTime: 24 }); const [isImporting, setIsImporting] = useState(false);
-  const toggle = (key) => setSettings(prev => ({ ...prev, [key]: !prev[key] })); const isMasterAdmin = appUser?.email === MASTER_ADMIN_EMAIL;
-  
-  const handleCsvUpload = (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    if(!window.confirm("Overwrite catalogs?")) { e.target.value = ''; return; }
-    setIsImporting(true); const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const text = event.target.result; const rows = text.split('\n').map(row => row.split(',')); let updateCount = 0; let addCount = 0;
-        for (let i = 1; i < rows.length; i++) {
-           const cols = rows[i]; if (cols.length < 2) continue; const name = cols[0]?.trim(); const category = cols[1]?.trim() || 'Dry Goods'; const supplier = cols[2]?.trim() || 'PFG'; const packSize = cols[3]?.trim() || '1 CS'; const price = parseFloat(cols[4]) || 0; const pfgCode = cols[5]?.trim() || ''; if (!name) continue;
-           const existingItem = inventoryItems.find(item => item.name.toLowerCase() === name.toLowerCase());
-           if (existingItem) { await updateDoc(doc(db, "inventoryItems", existingItem.id), { price, packSize, category, supplier, pfgCode }); updateCount++; } 
-           else { await addDoc(collection(db, "inventoryItems"), { name, category, supplier, packSize, price, pfgCode, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null }); addCount++; }
-        }
-        addToast('Catalog Synced', `Updated ${updateCount} prices and injected ${addCount} items.`);
-      } catch (error) { addToast('Upload Failed', 'Invalid standard formatting.'); }
-      setIsImporting(false); e.target.value = ''; 
-    };
-    reader.readAsText(file);
-  };
+  const [settings, setSettings] = useState({ shiftReminders: true, overtimeAlerts: false, autoApprove: false, muteOffShift: false, leadTime: 24 });
+  const [isImporting, setIsImporting] = useState(false);
+  const toggle = (key) => setSettings(prev => ({ ...prev, [key]: !prev[key] }));
 
   const handleEnablePush = async () => {
-    if (!messaging) return addToast('Error', 'Unsupported web platform setup.');
+    if (!messaging) return addToast('Error', 'Push not supported.');
     try {
       const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        addToast('Connecting...', 'Registering device...');
-        
-        // Explicitly register the service worker so Vercel doesn't lose it
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-        
-        const token = await getToken(messaging, { 
-          vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU',
-          serviceWorkerRegistration: registration 
-        });
-        
-        if (token) { 
-          await updateDoc(doc(db, "users", appUser.id), { fcmToken: token }); 
-          addToast('Success', 'Push sync authorized.'); 
-        } else {
-          addToast('Error', 'Failed to generate token.');
-        }
-      } else {
-        addToast('Denied', 'Notifications blocked in browser settings.');
+      if (permission !== 'granted') return addToast('Denied', 'Notifications blocked.');
+      
+      addToast('Connecting...', 'Registering...');
+      // CRITICAL FIX: Ensure service worker is fully loaded before getting token
+      const registration = await navigator.serviceWorker.ready;
+      
+      const token = await getToken(messaging, { 
+        vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU',
+        serviceWorkerRegistration: registration 
+      });
+      
+      if (token) {
+        await updateDoc(doc(db, "users", appUser.id), { fcmToken: token });
+        addToast('Success', 'Notifications enabled.');
       }
     } catch (err) { 
-      console.error("Push Error:", err);
-      // Print the actual error message to the screen
+      console.error(err);
       addToast('Error', err.message || 'Push registration failed.'); 
     }
   };
 
   return (
     <div className="max-w-2xl mx-auto space-y-8 pb-12">
-      <div className="bg-white dark:bg-slate-800 border rounded-3xl p-8 shadow-sm space-y-8">
-        <div><h3 className="text-2xl font-black text-slate-900 dark:text-white mb-1">Application Settings</h3></div>
-        <div className="space-y-4 border-y py-6">
-          <div className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl cursor-pointer" onClick={() => toggle('shiftReminders')}>
-            <span className="font-bold text-slate-700 dark:text-slate-200">Send Shift Reminders</span>
-            <div className={`w-12 h-6 rounded-full flex items-center px-1 ${settings.shiftReminders ? 'bg-blue-600' : 'bg-slate-300'}`}><div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${settings.shiftReminders ? 'translate-x-6' : 'translate-x-0'}`}></div></div>
-          </div>
-          {settings.shiftReminders && (<div className="flex items-center gap-4 px-3 py-2"><label className="text-sm font-bold text-slate-500 flex-1">Hours before shift:</label><input type="number" value={settings.leadTime} onChange={e => setSettings({...settings, leadTime: parseInt(e.target.value)||1})} className="w-20 p-2 border bg-transparent text-slate-800 dark:text-white rounded-xl font-bold text-center" /></div>)}
+      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl p-8 shadow-sm space-y-8">
+        <div><h3 className="text-2xl font-black text-slate-900 dark:text-white mb-1">Settings</h3></div>
+        <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-800">
+          <h4 className="font-black text-blue-900 dark:text-blue-400 mb-2">Push Notifications</h4>
+          <p className="text-sm text-blue-800 dark:text-blue-300 mb-4 font-medium">Link this device to receive schedule updates.</p>
+          <button onClick={handleEnablePush} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold w-full">Enable Notifications</button>
         </div>
-        <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl"><h4 className="font-black text-blue-900 dark:text-blue-400 mb-2">Push Notifications</h4><p className="text-sm text-blue-800 dark:text-blue-300 mb-5 font-medium">Link this specific device to your profile to wake your screen for newly published rosters.</p><button onClick={handleEnablePush} className="bg-blue-600 text-white px-6 py-3.5 rounded-xl font-bold w-full">Enable Notifications On This Device</button></div>
-        {appUser?.isAdmin && (<div className="bg-emerald-50 dark:bg-emerald-900/20 border p-6 rounded-2xl relative overflow-hidden"><h4 className="font-black text-emerald-900 dark:text-emerald-400 mb-2">No-Code Catalog Importer</h4><div className="relative mt-4"><input type="file" accept=".csv" onChange={handleCsvUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" /><button className="bg-emerald-600 text-white px-6 py-3.5 rounded-xl font-bold w-full">{isImporting ? 'Processing...' : 'Upload CSV Price Sheet'}</button></div></div>)}
       </div>
     </div>
   );
 };
+
+// --- Footer ---
+const Footer = () => (
+  <div className="w-full text-center text-slate-400 dark:text-slate-600 font-bold text-xs tracking-widest uppercase py-6 bg-slate-50 dark:bg-slate-900 border-t mt-auto">
+    Cheers Management OS • v5.0.0
+  </div>
+);
