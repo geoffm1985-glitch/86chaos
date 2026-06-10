@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, AlertTriangle, X, BookOpen, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun } from 'lucide-react';
+import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, AlertTriangle, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun } from 'lucide-react';
 
 // --- Firebase Initialization ---
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -76,7 +76,6 @@ const formatTime12Hour = (time24) => {
 // --- Push Notification Mock Trigger ---
 const triggerPushNotification = (title, body) => {
   console.log(`[PUSH NOTIFICATION] ${title}: ${body}`);
-  // In future: await fetch('/api/sendFCM', { method: 'POST', body: JSON.stringify({ title, body }) });
 };
 
 // --- SVG Logo ---
@@ -105,89 +104,42 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, isDark, toggleDark }) => {
   if (!isOpen) return null;
   const tabs = [];
-  if (appUser?.isAdmin) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={20}/> });
-  tabs.push({ id: 'published', label: 'Published Shifts', icon: <Clock size={20}/> });
-  tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={20}/> });
-  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={20}/> });
-  tabs.push({ id: 'timeoff', label: 'Time Off', icon: <Clock size={20}/> });
-  if (appUser?.isAdmin || appUser?.role === 'Kitchen') tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={20}/> });
-  tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={20}/> });
-  tabs.push({ id: 'team', label: 'Team', icon: <Users size={20}/> });
-  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={20}/> });
+  if (appUser?.isAdmin) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
+  tabs.push({ id: 'published', label: 'Published Shifts', icon: <Clock size={18}/> });
+  tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={18}/> });
+  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
+  tabs.push({ id: 'timeoff', label: 'Time Off', icon: <Clock size={18}/> });
+  if (appUser?.isAdmin || appUser?.role === 'Kitchen') tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
+  tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
+  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
+  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   const handleLogout = () => { localStorage.removeItem('cheersUser'); setAppUser(null); onClose(); };
 
   return (
      <div className="fixed inset-0 z-50 flex justify-end">
        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
-       <div className="w-80 bg-white dark:bg-slate-800 h-full shadow-2xl flex flex-col relative border-l border-slate-200 dark:border-slate-700 animate-slide-in">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800 flex justify-between items-start">
-             <div><div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Signed in as</div><div className="text-slate-900 dark:text-white font-black text-xl tracking-tight">{appUser.name}</div><div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 text-xs font-bold uppercase tracking-wider mt-1.5 bg-blue-50 dark:bg-blue-900/30 w-max px-2 py-1 rounded-md">{appUser.isAdmin && <Shield size={12} />} {appUser.role} {appUser.isAdmin && '• Admin'}</div></div>
-             <button onClick={onClose} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"><X size={20}/></button>
+       <div className="w-72 bg-white dark:bg-slate-800 h-full shadow-2xl flex flex-col relative border-l border-slate-200 dark:border-slate-700 animate-slide-in">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800 flex justify-between items-start">
+             <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div><div className="text-slate-900 dark:text-white font-black text-lg tracking-tight">{appUser.name}</div><div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider mt-1 bg-blue-50 dark:bg-blue-900/30 w-max px-2 py-0.5 rounded-md">{appUser.isAdmin && <Shield size={10} />} {appUser.role} {appUser.isAdmin && '• Admin'}</div></div>
+             <button onClick={onClose} className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"><X size={18}/></button>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
-             {tabs.map(tab => (<button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl font-semibold transition-all duration-200 ${activeTab === tab.id ? 'bg-slate-900 dark:bg-slate-700 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'}`}><div className="flex items-center gap-3"><span className={activeTab === tab.id ? 'text-blue-400' : 'text-slate-400 dark:text-slate-500'}>{tab.icon}</span>{tab.label}</div></button>))}
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+             {tabs.map(tab => (<button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? 'bg-slate-900 dark:bg-slate-700 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'}`}><div className="flex items-center gap-3"><span className={activeTab === tab.id ? 'text-blue-400' : 'text-slate-400 dark:text-slate-500'}>{tab.icon}</span>{tab.label}</div></button>))}
           </div>
           
-          <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 space-y-3">
-            <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm cursor-pointer" onClick={toggleDark}>
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">{isDark ? <Moon size={16}/> : <Sun size={16}/>} Dark Mode</span>
-              <div className={`w-10 h-5 rounded-full transition-colors flex items-center px-1 ${isDark ? 'bg-blue-600' : 'bg-slate-300'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${isDark ? 'translate-x-4' : 'translate-x-0'}`}></div></div>
+          <div className="p-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 space-y-2">
+            <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm cursor-pointer" onClick={toggleDark}>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">{isDark ? <Moon size={14}/> : <Sun size={14}/>} Dark Mode</span>
+              <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-1 ${isDark ? 'bg-blue-600' : 'bg-slate-300'}`}><div className={`w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-transform ${isDark ? 'translate-x-3.5' : 'translate-x-0'}`}></div></div>
             </div>
-            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3.5 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><LogOut size={18} /> Log Out</button>
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-600 dark:text-red-400 text-sm font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
           </div>
        </div>
      </div>
   );
 };
-
-// --- Tab: Message Board ---
-const TabMessages = ({ events, appUser, addToast }) => {
-  const [message, setMessage] = useState('');
-  const [isImportant, setIsImportant] = useState(false);
-  const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
-
-  const handleBroadcast = async (e) => {
-    e.preventDefault(); if(!message.trim()) return;
-    await addDoc(collection(db, "events"), {
-      date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant
-    });
-    setMessage(''); setIsImportant(false); addToast('Posted', 'Message added to board.');
-  };
-
-  const handleDelete = async (id) => await deleteDoc(doc(db, "events", id));
-
-  return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
-        <h2 className="text-2xl font-black mb-4 flex items-center gap-2 text-slate-900 dark:text-white"><MessageSquare className="text-blue-500" size={24}/> Message Board</h2>
-        <form onSubmit={handleBroadcast} className="space-y-3">
-          <textarea value={message} onChange={e => setMessage(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none font-medium text-slate-900 dark:text-white" rows="3" placeholder="Type a message to the team..." required></textarea>
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-            <label className="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300 cursor-pointer">
-               <input type="checkbox" checked={isImportant} onChange={e => setIsImportant(e.target.checked)} className="w-5 h-5 accent-red-500 rounded border-slate-300"/> 
-               Mark as Important 🚨
-            </label>
-            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold transition-colors">Post Message</button>
-          </div>
-        </form>
-      </div>
-      <div className="space-y-3">
-        {allNotes.map(n => (
-          <div key={n.id} className={`p-4 rounded-2xl border shadow-sm ${n.isImportant ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-            <div className="flex justify-between items-start mb-2">
-              <span className={`font-black text-lg ${n.isImportant ? 'text-red-700 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>{n.author} {n.isImportant && '🚨'}</span>
-              <span className="text-xs font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span>
-            </div>
-            <p className="text-slate-800 dark:text-slate-200 font-medium text-lg leading-snug">{n.title}</p>
-            {appUser?.isAdmin && <button onClick={() => handleDelete(n.id)} className="text-red-400 hover:text-red-500 mt-3 text-sm font-bold flex items-center gap-1 transition-colors"><Trash2 size={14}/> Delete Message</button>}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 // --- Main Application ---
 export default function App() {
@@ -203,7 +155,6 @@ export default function App() {
   const [activeTabState, setActiveTabState] = useState('published');
   const [isDark, setIsDark] = useState(() => { return localStorage.getItem('theme') === 'dark'; });
 
-  // Dark Mode Engine
   useEffect(() => {
     if (isDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); } 
     else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
@@ -284,7 +235,7 @@ export default function App() {
       {/* --- Main Content Area --- */}
       <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-6 pb-24">
         {activeTabState === 'schedule' && appUser?.isAdmin && <TabSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} addToast={addToast} timeOff={timeOff} />}
-        {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} addToast={addToast} />}
+        {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} addToast={addToast} />}
         {activeTabState === 'month' && <TabMonth currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} setCurrentDate={setCurrentDate} addToast={addToast} />}
         {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'timeoff' && <TabTimeOff appUser={liveAppUser} users={users} timeOff={timeOff} addToast={addToast} />}
@@ -303,6 +254,11 @@ export default function App() {
             <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="ml-auto text-slate-400 hover:text-white"><X size={16}/></button>
           </div>
         ))}
+      </div>
+
+      {/* Version Tracker */}
+      <div className="w-full text-center text-slate-400 dark:text-slate-500 font-bold text-xs tracking-widest uppercase py-6 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
+        Cheers Management OS • v4.5.0
       </div>
     </div>
   );
@@ -352,51 +308,56 @@ const LoginScreen = ({ users, setAppUser, isDark }) => {
 
 // --- Tab: Message Board ---
 const TabMessages = ({ events, appUser, addToast }) => {
-  const [shiftNote, setShiftNote] = useState('');
+  const [message, setMessage] = useState('');
+  const [isImportant, setIsImportant] = useState(false);
   const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
 
-  const handleBroadcastNote = async (e) => {
-    e.preventDefault(); if(!shiftNote.trim()) return;
-    const today = new Date().toISOString().split('T')[0];
-    await addDoc(collection(db, "events"), { date: today, title: shiftNote.trim(), type: 'note', author: appUser.name });
-    setShiftNote(''); addToast('Note Posted', 'Message added to the board.');
+  const handleBroadcast = async (e) => {
+    e.preventDefault(); if(!message.trim()) return;
+    await addDoc(collection(db, "events"), {
+      date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant
+    });
+    setMessage(''); setIsImportant(false); addToast('Posted', 'Message added to board.');
   };
 
-  const handleDeleteEvent = async (id) => { if(window.confirm("Delete this message?")) await deleteDoc(doc(db, "events", id)); };
+  const handleDelete = async (id) => await deleteDoc(doc(db, "events", id));
 
   return (
-    <div className="max-w-3xl mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 sm:p-6 rounded-3xl shadow-sm space-y-6">
-      <h3 className="font-black text-2xl text-slate-800 dark:text-white flex items-center gap-3"><MessageSquare className="text-blue-500" size={28}/> Staff Message Board</h3>
-      <form onSubmit={handleBroadcastNote} className="flex flex-col sm:flex-row gap-2">
-        <input type="text" value={shiftNote} onChange={e => setShiftNote(e.target.value)} placeholder="Type a message to the team..." className="flex-1 w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-medium" required />
-        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-xl font-bold transition-colors shadow-sm w-full sm:w-auto">Post Message</button>
-      </form>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <h2 className="text-2xl font-black mb-4 flex items-center gap-2 text-slate-900 dark:text-white"><MessageSquare className="text-blue-500" size={24}/> Message Board</h2>
+        <form onSubmit={handleBroadcast} className="space-y-3">
+          <textarea value={message} onChange={e => setMessage(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none font-medium text-slate-900 dark:text-white" rows="3" placeholder="Type a message to the team..." required></textarea>
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+            <label className="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300 cursor-pointer">
+               <input type="checkbox" checked={isImportant} onChange={e => setIsImportant(e.target.checked)} className="w-5 h-5 accent-red-500 rounded border-slate-300"/> 
+               Mark as Important 🚨
+            </label>
+            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold transition-colors">Post Message</button>
+          </div>
+        </form>
+      </div>
       <div className="space-y-3">
-        {allNotes.length === 0 && <p className="text-center text-slate-400 font-medium py-8">No messages yet.</p>}
-        {allNotes.map(note => (
-          <div key={note.id} className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 flex justify-between items-start shadow-sm">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-bold text-xs text-blue-600 dark:text-blue-400 uppercase tracking-wider">{note.author}</span>
-                <span className="text-[10px] text-slate-400 font-bold">• {formatDisplayDate(note.date)}</span>
-              </div>
-              <span className="text-slate-800 dark:text-slate-200 font-medium text-lg leading-snug">{note.title}</span>
+        {allNotes.map(n => (
+          <div key={n.id} className={`p-4 rounded-2xl border shadow-sm ${n.isImportant ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+            <div className="flex justify-between items-start mb-2">
+              <span className={`font-black text-lg ${n.isImportant ? 'text-red-700 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>{n.author} {n.isImportant && '🚨'}</span>
+              <span className="text-xs font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span>
             </div>
-            {appUser?.isAdmin && <button onClick={() => handleDeleteEvent(note.id)} className="text-slate-300 hover:text-red-500 transition-colors ml-4"><Trash2 size={18}/></button>}
+            <p className="text-slate-800 dark:text-slate-200 font-medium text-lg leading-snug">{n.title}</p>
+            {appUser?.isAdmin && <button onClick={() => handleDelete(n.id)} className="text-red-400 hover:text-red-500 mt-3 text-sm font-bold flex items-center gap-1 transition-colors"><Trash2 size={14}/> Delete Message</button>}
           </div>
         ))}
       </div>
     </div>
-  );
-};
-
+  )
+}
 
 // --- Tab: Team ---
 const TabTeam = ({ appUser, users, addToast }) => {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [password, setPassword] = useState(''); const [role, setRole] = useState('Bartender'); const [isAdmin, setIsAdmin] = useState(false);
   const [editModalUser, setEditModalUser] = useState(null);
   
-  // Sort users so Bartenders always appear first, then alphabetically
   const displayUsers = [...users].sort((a,b) => {
     if (a.role === b.role) return a.name.localeCompare(b.name);
     return a.role === 'Bartender' ? -1 : 1;
@@ -441,7 +402,6 @@ const TabTeam = ({ appUser, users, addToast }) => {
   const handleToggleAdmin = async (id, currentStatus) => { await updateDoc(doc(db, "users", id), { isAdmin: !currentStatus }); };
   const handleDelete = async (id) => { if (window.confirm("Remove this staff member? This cannot be undone.")) { await deleteDoc(doc(db, "users", id)); addToast('Staff Removed', 'Account permanently deleted.'); } };
 
-  // Only allow Geoff or the Ghost Admin to see the test generation button
   const canGenerateTest = appUser?.email === 'geoffm1985@gmail.com' || appUser?.id === 'dev-backdoor';
 
   return (
@@ -525,14 +485,12 @@ const TabTeam = ({ appUser, users, addToast }) => {
   );
 };
 
-
 // --- Tab: Published Shifts ---
-const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, addToast }) => {
+const TabPublishedShifts = ({ currentDate, appUser, users, shifts }) => {
   const monthStr = getMonthStr(currentDate);
   const displayUsers = users.length > 0 ? users : [appUser];
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && s.isPublished);
 
-  // Group published shifts by day
   const groupedShifts = monthShifts.reduce((acc, shift) => {
     if (!acc[shift.date]) acc[shift.date] = [];
     acc[shift.date].push(shift);
@@ -584,8 +542,6 @@ const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, a
     </div>
   );
 };
-
-
 
 // --- Tab: Month View ---
 const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate, addToast }) => {
@@ -692,7 +648,7 @@ const TabPrep = ({ currentDate, prepItems }) => {
         await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true });
       }
     }
-    setSelectedIds([]); // Clear selections after marking done
+    setSelectedIds([]);
   };
   
   const handleDelete = async (id) => await deleteDoc(doc(db, "prepItems", id));
@@ -710,9 +666,7 @@ const TabPrep = ({ currentDate, prepItems }) => {
 
   const triggerBatchPrint = () => {
     if (selectedIds.length === 0) return;
-    
     const itemsToPrint = [];
-    // Read the quantity for each selected item and create that many labels
     displayItems.filter(item => selectedIds.includes(item.id)).forEach(item => {
       const labelCount = item.qty || 1;
       for (let i = 0; i < labelCount; i++) {
@@ -772,71 +726,31 @@ const TabPrep = ({ currentDate, prepItems }) => {
             const isDone = item.isMaster ? !!item.completedDates?.[currentDate] : item.isCompleted;
             return (
             <div key={item.id} className="p-3 flex items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors gap-3">
-              
-              {/* Checkbox */}
               <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => togglePrintSelection(item.id)} className="w-6 h-6 rounded border-slate-300 accent-blue-600 cursor-pointer flex-shrink-0" />
-              
-              {/* Item Name */}
               <div className="flex-1 min-w-0">
                 <span className={`text-base truncate block transition-all ${isDone ? 'line-through text-slate-300 dark:text-slate-500' : 'font-bold text-slate-800 dark:text-white'}`}>{item.text}</span>
                 {item.isMaster && <span className="block text-[9px] font-bold text-blue-500 uppercase tracking-widest mt-0.5">Master Task</span>}
                 {isDone && <span className="block text-[10px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(currentDate)}</span>}
               </div>
-
-              {/* Inline Action Group: Qty -> Done -> Delete */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <input 
-                  type="number" 
-                  min="1" 
-                  defaultValue={item.qty || 1} 
-                  onBlur={(e) => updateQty(item.id, e.target.value)}
-                  className="w-12 h-10 text-center bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-bold text-slate-800 dark:text-white outline-none focus:border-blue-500" 
-                  title="Quantity" 
-                />
-                <button 
-                  onClick={() => toggleStatus(item)} 
-                  className={`flex items-center justify-center w-10 h-10 rounded-lg font-bold transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`}
-                  title={isDone ? "Mark Undone" : "Mark Done"}
-                >
-                  {isDone ? <Repeat size={16}/> : <Check size={18}/>}
-                </button>
-                <button 
-                  onClick={() => handleDelete(item.id)} 
-                  className="w-10 h-10 flex items-center justify-center text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                  title="Delete Item"
-                >
-                  <Trash2 size={18}/>
-                </button>
+                <input type="number" min="1" defaultValue={item.qty || 1} onBlur={(e) => updateQty(item.id, e.target.value)} className="w-12 h-10 text-center bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-bold text-slate-800 dark:text-white outline-none focus:border-blue-500" title="Quantity" />
+                <button onClick={() => toggleStatus(item)} className={`flex items-center justify-center w-10 h-10 rounded-lg font-bold transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`} title={isDone ? "Mark Undone" : "Mark Done"}>{isDone ? <Repeat size={16}/> : <Check size={18}/>}</button>
+                <button onClick={() => handleDelete(item.id)} className="w-10 h-10 flex items-center justify-center text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Delete Item"><Trash2 size={18}/></button>
               </div>
             </div>
           )}))}
       </div>
 
-      {/* Docked Print & Complete Buttons */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 no-print z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
         <div className="max-w-2xl mx-auto space-y-2">
-          <button 
-            onClick={triggerBatchPrint} 
-            disabled={selectedIds.length === 0} 
-            className="w-full bg-blue-600 disabled:bg-slate-300 disabled:dark:bg-slate-700 disabled:text-slate-500 text-white p-3.5 rounded-xl font-black transition-all flex items-center justify-center gap-2 text-lg"
-          >
-            🖨️ Print Selected Labels ({selectedIds.length})
-          </button>
-          <button 
-            onClick={handleBatchDone} 
-            disabled={selectedIds.length === 0} 
-            className="w-full bg-emerald-600 disabled:bg-slate-300 disabled:dark:bg-slate-700 disabled:text-slate-500 text-white p-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
-          >
-            <Check size={18}/> Mark Selected as Done
-          </button>
+          <button onClick={triggerBatchPrint} disabled={selectedIds.length === 0} className="w-full bg-blue-600 disabled:bg-slate-300 disabled:dark:bg-slate-700 disabled:text-slate-500 text-white p-3.5 rounded-xl font-black transition-all flex items-center justify-center gap-2 text-lg">🖨️ Print Selected Labels ({selectedIds.length})</button>
+          <button onClick={handleBatchDone} disabled={selectedIds.length === 0} className="w-full bg-emerald-600 disabled:bg-slate-300 disabled:dark:bg-slate-700 disabled:text-slate-500 text-white p-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"><Check size={18}/> Mark Selected as Done</button>
         </div>
       </div>
     </div>
   );
 };
 
-
-// --- Tab: Schedule Maker ---
 // --- Tab: Schedule Maker ---
 const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); 
@@ -851,7 +765,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
   const [eventStart, setEventStart] = useState(''); 
   const [eventEnd, setEventEnd] = useState('');
 
-  // Sort: Bartenders first, then alphabetically
   const displayUsers = [...users].sort((a,b) => {
     if (a.role === b.role) return a.name.localeCompare(b.name);
     return a.role === 'Bartender' ? -1 : 1;
@@ -1008,39 +921,39 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
             <p className="text-slate-500 font-medium text-sm mt-1">Tap a cell to select staff and dates. Tap an existing shift to edit or delete.</p>
           </div>
           <div className="flex items-center gap-2">
-             {hasPublished && <button onClick={handleUnpublish} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl transition-colors text-sm">Unpublish</button>}
+             {hasPublished && <button onClick={handleUnpublish} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl transition-colors text-sm border border-slate-300">Unpublish</button>}
              <button onClick={handlePublish} className={`${hasPublished && hasUnpublished ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'} text-white px-6 py-2 rounded-xl font-bold transition-colors shadow-sm`}>
                {hasPublished && hasUnpublished ? '⚠️ Republish Changes' : 'Publish Schedule'}
              </button>
           </div>
         </div>
         
-        <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner custom-scrollbar">
+        <div className="overflow-x-auto bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner custom-scrollbar">
           <table className="w-full text-left text-[10px] border-collapse">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <th className="p-3 font-bold text-slate-600 dark:text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-800 z-20 w-32 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
+              <tr className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                <th className="p-3 font-bold text-slate-700 dark:text-slate-400 sticky left-0 bg-slate-100 dark:bg-slate-800 z-20 w-32 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
                 {monthDaysArray.map(d => {
                   const dateObj = new Date(d + 'T12:00:00');
                   const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
                   return (
-                    <th key={d} className={`p-1.5 text-center border-l border-slate-200 dark:border-slate-700 min-w-[50px] ${assignDates.includes(d) ? 'bg-blue-100 dark:bg-blue-900/40' : (isWeekend ? 'bg-slate-100/50 dark:bg-slate-700/30' : '')}`}>
-                      <div className={`text-[9px] font-bold uppercase ${isWeekend ? 'text-indigo-400' : 'text-slate-400'}`}>{dateObj.toLocaleDateString('en-US', {weekday: 'short'})}</div>
-                      <div className={`text-sm font-black ${assignDates.includes(d) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`}>{parseInt(d.split('-')[2], 10)}</div>
+                    <th key={d} className={`p-1.5 text-center border-l border-slate-200 dark:border-slate-700 min-w-[50px] ${assignDates.includes(d) ? 'bg-blue-200 dark:bg-blue-900/40' : (isWeekend ? 'bg-slate-200/50 dark:bg-slate-700/30' : '')}`}>
+                      <div className={`text-[9px] font-bold uppercase ${isWeekend ? 'text-indigo-500 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>{dateObj.toLocaleDateString('en-US', {weekday: 'short'})}</div>
+                      <div className={`text-sm font-black ${assignDates.includes(d) ? 'text-blue-700 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{parseInt(d.split('-')[2], 10)}</div>
                     </th>
                   )
                 })}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
               {displayUsers.map(u => {
                 const isSelectedEmp = selectedEmp === u.id;
                 const isBartender = u.role === 'Bartender';
                 return (
-                  <tr key={u.id} className={`transition-colors ${isSelectedEmp ? 'bg-blue-50/30 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                  <tr key={u.id} className={`transition-colors ${isSelectedEmp ? 'bg-blue-50 dark:bg-blue-900/10' : 'hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}>
                     <td 
                       onClick={() => { setSelectedEmp(u.id); setAssignDates([]); setSelectedShiftId(null); setPresetShift('Custom'); }}
-                      className={`p-3 font-bold text-sm sticky left-0 z-10 cursor-pointer shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate hover:bg-blue-100 dark:hover:bg-blue-900/40 ${isSelectedEmp ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400 ring-2 ring-inset ring-blue-500' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'}`}
+                      className={`p-3 font-bold text-sm sticky left-0 z-10 cursor-pointer shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate hover:bg-blue-100 dark:hover:bg-blue-900/40 ${isSelectedEmp ? 'bg-blue-100 dark:bg-slate-800 text-blue-800 dark:text-blue-400 ring-2 ring-inset ring-blue-500' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'}`}
                     >
                       <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isBartender ? 'bg-blue-500' : 'bg-orange-500'}`}></span>
@@ -1051,7 +964,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                       const shift = monthShifts.find(s => s.date === d && s.employeeId === u.id);
                       const off = timeOff.some(t => t.employeeId === u.id && t.startDate === d);
                       const isDateSelected = assignDates.includes(d);
-                      const shiftBgColor = shift ? (shift.isPublished ? (isBartender ? 'bg-blue-500' : 'bg-orange-500') : 'bg-slate-400') : '';
+                      const shiftBgColor = shift ? (shift.isPublished ? (isBartender ? 'bg-blue-600' : 'bg-orange-600') : 'bg-slate-500') : '';
                       const shiftOutline = shift && selectedShiftId === shift.id ? 'ring-2 ring-red-500 ring-offset-1' : '';
                       
                       const handleCellClick = () => {
@@ -1076,7 +989,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                       };
 
                       return (
-                        <td key={d} onClick={handleCellClick} className={`p-1 border-l border-slate-200 dark:border-slate-700 cursor-pointer transition-all relative ${isSelectedEmp && isDateSelected ? 'bg-blue-100 dark:bg-blue-900/40' : isSelectedEmp ? 'hover:bg-blue-100 dark:hover:bg-blue-900/30' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                        <td key={d} onClick={handleCellClick} className={`p-1 border-l border-slate-200 dark:border-slate-700 cursor-pointer transition-all relative ${isSelectedEmp && isDateSelected ? 'bg-blue-100 dark:bg-blue-900/40' : isSelectedEmp ? 'hover:bg-blue-100 dark:hover:bg-blue-900/30' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}>
                           {off ? (
                             <div className="w-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-black text-[10px] py-1.5 rounded text-center">OFF</div>
                           ) : shift ? (
@@ -1084,7 +997,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                               {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
                             </div>
                           ) : (
-                            <div className="w-full h-6 rounded flex items-center justify-center text-slate-200 dark:text-slate-700 font-bold opacity-0 hover:opacity-100 transition-opacity">
+                            <div className="w-full h-6 rounded flex items-center justify-center text-slate-300 dark:text-slate-700 font-bold opacity-0 hover:opacity-100 transition-opacity">
                               <Plus size={14}/>
                             </div>
                           )}
@@ -1098,34 +1011,34 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
           </table>
         </div>
 
-        <div className="flex flex-col md:flex-row items-end gap-3 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className="flex flex-col md:flex-row items-end gap-3 bg-slate-100 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
           <div className="w-full md:w-48">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Staff</label>
-            <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setAssignDates([]); setSelectedShiftId(null);}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none">
+            <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-500 uppercase mb-1">Staff</label>
+            <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setAssignDates([]); setSelectedShiftId(null);}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-lg font-bold outline-none">
               <option value="">- Choose -</option>
               {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
           <div className="w-full md:w-36">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Preset</label>
-            <select value={presetShift} onChange={handlePresetChange} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none">
+            <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-500 uppercase mb-1">Preset</label>
+            <select value={presetShift} onChange={handlePresetChange} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-lg font-bold outline-none">
               {SHIFT_PRESETS.map(p => <option key={p.label} value={p.label}>{p.label}</option>)}
             </select>
           </div>
           <div className="w-full md:w-28">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Start</label>
-            <input type="time" value={startTime} onChange={e => {setStartTime(e.target.value); setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none" />
+            <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-500 uppercase mb-1">Start</label>
+            <input type="time" value={startTime} onChange={e => {setStartTime(e.target.value); setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-lg font-bold outline-none" />
           </div>
           <div className="w-full md:w-28">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">End</label>
-            <input type="time" value={presetShift.includes('close') ? '' : endTime} disabled={presetShift.includes('close')} onChange={e => {setEndTime(e.target.value); setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none disabled:bg-slate-100 disabled:text-slate-400" />
+            <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-500 uppercase mb-1">End</label>
+            <input type="time" value={presetShift.includes('close') ? '' : endTime} disabled={presetShift.includes('close')} onChange={e => {setEndTime(e.target.value); setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-lg font-bold outline-none disabled:bg-slate-200 disabled:text-slate-400" />
           </div>
           <div className="flex-1 flex gap-2 w-full mt-2 md:mt-0">
             <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="flex-1 h-[42px] bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-sm disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
               <Check size={18}/> {selectedShiftId ? 'Update' : `Assign (${assignDates.length})`}
             </button>
             {selectedShiftId && (
-              <button onClick={handleDeleteShift} className="h-[42px] px-4 bg-red-100 text-red-600 hover:bg-red-200 rounded-lg font-bold shadow-sm transition-colors flex items-center justify-center" title="Delete Shift">
+              <button onClick={handleDeleteShift} className="h-[42px] px-4 bg-red-100 text-red-600 hover:bg-red-200 rounded-lg font-bold shadow-sm transition-colors flex items-center justify-center border border-red-200" title="Delete Shift">
                 <Trash2 size={18}/>
               </button>
             )}
@@ -1137,16 +1050,16 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
         <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={18}/> Add Special Event</h3>
         <form onSubmit={handleAddEvent} className="flex flex-col sm:flex-row gap-2 items-end">
           <div className="w-full sm:w-auto">
-             <label className="block text-xs font-bold text-slate-500 mb-1">Date</label>
-             <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required />
+             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Date</label>
+             <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-xl outline-none" required />
           </div>
           <div className="flex-1 w-full">
-             <label className="block text-xs font-bold text-slate-500 mb-1">Event Name</label>
-             <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Catering, Private Party..." className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required />
+             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Event Name</label>
+             <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Catering, Private Party..." className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-xl outline-none" required />
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-             <div><label className="block text-xs font-bold text-slate-500 mb-1">Start</label><input type="time" value={eventStart} onChange={e => setEventStart(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /></div>
-             <div><label className="block text-xs font-bold text-slate-500 mb-1">End</label><input type="time" value={eventEnd} onChange={e => setEventEnd(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /></div>
+             <div><label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Start</label><input type="time" value={eventStart} onChange={e => setEventStart(e.target.value)} className="w-full sm:w-28 p-3 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-xl" /></div>
+             <div><label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">End</label><input type="time" value={eventEnd} onChange={e => setEventEnd(e.target.value)} className="w-full sm:w-28 p-3 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-xl" /></div>
           </div>
           <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-colors w-full sm:w-auto h-[50px]">Add Event</button>
         </form>
@@ -1155,6 +1068,73 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
   );
 };
 
+// --- Tab: Time Off ---
+const TabTimeOff = ({ appUser, users, timeOff, addToast }) => {
+  const [selectedDates, setSelectedDates] = useState([]); const [isPartial, setIsPartial] = useState(false); const [startTime, setStartTime] = useState('09:00'); const [endTime, setEndTime] = useState('14:00');
+  const displayUsers = users.length > 0 ? users : (appUser ? [appUser] : []);
+  
+  const today = getToday();
+  const monthStr = getMonthStr(today);
+  const daysInMonth = getDaysInMonth(monthStr);
+  const monthFirstDay = new Date(monthStr + '-01T12:00:00').getDay();
+  const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
+
+  const handleToggleDate = (d) => { if (selectedDates.includes(d)) setSelectedDates(selectedDates.filter(x => x !== d)); else setSelectedDates([...selectedDates, d].sort()); };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if(selectedDates.length === 0) return addToast('Error', 'Select at least one date.');
+    for(const d of selectedDates) {
+      await addDoc(collection(db, "timeOff"), { employeeId: appUser.id, startDate: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null });
+    }
+    addToast('Time Off Logged', `Requested ${selectedDates.length} days off.`);
+    setSelectedDates([]);
+  };
+
+  const handleDelete = async (id) => await deleteDoc(doc(db, "timeOff", id));
+
+  return (
+    <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-3xl shadow-sm space-y-6 self-start">
+        <h3 className="text-xl font-black flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-blue-500" size={24}/> Request Time Off</h3>
+        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">{formatDisplayMonth(monthStr)}</div>
+           <div className="grid grid-cols-7 gap-1 text-center">
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{d}</div>)}
+              {Array.from({length: monthFirstDay}).map((_, i) => <div key={`empty-${i}`} />)}
+              {monthDaysArray.map(d => {
+                 const isSel = selectedDates.includes(d);
+                 return <button key={d} onClick={() => handleToggleDate(d)} className={`py-2 rounded-lg text-sm font-bold transition-all border ${isSel ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-400'}`}>{parseInt(d.split('-')[2], 10)}</button>
+              })}
+           </div>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="p-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-4">
+            <label className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300 cursor-pointer"><input type="checkbox" checked={isPartial} onChange={e => setIsPartial(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-blue-600" /> Partial Day / specific times</label>
+            {isPartial && (<div className="flex gap-4 pt-2 border-t border-slate-200 dark:border-slate-600"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg font-bold" /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">End Time</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg font-bold" /></div></div>)}
+          </div>
+          <button type="submit" disabled={selectedDates.length === 0} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50">Submit Request</button>
+        </form>
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="text-xl font-black text-slate-800 dark:text-white pl-2">Upcoming Roster</h3>
+        <div className="space-y-3">
+          {timeOff.length === 0 ? <p className="p-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-500 font-medium">No time off logged.</p> : null}
+          {timeOff.filter(t => appUser.isAdmin || t.employeeId === appUser.id).map(t => {
+            const emp = displayUsers.find(u => u.id === t.employeeId);
+            return (
+              <div key={t.id} className="bg-white dark:bg-slate-800 p-4 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm flex justify-between items-center gap-4 border-l-4 border-l-orange-500">
+                <div><strong className="text-base text-slate-900 dark:text-white block">{emp?.name || 'Unknown'}</strong><span className="text-slate-500 dark:text-slate-400 font-medium text-sm">{formatDisplayDate(t.startDate)}</span>{t.isPartial && <div className="mt-1 text-[10px] font-bold bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800 w-max">{formatTime12Hour(t.startTime)} - {formatTime12Hour(t.endTime)}</div>}</div>
+                {(appUser.isAdmin || t.employeeId === appUser.id) && <button onClick={() => handleDelete(t.id)} className="text-slate-400 hover:text-red-500 p-2 rounded-xl transition-colors"><Trash2 size={18}/></button>}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // --- Tab: Inventory ---
 const TabInventory = ({ inventoryItems, addToast, appUser }) => {
@@ -1411,7 +1391,6 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
     </div>
   );
 };
- 
 
 // --- Tab: Settings ---
 const TabSettings = ({ addToast, inventoryItems, appUser }) => {
@@ -1432,16 +1411,13 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
     reader.onload = async (event) => {
       try {
         const text = event.target.result;
-        // Basic CSV parse (Splits by newline, then by comma)
         const rows = text.split('\n').map(row => row.split(','));
         let updateCount = 0; let addCount = 0;
         
-        // Loop through data (Skipping the header row)
         for (let i = 1; i < rows.length; i++) {
            const cols = rows[i];
-           if (cols.length < 2) continue; // Skip empty rows
+           if (cols.length < 2) continue; 
            
-           // Expected CSV Format: Name, Category, Supplier, PackSize, Price, Code
            const name = cols[0]?.trim();
            const category = cols[1]?.trim() || 'Dry Goods';
            const supplier = cols[2]?.trim() || 'PFG';
@@ -1451,7 +1427,6 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
 
            if (!name) continue;
 
-           // Check if item already exists to update price, or add new if it doesn't
            const existingItem = inventoryItems.find(item => item.name.toLowerCase() === name.toLowerCase());
            if (existingItem) {
               await updateDoc(doc(db, "inventoryItems", existingItem.id), { price, packSize, category, supplier, pfgCode });
@@ -1467,7 +1442,7 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
         console.error(error);
       }
       setIsImporting(false);
-      e.target.value = ''; // Reset input
+      e.target.value = ''; 
     };
     reader.readAsText(file);
   };
@@ -1520,11 +1495,6 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
           <h4 className="font-bold text-blue-900 dark:text-blue-400 mb-2">System Diagnostics</h4>
           <button onClick={() => { addToast('Diagnostic Test', 'Live Firebase database connected successfully.'); triggerPushNotification('Test Ping', 'Push systems online.'); }} className="bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-600 hover:text-white px-6 py-3 rounded-xl font-bold transition-all shadow-sm w-full">Trigger Test Alert</button>
         </div>
-      </div>
-      
-      {/* Version Tracker */}
-      <div className="text-center text-slate-400 dark:text-slate-600 font-bold text-sm tracking-widest uppercase">
-        Cheers Management OS • v4.0.0
       </div>
     </div>
   );
