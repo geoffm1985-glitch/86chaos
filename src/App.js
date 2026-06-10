@@ -555,15 +555,15 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
     <div className="space-y-4 print-container">
       <style>{`
         @media print {
-          @page { size: landscape; margin: 0.2in; }
+          @page { size: landscape; margin: 0.1in; }
           body * { visibility: hidden !important; }
           .print-container, .print-container * { visibility: visible !important; }
-          .print-container { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; margin: 0; padding: 0; overflow: hidden; }
+          .print-container { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; }
           .no-print { display: none !important; }
-          .print-grid { border: 2px solid #000 !important; display: grid !important; height: 85vh !important; grid-template-rows: 30px repeat(auto-fit, minmax(0, 1fr)) !important; }
+          .print-grid { border: 2px solid #000 !important; display: grid !important; height: 90vh !important; max-height: 90vh !important; grid-template-rows: 24px repeat(auto-fit, minmax(0, 1fr)) !important; }
           .print-cell { border: 1px solid #000 !important; min-height: 0 !important; overflow: hidden !important; padding: 2px !important; }
-          .print-text { color: #000 !important; background: transparent !important; border: none !important; font-size: 10px !important; line-height: 1.1 !important; }
-          .print-header { display: block !important; text-align: center; font-size: 24px; font-weight: 900; margin-bottom: 10px; color: #000; letter-spacing: 1px; }
+          .print-text { color: #000 !important; background: transparent !important; border: none !important; font-size: 9px !important; line-height: 1.1 !important; }
+          .print-header { display: block !important; text-align: center; font-size: 20px; font-weight: 900; margin-bottom: 5px; color: #000; letter-spacing: 1px; }
         }
       `}</style>
       
@@ -611,7 +611,7 @@ const TabPrep = ({ currentDate, prepItems }) => {
   const [isMaster, setIsMaster] = useState(true);
   const [printItems, setPrintItems] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
-  const [prepDate, setPrepDate] = useState(currentDate); // Local date state for future prep
+  const [prepDate, setPrepDate] = useState(currentDate); 
   
   const handleAdd = async (e) => { 
     e.preventDefault(); if (!text.trim()) return; 
@@ -649,7 +649,7 @@ const TabPrep = ({ currentDate, prepItems }) => {
         await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true });
       }
     }
-    setSelectedIds([]); // Clear selection only when marked done
+    setSelectedIds([]); 
   };
   
   const handleDelete = async (id) => await deleteDoc(doc(db, "prepItems", id));
@@ -674,11 +674,10 @@ const TabPrep = ({ currentDate, prepItems }) => {
     });
 
     setPrintItems(itemsToPrint);
+    // Give mobile DOM 500ms to render the invisible elements before firing print
     setTimeout(() => { 
       window.print(); 
-      setPrintItems([]); 
-      // NOTE: We no longer clear selectedIds here, so boxes stay checked!
-    }, 300);
+    }, 500); 
   };
 
   const displayItems = prepItems.filter(p => p.date === prepDate || p.isMaster);
@@ -690,13 +689,12 @@ const TabPrep = ({ currentDate, prepItems }) => {
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 relative pb-40">
-      {/* Brother QL-810W Day Dot Print CSS */}
       <style>{`
+        .label-print-zone { display: none; }
         @media print {
-          @page { size: 2.4in 2.0in; margin: 0; }
           body * { visibility: hidden !important; }
-          .label-print-zone, .label-print-zone * { visibility: visible !important; }
-          .label-print-zone { position: absolute; left: 0; top: 0; width: 2.4in; margin: 0; padding: 0; background: white; }
+          .label-print-zone { display: block !important; position: absolute; left: 0; top: 0; width: 2.4in; margin: 0; padding: 0; background: white; visibility: visible !important; z-index: 9999; }
+          .label-print-zone * { visibility: visible !important; }
           .print-page { 
             width: 2.4in; height: 2.0in; 
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
@@ -706,11 +704,12 @@ const TabPrep = ({ currentDate, prepItems }) => {
           .print-title { font-size: 18px; font-weight: 900; color: #000; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; }
           .print-meta { font-size: 14px; font-weight: bold; color: #000; margin-bottom: 2px; }
           .print-exp { font-size: 16px; font-weight: 900; color: #000; margin-top: 4px; border-top: 2px solid #000; padding-top: 4px; width: 90%; }
+          .no-print { display: none !important; }
         }
       `}</style>
 
       {printItems.length > 0 && (
-        <div className="label-print-zone bg-white text-black z-[100]">
+        <div className="label-print-zone bg-white text-black">
           {printItems.map(item => (
             <div key={item.printId} className="print-page">
               <div className="print-title">{item.text}</div>
@@ -722,7 +721,6 @@ const TabPrep = ({ currentDate, prepItems }) => {
         </div>
       )}
 
-      {/* Date Override Header */}
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl flex items-center justify-between shadow-sm no-print">
          <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><ClipboardList size={20} className="text-blue-500"/> Prep List For:</h3>
          <input type="date" value={prepDate} onChange={e => setPrepDate(e.target.value)} className="p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none" />
@@ -750,14 +748,11 @@ const TabPrep = ({ currentDate, prepItems }) => {
                 {isDone && <span className="block text-[10px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(prepDate)}</span>}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                
-                {/* Plus / Minus Qty Controller */}
                 <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden">
                    <button onClick={() => updateQty(item.id, currentQty, -1)} className="w-8 h-10 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">-</button>
                    <span className="w-6 text-center font-bold text-slate-800 dark:text-white">{currentQty}</span>
                    <button onClick={() => updateQty(item.id, currentQty, 1)} className="w-8 h-10 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">+</button>
                 </div>
-
                 <button onClick={() => toggleStatus(item)} className={`flex items-center justify-center w-10 h-10 rounded-lg font-bold transition-all shadow-sm ${isDone ? 'bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`} title={isDone ? "Mark Undone" : "Mark Done"}>{isDone ? <Repeat size={16}/> : <Check size={18}/>}</button>
                 <button onClick={() => handleDelete(item.id)} className="w-10 h-10 flex items-center justify-center text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Delete Item"><Trash2 size={18}/></button>
               </div>
@@ -812,7 +807,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
     return m === '00' ? `${hr}${ampm}` : `${hr}:${m}${ampm}`;
   };
 
-  // Helper to format names to "First L." to save space
   const formatNameShort = (fullName) => {
     const parts = fullName.trim().split(' ');
     if (parts.length === 1) return parts[0];
@@ -885,7 +879,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
        const day = dObj.getDay(); 
        const isWeekendDay = day === 0 || day === 6;
        const isFriSat = day === 5 || day === 6;
-       const dateFmt = `${dObj.getMonth()+1}/${dObj.getDate()}`; // e.g. 6/12
+       const dateFmt = `${dObj.getMonth()+1}/${dObj.getDate()}`; 
 
        const bar = dayShifts.filter(s => s.role === 'Bartender');
        const kit = dayShifts.filter(s => s.role === 'Kitchen');
@@ -1048,7 +1042,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
             <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-500 uppercase mb-1">Staff</label>
             <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setAssignDates([]); setSelectedShiftId(null);}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-lg font-bold outline-none">
               <option value="">- Choose -</option>
-              {displayUsers.map(u => <option key={u.id} value={u.id}>{formatNameShort(u.name)}</option>)}
+              {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
           <div className="w-full md:w-36">
@@ -1289,26 +1283,26 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
           {Object.entries(groupedItems).map(([category, items]) => (
             <div key={category} className="space-y-2">
               <h4 className="text-lg font-black text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-1">{category}</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {items.map(item => (
-                  <div key={item.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm gap-3">
-                    <div className="flex-1">
-                      <div className="font-bold text-slate-900 dark:text-white text-base leading-tight">{item.name}</div>
-                      <div className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider">{item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG: ${item.pfgCode}` : 'PFG')} • {item.packSize || '1 CS'}</div>
-                      {(item.pendingQty || 0) > 0 && <span className="text-[9px] font-black bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full mt-1 inline-block border border-blue-200 dark:border-blue-800">(+{item.pendingQty} Pending)</span>}
+                  <div key={item.id} className="bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-slate-900 dark:text-white text-sm truncate">{item.name}</div>
+                      <div className="text-[9px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider">{item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG: ${item.pfgCode}` : 'PFG')} • {item.packSize || '1 CS'}</div>
+                      {(item.pendingQty || 0) > 0 && <span className="text-[8px] font-black bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full mt-1 inline-block border border-blue-200 dark:border-blue-800">(+{item.pendingQty} Pend)</span>}
                     </div>
-                    <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700/50 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 w-full sm:w-auto justify-between sm:justify-start">
-                      <div className="flex flex-col items-center px-2">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">PAR</span>
-                        <input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className="w-10 text-center font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded py-0.5 outline-none focus:border-blue-500" />
+                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 p-1 rounded-md border border-slate-200 dark:border-slate-700 flex-shrink-0">
+                      <div className="flex flex-col items-center">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">PAR</span>
+                        <input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className="w-8 text-center font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded py-0.5 outline-none focus:border-blue-500 text-xs" />
                       </div>
                       <div className="h-6 w-px bg-slate-300 dark:bg-slate-600"></div>
-                      <div className="flex flex-col items-center px-2">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">STOCK</span>
+                      <div className="flex flex-col items-center">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">STOCK</span>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => updateStock(item.id, item.currentStock - 1)} className="w-6 h-6 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded font-bold hover:bg-slate-100 dark:hover:bg-slate-700">-</button>
-                          <span className={`w-6 text-center font-black text-lg ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}>{item.currentStock}</span>
-                          <button onClick={() => updateStock(item.id, item.currentStock + 1)} className="w-6 h-6 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded font-bold hover:bg-slate-100 dark:hover:bg-slate-700">+</button>
+                          <button onClick={() => updateStock(item.id, item.currentStock - 1)} className="w-5 h-5 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-xs">-</button>
+                          <span className={`w-4 text-center font-black text-sm ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}>{item.currentStock}</span>
+                          <button onClick={() => updateStock(item.id, item.currentStock + 1)} className="w-5 h-5 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-xs">+</button>
                         </div>
                       </div>
                     </div>
@@ -1332,24 +1326,22 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
             </div>
             {itemsToOrder.length === 0 ? (<div className="p-12 text-center font-bold text-slate-400">All inventory levels meet par.</div>) : (
               <div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left min-w-[650px]">
-                    <thead><tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-500 uppercase tracking-wider"><th className="p-3">Item</th><th className="p-3 text-center">Deficit Math</th><th className="p-3 text-center">Last Ordered</th><th className="p-3 text-right">Order Qty</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                      {itemsToOrder.map(item => {
-                        const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
-                        return (
-                          <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                            <td className="p-3"><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight mb-0.5">{item.name}</span><span className="text-[9px] font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded uppercase tracking-wider">{item.packSize || '1 CS'} • {item.supplier === 'Badger' ? 'BADGER' : 'PFG'}</span></td>
-                            <td className="p-3 text-center font-medium text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs">{item.parLevel} - {item.currentStock} = {item.parLevel - item.currentStock}</span></td>
-                            <td className="p-3 text-center font-bold text-slate-500 dark:text-slate-400 text-xs">{item.lastOrderedDate ? formatDisplayDate(item.lastOrderedDate) : '--'}</td>
-                            <td className="p-3 text-right"><input type="number" min="0" value={currentOrder} onChange={e => handleOrderChange(item.id, e.target.value)} className="font-black text-blue-600 dark:text-blue-400 text-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-1.5 rounded-lg w-20 text-center outline-none" /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <table className="w-full text-left">
+                  <thead><tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-[9px] font-bold text-slate-500 uppercase tracking-wider"><th className="p-2">Item</th><th className="p-2 text-center">Math</th><th className="p-2 text-center">Last Ord</th><th className="p-2 text-right">Qty</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                    {itemsToOrder.map(item => {
+                      const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                          <td className="p-2"><span className="font-bold text-slate-800 dark:text-white block text-xs leading-tight mb-0.5">{item.name}</span><span className="text-[8px] font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded uppercase tracking-wider">{item.packSize || '1 CS'} • {item.supplier === 'Badger' ? 'BADGER' : 'PFG'}</span></td>
+                          <td className="p-2 text-center font-medium text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-[10px]">{item.parLevel}-{item.currentStock}={item.parLevel - item.currentStock}</span></td>
+                          <td className="p-2 text-center font-bold text-slate-500 dark:text-slate-400 text-[10px]">{item.lastOrderedDate ? formatDisplayDate(item.lastOrderedDate).split(',')[1] : '--'}</td>
+                          <td className="p-2 text-right"><input type="number" min="0" value={currentOrder} onChange={e => handleOrderChange(item.id, e.target.value)} className="font-black text-blue-600 dark:text-blue-400 text-sm bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-2 py-1 rounded w-12 text-center outline-none" /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4">
                   <div className="text-left w-full sm:w-auto"><span className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">PFG Total</span><span className="font-black text-xl text-slate-900 dark:text-white">${pfgOrderTotal.toFixed(2)}</span></div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
