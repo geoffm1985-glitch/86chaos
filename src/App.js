@@ -413,7 +413,7 @@ const TabTeam = ({ appUser, users, addToast }) => {
                 <td className="p-4"><div className="font-bold text-slate-900 dark:text-white text-lg">{u.name}</div></td>
                 <td className="p-4">
                   <div className="text-sm font-bold bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-lg w-max border border-slate-200 dark:border-slate-600 flex items-center gap-2">
-                    <Phone size={14} className="text-slate-400" />
+                    <span className="text-slate-400">📱</span>
                     {u.phone ? <a href={`tel:${u.phone}`} className="text-blue-600 dark:text-blue-400 hover:underline">{u.phone}</a> : <span className="text-slate-500">No phone</span>}
                   </div>
                 </td>
