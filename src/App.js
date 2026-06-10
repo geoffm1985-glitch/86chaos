@@ -232,14 +232,14 @@ export default function App() {
         </div>
       </Modal>
 
-      {/* --- Main Content Area --- */}
+     {/* --- Main Content Area --- */}
       <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-6 pb-24">
         {activeTabState === 'schedule' && appUser?.isAdmin && <TabSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} addToast={addToast} timeOff={timeOff} />}
         {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} addToast={addToast} />}
         {activeTabState === 'month' && <TabMonth currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} setCurrentDate={setCurrentDate} addToast={addToast} />}
         {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'timeoff' && <TabTimeOff appUser={liveAppUser} users={users} timeOff={timeOff} addToast={addToast} />}
-        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} />}
+        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings addToast={addToast} inventoryItems={inventoryItems} appUser={liveAppUser} />}
@@ -606,7 +606,7 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
 };
 
 // --- Tab: Prep List ---
-const TabPrep = ({ currentDate, prepItems }) => {
+const TabPrep = ({ currentDate, prepItems, appUser }) => {
   const [text, setText] = useState(''); 
   const [isMaster, setIsMaster] = useState(true);
   const [printItems, setPrintItems] = useState([]);
@@ -674,7 +674,6 @@ const TabPrep = ({ currentDate, prepItems }) => {
     });
 
     setPrintItems(itemsToPrint);
-    // Give mobile DOM 500ms to render the invisible elements before firing print
     setTimeout(() => { 
       window.print(); 
     }, 500); 
@@ -714,7 +713,7 @@ const TabPrep = ({ currentDate, prepItems }) => {
             <div key={item.printId} className="print-page">
               <div className="print-title">{item.text}</div>
               <div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div>
-              <div className="print-meta">EMP: ______</div>
+              <div className="print-meta">EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '______'}</div>
               <div className="print-exp">EXP: {getExpDate(prepDate)}</div>
             </div>
           ))}
@@ -1225,11 +1224,25 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
     addToast('Order Sent', `${type} order dispatched. Pending inventory updated.`);
   };
 
-  const handleReceivePending = async () => {
-    if(!window.confirm("Move all pending items into active stock?")) return;
-    const pendingItems = inventoryItems.filter(i => (i.pendingQty || 0) > 0);
-    for (const item of pendingItems) { await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: item.currentStock + item.pendingQty, pendingQty: 0 }); }
-    addToast('Stock Updated', 'Pending items moved to active stock.');
+  const hasPendingPFG = inventoryItems.some(i => (i.pendingQty || 0) > 0 && (!i.supplier || i.supplier === 'PFG'));
+  const hasPendingBadger = inventoryItems.some(i => (i.pendingQty || 0) > 0 && i.supplier === 'Badger');
+
+  const handleReceivePending = async (supplier) => {
+    if(!window.confirm(`Receive all pending ${supplier} items into active stock?`)) return;
+    
+    const pendingItems = inventoryItems.filter(i => {
+      if ((i.pendingQty || 0) <= 0) return false;
+      if (supplier === 'PFG') return !i.supplier || i.supplier === 'PFG';
+      return i.supplier === 'Badger';
+    });
+
+    for (const item of pendingItems) { 
+      await updateDoc(doc(db, "inventoryItems", item.id), { 
+        currentStock: item.currentStock + item.pendingQty, 
+        pendingQty: 0 
+      }); 
+    }
+    addToast('Stock Updated', `${supplier} pending items moved to active stock.`);
   };
 
   const filteredItems = inventoryItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)));
@@ -1316,8 +1329,9 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
 
       {appUser?.isAdmin && invTab === 'order' && (
         <div className="space-y-4">
-          <div className="flex justify-end mb-2">
-            {inventoryItems.some(i => i.pendingQty > 0) && (<button onClick={handleReceivePending} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"><Package size={16}/> Receive Pending</button>)}
+          <div className="flex justify-end gap-2 mb-2">
+            {hasPendingBadger && (<button onClick={() => handleReceivePending('Badger')} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"><Package size={16}/> Receive Badger</button>)}
+            {hasPendingPFG && (<button onClick={() => handleReceivePending('PFG')} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"><Package size={16}/> Receive PFG</button>)}
           </div>
           <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
             <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
