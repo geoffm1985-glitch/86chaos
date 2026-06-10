@@ -709,31 +709,51 @@ const TabPrep = ({ currentDate, prepItems }) => {
 
 // --- Tab: Schedule ---
 const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff, events, addToast }) => {
-  const [selectedEmp, setSelectedEmp] = useState(''); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('23:00');
+  const [selectedEmp, setSelectedEmp] = useState(''); 
+  const [startTime, setStartTime] = useState('16:00'); 
+  const [endTime, setEndTime] = useState('23:00');
   const [assignDates, setAssignDates] = useState([currentDate]);
   
-  const [eventTitle, setEventTitle] = useState(''); const [eventStart, setEventStart] = useState(''); const [eventEnd, setEventEnd] = useState('');
+  const [eventTitle, setEventTitle] = useState(''); 
+  const [eventStart, setEventStart] = useState(''); 
+  const [eventEnd, setEventEnd] = useState('');
 
   const displayUsers = users.length > 0 ? users : (appUser && appUser.id !== 'dev-backdoor' ? [appUser] : []);
   const displayShifts = shifts.filter(s => s.date === currentDate && (s.isPublished || appUser?.isAdmin));
   const dayEvents = events.filter(e => e.date === currentDate && e.type !== 'note');
   
-  const year = parseInt(currentDate.split('-')[0], 10); const holidayMap = getHolidays(year); const todayHoliday = holidayMap[currentDate];
+  const year = parseInt(currentDate.split('-')[0], 10); 
+  const holidayMap = getHolidays(year); 
+  const todayHoliday = holidayMap[currentDate];
 
-  const handleToggleDate = (d) => { if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x !== d)); else setAssignDates([...assignDates, d].sort()); };
-
-  // Filter out users who have requested time off for ANY of the currently selected assignDates
-  const availableUsers = displayUsers.filter(u => {
-     return !timeOff.some(t => t.employeeId === u.id && assignDates.includes(t.startDate));
-  });
+  // Helper to make shift times ultra-short for the grid (e.g. 16:00 -> 4p)
+  const formatShortTime = (time24) => {
+    if (!time24) return '';
+    let [h, m] = time24.split(':');
+    h = parseInt(h, 10);
+    const ampm = h >= 12 ? 'p' : 'a';
+    const hr = h % 12 || 12;
+    return m === '00' ? `${hr}${ampm}` : `${hr}:${m}${ampm}`;
+  };
 
   const handleSaveShift = async () => {
     if (!selectedEmp || assignDates.length === 0) return;
     const emp = displayUsers.find(u => u.id === selectedEmp);
     let count = 0;
-    for (const d of assignDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime, endTime, isPublished: false }); count++; }
-    setSelectedEmp(''); setAssignDates([currentDate]);
-    addToast('Shifts Assigned', `Assigned ${count} shifts to ${emp.name}.`);
+    for (const d of assignDates) { 
+      await addDoc(collection(db, "shifts"), { 
+        date: d, 
+        employeeId: emp.id, 
+        role: emp.role, 
+        startTime, 
+        endTime, 
+        isPublished: false 
+      }); 
+      count++; 
+    }
+    setSelectedEmp(''); 
+    setAssignDates([currentDate]);
+    addToast('Shifts Assigned', `Assigned ${count} shifts to ${emp.name.split(' ')[0]}.`);
   };
 
   const handleAddEvent = async (e) => {
@@ -771,12 +791,11 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
   const availableSwaps = shiftSwaps.filter(sw => sw.status === 'available');
 
   const monthStr = getMonthStr(currentDate);
-  const monthFirstDay = new Date(monthStr + '-01T12:00:00').getDay();
   const daysInMonth = getDaysInMonth(monthStr);
   const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-5xl mx-auto">
       
       {todayHoliday && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-400 p-4 rounded-2xl font-bold flex items-center gap-4 shadow-sm border-l-4 border-l-amber-500">
@@ -839,48 +858,106 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
       )}
 
       {appUser?.isAdmin && (
-        <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm space-y-6">
+        <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm space-y-6">
           
           <div>
-            <h3 className="font-bold text-xl flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={20}/> The God-View Scheduler</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+              <h3 className="font-black text-2xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-blue-500" size={24}/> God-View Scheduler</h3>
+              <div className="text-xs font-bold text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800">
+                Tap grid cells to instantly select staff & dates
+              </div>
+            </div>
             
-            <div className="overflow-x-auto bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700 mb-4 no-scrollbar">
-              <table className="w-full text-left text-[10px] min-w-[800px]">
+            {/* The Matrix Grid */}
+            <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 mb-6 shadow-inner custom-scrollbar">
+              <table className="w-full text-left text-[10px] min-w-[1000px] border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-2 font-bold text-slate-600 dark:text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10 w-24">Staff</th>
-                    {monthDaysArray.map(d => <th key={d} className={`p-1 text-center font-bold text-slate-400 ${assignDates.includes(d) ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : ''}`}>{parseInt(d.split('-')[2], 10)}</th>)}
+                  <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                    <th className="p-3 font-bold text-slate-600 dark:text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-800 z-20 w-28 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
+                    {monthDaysArray.map(d => {
+                      const dateObj = new Date(d + 'T12:00:00');
+                      const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+                      return (
+                        <th key={d} className={`p-1.5 text-center border-l border-slate-200 dark:border-slate-700 min-w-[65px] ${assignDates.includes(d) ? 'bg-blue-100 dark:bg-blue-900/40' : (isWeekend ? 'bg-slate-100/50 dark:bg-slate-700/30' : '')}`}>
+                          <div className={`text-[9px] font-bold uppercase ${isWeekend ? 'text-indigo-400' : 'text-slate-400'}`}>{dateObj.toLocaleDateString('en-US', {weekday: 'short'})}</div>
+                          <div className={`text-sm font-black ${assignDates.includes(d) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`}>{parseInt(d.split('-')[2], 10)}</div>
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                  {displayUsers.map(u => (
-                    <tr key={u.id} className="hover:bg-white dark:hover:bg-slate-800 transition-colors">
-                      <td className="p-2 font-bold text-slate-800 dark:text-slate-200 sticky left-0 bg-slate-50 dark:bg-slate-900 z-10 truncate">{u.name.split(' ')[0]}</td>
-                      {monthDaysArray.map(d => {
-                        const shift = shifts.find(s => s.date === d && s.employeeId === u.id);
-                        const off = timeOff.some(t => t.employeeId === u.id && t.startDate === d);
-                        return (
-                          <td key={d} onClick={() => handleToggleDate(d)} className={`p-1 text-center border-l border-slate-100 dark:border-slate-700/50 cursor-pointer transition-colors ${off ? 'bg-red-50 dark:bg-red-900/20' : 'hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}>
-                             {off ? <span className="text-red-400 font-black">X</span> : (shift ? <div className={`w-full h-full rounded ${shift.isPublished ? 'bg-emerald-500' : 'bg-blue-400'} text-white font-black py-1`}>✓</div> : <span className="text-slate-200 dark:text-slate-600">•</span>)}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
+                  {displayUsers.map(u => {
+                    const isSelectedEmp = selectedEmp === u.id;
+                    return (
+                      <tr key={u.id} className={`transition-colors ${isSelectedEmp ? 'bg-blue-50/30 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                        <td className={`p-3 font-bold text-sm sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate ${isSelectedEmp ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'}`}>
+                          {u.name.split(' ')[0]}
+                        </td>
+                        {monthDaysArray.map(d => {
+                          const shift = shifts.find(s => s.date === d && s.employeeId === u.id);
+                          const off = timeOff.some(t => t.employeeId === u.id && t.startDate === d);
+                          const isDateSelected = assignDates.includes(d);
+                          
+                          const handleCellClick = () => {
+                            if (off) {
+                              addToast('Unavailable', `${u.name.split(' ')[0]} requested this day off.`);
+                              return;
+                            }
+                            if (selectedEmp !== u.id) {
+                              setSelectedEmp(u.id);
+                              setAssignDates([d]);
+                            } else {
+                              if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x !== d));
+                              else setAssignDates([...assignDates, d].sort());
+                            }
+                          };
+
+                          return (
+                            <td key={d} onClick={handleCellClick} className={`p-1 border-l border-slate-200 dark:border-slate-700 cursor-pointer transition-all relative ${isSelectedEmp && isDateSelected ? 'bg-blue-100 dark:bg-blue-900/40 ring-1 ring-inset ring-blue-500' : isSelectedEmp ? 'hover:bg-blue-100 dark:hover:bg-blue-900/30' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                              {off ? (
+                                <div className="w-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-black text-[10px] py-1.5 rounded text-center">OFF</div>
+                              ) : shift ? (
+                                <div className={`w-full rounded font-bold text-[10px] py-1.5 text-center ${shift.isPublished ? 'bg-emerald-500 text-white shadow-sm' : 'bg-blue-400 text-white shadow-sm'}`} title={`${formatTime12Hour(shift.startTime)} - ${formatTime12Hour(shift.endTime)}`}>
+                                  {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
+                                </div>
+                              ) : (
+                                <div className="w-full h-7 rounded flex items-center justify-center text-slate-200 dark:text-slate-700 font-bold opacity-0 hover:opacity-100 transition-opacity">
+                                  <Plus size={14}/>
+                                </div>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
-            
-            <div className="flex flex-col sm:flex-row gap-3">
-              <select value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-medium outline-none">
-                <option value="">Select Staff (Filtered by Availability)...</option>
-                {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-              </select>
-              <div className="flex gap-2">
-                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full sm:w-28 p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
-                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full sm:w-28 p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none" />
+
+            {/* Quick Action Control Panel */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div className="md:col-span-4">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Selected Staff</label>
+                <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setAssignDates([]);}} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none">
+                  <option value="">-- Choose Employee --</option>
+                  {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+                </select>
               </div>
-              <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-sm disabled:opacity-50">Assign Selected</button>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Start Time</label>
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">End Time</label>
+                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none" />
+              </div>
+              <div className="md:col-span-4 flex flex-col justify-end">
+                <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="w-full h-[46px] bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black shadow-sm disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                  <Check size={18}/> Assign {assignDates.length} Shifts
+                </button>
+              </div>
             </div>
           </div>
 
@@ -889,9 +966,9 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
           <div>
             <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={18}/> Add Event to {formatDisplayDate(currentDate)}</h3>
             <form onSubmit={handleAddEvent} className="flex flex-col sm:flex-row gap-2">
-              <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Event Name" className="flex-1 p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required />
+              <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Event Name" className="flex-1 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required />
               <div className="flex gap-2"><input type="time" value={eventStart} onChange={e => setEventStart(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /><input type="time" value={eventEnd} onChange={e => setEventEnd(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /></div>
-              <button type="submit" className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold">Add Event</button>
+              <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-colors">Add Event</button>
             </form>
           </div>
         </div>
@@ -910,11 +987,11 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
                 const isSwappedOut = shiftSwaps.some(sw => sw.shiftId === s.id);
                 
                 return (
-                  <div key={s.id} className={`bg-white dark:bg-slate-800 border p-4 rounded-2xl shadow-sm flex flex-col gap-2 ${!s.isPublished ? 'border-dashed border-blue-300' : 'border-slate-200'}`}>
+                  <div key={s.id} className={`bg-white dark:bg-slate-800 border p-4 rounded-2xl shadow-sm flex flex-col gap-2 ${!s.isPublished ? 'border-dashed border-blue-300 dark:border-blue-700' : 'border-slate-200 dark:border-slate-700'}`}>
                     <div className="flex justify-between items-center w-full">
                       <div className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">{emp?.name || 'Unknown'} {!s.isPublished && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase">Draft</span>}</div>
                       <div className="flex items-center gap-2">
-                        <div className="text-sm font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-lg border">{formatTime12Hour(s.startTime)} - {formatTime12Hour(s.endTime)}</div>
+                        <div className="text-sm font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">{formatTime12Hour(s.startTime)} - {formatTime12Hour(s.endTime)}</div>
                         {appUser?.isAdmin && <button onClick={() => handleDeleteShift(s.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>}
                       </div>
                     </div>
