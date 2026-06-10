@@ -523,7 +523,8 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
 // --- Tab: Prep List ---
 const TabPrep = ({ currentDate, prepItems }) => {
   const [text, setText] = useState(''); const [isMaster, setIsMaster] = useState(true);
-  const [printItem, setPrintItem] = useState(null);
+  const [printItems, setPrintItems] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
   
   const handleAdd = async (e) => { 
     e.preventDefault(); if (!text.trim()) return; 
@@ -543,9 +544,19 @@ const TabPrep = ({ currentDate, prepItems }) => {
   
   const handleDelete = async (id) => await deleteDoc(doc(db, "prepItems", id));
 
-  const triggerPrint = (item) => {
-    setPrintItem(item);
-    setTimeout(() => { window.print(); setPrintItem(null); }, 300);
+  const togglePrintSelection = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const triggerBatchPrint = () => {
+    if (selectedIds.length === 0) return;
+    const itemsToPrint = displayItems.filter(item => selectedIds.includes(item.id));
+    setPrintItems(itemsToPrint);
+    setTimeout(() => { 
+      window.print(); 
+      setPrintItems([]); 
+      setSelectedIds([]); 
+    }, 300);
   };
 
   const displayItems = prepItems.filter(p => p.date === currentDate || p.isMaster);
@@ -556,20 +567,25 @@ const TabPrep = ({ currentDate, prepItems }) => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
+    <div className="max-w-2xl mx-auto space-y-4 relative pb-24">
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
           .label-print-zone, .label-print-zone * { visibility: visible !important; }
-          .label-print-zone { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: white; padding: 10px; }
+          .label-print-zone { position: absolute; left: 0; top: 0; width: 100vw; background: white; }
+          .print-page { width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 10px; page-break-after: always; }
         }
       `}</style>
 
-      {printItem && (
+      {printItems.length > 0 && (
         <div className="label-print-zone bg-white text-black z-[100]">
-           <h1 className="text-4xl font-black uppercase mb-4 text-black">{printItem.text}</h1>
-           <h2 className="text-2xl font-bold text-black">Prepped: {formatDisplayDate(currentDate)}</h2>
-           <h2 className="text-2xl font-black mt-2">Discard By: {getExpDate(currentDate)}</h2>
+          {printItems.map(item => (
+            <div key={'print-' + item.id} className="print-page">
+               <h1 className="text-4xl font-black uppercase mb-4 text-black">{item.text}</h1>
+               <h2 className="text-2xl font-bold text-black">Prepped: {formatDisplayDate(currentDate)}</h2>
+               <h2 className="text-2xl font-black mt-2">Discard By: {getExpDate(currentDate)}</h2>
+            </div>
+          ))}
         </div>
       )}
 
@@ -587,16 +603,33 @@ const TabPrep = ({ currentDate, prepItems }) => {
             const isDone = item.isMaster ? !!item.completedDates?.[currentDate] : item.isCompleted;
             return (
             <div key={item.id} className="p-3 flex flex-col sm:flex-row sm:justify-between sm:items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors gap-3">
-              <div>
-                <span className={`text-base transition-all ${isDone ? 'line-through text-slate-300 dark:text-slate-500' : 'font-bold text-slate-800 dark:text-white'}`}>{item.text}</span>
-                {item.isMaster && <span className="block text-[9px] font-bold text-blue-500 uppercase tracking-widest mt-0.5">Master Task</span>}
-                {isDone && <span className="block text-[10px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(currentDate)} (7-Day FDA)</span>}
+              <div className="flex items-center gap-3">
+                <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => togglePrintSelection(item.id)} className="w-6 h-6 rounded border-slate-300 accent-blue-600 cursor-pointer flex-shrink-0" />
+                <div>
+                  <span className={`text-base transition-all ${isDone ? 'line-through text-slate-300 dark:text-slate-500' : 'font-bold text-slate-800 dark:text-white'}`}>{item.text}</span>
+                  {item.isMaster && <span className="block text-[9px] font-bold text-blue-500 uppercase tracking-widest mt-0.5">Master Task</span>}
+                  {isDone && <span className="block text-[10px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(currentDate)} (7-Day FDA)</span>}
+                </div>
               </div>
-              <div className="flex gap-1.5"><button onClick={() => triggerPrint(item)} className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-blue-500 rounded-lg transition-colors"><Printer size={18}/></button><button onClick={() => toggleStatus(item)} className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-sm transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`}>{isDone ? 'Undo' : <><Check size={16}/> Done</>}</button><button onClick={() => handleDelete(item.id)} className="p-2 text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors"><Trash2 size={18}/></button></div>
+              <div className="flex gap-1.5 ml-9 sm:ml-0">
+                <button onClick={() => toggleStatus(item)} className={`flex-1 sm:flex-none flex justify-center items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-sm transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`}>{isDone ? 'Undo' : <><Check size={16}/> Done</>}</button>
+                <button onClick={() => handleDelete(item.id)} className="p-2 text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors"><Trash2 size={18}/></button>
+              </div>
             </div>
           )}))}
       </div>
-    </div>
+
+      {/* Master Print Button */}
+      <div className="fixed sm:static bottom-20 sm:bottom-auto left-4 right-4 sm:left-auto sm:right-auto sm:mt-4 no-print z-40">
+        <button 
+          onClick={triggerBatchPrint} 
+          disabled={selectedIds.length === 0} 
+          className="w-full bg-blue-600 disabled:bg-slate-300 disabled:dark:bg-slate-700 disabled:text-slate-500 text-white p-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-2 text-lg"
+        >
+          🖨️ Print Selected Labels ({selectedIds.length})
+        </button>
+      </div>
+  </div>
   );
 };
 
