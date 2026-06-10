@@ -662,13 +662,19 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
 
 // --- PREP LIST (Categories + Sync + Print Engine Fix) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
-  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
+  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const [isPrinting, setIsPrinting] = useState(false); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
   
+  // Advanced Print Engine Fix: Force DOM visibility, wait, then print
   useEffect(() => {
-    const afterPrint = () => setPrintItems([]);
-    window.addEventListener('afterprint', afterPrint);
-    return () => window.removeEventListener('afterprint', afterPrint);
-  }, []);
+    if (isPrinting && printItems.length > 0) {
+      const timer = setTimeout(() => { 
+        window.print(); 
+        setIsPrinting(false); 
+        setPrintItems([]); 
+      }, 800); 
+      return () => clearTimeout(timer);
+    }
+  }, [isPrinting, printItems]);
 
   const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
   const toggleStatus = async (item) => { 
@@ -687,7 +693,7 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
     const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}` }); } });
     setPrintItems(toPrint);
-    setTimeout(() => window.print(), 200); 
+    setIsPrinting(true); 
   };
 
   const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
@@ -698,7 +704,7 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
   return (
     <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
       <style>{`
-        .label-print-zone { position: fixed; left: -9999px; opacity: 0; pointer-events: none; z-index: -100; }
+        .label-print-zone { position: absolute; left: -9999px; top: 0; }
         @media print {
           body * { visibility: hidden !important; }
           .label-print-zone { display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 2.4in !important; margin: 0 !important; padding: 0 !important; background: white !important; visibility: visible !important; opacity: 1 !important; z-index: 9999 !important; }
@@ -710,9 +716,13 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
           .no-print { display: none !important; }
         }
       `}</style>
-      <div className="label-print-zone bg-white text-black">{printItems.map(i => (
-          <div key={i.printId} className="print-page"><div className="print-title">{i.text}</div><div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div><div className="print-meta">EMP: {appUser?.name?appUser.name.split(' ')[0].toUpperCase():'______'}</div><div className="print-exp">EXP: {getExpDate(prepDate)}</div></div>
-      ))}</div>
+      
+      {/* We conditionally render this into the normal DOM flow right before printing to ensure Chrome captures the bounding boxes */}
+      {isPrinting && printItems.length > 0 && (
+        <div className="label-print-zone bg-white text-black">{printItems.map(i => (
+            <div key={i.printId} className="print-page"><div className="print-title">{i.text}</div><div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div><div className="print-meta">EMP: {appUser?.name?appUser.name.split(' ')[0].toUpperCase():'______'}</div><div className="print-exp">EXP: {getExpDate(prepDate)}</div></div>
+        ))}</div>
+      )}
 
       <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm no-print">
          <h3 className="font-bold flex items-center gap-2 text-sm dark:text-white"><ClipboardList className="text-blue-500" size={18}/> Prep List For:</h3>
@@ -750,7 +760,12 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
         ))}
       </div>
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 no-print z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        <div className="max-w-2xl mx-auto flex gap-2"><button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">🖨️ Print ({globalSelectedCount})</button><button onClick={handleBatchDone} disabled={globalSelectedCount===0} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button></div>
+        <div className="max-w-2xl mx-auto flex gap-2">
+          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0 || isPrinting} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">
+            {isPrinting ? <span className="flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={16}/> Loading Printer...</span> : `🖨️ Print (${globalSelectedCount})`}
+          </button>
+          <button onClick={handleBatchDone} disabled={globalSelectedCount===0 || isPrinting} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button>
+        </div>
       </div>
     </div>
   );
