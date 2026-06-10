@@ -108,6 +108,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (appUser?.isAdmin) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={20}/> });
   tabs.push({ id: 'published', label: 'Published Shifts', icon: <Clock size={20}/> });
   tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={20}/> });
+  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={20}/> });
   tabs.push({ id: 'timeoff', label: 'Time Off', icon: <Clock size={20}/> });
   if (appUser?.isAdmin || appUser?.role === 'Kitchen') tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={20}/> });
   tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={20}/> });
@@ -140,6 +141,53 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
      </div>
   );
 };
+
+// --- Tab: Message Board ---
+const TabMessages = ({ events, appUser, addToast }) => {
+  const [message, setMessage] = useState('');
+  const [isImportant, setIsImportant] = useState(false);
+  const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  const handleBroadcast = async (e) => {
+    e.preventDefault(); if(!message.trim()) return;
+    await addDoc(collection(db, "events"), {
+      date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant
+    });
+    setMessage(''); setIsImportant(false); addToast('Posted', 'Message added to board.');
+  };
+
+  const handleDelete = async (id) => await deleteDoc(doc(db, "events", id));
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <h2 className="text-2xl font-black mb-4 flex items-center gap-2 text-slate-900 dark:text-white"><MessageSquare className="text-blue-500" size={24}/> Message Board</h2>
+        <form onSubmit={handleBroadcast} className="space-y-3">
+          <textarea value={message} onChange={e => setMessage(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none font-medium text-slate-900 dark:text-white" rows="3" placeholder="Type a message to the team..." required></textarea>
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+            <label className="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300 cursor-pointer">
+               <input type="checkbox" checked={isImportant} onChange={e => setIsImportant(e.target.checked)} className="w-5 h-5 accent-red-500 rounded border-slate-300"/> 
+               Mark as Important 🚨
+            </label>
+            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold transition-colors">Post Message</button>
+          </div>
+        </form>
+      </div>
+      <div className="space-y-3">
+        {allNotes.map(n => (
+          <div key={n.id} className={`p-4 rounded-2xl border shadow-sm ${n.isImportant ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+            <div className="flex justify-between items-start mb-2">
+              <span className={`font-black text-lg ${n.isImportant ? 'text-red-700 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>{n.author} {n.isImportant && '🚨'}</span>
+              <span className="text-xs font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span>
+            </div>
+            <p className="text-slate-800 dark:text-slate-200 font-medium text-lg leading-snug">{n.title}</p>
+            {appUser?.isAdmin && <button onClick={() => handleDelete(n.id)} className="text-red-400 hover:text-red-500 mt-3 text-sm font-bold flex items-center gap-1 transition-colors"><Trash2 size={14}/> Delete Message</button>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // --- Main Application ---
 export default function App() {
@@ -238,6 +286,7 @@ export default function App() {
         {activeTabState === 'schedule' && appUser?.isAdmin && <TabSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} addToast={addToast} timeOff={timeOff} />}
         {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} addToast={addToast} />}
         {activeTabState === 'month' && <TabMonth currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} setCurrentDate={setCurrentDate} addToast={addToast} />}
+        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'timeoff' && <TabTimeOff appUser={liveAppUser} users={users} timeOff={timeOff} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} addToast={addToast} appUser={liveAppUser} />}
@@ -362,21 +411,21 @@ const TabTeam = ({ appUser, users, addToast }) => {
     } catch (err) { console.error(err); }
   };
 
-  const generateTestAccounts = async () => {
-    const tests = [
-      { name: "Test Bartender 1", email: "tb1@cheers.local", role: "Bartender" },
-      { name: "Test Bartender 2", email: "tb2@cheers.local", role: "Bartender" },
-      { name: "Test Bartender 3", email: "tb3@cheers.local", role: "Bartender" },
-      { name: "Test Kitchen 1", email: "tk1@cheers.local", role: "Kitchen" },
-      { name: "Test Kitchen 2", email: "tk2@cheers.local", role: "Kitchen" },
-      { name: "Test Kitchen 3", email: "tk3@cheers.local", role: "Kitchen" },
-    ];
-    for(const t of tests) {
-      if(!users.some(u => u.email === t.email)) {
-        await addDoc(collection(db, "users"), { name: t.name, email: t.email, phone: '', password: 'password', role: t.role, isAdmin: false, isActive: true, forcePasswordChange: false, availability: {sun:true,mon:true,tue:true,wed:true,thu:true,fri:true,sat:true} });
-      }
-    }
-    addToast("Success", "6 test accounts generated");
+  const generateTestAccount = async () => {
+    const num = Math.floor(Math.random() * 1000);
+    const isBartender = Math.random() > 0.5;
+    await addDoc(collection(db, "users"), { 
+      name: `Test ${isBartender ? 'Bar' : 'Kit'} ${num}`, 
+      email: `test${num}@cheers.local`, 
+      phone: '', 
+      password: 'password', 
+      role: isBartender ? 'Bartender' : 'Kitchen', 
+      isAdmin: false, 
+      isActive: true, 
+      forcePasswordChange: false, 
+      availability: {sun:true,mon:true,tue:true,wed:true,thu:true,fri:true,sat:true} 
+    });
+    addToast("Success", `1 Test account generated.`);
   };
 
   const handleUpdateUser = async (e) => {
@@ -391,6 +440,9 @@ const TabTeam = ({ appUser, users, addToast }) => {
 
   const handleToggleAdmin = async (id, currentStatus) => { await updateDoc(doc(db, "users", id), { isAdmin: !currentStatus }); };
   const handleDelete = async (id) => { if (window.confirm("Remove this staff member? This cannot be undone.")) { await deleteDoc(doc(db, "users", id)); addToast('Staff Removed', 'Account permanently deleted.'); } };
+
+  // Only allow Geoff or the Ghost Admin to see the test generation button
+  const canGenerateTest = appUser?.email === 'geoffm1985@gmail.com' || appUser?.id === 'dev-backdoor';
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
@@ -414,7 +466,7 @@ const TabTeam = ({ appUser, users, addToast }) => {
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white"><Users size={20}/> Add Staff Member</h3>
-            <button onClick={generateTestAccounts} className="text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-3 py-1.5 rounded font-bold text-slate-600 dark:text-slate-300">Generate 6 Test Accounts</button>
+            {canGenerateTest && <button onClick={generateTestAccount} className="text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-3 py-1.5 rounded font-bold text-slate-600 dark:text-slate-300">Generate 1 Test Account</button>}
           </div>
           <form onSubmit={handleAdd} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -472,7 +524,6 @@ const TabTeam = ({ appUser, users, addToast }) => {
     </div>
   );
 };
-
 
 
 // --- Tab: Published Shifts ---
@@ -548,15 +599,15 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
     <div className="space-y-4 print-container">
       <style>{`
         @media print {
-          @page { size: landscape; margin: 0.5in; }
+          @page { size: landscape; margin: 0.2in; }
           body * { visibility: hidden !important; }
           .print-container, .print-container * { visibility: visible !important; }
-          .print-container { position: absolute; left: 0; top: 0; width: 100vw; margin: 0; padding: 0; }
+          .print-container { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; margin: 0; padding: 0; overflow: hidden; }
           .no-print { display: none !important; }
-          .print-grid { border: 2px solid #000 !important; }
-          .print-cell { border: 1px solid #000 !important; min-height: 80px; }
-          .print-text { color: #000 !important; background: transparent !important; border: none !important; font-size: 11px !important; }
-          .print-header { display: block !important; text-align: center; font-size: 28px; font-weight: 900; margin-bottom: 20px; color: #000; letter-spacing: 1px; }
+          .print-grid { border: 2px solid #000 !important; display: grid !important; height: 85vh !important; grid-template-rows: 30px repeat(auto-fit, minmax(0, 1fr)) !important; }
+          .print-cell { border: 1px solid #000 !important; min-height: 0 !important; overflow: hidden !important; padding: 2px !important; }
+          .print-text { color: #000 !important; background: transparent !important; border: none !important; font-size: 10px !important; line-height: 1.1 !important; }
+          .print-header { display: block !important; text-align: center; font-size: 24px; font-weight: 900; margin-bottom: 10px; color: #000; letter-spacing: 1px; }
         }
       `}</style>
       
@@ -786,13 +837,14 @@ const TabPrep = ({ currentDate, prepItems }) => {
 
 
 // --- Tab: Schedule Maker ---
+// --- Tab: Schedule Maker ---
 const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]);
   const [presetShift, setPresetShift] = useState('Custom');
   const [startTime, setStartTime] = useState('16:00'); 
   const [endTime, setEndTime] = useState('23:00');
-  const [selectedShiftId, setSelectedShiftId] = useState(null); // Used if clicking an existing shift
+  const [selectedShiftId, setSelectedShiftId] = useState(null); 
 
   const [eventDate, setEventDate] = useState(currentDate);
   const [eventTitle, setEventTitle] = useState(''); 
@@ -809,7 +861,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
   const daysInMonth = getDaysInMonth(monthStr);
   const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
 
-  // All shifts for the month
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const hasPublished = monthShifts.some(s => s.isPublished);
   const hasUnpublished = monthShifts.some(s => !s.isPublished);
@@ -842,7 +893,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
     const preset = SHIFT_PRESETS.find(p => p.label === val);
     if (preset && val !== 'Custom') {
       setStartTime(preset.start);
-      // If CLOSE, we handle it during save based on day of week
       if (preset.end !== 'CLOSE') setEndTime(preset.end);
     }
   };
@@ -851,14 +901,13 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
     if (baseTime !== 'CLOSE') return baseTime;
     const dObj = new Date(targetDateStr + 'T12:00:00');
     const day = dObj.getDay();
-    return (day === 5 || day === 6) ? '02:30' : '02:00'; // Fri/Sat = 2:30am
+    return (day === 5 || day === 6) ? '02:30' : '02:00'; 
   };
 
   const handleSaveShift = async () => {
     if (!selectedEmp || assignDates.length === 0) return;
     const emp = displayUsers.find(u => u.id === selectedEmp);
     
-    // If updating a specific clicked shift
     if (selectedShiftId && assignDates.length === 1) {
        const finalEnd = getCalculatedEndTime(presetShift.includes('close') ? 'CLOSE' : endTime, assignDates[0]);
        await updateDoc(doc(db, "shifts", selectedShiftId), { startTime, endTime: finalEnd });
@@ -866,7 +915,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
        setSelectedShiftId(null); setAssignDates([]); return;
     }
 
-    // Assigning new shifts
     let count = 0;
     for (const d of assignDates) { 
       const finalEnd = getCalculatedEndTime(presetShift.includes('close') ? 'CLOSE' : endTime, d);
@@ -884,30 +932,26 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
     addToast('Shift Deleted', 'Removed from matrix.');
   };
 
-  // --- VALIDATION ENGINE ---
   const validateSchedule = () => {
     const warnings = [];
     monthDaysArray.forEach(d => {
        const dayShifts = monthShifts.filter(s => s.date === d);
-       if (dayShifts.length === 0) return; // Ignore entirely empty days
+       if (dayShifts.length === 0) return; 
        const dObj = new Date(d + 'T12:00:00');
-       const day = dObj.getDay(); // 0=Sun, 1=Mon... 5=Fri, 6=Sat
+       const day = dObj.getDay(); 
        const isWeekendDay = day === 0 || day === 6;
        const isFriSat = day === 5 || day === 6;
 
        const bar = dayShifts.filter(s => s.role === 'Bartender');
        const kit = dayShifts.filter(s => s.role === 'Kitchen');
 
-       // 1. Minimum Coverage Bounds
        if (!kit.some(s => s.startTime <= '10:00') || !kit.some(s => s.endTime >= '21:00')) warnings.push(`${d}: Missing full kitchen bounds (9a-9p)`);
        if (!bar.some(s => s.startTime <= '11:00') || !bar.some(s => s.endTime >= '02:00')) warnings.push(`${d}: Missing full bar bounds (11a-Close)`);
 
-       // 2. Closers
        const closers = bar.filter(s => s.endTime >= '02:00').length;
        if (isFriSat && closers < 2) warnings.push(`${d}: Needs 2 closing bartenders for weekend. Only scheduled ${closers}.`);
        if (!isFriSat && closers < 1) warnings.push(`${d}: Needs at least 1 closing bartender.`);
 
-       // 3. Rushes (Approximate overlap counting)
        const countOverlap = (arr, start, end) => arr.filter(s => s.startTime <= start && s.endTime >= end).length;
        
        const lunchBar = countOverlap(bar, '12:00', '13:00');
@@ -920,7 +964,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
        if (day === 5 && (dinBar < 2 || dinKit < 3)) warnings.push(`${d}: Friday Dinner needs 2 Bar / 3 Kit.`);
        if (day >= 1 && day <= 4 && (dinBar < 2 || dinKit < 2)) warnings.push(`${d}: Weekday Dinner needs 2 Bar / 2 Kit.`);
        
-       // 4. Weekend Days
        if (isWeekendDay) {
          const dayBar = countOverlap(bar, '12:00', '15:00');
          const dayKit = countOverlap(kit, '12:00', '15:00');
@@ -958,7 +1001,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
-      
       <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -973,12 +1015,11 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
           </div>
         </div>
         
-        {/* The Matrix Grid */}
         <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner custom-scrollbar">
           <table className="w-full text-left text-[10px] border-collapse">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <th className="p-3 font-bold text-slate-600 dark:text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-800 z-20 w-28 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
+                <th className="p-3 font-bold text-slate-600 dark:text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-800 z-20 w-32 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
                 {monthDaysArray.map(d => {
                   const dateObj = new Date(d + 'T12:00:00');
                   const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
@@ -997,10 +1038,13 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                 const isBartender = u.role === 'Bartender';
                 return (
                   <tr key={u.id} className={`transition-colors ${isSelectedEmp ? 'bg-blue-50/30 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
-                    <td className={`p-3 font-bold text-sm sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate ${isSelectedEmp ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'}`}>
+                    <td 
+                      onClick={() => { setSelectedEmp(u.id); setAssignDates([]); setSelectedShiftId(null); setPresetShift('Custom'); }}
+                      className={`p-3 font-bold text-sm sticky left-0 z-10 cursor-pointer shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate hover:bg-blue-100 dark:hover:bg-blue-900/40 ${isSelectedEmp ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400 ring-2 ring-inset ring-blue-500' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'}`}
+                    >
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${isBartender ? 'bg-blue-500' : 'bg-orange-500'}`}></span>
-                        {u.name.split(' ')[0]}
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isBartender ? 'bg-blue-500' : 'bg-orange-500'}`}></span>
+                        {u.name}
                       </div>
                     </td>
                     {monthDaysArray.map(d => {
@@ -1012,9 +1056,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                       
                       const handleCellClick = () => {
                         if (off) return addToast('Unavailable', `${u.name.split(' ')[0]} requested this day off.`);
-                        
                         if (shift) {
-                          // Clicked an existing shift to edit/delete
                           setSelectedEmp(u.id);
                           setAssignDates([d]);
                           setSelectedShiftId(shift.id);
@@ -1022,7 +1064,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                           setStartTime(shift.startTime);
                           setEndTime(shift.endTime);
                         } else {
-                          // Clicking empty cell to add
                           setSelectedShiftId(null);
                           if (selectedEmp !== u.id) {
                             setSelectedEmp(u.id);
@@ -1057,7 +1098,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
           </table>
         </div>
 
-        {/* Compact Quick Action Control Panel */}
         <div className="flex flex-col md:flex-row items-end gap-3 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
           <div className="w-full md:w-48">
             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Staff</label>
@@ -1110,76 +1150,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
           </div>
           <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-colors w-full sm:w-auto h-[50px]">Add Event</button>
         </form>
-      </div>
-    </div>
-  );
-};
-
-
-
-// --- Tab: Time Off ---
-const TabTimeOff = ({ appUser, users, timeOff, addToast }) => {
-  const [selectedDates, setSelectedDates] = useState([]); const [isPartial, setIsPartial] = useState(false); const [startTime, setStartTime] = useState('09:00'); const [endTime, setEndTime] = useState('14:00');
-  const displayUsers = users.length > 0 ? users : (appUser ? [appUser] : []);
-  
-  const today = getToday();
-  const monthStr = getMonthStr(today);
-  const daysInMonth = getDaysInMonth(monthStr);
-  const monthFirstDay = new Date(monthStr + '-01T12:00:00').getDay();
-  const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
-
-  const handleToggleDate = (d) => { if (selectedDates.includes(d)) setSelectedDates(selectedDates.filter(x => x !== d)); else setSelectedDates([...selectedDates, d].sort()); };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if(selectedDates.length === 0) return addToast('Error', 'Select at least one date.');
-    for(const d of selectedDates) {
-      await addDoc(collection(db, "timeOff"), { employeeId: appUser.id, startDate: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null });
-    }
-    addToast('Time Off Logged', `Requested ${selectedDates.length} days off.`);
-    setSelectedDates([]);
-  };
-
-  const handleDelete = async (id) => await deleteDoc(doc(db, "timeOff", id));
-
-  return (
-    <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-3xl shadow-sm space-y-6 self-start">
-        <h3 className="text-xl font-black flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-blue-500" size={24}/> Request Time Off</h3>
-        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">{formatDisplayMonth(monthStr)}</div>
-           <div className="grid grid-cols-7 gap-1 text-center">
-              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{d}</div>)}
-              {Array.from({length: monthFirstDay}).map((_, i) => <div key={`empty-${i}`} />)}
-              {monthDaysArray.map(d => {
-                 const isSel = selectedDates.includes(d);
-                 return <button key={d} onClick={() => handleToggleDate(d)} className={`py-2 rounded-lg text-sm font-bold transition-all border ${isSel ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-400'}`}>{parseInt(d.split('-')[2], 10)}</button>
-              })}
-           </div>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="p-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-4">
-            <label className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300 cursor-pointer"><input type="checkbox" checked={isPartial} onChange={e => setIsPartial(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-blue-600" /> Partial Day / specific times</label>
-            {isPartial && (<div className="flex gap-4 pt-2 border-t border-slate-200 dark:border-slate-600"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg font-bold" /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">End Time</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg font-bold" /></div></div>)}
-          </div>
-          <button type="submit" disabled={selectedDates.length === 0} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50">Submit Request</button>
-        </form>
-      </div>
-
-      <div className="space-y-4">
-        <h3 className="text-xl font-black text-slate-800 dark:text-white pl-2">Upcoming Roster</h3>
-        <div className="space-y-3">
-          {timeOff.length === 0 ? <p className="p-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-500 font-medium">No time off logged.</p> : null}
-          {timeOff.filter(t => appUser.isAdmin || t.employeeId === appUser.id).map(t => {
-            const emp = displayUsers.find(u => u.id === t.employeeId);
-            return (
-              <div key={t.id} className="bg-white dark:bg-slate-800 p-4 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm flex justify-between items-center gap-4 border-l-4 border-l-orange-500">
-                <div><strong className="text-base text-slate-900 dark:text-white block">{emp?.name || 'Unknown'}</strong><span className="text-slate-500 dark:text-slate-400 font-medium text-sm">{formatDisplayDate(t.startDate)}</span>{t.isPartial && <div className="mt-1 text-[10px] font-bold bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800 w-max">{formatTime12Hour(t.startTime)} - {formatTime12Hour(t.endTime)}</div>}</div>
-                {(appUser.isAdmin || t.employeeId === appUser.id) && <button onClick={() => handleDelete(t.id)} className="text-slate-400 hover:text-red-500 p-2 rounded-xl transition-colors"><Trash2 size={18}/></button>}
-              </div>
-            )
-          })}
-        </div>
       </div>
     </div>
   );
@@ -1427,7 +1397,7 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
                   <div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded mt-0.5 inline-block uppercase tracking-wider">{item.category} • {item.packSize || '1 CS'}</span></div>
                   <div className="flex gap-1 items-center">
                     <button onClick={() => toggleStar(item)} className={`p-1.5 rounded-md transition-colors ${item.isStarred ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : 'text-slate-300 hover:text-yellow-400'}`} title="Star Item">
-                      {item.isStarred ? '⭐' : <Star size={16} />} 
+                      {item.isStarred ? '⭐' : '☆'} 
                     </button>
                     <button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-indigo-500 p-1.5 rounded-md transition-colors"><Edit size={16}/></button>
                     <button onClick={() => deleteItem(item.id)} className="text-slate-400 hover:text-red-500 p-1.5 rounded-md transition-colors"><Trash2 size={16}/></button>
@@ -1441,9 +1411,6 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
     </div>
   );
 };
-
-
-
  
 
 // --- Tab: Settings ---
