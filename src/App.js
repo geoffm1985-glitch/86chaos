@@ -405,8 +405,9 @@ const TabTeam = ({ appUser, users, addToast }) => {
         </div>
       )}
       
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-        <table className="w-full text-left border-collapse min-w-[600px]">
+      {/* Changed overflow-hidden to overflow-x-auto so you can scroll to the right on mobile */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto custom-scrollbar">
+        <table className="w-full text-left border-collapse min-w-[500px]">
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
             {displayUsers.map(u => {
               const isMaster = u.email === MASTER_ADMIN_EMAIL;
@@ -660,21 +661,25 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
   );
 };
 
-// --- PREP LIST (Categories + Sync + Print Engine Fix) ---
+// --- PREP LIST (WI Food Code + Brother QL-810W Print Engine) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
-  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const [isPrinting, setIsPrinting] = useState(false); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
+  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
   
-  // Advanced Print Engine Fix: Force DOM visibility, wait, then print
+  // Bulletproof Print Engine: Wait 500ms for DOM to physically paint the labels before printing
   useEffect(() => {
-    if (isPrinting && printItems.length > 0) {
-      const timer = setTimeout(() => { 
-        window.print(); 
-        setIsPrinting(false); 
-        setPrintItems([]); 
-      }, 800); 
-      return () => clearTimeout(timer);
+    let timer;
+    if (printItems.length > 0) {
+      timer = setTimeout(() => { window.print(); }, 500); 
     }
-  }, [isPrinting, printItems]);
+    return () => clearTimeout(timer);
+  }, [printItems]);
+
+  // Clear labels when print window closes to reset the state
+  useEffect(() => {
+    const afterPrint = () => setPrintItems([]);
+    window.addEventListener('afterprint', afterPrint);
+    return () => window.removeEventListener('afterprint', afterPrint);
+  }, []);
 
   const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
   const toggleStatus = async (item) => { 
@@ -693,9 +698,9 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
     const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}` }); } });
     setPrintItems(toPrint);
-    setIsPrinting(true); 
   };
 
+  // Wisconsin Food Code: 7 Days Total (Prep Day is Day 1. Expires Prep + 6)
   const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
   const globalSelectedCount = items.filter(i => i.isSelected).length;
 
@@ -704,12 +709,15 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
   return (
     <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
       <style>{`
-        .label-print-zone { position: absolute; left: -9999px; top: 0; }
+        @media screen {
+          .label-print-zone { display: none; }
+        }
         @media print {
+          @page { size: 2.4in 2.4in; margin: 0; }
           body * { visibility: hidden !important; }
-          .label-print-zone { display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 2.4in !important; margin: 0 !important; padding: 0 !important; background: white !important; visibility: visible !important; opacity: 1 !important; z-index: 9999 !important; }
+          .label-print-zone { display: block !important; visibility: visible !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 2.4in !important; margin: 0 !important; padding: 0 !important; background: white !important; z-index: 2147483647 !important; }
           .label-print-zone * { visibility: visible !important; }
-          .print-page { width: 2.4in; height: 2.0in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0.1in; box-sizing: border-box; page-break-after: always; border: 1px dashed #ccc; }
+          .print-page { width: 2.4in; height: 2.4in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0.1in; box-sizing: border-box; page-break-after: always; page-break-inside: avoid; border: none; }
           .print-title { font-size: 18px; font-weight: 900; color: #000; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; }
           .print-meta { font-size: 14px; font-weight: bold; color: #000; margin-bottom: 2px; }
           .print-exp { font-size: 16px; font-weight: 900; color: #000; margin-top: 4px; border-top: 2px solid #000; padding-top: 4px; width: 90%; }
@@ -717,12 +725,17 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
         }
       `}</style>
       
-      {/* We conditionally render this into the normal DOM flow right before printing to ensure Chrome captures the bounding boxes */}
-      {isPrinting && printItems.length > 0 && (
-        <div className="label-print-zone bg-white text-black">{printItems.map(i => (
-            <div key={i.printId} className="print-page"><div className="print-title">{i.text}</div><div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div><div className="print-meta">EMP: {appUser?.name?appUser.name.split(' ')[0].toUpperCase():'______'}</div><div className="print-exp">EXP: {getExpDate(prepDate)}</div></div>
-        ))}</div>
-      )}
+      {/* Explicitly rendered to DOM to ensure Chrome calculates the bounds before window.print() fires */}
+      <div className="label-print-zone bg-white text-black">
+        {printItems.map(i => (
+          <div key={i.printId} className="print-page">
+            <div className="print-title">{i.text}</div>
+            <div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div>
+            <div className="print-exp">EXP: {getExpDate(prepDate)}</div>
+            <div className="print-meta">EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '______'}</div>
+          </div>
+        ))}
+      </div>
 
       <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm no-print">
          <h3 className="font-bold flex items-center gap-2 text-sm dark:text-white"><ClipboardList className="text-blue-500" size={18}/> Prep List For:</h3>
@@ -761,16 +774,15 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
       </div>
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 no-print z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <div className="max-w-2xl mx-auto flex gap-2">
-          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0 || isPrinting} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">
-            {isPrinting ? <span className="flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={16}/> Loading Printer...</span> : `🖨️ Print (${globalSelectedCount})`}
+          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0 || printItems.length > 0} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">
+            {printItems.length > 0 ? <span className="flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={16}/> Generating Labels...</span> : `🖨️ Print (${globalSelectedCount})`}
           </button>
-          <button onClick={handleBatchDone} disabled={globalSelectedCount===0 || isPrinting} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button>
+          <button onClick={handleBatchDone} disabled={globalSelectedCount===0 || printItems.length > 0} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button>
         </div>
       </div>
     </div>
   );
 };
-
 // --- INVENTORY TAB (Full Features + Smart Deficit) ---
 const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); const [searchTerm, setSearchTerm] = useState(''); const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState('PFG'); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState(''); const [orderOverrides, setOrderOverrides] = useState({}); const [editItem, setEditItem] = useState(null); const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, items: [] });
