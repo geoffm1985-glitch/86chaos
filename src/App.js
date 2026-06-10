@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, AlertTriangle, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, Image as ImageIcon } from 'lucide-react';
-
-// --- Firebase Initialization ---
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
 
+// --- Firebase Initialization ---
 const firebaseConfig = {
   apiKey: "AIzaSyA0kkmRCqGNoB1LXKfuCNIl1JKDyQci9hA",
   authDomain: "cheers-34b8d.firebaseapp.com",
@@ -19,80 +18,46 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-
-// Initialize Messaging safely
 let messaging = null;
-try {
-  if (typeof window !== 'undefined' && 'Notification' in window) {
-    messaging = getMessaging(app);
-  }
-} catch (error) {
-  console.warn("Push notifications are not fully supported in this browser environment.", error);
-}
+try { if (typeof window !== 'undefined' && 'Notification' in window) messaging = getMessaging(app); } catch (e) { console.warn("Push not supported."); }
 
 // --- Master Configuration ---
 const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
-// --- Custom Hook to Sync Live Database ---
-const useLiveCollection = (collectionName) => {
-  const [data, setData] = useState([]);
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, collectionName), (snap) => setData(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    return unsub;
-  }, [collectionName]);
-  return data;
-};
-
-// --- Helper Functions ---
+// --- Helpers ---
+const useLiveCollection = (coll) => { const [data, setData] = useState([]); useEffect(() => onSnapshot(collection(db, coll), snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() })))), [coll]); return data; };
 const formatDate = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 const getToday = () => formatDate(new Date());
-const addDays = (dateStr, days) => { const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + days); return formatDate(d); };
-const getMonthStr = (dateStr) => (dateStr || getToday()).substring(0, 7);
-const formatDisplayDate = (dateStr) => new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-const formatDisplayMonth = (monthStr) => { const [y, m] = monthStr.split('-'); return new Date(y, m - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }); };
-const getDaysInMonth = (monthStr) => { const [y, m] = monthStr.split('-'); return new Date(y, m, 0).getDate(); };
-const formatTime12Hour = (time24) => {
-  if (!time24 || !time24.includes(':')) return time24;
-  if (time24 === 'CLOSE') return 'CL';
-  let [h, m] = time24.split(':'); h = parseInt(h, 10);
-  return `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
-};
-
-// Avatar generator logic
-const getAvatar = (name, url) => {
-  if (url && url.trim() !== '') return url;
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Staff')}&background=random&color=fff&bold=true`;
-};
-// Temp Password Generator
+const addDays = (d, days) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + days); return formatDate(dt); };
+const getMonthStr = (d) => (d || getToday()).substring(0, 7);
+const formatDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const formatDisplayMonth = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getDate();
+const formatTime12 = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; let [h, m] = t.split(':'); return `${parseInt(h)%12||12}:${m} ${h>=12?'PM':'AM'}`; };
+const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; };
+const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 
 // --- SVG Logo ---
 const CheersLogo = ({ isDark }) => (
   <svg viewBox="0 0 400 120" className="h-10 sm:h-12 w-auto drop-shadow-sm" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <path d="M190,20 C70,0 0,35 0,65 C0,95 100,110 270,110 L270,105 C100,105 30,95 30,65 C30,40 80,25 190,20 Z" className={isDark ? "text-slate-100" : "text-slate-900"} />
-    <text x="95" y="85" fontFamily="'Brush Script MT', 'Great Vibes', cursive, serif" fontStyle="italic" fontSize="90" fontWeight="900" className={isDark ? "text-slate-100" : "text-slate-900"} letterSpacing="-1">Cheers</text>
+    <text x="95" y="85" fontFamily="'Brush Script MT', 'Great Vibes', cursive" fontStyle="italic" fontSize="90" fontWeight="900" className={isDark ? "text-slate-100" : "text-slate-900"} letterSpacing="-1">Cheers</text>
   </svg>
 );
 
-// --- Custom Modal ---
 const Modal = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-slate-100 dark:border-slate-700">
-        <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-slate-700">
-          <h3 className="font-bold text-xl text-slate-900 dark:text-white">{title}</h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400 transition-colors"><X size={20}/></button>
-        </div>
-        <div className="p-5">{children}</div>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-700">
+        <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-slate-700"><h3 className="font-bold text-lg dark:text-white">{title}</h3><button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full dark:text-slate-400"><X size={20}/></button></div>
+        <div className="p-4">{children}</div>
       </div>
     </div>
   );
 };
-
-
-
 
 // --- Navigation Drawer Component ---
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, isDark, toggleDark }) => {
@@ -193,6 +158,12 @@ export default function App() {
 
   const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
 
+  const addToast = (title, message) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, title, message }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
+  };
+
   if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} isDark={isDark} addToast={addToast} />;
 
   return (
@@ -262,7 +233,7 @@ export default function App() {
   );
 }
 
-// --- Login Screen (With Password Recovery) ---
+// --- LOGIN & PASSWORD RECOVERY ---
 const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [isRecover, setIsRecover] = useState(false); const [loading, setLoading] = useState(false); const [resetUser, setResetUser] = useState(null);
   const isFirstUser = users.length === 0;
@@ -291,12 +262,7 @@ const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
       const tempPass = generateTempPass();
       await updateDoc(doc(db, "users", user.id), { password: tempPass, forcePasswordChange: true });
       addToast("Manager Notified", "A temporary password has been generated. Please contact your manager.");
-      // In a full production environment, this would trigger a backend email function. 
-      // For now, it secures the account and notifies the manager to relay it.
-      console.log(`[SYSTEM] Password reset for ${user.email}. New Temp Pass: ${tempPass}`);
-    } else {
-      addToast("Error", "Account not found.");
-    }
+    } else { addToast("Error", "Account not found."); }
     setIsRecover(false); setLoading(false);
   };
 
@@ -364,6 +330,7 @@ const TabSales = ({ sales, addToast }) => {
     </div>
   );
 };
+
 
 // --- Tab: Team (With Avatar & SMS Onboarding) ---
 const TabTeam = ({ appUser, users, addToast }) => {
@@ -478,7 +445,6 @@ const TabTeam = ({ appUser, users, addToast }) => {
   );
 };
 
-
 // --- PUBLISHED SHIFTS & TRADE BOARD (With Avatars) ---
 const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, addToast }) => {
   const monthStr = getMonthStr(currentDate);
@@ -488,7 +454,7 @@ const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, a
   const handleOfferSwap = async (shift) => {
     if (!window.confirm("Offer shift to Trade Board?")) return;
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatTime12Hour(shift.startTime)}). Claim it on the Master Roster!`, type: 'note', author: 'System Alert', isImportant: true });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Master Roster!`, type: 'note', author: 'System Alert', isImportant: true });
     addToast('Posted', 'Shift sent to trade board & message board.');
   };
 
@@ -535,7 +501,7 @@ const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, a
                    <div><span className={`font-bold block ${isMe ? 'text-blue-700 dark:text-blue-400' : 'dark:text-white'}`}>{emp?.name} {isMe && '(You)'}</span><span className="text-[10px] font-black text-slate-400 uppercase">{formatDisplayDate(s.date)} • {s.role}</span></div>
                  </div>
                  <div className="flex items-center gap-2">
-                   <div className="text-sm font-bold bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border dark:border-slate-600 dark:text-slate-200">{formatTime12Hour(s.startTime)} - {formatTime12Hour(s.endTime)}</div>
+                   <div className="text-sm font-bold bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border dark:border-slate-600 dark:text-slate-200">{formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>
                    {isMe && !isOffered && <button onClick={() => handleOfferSwap(s)} className="bg-slate-900 dark:bg-slate-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-sm">Trade</button>}
                    {isOffered && <span className="text-[10px] bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded font-black uppercase text-slate-500">Posted</span>}
                  </div>
@@ -569,8 +535,6 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   )
 };
 
-const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; };
-
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
   const monthStr = getMonthStr(currentDate); const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); const days = getDaysInMonth(monthStr);
@@ -595,7 +559,7 @@ const TabMonth = ({ currentDate, users, shifts }) => {
   );
 };
 
-// --- SCHEDULE MAKER (With Strict Validation & Format Fix) ---
+// --- SCHEDULE MAKER (With Strict Validation & Original UI) ---
 const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); const [assignDates, setAssignDates] = useState([]); const [presetShift, setPresetShift] = useState('Custom'); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('21:00');
   const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
@@ -695,11 +659,11 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
     </div>
   );
 };
+
 // --- PREP LIST (Categories + Sync + Print Engine Fix) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
   const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
   
-  // Print Engine Fix: Clear labels ONLY after the print dialog resolves
   useEffect(() => {
     const afterPrint = () => setPrintItems([]);
     window.addEventListener('afterprint', afterPrint);
@@ -723,7 +687,7 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
     const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}` }); } });
     setPrintItems(toPrint);
-    setTimeout(() => window.print(), 200); // Give the hidden DOM 200ms to mount before blocking the thread
+    setTimeout(() => window.print(), 200); 
   };
 
   const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
