@@ -91,33 +91,32 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
+
+
+
 // --- Navigation Drawer Component ---
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, isDark, toggleDark }) => {
   if (!isOpen) return null;
   const tabs = [];
   
-  if (appUser?.isAdmin) {
-    tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
-    tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
-  }
+  if (appUser?.isAdmin) { tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> }); }
   
-  // Everyone sees the Master Roster (Published Shifts) now
   tabs.push({ id: 'published', label: 'Master Roster', icon: <Clock size={18}/> });
   tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={18}/> });
   tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
   
-  if (appUser?.isAdmin || appUser?.role === 'Kitchen') {
-    tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
-  }
+  if (appUser?.isAdmin || appUser?.role === 'Kitchen') { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); }
   
   tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
+  
+  if (appUser?.isAdmin) { tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> }); }
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   const handleLogout = () => { localStorage.removeItem('cheersUser'); setAppUser(null); onClose(); };
 
   return (
-     <div className="fixed inset-0 z-50 flex justify-end">
+     <div className="fixed inset-0 z-[70] flex justify-end">
        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
        <div className="w-72 bg-white dark:bg-slate-800 h-full shadow-2xl flex flex-col relative border-l border-slate-200 dark:border-slate-700 animate-[slideIn_0.3s_ease-out]">
           <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800 flex justify-between items-start">
@@ -131,7 +130,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
              </div>
              <button onClick={onClose} className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"><X size={18}/></button>
           </div>
-          
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
              {tabs.map(tab => (
                <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? 'bg-slate-900 dark:bg-slate-700 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'}`}>
@@ -139,7 +137,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                </button>
              ))}
           </div>
-          
           <div className="p-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 space-y-2">
             <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm cursor-pointer" onClick={toggleDark}>
               <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">{isDark ? <Moon size={14}/> : <Sun size={14}/>} Dark Mode</span>
@@ -160,7 +157,7 @@ export default function App() {
   const inventoryItems = useLiveCollection('inventoryItems');
   const shiftSwaps = useLiveCollection('shiftSwaps');
   const events = useLiveCollection('events');
-  const sales = useLiveCollection('sales'); // New collection for Sales data
+  const sales = useLiveCollection('sales');
   
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const [activeTabState, setActiveTabState] = useState('published');
@@ -195,12 +192,6 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
-
-  const addToast = (title, message) => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, title, message }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
-  };
 
   if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} isDark={isDark} addToast={addToast} />;
 
@@ -704,22 +695,21 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
     </div>
   );
 };
-// --- PREP LIST (Synced Global Selection + Render Fixes + Condensed) ---
+// --- PREP LIST (Categories + Sync + Print Engine Fix) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
-  const [text, setText] = useState(''); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
+  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
   
-  // This listener ensures the DOM fully mounts the hidden labels BEFORE firing the print dialog
+  // Print Engine Fix: Clear labels ONLY after the print dialog resolves
   useEffect(() => {
-    if (printItems.length > 0) {
-      const timer = setTimeout(() => { window.print(); setPrintItems([]); }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [printItems]);
+    const afterPrint = () => setPrintItems([]);
+    window.addEventListener('afterprint', afterPrint);
+    return () => window.removeEventListener('afterprint', afterPrint);
+  }, []);
 
-  const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
+  const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
   const toggleStatus = async (item) => { 
-    if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = dts[prepDate] ? null : appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts }); }
-    else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null }); }
+    if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = dts[prepDate] ? null : appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); }
+    else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null, isSelected: false }); }
   };
   const updateQty = async (id, currentQty, change) => { await updateDoc(doc(db, "prepItems", id), { qty: Math.max(1, currentQty + change) }); };
   const toggleSelect = async (i) => await updateDoc(doc(db, "prepItems", i.id), { isSelected: !i.isSelected });
@@ -733,18 +723,21 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
     const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}` }); } });
     setPrintItems(toPrint);
+    setTimeout(() => window.print(), 200); // Give the hidden DOM 200ms to mount before blocking the thread
   };
 
   const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
   const globalSelectedCount = items.filter(i => i.isSelected).length;
 
+  const groupedItems = items.reduce((acc, i) => { const c = i.category || 'General'; if(!acc[c]) acc[c]=[]; acc[c].push(i); return acc; }, {});
+
   return (
     <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
       <style>{`
-        .label-print-zone { display: none; }
+        .label-print-zone { position: fixed; left: -9999px; opacity: 0; pointer-events: none; z-index: -100; }
         @media print {
           body * { visibility: hidden !important; }
-          .label-print-zone { display: block !important; position: absolute; left: 0; top: 0; width: 2.4in; margin: 0; padding: 0; background: white; visibility: visible !important; z-index: 9999; }
+          .label-print-zone { display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 2.4in !important; margin: 0 !important; padding: 0 !important; background: white !important; visibility: visible !important; opacity: 1 !important; z-index: 9999 !important; }
           .label-print-zone * { visibility: visible !important; }
           .print-page { width: 2.4in; height: 2.0in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0.1in; box-sizing: border-box; page-break-after: always; border: 1px dashed #ccc; }
           .print-title { font-size: 18px; font-weight: 900; color: #000; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; }
@@ -753,36 +746,44 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
           .no-print { display: none !important; }
         }
       `}</style>
-      {printItems.length > 0 && (
-        <div className="label-print-zone bg-white text-black">{printItems.map(i => (
-            <div key={i.printId} className="print-page"><div className="print-title">{i.text}</div><div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div><div className="print-meta">EMP: {appUser?.name?appUser.name.split(' ')[0].toUpperCase():'______'}</div><div className="print-exp">EXP: {getExpDate(prepDate)}</div></div>
-        ))}</div>
-      )}
+      <div className="label-print-zone bg-white text-black">{printItems.map(i => (
+          <div key={i.printId} className="print-page"><div className="print-title">{i.text}</div><div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div><div className="print-meta">EMP: {appUser?.name?appUser.name.split(' ')[0].toUpperCase():'______'}</div><div className="print-exp">EXP: {getExpDate(prepDate)}</div></div>
+      ))}</div>
+
       <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm no-print">
          <h3 className="font-bold flex items-center gap-2 text-sm dark:text-white"><ClipboardList className="text-blue-500" size={18}/> Prep List For:</h3>
          <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 border rounded-lg outline-none text-sm font-bold dark:bg-slate-700 dark:border-slate-600 dark:text-white"/>
       </div>
       <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-3 rounded-xl flex flex-col sm:flex-row gap-2 shadow-sm items-center no-print">
         <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-1.5 bg-transparent text-sm outline-none font-medium dark:text-white" placeholder="Add prep task..." required/>
+        <select value={cat} onChange={e=>setCat(e.target.value)} className="w-full sm:w-28 p-1.5 text-xs font-bold bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-lg outline-none dark:text-white"><option>General</option><option>Meat</option><option>Produce</option><option>Dairy</option><option>Sauces</option><option>Line Prep</option></select>
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-2 sm:pt-0 dark:border-slate-700">
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 cursor-pointer"><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4"/> Master List</label>
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 cursor-pointer"><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4"/> Master</label>
           <button className="bg-blue-600 text-white p-2 rounded-lg font-bold"><Plus size={18}/></button>
         </div>
       </form>
-      <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 divide-y dark:divide-slate-700 shadow-sm no-print">
-        {items.map(i=>{
-          const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; const qty = i.qty||1;
-          return (
-          <div key={i.id} className={`p-2 flex items-center gap-2 transition-colors ${i.isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-            <input type="checkbox" checked={!!i.isSelected} onChange={()=>toggleSelect(i)} className="w-5 h-5 rounded border-slate-300 accent-blue-600 flex-shrink-0 cursor-pointer" />
-            <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-400':'dark:text-white'}`}>{i.text}</span> {doneBy && <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded ml-2">✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-blue-500 uppercase mt-0.5">Master Task</span>}</div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg border dark:border-slate-600 h-8"><button onClick={()=>updateQty(i.id,qty,-1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">-</button><span className="w-5 text-center text-xs font-bold dark:text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">+</button></div>
-              <button onClick={()=>toggleStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${isDone?'bg-slate-200 text-slate-500 dark:bg-slate-600':'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-400'}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
-              <button onClick={()=>deleteDoc(doc(db,"prepItems",i.id))} className="text-slate-300 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+      
+      <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 overflow-hidden shadow-sm no-print">
+        {Object.entries(groupedItems).map(([category, catItems]) => (
+          <div key={category}>
+            <div className="bg-slate-50 dark:bg-slate-900/50 px-3 py-1.5 border-y dark:border-slate-700 font-black text-[10px] uppercase text-slate-500 tracking-wider flex justify-between"><span>{category}</span><span>{catItems.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{catItems.length} Done</span></div>
+            <div className="divide-y dark:divide-slate-700">
+              {catItems.map(i=>{
+                const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; const qty = i.qty||1;
+                return (
+                <div key={i.id} className={`p-2 flex items-center gap-2 transition-colors ${i.isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+                  <input type="checkbox" checked={!!i.isSelected} onChange={()=>toggleSelect(i)} className="w-5 h-5 rounded border-slate-300 accent-blue-600 flex-shrink-0 cursor-pointer" />
+                  <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-400':'dark:text-white'}`}>{i.text}</span> {doneBy && <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded ml-2">✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-blue-500 uppercase mt-0.5">Master Task</span>}</div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg border dark:border-slate-600 h-8"><button onClick={()=>updateQty(i.id,qty,-1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">-</button><span className="w-5 text-center text-xs font-bold dark:text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">+</button></div>
+                    <button onClick={()=>toggleStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${isDone?'bg-slate-200 text-slate-500 dark:bg-slate-600':'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-400'}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
+                    <button onClick={()=>deleteDoc(doc(db,"prepItems",i.id))} className="text-slate-300 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                  </div>
+                </div>
+              )})}
             </div>
           </div>
-        )})}
+        ))}
       </div>
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 no-print z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <div className="max-w-2xl mx-auto flex gap-2"><button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">🖨️ Print ({globalSelectedCount})</button><button onClick={handleBatchDone} disabled={globalSelectedCount===0} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button></div>
@@ -896,11 +897,19 @@ const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
   );
 };
 
-// --- SETTINGS (Plus Image Upload & Shift Reminders) ---
+// --- SETTINGS (Push Tester & Shift Reminders) ---
 const TabSettings = ({ addToast, appUser }) => {
-  const [settings, setSettings] = useState({ autoApproveTimeOff: false, smartSalesAlerts: true });
-  const toggle = (k) => setSettings(p => ({...p, [k]: !p[k]}));
+  const toggleReminder = async () => await updateDoc(doc(db, "users", appUser.id), { shiftRemindersEnabled: !appUser.shiftRemindersEnabled });
+  const updateLeadTime = async (val) => await updateDoc(doc(db, "users", appUser.id), { reminderLeadTime: parseInt(val) || 24 });
   
+  const testPush = async () => {
+    if (!appUser.fcmToken) return addToast('Error', 'Enable notifications first.');
+    addToast('Sending...', 'Testing push connection.');
+    try {
+      await fetch('/api/send-push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: "Test Notification", body: "Loud and clear. Notifications are working!", tokens: [appUser.fcmToken] }) });
+    } catch(e) { console.error(e); }
+  };
+
   const handleEnablePush = async () => {
     if (!messaging) return addToast('Error', 'Push not supported.');
     try {
@@ -914,24 +923,17 @@ const TabSettings = ({ addToast, appUser }) => {
   };
 
   const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files[0]; if (!file) return;
     addToast('Uploading', 'Compressing and saving image...');
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
       img.onload = async () => {
-        const canvas = document.createElement('canvas');
-        const MAX_SIZE = 200; // Crunch it down so it easily fits within Firestore string limits
-        let width = img.width; let height = img.height;
-        if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } }
-        else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        await updateDoc(doc(db, "users", appUser.id), { photoURL: dataUrl });
-        addToast('Success', 'Profile picture updated globally.');
+        const canvas = document.createElement('canvas'); const MAX = 200; let w = img.width; let h = img.height;
+        if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+        canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+        await updateDoc(doc(db, "users", appUser.id), { photoURL: canvas.toDataURL('image/jpeg', 0.8) });
+        addToast('Success', 'Profile picture updated.');
       };
       img.src = event.target.result;
     };
@@ -945,36 +947,31 @@ const TabSettings = ({ addToast, appUser }) => {
         
         <div className="space-y-3">
           <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border dark:border-slate-600 flex justify-between items-center">
-             <div>
-               <h4 className="font-bold text-sm dark:text-slate-200">Profile Picture</h4>
-               <p className="text-xs text-slate-500 dark:text-slate-400">Upload a custom avatar</p>
-             </div>
-             <label className="bg-white dark:bg-slate-800 border dark:border-slate-600 px-4 py-2 rounded-lg font-bold text-xs cursor-pointer hover:bg-slate-100 transition-colors shadow-sm dark:text-white">
-                Upload Image
-                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-             </label>
+             <div><h4 className="font-bold text-sm dark:text-slate-200">Profile Picture</h4><p className="text-xs text-slate-500 dark:text-slate-400">Upload a custom avatar</p></div>
+             <label className="bg-white dark:bg-slate-800 border dark:border-slate-600 px-4 py-2 rounded-lg font-bold text-xs cursor-pointer hover:bg-slate-100 transition-colors shadow-sm dark:text-white">Upload Image<input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label>
           </div>
 
-          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border dark:border-slate-600 flex justify-between items-center">
-             <div>
-               <h4 className="font-bold text-sm dark:text-slate-200">Shift Reminders</h4>
-               <p className="text-xs text-slate-500 dark:text-slate-400">Hours before shift to alert you</p>
+          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border dark:border-slate-600 space-y-3">
+             <div className="flex justify-between items-center cursor-pointer" onClick={toggleReminder}>
+               <div><h4 className="font-bold text-sm dark:text-slate-200">Shift Reminders</h4><p className="text-xs text-slate-500 dark:text-slate-400">Alert me before my shifts</p></div>
+               <div className={`w-10 h-5 rounded-full flex items-center px-1 ${appUser.shiftRemindersEnabled?'bg-blue-600':'bg-slate-300 dark:bg-slate-600'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${appUser.shiftRemindersEnabled?'translate-x-4':'translate-x-0'}`}></div></div>
              </div>
-             <input type="number" min="1" max="72" value={appUser.reminderLeadTime || 24} onChange={async (e) => await updateDoc(doc(db, "users", appUser.id), { reminderLeadTime: parseInt(e.target.value) || 24 })} className="w-16 p-2 bg-white dark:bg-slate-800 border dark:border-slate-600 rounded-lg text-center font-bold outline-none dark:text-white shadow-sm" />
+             {appUser.shiftRemindersEnabled && (
+               <div className="flex items-center justify-between border-t dark:border-slate-600 pt-3">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Hours before shift:</span>
+                  <input type="number" min="1" max="72" value={appUser.reminderLeadTime || 24} onChange={(e) => updateLeadTime(e.target.value)} className="w-16 p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-600 rounded-lg text-center font-bold text-sm outline-none dark:text-white shadow-sm" />
+               </div>
+             )}
           </div>
-
-          {[{k:'autoApproveTimeOff', l:'Auto-Approve Time Off'}, {k:'smartSalesAlerts', l:'Smart Sales / Deficit Alerts'}].map(s=>(
-            <div key={s.k} onClick={()=>toggle(s.k)} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl cursor-pointer border dark:border-slate-600">
-               <span className="font-bold text-sm dark:text-slate-200">{s.l}</span>
-               <div className={`w-10 h-5 rounded-full flex items-center px-1 ${settings[s.k]?'bg-blue-600':'bg-slate-300 dark:bg-slate-600'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${settings[s.k]?'translate-x-4':'translate-x-0'}`}></div></div>
-            </div>
-          ))}
         </div>
 
         <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-2xl border border-blue-100 dark:border-blue-800">
            <h4 className="font-black text-blue-900 dark:text-blue-400 mb-1">Device Push Notifications</h4>
-           <p className="text-xs text-blue-800 dark:text-blue-300 mb-4 font-bold">Link this specific device to receive app alerts.</p>
-           <button onClick={handleEnablePush} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold w-full text-sm hover:bg-blue-700">Enable Notifications</button>
+           <p className="text-xs text-blue-800 dark:text-blue-300 mb-4 font-medium">Link this device to receive alerts.</p>
+           <div className="flex gap-2">
+             <button onClick={handleEnablePush} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex-1 text-sm hover:bg-blue-700 shadow-sm">Enable Alerts</button>
+             {appUser.fcmToken && <button onClick={testPush} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2.5 rounded-xl font-bold flex-1 text-sm shadow-sm hover:bg-slate-800">Test Push</button>}
+           </div>
         </div>
       </div>
     </div>
