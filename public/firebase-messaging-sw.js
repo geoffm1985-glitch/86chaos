@@ -18,3 +18,8 @@ messaging.onBackgroundMessage((payload) => {
     icon: '/app-icon.png',
   });
 });
+
+
+// Force the service worker to activate instantly without waiting for a page reload
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
