@@ -476,25 +476,31 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 const TabSettings = ({ addToast }) => {
   const [settings, setSettings] = useState({ shiftReminders: true, autoApproveTimeOff: false, salesAlerts: true });
   const toggle = (k) => setSettings(p => ({...p, [k]: !p[k]}));
-  const handleEnablePush = async () => {
+ const handleEnablePush = async () => {
     if (!messaging) return addToast('Error', 'Push not supported.');
     try {
-      const p = await Notification.requestPermission(); if(p!=='granted') return addToast('Denied', 'Notifications blocked.');
-      const reg = await navigator.serviceWorker.ready; const token = await getToken(messaging, { vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU', serviceWorkerRegistration: reg });
-      if(token) addToast('Success', 'Push enabled.');
-    } catch(e) { addToast('Error', e.message); }
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') return addToast('Denied', 'Notifications blocked.');
+      
+      addToast('Connecting...', 'Registering device...');
+      
+      // Force service worker registration first
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      await navigator.serviceWorker.ready;
+      
+      // Get token with explicit serviceWorkerRegistration passed
+      const token = await getToken(messaging, { 
+        vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU',
+        serviceWorkerRegistration: registration 
+      });
+      
+      if (token) {
+        await updateDoc(doc(db, "users", appUser.id), { fcmToken: token });
+        addToast('Success', 'Notifications enabled.');
+      }
+    } catch (err) { 
+      console.error("FCM Error Details:", err);
+      // This will show the actual error in the toast
+      addToast('Error', err.code || 'Registration failed.'); 
+    }
   };
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl p-6 shadow-sm space-y-6">
-        <h3 className="text-xl font-black dark:text-white mb-2">Operational Settings</h3>
-        <div className="space-y-2">
-          {[{k:'shiftReminders', l:'Send Shift Reminders'}, {k:'autoApproveTimeOff', l:'Auto-Approve Time Off'}, {k:'salesAlerts', l:'Smart Sales / Deficit Alerts'}].map(s=>(
-            <div key={s.k} onClick={()=>toggle(s.k)} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl cursor-pointer"><span className="font-bold text-sm dark:text-slate-200">{s.l}</span><div className={`w-10 h-5 rounded-full flex items-center px-1 ${settings[s.k]?'bg-blue-600':'bg-slate-300'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${settings[s.k]?'translate-x-4':'translate-x-0'}`}></div></div></div>
-          ))}
-        </div>
-        <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-2xl border border-blue-100 dark:border-blue-800"><h4 className="font-black text-blue-900 dark:text-blue-400 mb-1">Push Notifications</h4><p className="text-xs text-blue-800 dark:text-blue-300 mb-4 font-bold">Link device to receive app alerts.</p><button onClick={handleEnablePush} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold w-full text-sm">Enable Notifications</button></div>
-      </div>
-    </div>
-  );
-};
