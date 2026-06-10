@@ -925,6 +925,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, addToast })
 const TabSettings = ({ addToast, inventoryItems, appUser }) => {
   const [settings, setSettings] = useState({ shiftReminders: true, overtimeAlerts: false, autoApprove: false, muteOffShift: false, leadTime: 24 }); const [isImporting, setIsImporting] = useState(false);
   const toggle = (key) => setSettings(prev => ({ ...prev, [key]: !prev[key] })); const isMasterAdmin = appUser?.email === MASTER_ADMIN_EMAIL;
+  
   const handleCsvUpload = (e) => {
     const file = e.target.files[0]; if (!file) return;
     if(!window.confirm("Overwrite catalogs?")) { e.target.value = ''; return; }
@@ -944,15 +945,36 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
     };
     reader.readAsText(file);
   };
+
   const handleEnablePush = async () => {
     if (!messaging) return addToast('Error', 'Unsupported web platform setup.');
     try {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
-        const token = await getToken(messaging, { vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU' });
-        if (token) { await updateDoc(doc(db, "users", appUser.id), { fcmToken: token }); addToast('Success', 'Push sync authorized.'); }
+        addToast('Connecting...', 'Registering device...');
+        
+        // Explicitly register the service worker so Vercel doesn't lose it
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        
+        const token = await getToken(messaging, { 
+          vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU',
+          serviceWorkerRegistration: registration 
+        });
+        
+        if (token) { 
+          await updateDoc(doc(db, "users", appUser.id), { fcmToken: token }); 
+          addToast('Success', 'Push sync authorized.'); 
+        } else {
+          addToast('Error', 'Failed to generate token.');
+        }
+      } else {
+        addToast('Denied', 'Notifications blocked in browser settings.');
       }
-    } catch (err) { addToast('Error', 'Must load from Home Screen.'); }
+    } catch (err) { 
+      console.error("Push Error:", err);
+      // Print the actual error message to the screen
+      addToast('Error', err.message || 'Push registration failed.'); 
+    }
   };
 
   return (
