@@ -578,6 +578,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   )
 };
 
+const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; };
+
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
   const monthStr = getMonthStr(currentDate); const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); const days = getDaysInMonth(monthStr);
@@ -593,7 +595,7 @@ const TabMonth = ({ currentDate, users, shifts }) => {
           return (
             <div key={date} className="p-0.5 border-b border-r dark:border-slate-700 min-h-[50px] flex flex-col cell overflow-hidden">
               <span className="text-right text-[9px] font-black text-slate-400 mb-0.5">{i+1}</span>
-              <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {parseInt(s.startTime)}-{s.endTime==='CLOSE'?'CL':parseInt(s.endTime)}</div>)}</div>
+              <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}</div>
             </div>
           )
         })}
@@ -602,7 +604,7 @@ const TabMonth = ({ currentDate, users, shifts }) => {
   );
 };
 
-// --- SCHEDULE MAKER (With Strict Validation & Original UI) ---
+// --- SCHEDULE MAKER (With Strict Validation & Format Fix) ---
 const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); const [assignDates, setAssignDates] = useState([]); const [presetShift, setPresetShift] = useState('Custom'); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('21:00');
   const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
@@ -686,7 +688,7 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
               <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-2 font-bold sticky left-0 z-10 border-r dark:border-slate-700 cursor-pointer truncate ${selectedEmp===u.id?'bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-white':'bg-white dark:bg-slate-800 dark:text-slate-300'}`}>{u.name.split(' ')[0]}</td>
               {monthDays.map(d => {
                 const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); const sel = assignDates.includes(d) && selectedEmp===u.id;
-                return (<td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r dark:border-slate-700 cursor-pointer transition-all ${sel?'bg-amber-400 dark:bg-amber-500 outline outline-4 outline-red-600 shadow-2xl scale-[1.15] z-50 relative':'hover:bg-slate-200 dark:hover:bg-slate-700'}`}>{shift ? <div className={`w-full rounded font-bold text-[9px] py-1 text-center text-white ${shift.isPublished?(u.role==='Bartender'?'bg-blue-500':'bg-orange-500'):'bg-slate-400'}`}>{parseInt(shift.startTime)}-{shift.endTime==='CLOSE'?'CL':parseInt(shift.endTime)}</div> : <div className="h-5 rounded"></div>}</td>)
+                return (<td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r dark:border-slate-700 cursor-pointer transition-all ${sel?'bg-amber-400 dark:bg-amber-500 outline outline-4 outline-red-600 shadow-2xl scale-[1.15] z-50 relative':'hover:bg-slate-200 dark:hover:bg-slate-700'}`}>{shift ? <div className={`w-full rounded font-bold text-[9px] py-1 text-center text-white ${shift.isPublished?(u.role==='Bartender'?'bg-blue-500':'bg-orange-500'):'bg-slate-400'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div> : <div className="h-5 rounded"></div>}</td>)
               })}
             </tr>
           ))}</tbody>
@@ -702,35 +704,42 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
     </div>
   );
 };
-
-// --- PREP LIST (With Batch Label Printing & Qtys) ---
+// --- PREP LIST (Synced Global Selection + Render Fixes + Condensed) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
-  const [text, setText] = useState(''); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const [selectedIds, setSelectedIds] = useState([]); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
+  const [text, setText] = useState(''); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
   
-  const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null }); setText(''); } };
+  // This listener ensures the DOM fully mounts the hidden labels BEFORE firing the print dialog
+  useEffect(() => {
+    if (printItems.length > 0) {
+      const timer = setTimeout(() => { window.print(); setPrintItems([]); }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [printItems]);
+
+  const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
   const toggleStatus = async (item) => { 
     if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = dts[prepDate] ? null : appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts }); }
     else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null }); }
   };
   const updateQty = async (id, currentQty, change) => { await updateDoc(doc(db, "prepItems", id), { qty: Math.max(1, currentQty + change) }); };
-  const toggleSelect = (id) => setSelectedIds(p => p.includes(id) ? p.filter(x=>x!==id) : [...p, id]);
+  const toggleSelect = async (i) => await updateDoc(doc(db, "prepItems", i.id), { isSelected: !i.isSelected });
   
   const handleBatchDone = async () => {
-    if (selectedIds.length === 0) return; const toComplete = items.filter(i => selectedIds.includes(i.id));
-    for (const item of toComplete) { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true, completedBy: appUser.name }); } }
-    setSelectedIds([]);
+    const toComplete = items.filter(i => i.isSelected); if (toComplete.length === 0) return;
+    for (const item of toComplete) { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true, completedBy: appUser.name, isSelected: false }); } }
   };
 
   const triggerBatchPrint = () => {
-    if (selectedIds.length === 0) return; const toPrint = [];
-    items.filter(i => selectedIds.includes(i.id)).forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}` }); } });
-    setPrintItems(toPrint); setTimeout(() => window.print(), 500);
+    const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
+    const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}` }); } });
+    setPrintItems(toPrint);
   };
 
   const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
+  const globalSelectedCount = items.filter(i => i.isSelected).length;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 relative pb-40">
+    <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
       <style>{`
         .label-print-zone { display: none; }
         @media print {
@@ -749,34 +758,34 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
             <div key={i.printId} className="print-page"><div className="print-title">{i.text}</div><div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div><div className="print-meta">EMP: {appUser?.name?appUser.name.split(' ')[0].toUpperCase():'______'}</div><div className="print-exp">EXP: {getExpDate(prepDate)}</div></div>
         ))}</div>
       )}
-      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-4 rounded-2xl flex justify-between items-center shadow-sm no-print">
-         <h3 className="font-bold flex items-center gap-2 dark:text-white"><ClipboardList className="text-blue-500"/> Prep List For:</h3>
-         <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-2 border rounded-xl outline-none font-bold dark:bg-slate-700 dark:border-slate-600 dark:text-white"/>
+      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm no-print">
+         <h3 className="font-bold flex items-center gap-2 text-sm dark:text-white"><ClipboardList className="text-blue-500" size={18}/> Prep List For:</h3>
+         <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 border rounded-lg outline-none text-sm font-bold dark:bg-slate-700 dark:border-slate-600 dark:text-white"/>
       </div>
-      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-4 rounded-2xl flex flex-col sm:flex-row gap-2 shadow-sm items-center no-print">
-        <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-transparent outline-none font-medium dark:text-white" placeholder="Add prep task..." required/>
-        <div className="flex items-center gap-4 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-2 sm:pt-0 dark:border-slate-700">
-          <label className="flex items-center gap-2 text-sm font-bold text-slate-500 cursor-pointer"><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4"/> Master List</label>
-          <button className="bg-blue-600 text-white p-2.5 rounded-xl font-bold"><Plus size={20}/></button>
+      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-3 rounded-xl flex flex-col sm:flex-row gap-2 shadow-sm items-center no-print">
+        <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-1.5 bg-transparent text-sm outline-none font-medium dark:text-white" placeholder="Add prep task..." required/>
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-2 sm:pt-0 dark:border-slate-700">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 cursor-pointer"><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4"/> Master List</label>
+          <button className="bg-blue-600 text-white p-2 rounded-lg font-bold"><Plus size={18}/></button>
         </div>
       </form>
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 divide-y dark:divide-slate-700 shadow-sm no-print">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 divide-y dark:divide-slate-700 shadow-sm no-print">
         {items.map(i=>{
           const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; const qty = i.qty||1;
           return (
-          <div key={i.id} className="p-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-            <input type="checkbox" checked={selectedIds.includes(i.id)} onChange={()=>toggleSelect(i.id)} className="w-6 h-6 rounded border-slate-300 accent-blue-600 flex-shrink-0" />
-            <div className="flex-1 min-w-0"><span className={`font-bold ${isDone?'line-through text-slate-400':'dark:text-white'}`}>{i.text}</span> {doneBy && <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded ml-2">✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-blue-500 uppercase mt-0.5">Master Task</span>}</div>
+          <div key={i.id} className={`p-2 flex items-center gap-2 transition-colors ${i.isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+            <input type="checkbox" checked={!!i.isSelected} onChange={()=>toggleSelect(i)} className="w-5 h-5 rounded border-slate-300 accent-blue-600 flex-shrink-0 cursor-pointer" />
+            <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-400':'dark:text-white'}`}>{i.text}</span> {doneBy && <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded ml-2">✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-blue-500 uppercase mt-0.5">Master Task</span>}</div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg border dark:border-slate-600"><button onClick={()=>updateQty(i.id,qty,-1)} className="w-8 h-10 font-bold dark:text-white hover:bg-slate-200 transition-colors">-</button><span className="w-6 text-center font-bold dark:text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-8 h-10 font-bold dark:text-white hover:bg-slate-200 transition-colors">+</button></div>
-              <button onClick={()=>toggleStatus(i)} className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${isDone?'bg-slate-200 text-slate-500 dark:bg-slate-600':'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-400'}`}>{isDone ? <Repeat size={16}/> : <Check size={18}/>}</button>
-              <button onClick={()=>deleteDoc(doc(db,"prepItems",i.id))} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18}/></button>
+              <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg border dark:border-slate-600 h-8"><button onClick={()=>updateQty(i.id,qty,-1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">-</button><span className="w-5 text-center text-xs font-bold dark:text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">+</button></div>
+              <button onClick={()=>toggleStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${isDone?'bg-slate-200 text-slate-500 dark:bg-slate-600':'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-400'}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
+              <button onClick={()=>deleteDoc(doc(db,"prepItems",i.id))} className="text-slate-300 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
             </div>
           </div>
         )})}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-slate-900 border-t dark:border-slate-800 no-print z-50 shadow-md">
-        <div className="max-w-2xl mx-auto space-y-2"><button onClick={triggerBatchPrint} disabled={selectedIds.length===0} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-black text-lg disabled:opacity-50">🖨️ Print Selected Labels ({selectedIds.length})</button><button onClick={handleBatchDone} disabled={selectedIds.length===0} className="w-full bg-emerald-600 text-white p-3 rounded-xl font-bold disabled:opacity-50">Mark Selected as Done</button></div>
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 no-print z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <div className="max-w-2xl mx-auto flex gap-2"><button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">🖨️ Print ({globalSelectedCount})</button><button onClick={handleBatchDone} disabled={globalSelectedCount===0} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button></div>
       </div>
     </div>
   );
@@ -887,9 +896,9 @@ const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
   );
 };
 
-// --- SETTINGS (Plus Push Fixes) ---
+// --- SETTINGS (Plus Image Upload & Shift Reminders) ---
 const TabSettings = ({ addToast, appUser }) => {
-  const [settings, setSettings] = useState({ shiftReminders: true, autoApproveTimeOff: false, smartSalesAlerts: true });
+  const [settings, setSettings] = useState({ autoApproveTimeOff: false, smartSalesAlerts: true });
   const toggle = (k) => setSettings(p => ({...p, [k]: !p[k]}));
   
   const handleEnablePush = async () => {
@@ -904,16 +913,69 @@ const TabSettings = ({ addToast, appUser }) => {
     } catch(e) { addToast('Error', e.message); }
   };
 
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    addToast('Uploading', 'Compressing and saving image...');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 200; // Crunch it down so it easily fits within Firestore string limits
+        let width = img.width; let height = img.height;
+        if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } }
+        else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        await updateDoc(doc(db, "users", appUser.id), { photoURL: dataUrl });
+        addToast('Success', 'Profile picture updated globally.');
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl p-6 shadow-sm space-y-6">
-        <h3 className="text-xl font-black dark:text-white mb-2">Operational Settings</h3>
-        <div className="space-y-2">
-          {[{k:'shiftReminders', l:'Send Shift Reminders'}, {k:'autoApproveTimeOff', l:'Auto-Approve Time Off'}, {k:'smartSalesAlerts', l:'Smart Sales / Deficit Alerts'}].map(s=>(
-            <div key={s.k} onClick={()=>toggle(s.k)} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl cursor-pointer border dark:border-slate-600"><span className="font-bold text-sm dark:text-slate-200">{s.l}</span><div className={`w-10 h-5 rounded-full flex items-center px-1 ${settings[s.k]?'bg-blue-600':'bg-slate-300 dark:bg-slate-600'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${settings[s.k]?'translate-x-4':'translate-x-0'}`}></div></div></div>
+        <h3 className="text-xl font-black dark:text-white mb-2">My Profile & Settings</h3>
+        
+        <div className="space-y-3">
+          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border dark:border-slate-600 flex justify-between items-center">
+             <div>
+               <h4 className="font-bold text-sm dark:text-slate-200">Profile Picture</h4>
+               <p className="text-xs text-slate-500 dark:text-slate-400">Upload a custom avatar</p>
+             </div>
+             <label className="bg-white dark:bg-slate-800 border dark:border-slate-600 px-4 py-2 rounded-lg font-bold text-xs cursor-pointer hover:bg-slate-100 transition-colors shadow-sm dark:text-white">
+                Upload Image
+                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+             </label>
+          </div>
+
+          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border dark:border-slate-600 flex justify-between items-center">
+             <div>
+               <h4 className="font-bold text-sm dark:text-slate-200">Shift Reminders</h4>
+               <p className="text-xs text-slate-500 dark:text-slate-400">Hours before shift to alert you</p>
+             </div>
+             <input type="number" min="1" max="72" value={appUser.reminderLeadTime || 24} onChange={async (e) => await updateDoc(doc(db, "users", appUser.id), { reminderLeadTime: parseInt(e.target.value) || 24 })} className="w-16 p-2 bg-white dark:bg-slate-800 border dark:border-slate-600 rounded-lg text-center font-bold outline-none dark:text-white shadow-sm" />
+          </div>
+
+          {[{k:'autoApproveTimeOff', l:'Auto-Approve Time Off'}, {k:'smartSalesAlerts', l:'Smart Sales / Deficit Alerts'}].map(s=>(
+            <div key={s.k} onClick={()=>toggle(s.k)} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl cursor-pointer border dark:border-slate-600">
+               <span className="font-bold text-sm dark:text-slate-200">{s.l}</span>
+               <div className={`w-10 h-5 rounded-full flex items-center px-1 ${settings[s.k]?'bg-blue-600':'bg-slate-300 dark:bg-slate-600'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${settings[s.k]?'translate-x-4':'translate-x-0'}`}></div></div>
+            </div>
           ))}
         </div>
-        <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-2xl border border-blue-100 dark:border-blue-800"><h4 className="font-black text-blue-900 dark:text-blue-400 mb-1">Push Notifications</h4><p className="text-xs text-blue-800 dark:text-blue-300 mb-4 font-bold">Link device to receive app alerts.</p><button onClick={handleEnablePush} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold w-full text-sm hover:bg-blue-700">Enable Notifications</button></div>
+
+        <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-2xl border border-blue-100 dark:border-blue-800">
+           <h4 className="font-black text-blue-900 dark:text-blue-400 mb-1">Device Push Notifications</h4>
+           <p className="text-xs text-blue-800 dark:text-blue-300 mb-4 font-bold">Link this specific device to receive app alerts.</p>
+           <button onClick={handleEnablePush} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold w-full text-sm hover:bg-blue-700">Enable Notifications</button>
+        </div>
       </div>
     </div>
   );
