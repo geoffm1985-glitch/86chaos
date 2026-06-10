@@ -332,115 +332,75 @@ const TabSales = ({ sales, addToast }) => {
 };
 
 
-// --- Tab: Team (With Avatar & SMS Onboarding) ---
-const TabTeam = ({ appUser, users, addToast }) => {
-  const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [role, setRole] = useState('Bartender'); const [photoURL, setPhotoURL] = useState(''); const [isAdmin, setIsAdmin] = useState(false);
-  const [editModalUser, setEditModalUser] = useState(null);
-  
-  const displayUsers = [...users].sort((a,b) => {
-    if (a.role === b.role) return a.name.localeCompare(b.name);
-    return a.role === 'Bartender' ? -1 : 1;
-  });
+// --- PUBLISHED SHIFTS & TRADE BOARD (With Avatars) ---
+const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, addToast }) => {
+  const monthStr = getMonthStr(currentDate);
+  const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && s.isPublished).sort((a,b)=>a.date.localeCompare(b.date));
+  const availableSwaps = shiftSwaps.filter(sw => sw.status === 'available');
 
-  const handleAdd = async (e) => {
-    e.preventDefault(); if (!name.trim() || !email.trim()) return;
-    const tPass = generateTempPass();
-    try {
-      await addDoc(collection(db, "users"), { name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: tPass, role, isAdmin, isActive: true, forcePasswordChange: true, photoURL: photoURL.trim() });
-      addToast('Staff Added', `Auto-generated password: ${tPass}`);
-      
-      const msg = `Welcome to Cheers! Log in at cheers-portal.vercel.app. Your email is ${email.trim()} and your temporary password is: ${tPass}`;
-      if (phone) window.location.href = `sms:${phone}?body=${encodeURIComponent(msg)}`;
-      else window.location.href = `mailto:${email}?subject=Cheers Portal Access&body=${encodeURIComponent(msg)}`;
-      
-      setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setIsAdmin(false);
-    } catch (err) { console.error(err); }
+  const handleOfferSwap = async (shift) => {
+    if (!window.confirm("Offer shift to Trade Board?")) return;
+    await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Master Roster!`, type: 'note', author: 'System Alert', isImportant: true });
+    addToast('Posted', 'Shift sent to trade board.');
   };
 
-  const handleUpdateUser = async (e) => {
-    e.preventDefault(); if (!editModalUser.name.trim() || !editModalUser.email.trim()) return;
-    try {
-      const updates = { name: editModalUser.name.trim(), email: editModalUser.email.toLowerCase().trim(), phone: editModalUser.phone || '', role: editModalUser.role, photoURL: editModalUser.photoURL || '' };
-      if (editModalUser.newPassword) { updates.password = editModalUser.newPassword; updates.forcePasswordChange = true; }
-      await updateDoc(doc(db, "users", editModalUser.id), updates);
-      addToast('Profile Updated', `${editModalUser.name}'s info has been saved.`); setEditModalUser(null);
-    } catch (err) { console.error(err); addToast('Update Failed', 'Could not save profile changes.'); }
-  };
-
-  const handleToggleAdmin = async (id, currentStatus) => { await updateDoc(doc(db, "users", id), { isAdmin: !currentStatus }); };
-  const handleDelete = async (id) => { if (window.confirm("Remove this staff member? This cannot be undone.")) { await deleteDoc(doc(db, "users", id)); addToast('Staff Removed', 'Account permanently deleted.'); } };
+  const handleClaim = async (swap) => { await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'pending_approval', claimedById: appUser.id }); addToast('Claimed', 'Pending manager approval.'); };
+  const handleApprove = async (sw) => { await updateDoc(doc(db, "shifts", sw.shiftId), { employeeId: sw.claimedById }); await deleteDoc(doc(db, "shiftSwaps", sw.id)); addToast('Approved', 'Roster updated.'); };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
-      <Modal isOpen={!!editModalUser} onClose={() => setEditModalUser(null)} title={`Edit Profile: ${editModalUser?.name}`}>
-        {editModalUser && (
-          <form onSubmit={handleUpdateUser} className="space-y-4">
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Name</label><input type="text" value={editModalUser.name} onChange={e => setEditModalUser({...editModalUser, name: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Phone</label><input type="tel" value={editModalUser.phone || ''} onChange={e => setEditModalUser({...editModalUser, phone: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Avatar URL</label><input type="url" value={editModalUser.photoURL || ''} onChange={e => setEditModalUser({...editModalUser, photoURL: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-            <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Role</label><select value={editModalUser.role} onChange={e => setEditModalUser({...editModalUser, role: e.target.value})} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-600"><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 text-red-500">Force Password Reset</label><input type="text" placeholder="Enter temporary password..." value={editModalUser.newPassword || ''} onChange={e => setEditModalUser({...editModalUser, newPassword: e.target.value})} className="w-full p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl outline-none text-slate-900 dark:text-white" /></div>
-            <button type="submit" className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors mt-2">Save Profile Updates</button>
-          </form>
-        )}
-      </Modal>
-
-      {appUser?.isAdmin && (
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
-          <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Users size={20}/> Add Staff Member</h3>
-          <form onSubmit={handleAdd} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-              <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-2.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
-              <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Phone (For SMS)</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-              <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Profile Image URL</label><input type="url" placeholder="Optional" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className="w-full p-2.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" /></div>
-            </div>
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="w-full sm:w-48"><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Role</label><select value={role} onChange={e => setRole(e.target.value)} className="w-full p-2.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
-              <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mt-4 cursor-pointer flex-1"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-blue-600" /> Grant Admin Access</label>
-              <button type="submit" className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold w-full sm:w-auto shadow-sm mt-4 sm:mt-0">Add & Notify Staff</button>
-            </div>
-          </form>
-        </div>
+    <div className="max-w-3xl mx-auto space-y-4">
+      {appUser?.isAdmin && shiftSwaps.filter(sw=>sw.status==='pending_approval').length > 0 && (
+         <div className="bg-amber-50 dark:bg-slate-800 p-3 border border-amber-200 dark:border-amber-800 rounded-2xl space-y-2 shadow-sm">
+           <h4 className="font-black text-[10px] uppercase text-amber-700 dark:text-amber-400 tracking-wider">Trades Awaiting Approval</h4>
+           {shiftSwaps.filter(sw=>sw.status==='pending_approval').map(sw => (
+             <div key={sw.id} className="flex justify-between items-center bg-white dark:bg-slate-700 p-2 rounded-xl border dark:border-slate-600 shadow-sm gap-2">
+                <div className="text-xs dark:text-white"><strong>{users.find(u=>u.id===sw.claimedById)?.name}</strong> covering <strong>{users.find(u=>u.id===sw.originalEmployeeId)?.name}'s</strong> shift on {formatDisplayDate(sw.date)}.</div>
+                <div className="flex gap-1.5 flex-shrink-0"><button onClick={()=>handleApprove(sw)} className="bg-emerald-600 text-white px-2.5 py-1 rounded-lg font-bold text-[10px]">Approve</button><button onClick={()=>updateDoc(doc(db, "shiftSwaps", sw.id), { status: 'available', claimedById: null })} className="bg-slate-100 dark:bg-slate-600 text-slate-700 dark:text-white px-2.5 py-1 rounded-lg font-bold text-[10px]">Deny</button></div>
+             </div>
+           ))}
+         </div>
       )}
-      
-      {/* Changed overflow-hidden to overflow-x-auto so you can scroll to the right on mobile */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto custom-scrollbar">
-        <table className="w-full text-left border-collapse min-w-[500px]">
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-            {displayUsers.map(u => {
-              const isMaster = u.email === MASTER_ADMIN_EMAIL;
+
+      {availableSwaps.length > 0 && (
+         <div className="bg-blue-50 dark:bg-slate-800 p-3 border border-blue-200 dark:border-blue-800 rounded-2xl space-y-2 shadow-sm">
+           <h4 className="font-black text-[10px] uppercase text-blue-700 dark:text-blue-400 tracking-wider">Active Trade Board</h4>
+           <div className="grid gap-2 sm:grid-cols-2">{availableSwaps.map(sw => {
+              const orig = users.find(u => u.id === sw.originalEmployeeId);
               return (
-              <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                <td className="p-3 flex items-center gap-3">
-                  <img src={getAvatar(u.name, u.photoURL)} className="w-10 h-10 rounded-full border border-slate-200 dark:border-slate-600 object-cover bg-white" alt="Avatar"/>
-                  <div className="font-bold text-slate-900 dark:text-white text-lg">{u.name}</div>
-                </td>
-                <td className="p-3">
-                  <div className="text-[10px] font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded w-max border border-slate-200 dark:border-slate-600 flex items-center gap-1.5 dark:text-slate-300">
-                    <span>📱</span>{u.phone ? <a href={`tel:${u.phone}`} className="text-blue-600 dark:text-blue-400 hover:underline">{u.phone}</a> : <span className="text-slate-500">No phone</span>}
-                  </div>
-                </td>
-                <td className="p-3">
-                  <span className={`text-[10px] uppercase font-black px-2 py-1 rounded-full inline-block ${u.role === 'Bartender' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'}`}>{u.role}</span>
-                  {appUser?.isAdmin && !isMaster && (
-                    <label className="flex items-center gap-1.5 mt-2 cursor-pointer w-max">
-                      <input type="checkbox" checked={u.isAdmin} onChange={() => handleToggleAdmin(u.id, u.isAdmin)} className="w-3 h-3 rounded border-slate-300 dark:border-slate-600" /><span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Admin</span>
-                    </label>
-                  )}
-                  {isMaster && <span className="block mt-2 text-[10px] font-black bg-slate-900 dark:bg-slate-600 text-white px-2 py-0.5 rounded w-max">Master Admin</span>}
-                </td>
-                <td className="p-3 text-right">
-                  <div className="flex justify-end gap-1">
-                     {appUser?.isAdmin && <button onClick={() => setEditModalUser(u)} className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 rounded-lg transition-colors"><Edit size={18}/></button>}
-                     {appUser?.isAdmin && !isMaster && (<button onClick={() => handleDelete(u.id)} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-2 rounded-lg transition-colors"><Trash2 size={18}/></button>)}
-                  </div>
-                </td>
-              </tr>
-            )})}
-          </tbody>
-        </table>
+                <div key={sw.id} className="bg-white dark:bg-slate-700 p-2 rounded-xl border dark:border-slate-600 flex justify-between items-center shadow-sm">
+                   <div className="flex gap-2 items-center"><img src={getAvatar(orig?.name, orig?.photoURL)} className="w-6 h-6 rounded-full" alt="pic"/><div><span className="font-bold text-xs block dark:text-white leading-tight">{orig?.name?.split(' ')[0]}</span><span className="text-[9px] font-bold text-slate-500">{formatDisplayDate(sw.date)}</span></div></div>
+                   {appUser.id !== sw.originalEmployeeId && appUser.role === sw.role && <button onClick={() => handleClaim(sw)} className="bg-blue-600 text-white px-3 py-1 rounded-lg font-bold text-[10px]">Claim</button>}
+                </div>
+              )
+           })}</div>
+         </div>
+      )}
+
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 overflow-hidden shadow-sm">
+        <div className="bg-slate-50 dark:bg-slate-900 p-3 font-black border-b dark:border-slate-700 text-base flex items-center gap-2 dark:text-white"><Calendar size={16}/> Master Roster</div>
+        <div className="divide-y dark:divide-slate-700">
+          {monthShifts.map(s => {
+             const emp = users.find(u => u.id === s.employeeId); const isMe = appUser.id === s.employeeId; const isOffered = shiftSwaps.some(sw => sw.shiftId === s.id);
+             return (
+               <div key={s.id} className={`p-2.5 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${isMe ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+                 <div className="flex items-center gap-2.5">
+                   <img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border-2 object-cover ${s.role==='Bartender'?'border-blue-400':'border-orange-400'}`} alt="pic"/>
+                   <div>
+                     <span className={`font-bold text-sm block leading-tight ${isMe ? 'text-blue-700 dark:text-blue-400' : 'dark:text-white'}`}>{emp?.name} {isMe && '(You)'}</span>
+                     <span className="text-[9px] font-black text-slate-400 uppercase">{formatDisplayDate(s.date)} • {s.role}</span>
+                   </div>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <div className="text-xs font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md border dark:border-slate-600 dark:text-slate-200">{formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>
+                   {isMe && !isOffered && <button onClick={() => handleOfferSwap(s)} className="bg-slate-900 dark:bg-slate-600 text-white px-2 py-1 rounded-md font-bold text-[10px] shadow-sm hover:bg-slate-800 transition-colors">Trade</button>}
+                   {isOffered && <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded font-black uppercase text-slate-500">Posted</span>}
+                 </div>
+               </div>
+             )
+          })}
+          {monthShifts.length === 0 && <div className="p-6 text-center text-xs text-slate-400 font-bold">No published shifts yet.</div>}
+        </div>
       </div>
     </div>
   );
@@ -661,25 +621,28 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
   );
 };
 
-// --- PREP LIST (WI Food Code + Brother QL-810W Print Engine) ---
+
+// --- PREP LIST (WI Food Code + BULLETPROOF Brother QL-810W Engine) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
-  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
+  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const [isPrinting, setIsPrinting] = useState(false);
+  const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
   
-  // Bulletproof Print Engine: Wait 500ms for DOM to physically paint the labels before printing
+  // BULLETPROOF PRINT ENGINE: Force-renders only the labels to the DOM, waits 800ms, then fires print.
   useEffect(() => {
     let timer;
-    if (printItems.length > 0) {
-      timer = setTimeout(() => { window.print(); }, 500); 
+    if (isPrinting && printItems.length > 0) {
+      timer = setTimeout(() => { window.print(); }, 800); 
     }
     return () => clearTimeout(timer);
-  }, [printItems]);
+  }, [isPrinting, printItems]);
 
-  // Clear labels when print window closes to reset the state
   useEffect(() => {
-    const afterPrint = () => setPrintItems([]);
-    window.addEventListener('afterprint', afterPrint);
-    return () => window.removeEventListener('afterprint', afterPrint);
-  }, []);
+    const handleClosePrint = () => { setIsPrinting(false); setPrintItems([]); };
+    window.addEventListener('afterprint', handleClosePrint);
+    // Fallback for mobile browsers that don't fire afterprint reliably
+    window.addEventListener('focus', () => { if(isPrinting) setTimeout(handleClosePrint, 1000); });
+    return () => { window.removeEventListener('afterprint', handleClosePrint); window.removeEventListener('focus', handleClosePrint); };
+  }, [isPrinting]);
 
   const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
   const toggleStatus = async (item) => { 
@@ -698,50 +661,58 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
     const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}` }); } });
     setPrintItems(toPrint);
+    setIsPrinting(true); // Engages the isolated print render
   };
 
-  // Wisconsin Food Code: 7 Days Total (Prep Day is Day 1. Expires Prep + 6)
   const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
   const globalSelectedCount = items.filter(i => i.isSelected).length;
-
   const groupedItems = items.reduce((acc, i) => { const c = i.category || 'General'; if(!acc[c]) acc[c]=[]; acc[c].push(i); return acc; }, {});
 
+  // --- ISOLATED PRINT RENDER ---
+  // When printing, hijack the entire component render to ONLY show the labels. 
+  // This bypasses 100% of mobile browser visibility & CSS nesting bugs.
+  if (isPrinting) {
+    return (
+      <div className="bg-white absolute inset-0 z-[99999] min-h-screen">
+        <style>{`
+          @media print {
+            @page { size: 2.4in 2.4in; margin: 0; }
+            body, html { margin: 0 !important; padding: 0 !important; background: white !important; }
+            .no-print { display: none !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .print-page { width: 2.4in !important; height: 2.4in !important; display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; text-align: center !important; padding: 0.1in !important; box-sizing: border-box !important; page-break-after: always !important; page-break-inside: avoid !important; margin: 0 !important; }
+            .print-title { font-size: 18px !important; font-weight: 900 !important; color: #000 !important; margin-bottom: 6px !important; text-transform: uppercase !important; line-height: 1.1 !important; }
+            .print-meta { font-size: 14px !important; font-weight: bold !important; color: #000 !important; margin-bottom: 2px !important; }
+            .print-exp { font-size: 16px !important; font-weight: 900 !important; color: #000 !important; margin-top: 4px !important; border-top: 2px solid #000 !important; padding-top: 4px !important; width: 90% !important; }
+          }
+        `}</style>
+        <div className="no-print flex flex-col items-center justify-center h-[80vh]">
+           <Loader2 className="animate-spin text-blue-600 mb-4" size={64} />
+           <h2 className="text-2xl font-black text-slate-900">Formatting Labels...</h2>
+           <p className="text-slate-500 font-bold mt-2">Sending to Brother QL-810W</p>
+        </div>
+        <div>
+          {printItems.map(i => (
+            <div key={i.printId} className="print-page">
+              <div className="print-title">{i.text}</div>
+              <div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div>
+              <div className="print-exp">EXP: {getExpDate(prepDate)}</div>
+              <div className="print-meta">EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '______'}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // --- NORMAL UI RENDER ---
   return (
     <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
-      <style>{`
-        @media screen {
-          .label-print-zone { display: none; }
-        }
-        @media print {
-          @page { size: 2.4in 2.4in; margin: 0; }
-          body * { visibility: hidden !important; }
-          .label-print-zone { display: block !important; visibility: visible !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 2.4in !important; margin: 0 !important; padding: 0 !important; background: white !important; z-index: 2147483647 !important; }
-          .label-print-zone * { visibility: visible !important; }
-          .print-page { width: 2.4in; height: 2.4in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0.1in; box-sizing: border-box; page-break-after: always; page-break-inside: avoid; border: none; }
-          .print-title { font-size: 18px; font-weight: 900; color: #000; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; }
-          .print-meta { font-size: 14px; font-weight: bold; color: #000; margin-bottom: 2px; }
-          .print-exp { font-size: 16px; font-weight: 900; color: #000; margin-top: 4px; border-top: 2px solid #000; padding-top: 4px; width: 90%; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
-      
-      {/* Explicitly rendered to DOM to ensure Chrome calculates the bounds before window.print() fires */}
-      <div className="label-print-zone bg-white text-black">
-        {printItems.map(i => (
-          <div key={i.printId} className="print-page">
-            <div className="print-title">{i.text}</div>
-            <div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div>
-            <div className="print-exp">EXP: {getExpDate(prepDate)}</div>
-            <div className="print-meta">EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '______'}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm no-print">
+      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm">
          <h3 className="font-bold flex items-center gap-2 text-sm dark:text-white"><ClipboardList className="text-blue-500" size={18}/> Prep List For:</h3>
          <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 border rounded-lg outline-none text-sm font-bold dark:bg-slate-700 dark:border-slate-600 dark:text-white"/>
       </div>
-      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-3 rounded-xl flex flex-col sm:flex-row gap-2 shadow-sm items-center no-print">
+      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-3 rounded-xl flex flex-col sm:flex-row gap-2 shadow-sm items-center">
         <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-1.5 bg-transparent text-sm outline-none font-medium dark:text-white" placeholder="Add prep task..." required/>
         <select value={cat} onChange={e=>setCat(e.target.value)} className="w-full sm:w-28 p-1.5 text-xs font-bold bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-lg outline-none dark:text-white"><option>General</option><option>Meat</option><option>Produce</option><option>Dairy</option><option>Sauces</option><option>Line Prep</option></select>
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-2 sm:pt-0 dark:border-slate-700">
@@ -750,7 +721,7 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
         </div>
       </form>
       
-      <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 overflow-hidden shadow-sm no-print">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 overflow-hidden shadow-sm">
         {Object.entries(groupedItems).map(([category, catItems]) => (
           <div key={category}>
             <div className="bg-slate-50 dark:bg-slate-900/50 px-3 py-1.5 border-y dark:border-slate-700 font-black text-[10px] uppercase text-slate-500 tracking-wider flex justify-between"><span>{category}</span><span>{catItems.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{catItems.length} Done</span></div>
@@ -772,17 +743,19 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
           </div>
         ))}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 no-print z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <div className="max-w-2xl mx-auto flex gap-2">
-          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0 || printItems.length > 0} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">
-            {printItems.length > 0 ? <span className="flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={16}/> Generating Labels...</span> : `🖨️ Print (${globalSelectedCount})`}
+          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0 || isPrinting} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">
+            🖨️ Print ({globalSelectedCount})
           </button>
-          <button onClick={handleBatchDone} disabled={globalSelectedCount===0 || printItems.length > 0} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button>
+          <button onClick={handleBatchDone} disabled={globalSelectedCount===0 || isPrinting} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button>
         </div>
       </div>
     </div>
   );
 };
+
+
 // --- INVENTORY TAB (Full Features + Smart Deficit) ---
 const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); const [searchTerm, setSearchTerm] = useState(''); const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState('PFG'); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState(''); const [orderOverrides, setOrderOverrides] = useState({}); const [editItem, setEditItem] = useState(null); const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, items: [] });
