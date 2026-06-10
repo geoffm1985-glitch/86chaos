@@ -611,11 +611,12 @@ const TabPrep = ({ currentDate, prepItems }) => {
   const [isMaster, setIsMaster] = useState(true);
   const [printItems, setPrintItems] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [prepDate, setPrepDate] = useState(currentDate); // Local date state for future prep
   
   const handleAdd = async (e) => { 
     e.preventDefault(); if (!text.trim()) return; 
     await addDoc(collection(db, "prepItems"), { 
-      date: isMaster ? 'MASTER' : currentDate, 
+      date: isMaster ? 'MASTER' : prepDate, 
       text: text.trim(), 
       isCompleted: false, 
       completedDates: {}, 
@@ -628,7 +629,7 @@ const TabPrep = ({ currentDate, prepItems }) => {
   const toggleStatus = async (item) => {
     if (item.isMaster) {
       const updatedDates = { ...(item.completedDates || {}) };
-      updatedDates[currentDate] = !updatedDates[currentDate];
+      updatedDates[prepDate] = !updatedDates[prepDate];
       await updateDoc(doc(db, "prepItems", item.id), { completedDates: updatedDates });
     } else {
       await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted });
@@ -642,22 +643,20 @@ const TabPrep = ({ currentDate, prepItems }) => {
     for (const item of itemsToComplete) {
       if (item.isMaster) {
         const updatedDates = { ...(item.completedDates || {}) };
-        updatedDates[currentDate] = true;
+        updatedDates[prepDate] = true;
         await updateDoc(doc(db, "prepItems", item.id), { completedDates: updatedDates });
       } else {
         await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true });
       }
     }
-    setSelectedIds([]);
+    setSelectedIds([]); // Clear selection only when marked done
   };
   
   const handleDelete = async (id) => await deleteDoc(doc(db, "prepItems", id));
 
-  const updateQty = async (id, value) => {
-    const newQty = parseInt(value, 10);
-    if (newQty > 0) {
-      await updateDoc(doc(db, "prepItems", id), { qty: newQty });
-    }
+  const updateQty = async (id, currentQty, change) => {
+    const newQty = Math.max(1, currentQty + change);
+    await updateDoc(doc(db, "prepItems", id), { qty: newQty });
   };
 
   const togglePrintSelection = (id) => {
@@ -678,25 +677,35 @@ const TabPrep = ({ currentDate, prepItems }) => {
     setTimeout(() => { 
       window.print(); 
       setPrintItems([]); 
-      setSelectedIds([]); 
+      // NOTE: We no longer clear selectedIds here, so boxes stay checked!
     }, 300);
   };
 
-  const displayItems = prepItems.filter(p => p.date === currentDate || p.isMaster);
+  const displayItems = prepItems.filter(p => p.date === prepDate || p.isMaster);
 
   const getExpDate = (dateStr) => {
     const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + 6);
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear().toString().slice(-2)}`;
   };
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 relative pb-40">
+      {/* Brother QL-810W Day Dot Print CSS */}
       <style>{`
         @media print {
+          @page { size: 2.4in 2.0in; margin: 0; }
           body * { visibility: hidden !important; }
           .label-print-zone, .label-print-zone * { visibility: visible !important; }
-          .label-print-zone { position: absolute; left: 0; top: 0; width: 100vw; background: white; }
-          .print-page { width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 10px; page-break-after: always; }
+          .label-print-zone { position: absolute; left: 0; top: 0; width: 2.4in; margin: 0; padding: 0; background: white; }
+          .print-page { 
+            width: 2.4in; height: 2.0in; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            text-align: center; padding: 0.1in; box-sizing: border-box; 
+            page-break-after: always; border: 1px dashed #ccc; 
+          }
+          .print-title { font-size: 18px; font-weight: 900; color: #000; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; }
+          .print-meta { font-size: 14px; font-weight: bold; color: #000; margin-bottom: 2px; }
+          .print-exp { font-size: 16px; font-weight: 900; color: #000; margin-top: 4px; border-top: 2px solid #000; padding-top: 4px; width: 90%; }
         }
       `}</style>
 
@@ -704,13 +713,20 @@ const TabPrep = ({ currentDate, prepItems }) => {
         <div className="label-print-zone bg-white text-black z-[100]">
           {printItems.map(item => (
             <div key={item.printId} className="print-page">
-              <h1 className="text-4xl font-black uppercase mb-4 text-black">{item.text}</h1>
-              <h2 className="text-2xl font-bold text-black">Prepped: {formatDisplayDate(currentDate)}</h2>
-              <h2 className="text-2xl font-black mt-2">Discard By: {getExpDate(currentDate)}</h2>
+              <div className="print-title">{item.text}</div>
+              <div className="print-meta">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div>
+              <div className="print-meta">EMP: ______</div>
+              <div className="print-exp">EXP: {getExpDate(prepDate)}</div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Date Override Header */}
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl flex items-center justify-between shadow-sm no-print">
+         <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><ClipboardList size={20} className="text-blue-500"/> Prep List For:</h3>
+         <input type="date" value={prepDate} onChange={e => setPrepDate(e.target.value)} className="p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none" />
+      </div>
 
       <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 pl-4 rounded-2xl flex flex-col sm:flex-row gap-2 shadow-sm items-center no-print">
         <input type="text" value={text} onChange={e => setText(e.target.value)} className="flex-1 w-full p-2 bg-transparent outline-none font-medium text-slate-900 dark:text-white placeholder:text-slate-400" placeholder="Add prep task (e.g., Dice Onions)..." required />
@@ -723,18 +739,26 @@ const TabPrep = ({ currentDate, prepItems }) => {
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm divide-y divide-slate-100 dark:divide-slate-700 no-print">
         {displayItems.length === 0 ? (<div className="p-6 text-center text-slate-400 font-medium">No prep tasks scheduled.</div>) : (
           displayItems.map(item => {
-            const isDone = item.isMaster ? !!item.completedDates?.[currentDate] : item.isCompleted;
+            const isDone = item.isMaster ? !!item.completedDates?.[prepDate] : item.isCompleted;
+            const currentQty = item.qty || 1;
             return (
             <div key={item.id} className="p-3 flex items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors gap-3">
               <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => togglePrintSelection(item.id)} className="w-6 h-6 rounded border-slate-300 accent-blue-600 cursor-pointer flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <span className={`text-base truncate block transition-all ${isDone ? 'line-through text-slate-300 dark:text-slate-500' : 'font-bold text-slate-800 dark:text-white'}`}>{item.text}</span>
                 {item.isMaster && <span className="block text-[9px] font-bold text-blue-500 uppercase tracking-widest mt-0.5">Master Task</span>}
-                {isDone && <span className="block text-[10px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(currentDate)}</span>}
+                {isDone && <span className="block text-[10px] font-black text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded w-max mt-1 border border-amber-200 dark:border-amber-800">Discard By: {getExpDate(prepDate)}</span>}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <input type="number" min="1" defaultValue={item.qty || 1} onBlur={(e) => updateQty(item.id, e.target.value)} className="w-12 h-10 text-center bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-bold text-slate-800 dark:text-white outline-none focus:border-blue-500" title="Quantity" />
-                <button onClick={() => toggleStatus(item)} className={`flex items-center justify-center w-10 h-10 rounded-lg font-bold transition-all shadow-sm ${isDone ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`} title={isDone ? "Mark Undone" : "Mark Done"}>{isDone ? <Repeat size={16}/> : <Check size={18}/>}</button>
+                
+                {/* Plus / Minus Qty Controller */}
+                <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden">
+                   <button onClick={() => updateQty(item.id, currentQty, -1)} className="w-8 h-10 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">-</button>
+                   <span className="w-6 text-center font-bold text-slate-800 dark:text-white">{currentQty}</span>
+                   <button onClick={() => updateQty(item.id, currentQty, 1)} className="w-8 h-10 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">+</button>
+                </div>
+
+                <button onClick={() => toggleStatus(item)} className={`flex items-center justify-center w-10 h-10 rounded-lg font-bold transition-all shadow-sm ${isDone ? 'bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'}`} title={isDone ? "Mark Undone" : "Mark Done"}>{isDone ? <Repeat size={16}/> : <Check size={18}/>}</button>
                 <button onClick={() => handleDelete(item.id)} className="w-10 h-10 flex items-center justify-center text-slate-300 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Delete Item"><Trash2 size={18}/></button>
               </div>
             </div>
@@ -786,6 +810,13 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
     const ampm = h >= 12 ? 'p' : 'a';
     const hr = h % 12 || 12;
     return m === '00' ? `${hr}${ampm}` : `${hr}:${m}${ampm}`;
+  };
+
+  // Helper to format names to "First L." to save space
+  const formatNameShort = (fullName) => {
+    const parts = fullName.trim().split(' ');
+    if (parts.length === 1) return parts[0];
+    return `${parts[0]} ${parts[1][0]}.`;
   };
 
   const SHIFT_PRESETS = [
@@ -854,33 +885,34 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
        const day = dObj.getDay(); 
        const isWeekendDay = day === 0 || day === 6;
        const isFriSat = day === 5 || day === 6;
+       const dateFmt = `${dObj.getMonth()+1}/${dObj.getDate()}`; // e.g. 6/12
 
        const bar = dayShifts.filter(s => s.role === 'Bartender');
        const kit = dayShifts.filter(s => s.role === 'Kitchen');
 
-       if (!kit.some(s => s.startTime <= '10:00') || !kit.some(s => s.endTime >= '21:00')) warnings.push(`${d}: Missing full kitchen bounds (9a-9p)`);
-       if (!bar.some(s => s.startTime <= '11:00') || !bar.some(s => s.endTime >= '02:00')) warnings.push(`${d}: Missing full bar bounds (11a-Close)`);
+       if (!kit.some(s => s.startTime <= '10:00') || !kit.some(s => s.endTime >= '21:00')) warnings.push(`[${dateFmt}] Kitchen: Missing open-to-close coverage (9a-9p)`);
+       if (!bar.some(s => s.startTime <= '11:00') || !bar.some(s => s.endTime >= '02:00')) warnings.push(`[${dateFmt}] Bar: Missing open-to-close coverage (11a-CL)`);
 
        const closers = bar.filter(s => s.endTime >= '02:00').length;
-       if (isFriSat && closers < 2) warnings.push(`${d}: Needs 2 closing bartenders for weekend. Only scheduled ${closers}.`);
-       if (!isFriSat && closers < 1) warnings.push(`${d}: Needs at least 1 closing bartender.`);
+       if (isFriSat && closers < 2) warnings.push(`[${dateFmt}] Bar: Needs 2 closers (Fri/Sat), found ${closers}`);
+       if (!isFriSat && closers < 1) warnings.push(`[${dateFmt}] Bar: Needs 1 closer (Sun-Thu), found ${closers}`);
 
        const countOverlap = (arr, start, end) => arr.filter(s => s.startTime <= start && s.endTime >= end).length;
        
        const lunchBar = countOverlap(bar, '12:00', '13:00');
        const lunchKit = countOverlap(kit, '12:00', '13:00');
-       if (day === 5 && (lunchBar < 2 || lunchKit < 3)) warnings.push(`${d}: Friday Lunch needs 2 Bar / 3 Kit. Have ${lunchBar} Bar / ${lunchKit} Kit.`);
-       if (day >= 1 && day <= 4 && (lunchBar < 2 || lunchKit < 2)) warnings.push(`${d}: Weekday Lunch needs 2 Bar / 2 Kit.`);
+       if (day === 5 && (lunchBar < 2 || lunchKit < 3)) warnings.push(`[${dateFmt}] Lunch Rush: Needs 2 Bar / 3 Kit, found ${lunchBar} Bar / ${lunchKit} Kit`);
+       else if (day >= 1 && day <= 4 && (lunchBar < 2 || lunchKit < 2)) warnings.push(`[${dateFmt}] Lunch Rush: Needs 2 Bar / 2 Kit, found ${lunchBar} Bar / ${lunchKit} Kit`);
 
        const dinBar = countOverlap(bar, '17:30', '19:00');
        const dinKit = countOverlap(kit, '17:30', '19:00');
-       if (day === 5 && (dinBar < 2 || dinKit < 3)) warnings.push(`${d}: Friday Dinner needs 2 Bar / 3 Kit.`);
-       if (day >= 1 && day <= 4 && (dinBar < 2 || dinKit < 2)) warnings.push(`${d}: Weekday Dinner needs 2 Bar / 2 Kit.`);
+       if (day === 5 && (dinBar < 2 || dinKit < 3)) warnings.push(`[${dateFmt}] Dinner Rush: Needs 2 Bar / 3 Kit, found ${dinBar} Bar / ${dinKit} Kit`);
+       else if (day >= 1 && day <= 4 && (dinBar < 2 || dinKit < 2)) warnings.push(`[${dateFmt}] Dinner Rush: Needs 2 Bar / 2 Kit, found ${dinBar} Bar / ${dinKit} Kit`);
        
        if (isWeekendDay) {
          const dayBar = countOverlap(bar, '12:00', '15:00');
          const dayKit = countOverlap(kit, '12:00', '15:00');
-         if (dayBar < 1 || dayKit < 2) warnings.push(`${d}: Weekend daytime needs 1 Bar / 2 Kit.`);
+         if (dayBar < 1 || dayKit < 2) warnings.push(`[${dateFmt}] Weekend Day: Needs 1 Bar / 2 Kit, found ${dayBar} Bar / ${dayKit} Kit`);
        }
     });
     return warnings;
@@ -932,12 +964,12 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
           <table className="w-full text-left text-[10px] border-collapse">
             <thead>
               <tr className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <th className="p-3 font-bold text-slate-700 dark:text-slate-400 sticky left-0 bg-slate-100 dark:bg-slate-800 z-20 w-32 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
+                <th className="p-3 font-bold text-slate-700 dark:text-slate-400 sticky left-0 bg-slate-100 dark:bg-slate-800 z-20 w-24 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
                 {monthDaysArray.map(d => {
                   const dateObj = new Date(d + 'T12:00:00');
                   const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
                   return (
-                    <th key={d} className={`p-1.5 text-center border-l border-slate-200 dark:border-slate-700 min-w-[50px] ${assignDates.includes(d) ? 'bg-blue-200 dark:bg-blue-900/40' : (isWeekend ? 'bg-slate-200/50 dark:bg-slate-700/30' : '')}`}>
+                    <th key={d} className={`p-1.5 text-center border-l border-slate-200 dark:border-slate-700 min-w-[40px] ${assignDates.includes(d) ? 'bg-blue-200 dark:bg-blue-900/40' : (isWeekend ? 'bg-slate-200/50 dark:bg-slate-700/30' : '')}`}>
                       <div className={`text-[9px] font-bold uppercase ${isWeekend ? 'text-indigo-500 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>{dateObj.toLocaleDateString('en-US', {weekday: 'short'})}</div>
                       <div className={`text-sm font-black ${assignDates.includes(d) ? 'text-blue-700 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{parseInt(d.split('-')[2], 10)}</div>
                     </th>
@@ -957,7 +989,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                     >
                       <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isBartender ? 'bg-blue-500' : 'bg-orange-500'}`}></span>
-                        {u.name}
+                        {formatNameShort(u.name)}
                       </div>
                     </td>
                     {monthDaysArray.map(d => {
@@ -989,7 +1021,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                       };
 
                       return (
-                        <td key={d} onClick={handleCellClick} className={`p-1 border-l border-slate-200 dark:border-slate-700 cursor-pointer transition-all relative ${isSelectedEmp && isDateSelected ? 'bg-blue-100 dark:bg-blue-900/40' : isSelectedEmp ? 'hover:bg-blue-100 dark:hover:bg-blue-900/30' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}>
+                        <td key={d} onClick={handleCellClick} className={`p-1 border-l border-slate-200 dark:border-slate-700 cursor-pointer transition-all relative ${isSelectedEmp && isDateSelected ? 'bg-blue-300 dark:bg-blue-600 outline outline-2 outline-blue-600 dark:outline-blue-400 shadow-[inset_0_0_15px_rgba(0,0,0,0.1)] z-10 scale-[1.02]' : isSelectedEmp ? 'hover:bg-blue-200 dark:hover:bg-blue-800' : 'hover:bg-slate-200 dark:hover:bg-slate-800'}`}>
                           {off ? (
                             <div className="w-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-black text-[10px] py-1.5 rounded text-center">OFF</div>
                           ) : shift ? (
@@ -997,7 +1029,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                               {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
                             </div>
                           ) : (
-                            <div className="w-full h-6 rounded flex items-center justify-center text-slate-300 dark:text-slate-700 font-bold opacity-0 hover:opacity-100 transition-opacity">
+                            <div className="w-full h-6 rounded flex items-center justify-center text-slate-400 dark:text-slate-600 font-bold opacity-0 hover:opacity-100 transition-opacity">
                               <Plus size={14}/>
                             </div>
                           )}
@@ -1016,7 +1048,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
             <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-500 uppercase mb-1">Staff</label>
             <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setAssignDates([]); setSelectedShiftId(null);}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-lg font-bold outline-none">
               <option value="">- Choose -</option>
-              {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {displayUsers.map(u => <option key={u.id} value={u.id}>{formatNameShort(u.name)}</option>)}
             </select>
           </div>
           <div className="w-full md:w-36">
