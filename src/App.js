@@ -5,6 +5,7 @@ import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Us
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getMessaging, getToken } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: "AIzaSyA0kkmRCqGNoB1LXKfuCNIl1JKDyQci9hA",
@@ -18,6 +19,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+// Initialize Messaging safely (prevents crashing on unsupported browsers)
+const messaging = typeof window !== 'undefined' && 'Notification' in window ? getMessaging(app) : null;
 
 // --- Master Configuration ---
 const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
@@ -71,11 +75,6 @@ const formatTime12Hour = (time24) => {
   if (!time24 || !time24.includes(':')) return time24;
   let [h, m] = time24.split(':'); h = parseInt(h, 10);
   return `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
-};
-
-// --- Push Notification Mock Trigger ---
-const triggerPushNotification = (title, body) => {
-  console.log(`[PUSH NOTIFICATION] ${title}: ${body}`);
 };
 
 // --- SVG Logo ---
@@ -138,171 +137,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
           </div>
        </div>
      </div>
-  );
-};
-
-// --- Main Application ---
-export default function App() {
-  const users = useLiveCollection('users');
-  const shifts = useLiveCollection('shifts');
-  const prepItems = useLiveCollection('prepItems');
-  const inventoryItems = useLiveCollection('inventoryItems');
-  const timeOff = useLiveCollection('timeOff');
-  const shiftSwaps = useLiveCollection('shiftSwaps');
-  const events = useLiveCollection('events');
-  
-  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
-  const [activeTabState, setActiveTabState] = useState('published');
-  const [isDark, setIsDark] = useState(() => { return localStorage.getItem('theme') === 'dark'; });
-
-  useEffect(() => {
-    if (isDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); } 
-    else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
-  }, [isDark]);
-
-  useEffect(() => {
-    const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
-    window.addEventListener('popstate', handlePopState);
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab') || (appUser?.isAdmin ? 'schedule' : 'published');
-    setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [appUser]);
-
-  const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
-
-  useEffect(() => {
-    if (appUser) localStorage.setItem('cheersUser', JSON.stringify(appUser));
-    else localStorage.removeItem('cheersUser');
-  }, [appUser]);
-
-  useEffect(() => { signInAnonymously(auth).catch(err => console.error("Firebase Auth error:", err)); }, []);
-
-  const [currentDate, setCurrentDate] = useState(getToday());
-  const [toasts, setToasts] = useState([]);
-  const [isDateModalOpen, setIsDateModalOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
-
-  const addToast = (title, message) => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, title, message }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
-  };
-
-  if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} isDark={isDark} />;
-
-  return (
-    <div className={`min-h-screen font-sans flex flex-col ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      <style>{`
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        .animate-slide-in { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        .dark input[type="date"]::-webkit-calendar-picker-indicator, .dark input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); }
-      `}</style>
-
-      {/* --- Header --- */}
-      <header className={`sticky top-0 z-40 shadow-sm border-b h-20 flex items-center justify-between px-6 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-        <CheersLogo isDark={isDark} />
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2.5 border rounded-xl shadow-sm transition-all outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}><Menu size={24} /></button>
-      </header>
-
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} isDark={isDark} toggleDark={() => setIsDark(!isDark)} />
-
-      {/* --- Date Header --- */}
-      {['schedule', 'published', 'month'].includes(activeTabState) && (
-        <div className={`py-5 px-4 shadow-sm z-30 border-b ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <button onClick={() => setCurrentDate(addDays(currentDate, -30))} className={`p-2.5 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={24} /></button>
-            <h2 onClick={() => setIsDateModalOpen(true)} className={`text-2xl sm:text-3xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
-              {formatDisplayMonth(getMonthStr(currentDate))}
-            </h2>
-            <button onClick={() => setCurrentDate(addDays(currentDate, 30))} className={`p-2.5 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={24} /></button>
-          </div>
-        </div>
-      )}
-
-      <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Month">
-        <div className="space-y-4">
-          <input type="month" value={getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(e.target.value + '-01'); setIsDateModalOpen(false); } }} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-blue-500" />
-          <button onClick={() => setIsDateModalOpen(false)} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Close</button>
-        </div>
-      </Modal>
-
-     {/* --- Main Content Area --- */}
-      <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-6 pb-24">
-        {activeTabState === 'schedule' && appUser?.isAdmin && <TabSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} addToast={addToast} timeOff={timeOff} />}
-        {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} addToast={addToast} />}
-        {activeTabState === 'month' && <TabMonth currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} setCurrentDate={setCurrentDate} addToast={addToast} />}
-        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'timeoff' && <TabTimeOff appUser={liveAppUser} users={users} timeOff={timeOff} addToast={addToast} />}
-        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} />}
-        {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'settings' && <TabSettings addToast={addToast} inventoryItems={inventoryItems} appUser={liveAppUser} />}
-      </main>
-
-      {/* --- Toast Alert Engine --- */}
-      <div className="fixed top-24 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-3 px-4 pointer-events-none">
-        {toasts.map(t => (
-          <div key={t.id} className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl pointer-events-auto flex items-start gap-4 border border-slate-700 animate-toast">
-            <div className="bg-blue-500/20 p-2 rounded-full text-blue-400 mt-0.5"><Bell size={18} /></div>
-            <div><h4 className="font-bold text-sm">{t.title}</h4><p className="text-sm text-slate-300 font-medium mt-0.5">{t.message}</p></div>
-            <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="ml-auto text-slate-400 hover:text-white"><X size={16}/></button>
-          </div>
-        ))}
-      </div>
-
-      {/* Version Tracker */}
-      <div className="w-full text-center text-slate-400 dark:text-slate-500 font-bold text-xs tracking-widest uppercase py-6 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
-        Cheers Management OS • v4.5.0
-      </div>
-    </div>
-  );
-}
-
-// --- Login Screen ---
-const LoginScreen = ({ users, setAppUser, isDark }) => {
-  const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [newPassword, setNewPassword] = useState(''); const [error, setError] = useState(''); const [isLoading, setIsLoading] = useState(false); const [resetUser, setResetUser] = useState(null);
-  const isFirstUser = users.length === 0;
-
-  const handleAuth = async (e) => {
-    e.preventDefault(); setError(''); setIsLoading(true);
-    if (email.trim() === 'admin' && password === 'Atticus7!') { setAppUser({ id: 'dev-backdoor', name: 'Ghost Admin', email: MASTER_ADMIN_EMAIL, role: 'Kitchen', isAdmin: true, isActive: true }); return; }
-    try {
-      if (isFirstUser) {
-        if (!name.trim()) return setError("Name is required for the first admin account.");
-        const newUser = { name: name.trim(), email: MASTER_ADMIN_EMAIL, phone: '', password, role: 'Kitchen', isAdmin: true, isActive: true, forcePasswordChange: false, availability: {sun:true,mon:true,tue:true,wed:true,thu:true,fri:true,sat:true} };
-        const docRef = await addDoc(collection(db, "users"), newUser);
-        setAppUser({ id: docRef.id, ...newUser });
-      } else {
-        const user = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
-        if (user) { if (user.forcePasswordChange) setResetUser(user); else setAppUser(user); } 
-        else setError("Invalid email or password.");
-      }
-    } catch (err) { setError("Database connection error."); console.error(err); }
-    setIsLoading(false);
-  };
-
-  const handlePasswordSetup = async (e) => {
-    e.preventDefault(); setError(''); setIsLoading(true);
-    if(newPassword.length < 5) { setError("Password must be at least 5 characters."); setIsLoading(false); return; }
-    try {
-      await updateDoc(doc(db, "users", resetUser.id), { password: newPassword, forcePasswordChange: false });
-      setAppUser({ ...resetUser, password: newPassword, forcePasswordChange: false });
-    } catch (err) { setError("Failed to update password."); console.error(err); }
-    setIsLoading(false);
-  };
-
-  if (resetUser) return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}><div className={`rounded-3xl shadow-xl border p-8 max-w-md w-full ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}><h2 className={`text-2xl font-black text-center mb-2 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>Welcome, {resetUser.name}!</h2><p className="text-center text-slate-500 dark:text-slate-400 mb-6 font-medium">Please set your permanent password to continue.</p><form onSubmit={handlePasswordSetup} className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1.5">New Password</label><input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required /></div>{error && <p className="text-red-600 text-sm font-bold bg-red-50 dark:bg-red-900/20 p-3 rounded-xl border border-red-200 dark:border-red-800">{error}</p>}<button type="submit" disabled={isLoading} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors shadow-md flex justify-center items-center gap-2">{isLoading ? <Loader2 className="animate-spin" size={20}/> : 'Save Password & Login'}</button></form></div></div>
-  );
-
-  return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}><div className={`rounded-3xl shadow-xl border p-8 max-w-md w-full ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}><div className="flex justify-center mb-8"><CheersLogo isDark={isDark} /></div><h2 className={`text-2xl font-black text-center mb-6 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{isFirstUser ? 'Create Admin Account' : 'Staff Login'}</h2><form onSubmit={handleAuth} className="space-y-4">{isFirstUser && (<div><label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1.5">Your Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required /></div>)}<div><label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1.5">Email / Username</label><input type="text" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required /></div><div><label className="block text-sm font-bold text-slate-600 dark:text-slate-300 mb-1.5">Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required /></div>{error && <p className="text-red-600 text-sm font-bold bg-red-50 dark:bg-red-900/20 p-3 rounded-xl border border-red-200 dark:border-red-800">{error}</p>}<button type="submit" disabled={isLoading} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors shadow-md mt-2 flex justify-center items-center gap-2">{isLoading ? <Loader2 className="animate-spin" size={20}/> : (isFirstUser ? 'Create Account' : 'Login')}</button></form></div></div>
   );
 };
 
@@ -1022,7 +856,7 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
                               {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
                             </div>
                           ) : (
-                            <div className="w-full h-6 rounded flex items-center justify-center text-slate-400 dark:text-slate-600 font-bold opacity-0 hover:opacity-100 transition-opacity">
+                            <div className="w-full h-6 rounded flex items-center justify-center text-slate-300 dark:text-slate-700 font-bold opacity-0 hover:opacity-100 transition-opacity">
                               <Plus size={14}/>
                             </div>
                           )}
@@ -1093,343 +927,6 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, add
   );
 };
 
-// --- Tab: Time Off ---
-const TabTimeOff = ({ appUser, users, timeOff, addToast }) => {
-  const [selectedDates, setSelectedDates] = useState([]); const [isPartial, setIsPartial] = useState(false); const [startTime, setStartTime] = useState('09:00'); const [endTime, setEndTime] = useState('14:00');
-  const displayUsers = users.length > 0 ? users : (appUser ? [appUser] : []);
-  
-  const today = getToday();
-  const monthStr = getMonthStr(today);
-  const daysInMonth = getDaysInMonth(monthStr);
-  const monthFirstDay = new Date(monthStr + '-01T12:00:00').getDay();
-  const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
-
-  const handleToggleDate = (d) => { if (selectedDates.includes(d)) setSelectedDates(selectedDates.filter(x => x !== d)); else setSelectedDates([...selectedDates, d].sort()); };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if(selectedDates.length === 0) return addToast('Error', 'Select at least one date.');
-    for(const d of selectedDates) {
-      await addDoc(collection(db, "timeOff"), { employeeId: appUser.id, startDate: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null });
-    }
-    addToast('Time Off Logged', `Requested ${selectedDates.length} days off.`);
-    setSelectedDates([]);
-  };
-
-  const handleDelete = async (id) => await deleteDoc(doc(db, "timeOff", id));
-
-  return (
-    <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-3xl shadow-sm space-y-6 self-start">
-        <h3 className="text-xl font-black flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-blue-500" size={24}/> Request Time Off</h3>
-        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">{formatDisplayMonth(monthStr)}</div>
-           <div className="grid grid-cols-7 gap-1 text-center">
-              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{d}</div>)}
-              {Array.from({length: monthFirstDay}).map((_, i) => <div key={`empty-${i}`} />)}
-              {monthDaysArray.map(d => {
-                 const isSel = selectedDates.includes(d);
-                 return <button key={d} onClick={() => handleToggleDate(d)} className={`py-2 rounded-lg text-sm font-bold transition-all border ${isSel ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-400'}`}>{parseInt(d.split('-')[2], 10)}</button>
-              })}
-           </div>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="p-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-4">
-            <label className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300 cursor-pointer"><input type="checkbox" checked={isPartial} onChange={e => setIsPartial(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-blue-600" /> Partial Day / specific times</label>
-            {isPartial && (<div className="flex gap-4 pt-2 border-t border-slate-200 dark:border-slate-600"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg font-bold" /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">End Time</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg font-bold" /></div></div>)}
-          </div>
-          <button type="submit" disabled={selectedDates.length === 0} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50">Submit Request</button>
-        </form>
-      </div>
-
-      <div className="space-y-4">
-        <h3 className="text-xl font-black text-slate-800 dark:text-white pl-2">Upcoming Roster</h3>
-        <div className="space-y-3">
-          {timeOff.length === 0 ? <p className="p-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-500 font-medium">No time off logged.</p> : null}
-          {timeOff.filter(t => appUser.isAdmin || t.employeeId === appUser.id).map(t => {
-            const emp = displayUsers.find(u => u.id === t.employeeId);
-            return (
-              <div key={t.id} className="bg-white dark:bg-slate-800 p-4 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm flex justify-between items-center gap-4 border-l-4 border-l-orange-500">
-                <div><strong className="text-base text-slate-900 dark:text-white block">{emp?.name || 'Unknown'}</strong><span className="text-slate-500 dark:text-slate-400 font-medium text-sm">{formatDisplayDate(t.startDate)}</span>{t.isPartial && <div className="mt-1 text-[10px] font-bold bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800 w-max">{formatTime12Hour(t.startTime)} - {formatTime12Hour(t.endTime)}</div>}</div>
-                {(appUser.isAdmin || t.employeeId === appUser.id) && <button onClick={() => handleDelete(t.id)} className="text-slate-400 hover:text-red-500 p-2 rounded-xl transition-colors"><Trash2 size={18}/></button>}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Tab: Inventory ---
-const TabInventory = ({ inventoryItems, addToast, appUser }) => {
-  const [invTab, setInvTab] = useState('count'); 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState('PFG'); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState('');
-  const [orderOverrides, setOrderOverrides] = useState({});
-  const [editItem, setEditItem] = useState(null);
-  const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, items: [] });
-
-  const handleAddItem = async (e) => {
-    e.preventDefault(); if (!newItemName.trim()) return;
-    await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplier: newItemSupplier, packSize: newItemPackSize.trim(), price: parseFloat(newItemPrice) || 0, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null });
-    setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemPackSize('1 CS'); addToast('Inventory Updated', `${newItemName} added to master list.`);
-  };
-
-  const handleSaveEdit = async (e) => {
-    e.preventDefault(); if (!editItem.name.trim()) return;
-    await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category, pfgCode: editItem.pfgCode.trim(), supplier: editItem.supplier, packSize: editItem.packSize, price: parseFloat(editItem.price) || 0 });
-    setEditItem(null); addToast('Item Updated', 'Master list modified.');
-  };
-
-  const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseInt(newStock) || 0) });
-  const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseInt(newPar) || 0) });
-  const toggleStar = async (item) => await updateDoc(doc(db, "inventoryItems", item.id), { isStarred: !item.isStarred });
-  const deleteItem = async (id) => { if(window.confirm("Remove this item from the master list?")) await deleteDoc(doc(db, "inventoryItems", id)); };
-  const handleOrderChange = (id, value) => setOrderOverrides(prev => ({ ...prev, [id]: parseInt(value) || 0 }));
-
-  const itemsToOrder = inventoryItems.filter(i => {
-    const override = orderOverrides[i.id];
-    if (override !== undefined) return override > 0;
-    return i.currentStock < i.parLevel;
-  });
-
-  const getFinalOrderList = (type) => itemsToOrder.filter(i => type === 'PFG' ? (!i.supplier || i.supplier === 'PFG') : i.supplier === 'Badger').map(item => {
-    const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
-    return { ...item, orderQty: qty };
-  }).filter(i => i.orderQty > 0);
-
-  const handleReviewOrder = (type) => {
-    const list = getFinalOrderList(type);
-    if (list.length === 0) return addToast('Order Empty', `No ${type} items need ordering.`);
-    setConfirmModal({ isOpen: true, type, items: list });
-  };
-
-  const executeOrder = async () => {
-    const { type, items } = confirmModal;
-    let bodyText = "";
-    if (type === 'PFG') {
-      bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}): ${i.orderQty}`).join('%0D%0A');
-      const subject = encodeURIComponent("PFG Order - Cheers Chilton (Acct 39228)");
-      const body = encodeURIComponent("Performance Foodservice Order\nAccount: 39228\nLocation: Cheers-Chilton\n\nItems to Order:\n") + bodyText;
-      window.location.href = `mailto:geoffm1985@gmail.com?subject=${subject}&body=${body}`;
-    } else {
-      bodyText = items.map(i => `${i.name} (${i.packSize || '1 CS'}): ${i.orderQty}`).join('%0A');
-      const body = encodeURIComponent("Cheers Chilton Order:\n\n") + bodyText;
-      window.location.href = `sms:555-555-5555?body=${body}`;
-    }
-    const today = new Date().toISOString().split('T')[0];
-    for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedDate: today }); }
-    setOrderOverrides({}); setConfirmModal({ isOpen: false, type: null, items: [] });
-    addToast('Order Sent', `${type} order dispatched. Pending inventory updated.`);
-  };
-
-  const hasPendingPFG = inventoryItems.some(i => (i.pendingQty || 0) > 0 && (!i.supplier || i.supplier === 'PFG'));
-  const hasPendingBadger = inventoryItems.some(i => (i.pendingQty || 0) > 0 && i.supplier === 'Badger');
-
-  const handleReceivePending = async (supplier) => {
-    if(!window.confirm(`Receive all pending ${supplier} items into active stock?`)) return;
-    
-    const pendingItems = inventoryItems.filter(i => {
-      if ((i.pendingQty || 0) <= 0) return false;
-      if (supplier === 'PFG') return !i.supplier || i.supplier === 'PFG';
-      return i.supplier === 'Badger';
-    });
-
-    for (const item of pendingItems) { 
-      await updateDoc(doc(db, "inventoryItems", item.id), { 
-        currentStock: item.currentStock + item.pendingQty, 
-        pendingQty: 0 
-      }); 
-    }
-    addToast('Stock Updated', `${supplier} pending items moved to active stock.`);
-  };
-
-  const filteredItems = inventoryItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)));
-  const groupedItems = filteredItems.reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
-  const missedStarred = confirmModal.isOpen ? inventoryItems.filter(i => i.isStarred && i.supplier === confirmModal.type && !confirmModal.items.some(oi => oi.id === i.id)) : [];
-  const pfgOrderTotal = getFinalOrderList('PFG').reduce((sum, item) => sum + ((item.price || 0) * item.orderQty), 0);
-
-  return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, type: null, items: [] })} title={`Review ${confirmModal.type} Order`}>
-         <div className="space-y-4">
-           {missedStarred.length > 0 && (
-             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 rounded-xl flex items-start gap-3">
-               <AlertTriangle className="text-amber-500 mt-0.5 flex-shrink-0" size={18} />
-               <div><span className="font-bold text-amber-800 dark:text-amber-400 text-sm block">Starred Items Not Included:</span><span className="text-xs text-amber-700 dark:text-amber-500 font-medium">{missedStarred.map(i => i.name).join(', ')}</span></div>
-             </div>
-           )}
-           <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-700">
-             {confirmModal.items.map(item => (
-                <div key={item.id} className="p-3 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
-                  <div><span className="font-bold text-sm block dark:text-white">{item.name}</span><span className="text-xs text-slate-500">{item.packSize}</span></div>
-                  <div className="font-black text-blue-600 dark:text-blue-400 text-lg">{item.orderQty}</div>
-                </div>
-             ))}
-           </div>
-           {confirmModal.type === 'PFG' && (
-             <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800">
-               <span className="font-bold text-blue-900 dark:text-blue-300">Estimated Total:</span>
-               <span className="font-black text-xl text-blue-700 dark:text-blue-400">${pfgOrderTotal.toFixed(2)}</span>
-             </div>
-           )}
-           <button onClick={executeOrder} className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-bold shadow-md transition-all flex items-center justify-center gap-2"><Send size={20}/> Send via {confirmModal.type === 'PFG' ? 'Email' : 'SMS'}</button>
-         </div>
-      </Modal>
-
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 border-b border-slate-200 dark:border-slate-700 pb-3">
-        <h2 className="text-2xl font-black flex items-center gap-2 text-slate-900 dark:text-white"><Package size={24}/> Inventory</h2>
-        {appUser?.isAdmin && (
-          <div className="bg-slate-200/50 dark:bg-slate-800 p-1 rounded-xl flex border border-slate-200 dark:border-slate-700 w-full sm:w-auto">
-            {['count', 'order', 'manage'].map(tab => (
-              <button key={tab} onClick={() => setInvTab(tab)} className={`flex-1 sm:flex-none px-4 py-1.5 rounded-lg text-sm font-bold capitalize transition-all ${invTab === tab ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>{tab}</button>
-            ))}
-          </div>
-        )}
-      </div>
-      
-      {invTab === 'count' && (
-        <div className="space-y-4">
-          <input type="text" placeholder="Search inventory by name or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-white rounded-xl font-bold shadow-sm outline-none focus:border-blue-500 transition-all" />
-          {Object.keys(groupedItems).length === 0 && <div className="p-8 text-center text-slate-400 font-medium">No items match your search.</div>}
-          {Object.entries(groupedItems).map(([category, items]) => (
-            <div key={category} className="space-y-2">
-              <h4 className="text-lg font-black text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-1">{category}</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {items.map(item => (
-                  <div key={item.id} className="bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-slate-900 dark:text-white text-sm truncate">{item.name}</div>
-                      <div className="text-[9px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider">{item.supplier === 'Badger' ? 'BADGER' : (item.pfgCode ? `PFG: ${item.pfgCode}` : 'PFG')} • {item.packSize || '1 CS'}</div>
-                      {(item.pendingQty || 0) > 0 && <span className="text-[8px] font-black bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded-full mt-1 inline-block border border-blue-200 dark:border-blue-800">(+{item.pendingQty} Pend)</span>}
-                    </div>
-                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 p-1 rounded-md border border-slate-200 dark:border-slate-700 flex-shrink-0">
-                      <div className="flex flex-col items-center">
-                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">PAR</span>
-                        <input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className="w-8 text-center font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded py-0.5 outline-none focus:border-blue-500 text-xs" />
-                      </div>
-                      <div className="h-6 w-px bg-slate-300 dark:bg-slate-600"></div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">STOCK</span>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => updateStock(item.id, item.currentStock - 1)} className="w-5 h-5 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-xs">-</button>
-                          <span className={`w-4 text-center font-black text-sm ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}>{item.currentStock}</span>
-                          <button onClick={() => updateStock(item.id, item.currentStock + 1)} className="w-5 h-5 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded font-bold hover:bg-slate-100 dark:hover:bg-slate-700 text-xs">+</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {appUser?.isAdmin && invTab === 'order' && (
-        <div className="space-y-4">
-          <div className="flex justify-end gap-2 mb-2">
-            {hasPendingBadger && (<button onClick={() => handleReceivePending('Badger')} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"><Package size={16}/> Receive Badger</button>)}
-            {hasPendingPFG && (<button onClick={() => handleReceivePending('PFG')} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700 px-4 py-2 rounded-xl font-bold text-sm transition-colors flex items-center gap-2"><Package size={16}/> Receive PFG</button>)}
-          </div>
-          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-              <h3 className="font-black text-lg text-slate-800 dark:text-white">Deficit Report</h3>
-              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-2 py-1 rounded-lg font-bold text-xs">{itemsToOrder.length} Needed</span>
-            </div>
-            {itemsToOrder.length === 0 ? (<div className="p-12 text-center font-bold text-slate-400">All inventory levels meet par.</div>) : (
-              <div>
-                <table className="w-full text-left">
-                  <thead><tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-[9px] font-bold text-slate-500 uppercase tracking-wider"><th className="p-2">Item</th><th className="p-2 text-center">Math</th><th className="p-2 text-center">Last Ord</th><th className="p-2 text-right">Qty</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                    {itemsToOrder.map(item => {
-                      const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                          <td className="p-2"><span className="font-bold text-slate-800 dark:text-white block text-xs leading-tight mb-0.5">{item.name}</span><span className="text-[8px] font-bold text-slate-500 bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded uppercase tracking-wider">{item.packSize || '1 CS'} • {item.supplier === 'Badger' ? 'BADGER' : 'PFG'}</span></td>
-                          <td className="p-2 text-center font-medium text-slate-500 dark:text-slate-400"><span className="font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-[10px]">{item.parLevel}-{item.currentStock}={item.parLevel - item.currentStock}</span></td>
-                          <td className="p-2 text-center font-bold text-slate-500 dark:text-slate-400 text-[10px]">{item.lastOrderedDate ? formatDisplayDate(item.lastOrderedDate).split(',')[1] : '--'}</td>
-                          <td className="p-2 text-right"><input type="number" min="0" value={currentOrder} onChange={e => handleOrderChange(item.id, e.target.value)} className="font-black text-blue-600 dark:text-blue-400 text-sm bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-2 py-1 rounded w-12 text-center outline-none" /></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4">
-                  <div className="text-left w-full sm:w-auto"><span className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">PFG Total</span><span className="font-black text-xl text-slate-900 dark:text-white">${pfgOrderTotal.toFixed(2)}</span></div>
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    <button onClick={() => handleReviewOrder('Badger')} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"><MessageSquare size={16}/> Text Badger</button>
-                    <button onClick={() => handleReviewOrder('PFG')} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><Send size={16}/> Email PFG</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {appUser?.isAdmin && invTab === 'manage' && (
-        <div className="max-w-2xl mx-auto space-y-6">
-          <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Inventory Item">
-            {editItem && (
-              <form onSubmit={handleSaveEdit} className="space-y-3">
-                <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</label><select value={editItem.category} onChange={e => setEditItem({...editItem, category: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div>
-                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier</label><select value={editItem.supplier || 'PFG'} onChange={e => setEditItem({...editItem, supplier: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Pack Size</label><input type="text" value={editItem.packSize || ''} onChange={e => setEditItem({...editItem, packSize: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-                </div>
-                <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Item Code</label><input type="text" value={editItem.pfgCode || ''} onChange={e => setEditItem({...editItem, pfgCode: e.target.value})} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-                <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3 rounded-xl font-bold hover:bg-slate-800 transition-colors mt-2">Save Changes</button>
-              </form>
-            )}
-          </Modal>
-
-          <div className="bg-white dark:bg-slate-800 p-5 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
-             <h3 className="text-lg font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2 mb-3">Add Single Item</h3>
-             <form onSubmit={handleAddItem} className="space-y-3">
-               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Name</label><input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
-               <div className="grid grid-cols-2 gap-3">
-                 <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category</label><select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div>
-                 <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier</label><select value={newItemSupplier} onChange={e => setNewItemSupplier(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div>
-               </div>
-               <div className="grid grid-cols-2 gap-3">
-                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Pack Size</label><input type="text" value={newItemPackSize} onChange={e => setNewItemPackSize(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-                  <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Price ($)</label><input type="number" step="0.01" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-               </div>
-               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Item Code</label><input type="text" value={newItemCode} onChange={e => setNewItemCode(e.target.value)} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-               <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3 rounded-xl font-bold shadow-md transition-colors">Add Item</button>
-             </form>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800 p-5 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
-            <h3 className="text-lg font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2 mb-3">Current Master List</h3>
-            <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-2">
-              {inventoryItems.length === 0 && <p className="text-slate-400 font-medium text-sm">List is empty.</p>}
-              {inventoryItems.map(item => (
-                <div key={item.id} className="flex justify-between items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all">
-                  <div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded mt-0.5 inline-block uppercase tracking-wider">{item.category} • {item.packSize || '1 CS'}</span></div>
-                  <div className="flex gap-1 items-center">
-                    <button onClick={() => toggleStar(item)} className={`p-1.5 rounded-md transition-colors ${item.isStarred ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : 'text-slate-300 hover:text-yellow-400'}`} title="Star Item">
-                      {item.isStarred ? '⭐' : '☆'} 
-                    </button>
-                    <button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-indigo-500 p-1.5 rounded-md transition-colors"><Edit size={16}/></button>
-                    <button onClick={() => deleteItem(item.id)} className="text-slate-400 hover:text-red-500 p-1.5 rounded-md transition-colors"><Trash2 size={16}/></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 // --- Tab: Settings ---
 const TabSettings = ({ addToast, inventoryItems, appUser }) => {
   const [settings, setSettings] = useState({ shiftReminders: true, overtimeAlerts: false, autoApprove: false, muteOffShift: false, leadTime: 24 });
@@ -1485,6 +982,29 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
     reader.readAsText(file);
   };
 
+  const handleEnablePush = async () => {
+    if (!messaging) return addToast('Error', 'Your browser does not support push notifications.');
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const token = await getToken(messaging, { 
+          vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU' 
+        });
+        if (token) {
+          await updateDoc(doc(db, "users", appUser.id), { fcmToken: token });
+          addToast('Notifications Enabled', 'Device registered for push alerts.');
+        } else {
+          addToast('Error', 'Failed to generate token.');
+        }
+      } else {
+        addToast('Denied', 'You must allow notifications in phone settings.');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Error', 'Must be installed to Home Screen to enable push.');
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-8 pb-12">
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-8 shadow-sm space-y-8">
@@ -1514,6 +1034,14 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
           ))}
         </div>
 
+        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 p-6 rounded-2xl shadow-sm">
+          <h4 className="font-black text-blue-900 dark:text-blue-400 mb-2 text-lg">Push Notifications</h4>
+          <p className="text-sm text-blue-800 dark:text-blue-500 mb-5 font-medium">Link this specific device to your profile to receive push alerts for schedule publishes and shift swaps.</p>
+          <button onClick={handleEnablePush} className="bg-blue-600 text-white hover:bg-blue-700 px-6 py-3.5 rounded-xl font-bold transition-all shadow-md w-full flex items-center justify-center gap-2">
+            <Bell size={20} /> Enable Notifications On This Device
+          </button>
+        </div>
+
         {appUser?.isAdmin && (
           <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 p-6 rounded-2xl shadow-sm relative overflow-hidden">
             <div className="absolute -right-4 -top-4 opacity-10"><Check size={100} /></div>
@@ -1529,9 +1057,9 @@ const TabSettings = ({ addToast, inventoryItems, appUser }) => {
           </div>
         )}
 
-        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 p-6 rounded-2xl">
-          <h4 className="font-bold text-blue-900 dark:text-blue-400 mb-2">System Diagnostics</h4>
-          <button onClick={() => { addToast('Diagnostic Test', 'Live Firebase database connected successfully.'); triggerPushNotification('Test Ping', 'Push systems online.'); }} className="bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-600 hover:text-white px-6 py-3 rounded-xl font-bold transition-all shadow-sm w-full">Trigger Test Alert</button>
+        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl">
+          <h4 className="font-bold text-slate-800 dark:text-slate-300 mb-2">System Diagnostics</h4>
+          <button onClick={() => { addToast('Diagnostic Test', 'Live Firebase database connected successfully.'); triggerPushNotification('Test Ping', 'Push systems online.'); }} className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 px-6 py-3 rounded-xl font-bold transition-all shadow-sm w-full">Trigger Test Alert</button>
         </div>
       </div>
     </div>
