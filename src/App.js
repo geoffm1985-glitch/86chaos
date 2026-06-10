@@ -104,7 +104,11 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 // --- Navigation Drawer Component ---
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, isDark, toggleDark }) => {
   if (!isOpen) return null;
-  const tabs = [{ id: 'schedule', label: 'Schedule', icon: <Calendar size={20}/> }, { id: 'month', label: 'Month View', icon: <Calendar size={20}/> }, { id: 'timeoff', label: 'Time Off', icon: <Clock size={20}/> }];
+  const tabs = [];
+  if (appUser?.isAdmin) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={20}/> });
+  tabs.push({ id: 'published', label: 'Published Shifts', icon: <Clock size={20}/> });
+  tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={20}/> });
+  tabs.push({ id: 'timeoff', label: 'Time Off', icon: <Clock size={20}/> });
   if (appUser?.isAdmin || appUser?.role === 'Kitchen') tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={20}/> });
   tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={20}/> });
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={20}/> });
@@ -148,7 +152,7 @@ export default function App() {
   const events = useLiveCollection('events');
   
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
-  const [activeTabState, setActiveTabState] = useState('schedule');
+  const [activeTabState, setActiveTabState] = useState('published');
   const [isDark, setIsDark] = useState(() => { return localStorage.getItem('theme') === 'dark'; });
 
   // Dark Mode Engine
@@ -158,13 +162,13 @@ export default function App() {
   }, [isDark]);
 
   useEffect(() => {
-    const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('schedule'); };
+    const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
     window.addEventListener('popstate', handlePopState);
     const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab') || 'schedule';
+    const tab = params.get('tab') || (appUser?.isAdmin ? 'schedule' : 'published');
     setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [appUser]);
 
   const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
 
@@ -210,27 +214,30 @@ export default function App() {
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} isDark={isDark} toggleDark={() => setIsDark(!isDark)} />
 
       {/* --- Date Header --- */}
-      {['schedule', 'prep', 'month'].includes(activeTabState) && (
+      {['schedule', 'published', 'month'].includes(activeTabState) && (
         <div className={`py-5 px-4 shadow-sm z-30 border-b ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
           <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <button onClick={() => activeTabState === 'month' ? setCurrentDate(addDays(currentDate, -30)) : setCurrentDate(addDays(currentDate, -1))} className={`p-2.5 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={24} /></button>
-            <h2 onClick={() => setIsDateModalOpen(true)} className={`text-2xl sm:text-3xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>{activeTabState === 'month' ? formatDisplayMonth(getMonthStr(currentDate)) : formatDisplayDate(currentDate)}</h2>
-            <button onClick={() => activeTabState === 'month' ? setCurrentDate(addDays(currentDate, 30)) : setCurrentDate(addDays(currentDate, 1))} className={`p-2.5 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={24} /></button>
+            <button onClick={() => setCurrentDate(addDays(currentDate, -30))} className={`p-2.5 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={24} /></button>
+            <h2 onClick={() => setIsDateModalOpen(true)} className={`text-2xl sm:text-3xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
+              {formatDisplayMonth(getMonthStr(currentDate))}
+            </h2>
+            <button onClick={() => setCurrentDate(addDays(currentDate, 30))} className={`p-2.5 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={24} /></button>
           </div>
         </div>
       )}
 
-      <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Date">
+      <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Month">
         <div className="space-y-4">
-          <input type="date" value={currentDate || ''} onChange={e => { if (e.target.value) { setCurrentDate(e.target.value); setIsDateModalOpen(false); } }} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="month" value={getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(e.target.value + '-01'); setIsDateModalOpen(false); } }} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-blue-500" />
           <button onClick={() => setIsDateModalOpen(false)} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Close</button>
         </div>
       </Modal>
 
       {/* --- Main Content Area --- */}
       <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-6 pb-24">
-        {activeTabState === 'schedule' && <TabSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOff={timeOff} events={events} addToast={addToast} />}
-        {activeTabState === 'month' && <TabMonth currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} setCurrentDate={(d) => { setCurrentDate(d); setActiveTab('schedule'); }} addToast={addToast} />}
+        {activeTabState === 'schedule' && appUser?.isAdmin && <TabSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} addToast={addToast} timeOff={timeOff} />}
+        {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} addToast={addToast} />}
+        {activeTabState === 'month' && <TabMonth currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} setCurrentDate={setCurrentDate} addToast={addToast} />}
         {activeTabState === 'timeoff' && <TabTimeOff appUser={liveAppUser} users={users} timeOff={timeOff} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} addToast={addToast} appUser={liveAppUser} />}
@@ -339,7 +346,12 @@ const TabMessages = ({ events, appUser, addToast }) => {
 const TabTeam = ({ appUser, users, addToast }) => {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [password, setPassword] = useState(''); const [role, setRole] = useState('Bartender'); const [isAdmin, setIsAdmin] = useState(false);
   const [editModalUser, setEditModalUser] = useState(null);
-  const displayUsers = users;
+  
+  // Sort users so Bartenders always appear first, then alphabetically
+  const displayUsers = [...users].sort((a,b) => {
+    if (a.role === b.role) return a.name.localeCompare(b.name);
+    return a.role === 'Bartender' ? -1 : 1;
+  });
 
   const handleAdd = async (e) => {
     e.preventDefault(); if (!name.trim() || !email.trim() || !password.trim()) return;
@@ -348,6 +360,23 @@ const TabTeam = ({ appUser, users, addToast }) => {
       addToast('Team Member Added', `${name.trim()} will be prompted to set a new password on their first login.`);
       setName(''); setEmail(''); setPhone(''); setPassword(''); setIsAdmin(false);
     } catch (err) { console.error(err); }
+  };
+
+  const generateTestAccounts = async () => {
+    const tests = [
+      { name: "Test Bartender 1", email: "tb1@cheers.local", role: "Bartender" },
+      { name: "Test Bartender 2", email: "tb2@cheers.local", role: "Bartender" },
+      { name: "Test Bartender 3", email: "tb3@cheers.local", role: "Bartender" },
+      { name: "Test Kitchen 1", email: "tk1@cheers.local", role: "Kitchen" },
+      { name: "Test Kitchen 2", email: "tk2@cheers.local", role: "Kitchen" },
+      { name: "Test Kitchen 3", email: "tk3@cheers.local", role: "Kitchen" },
+    ];
+    for(const t of tests) {
+      if(!users.some(u => u.email === t.email)) {
+        await addDoc(collection(db, "users"), { name: t.name, email: t.email, phone: '', password: 'password', role: t.role, isAdmin: false, isActive: true, forcePasswordChange: false, availability: {sun:true,mon:true,tue:true,wed:true,thu:true,fri:true,sat:true} });
+      }
+    }
+    addToast("Success", "6 test accounts generated");
   };
 
   const handleUpdateUser = async (e) => {
@@ -383,7 +412,10 @@ const TabTeam = ({ appUser, users, addToast }) => {
 
       {appUser?.isAdmin && (
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-          <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><Users size={20}/> Add Staff Member</h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white"><Users size={20}/> Add Staff Member</h3>
+            <button onClick={generateTestAccounts} className="text-xs bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 px-3 py-1.5 rounded font-bold text-slate-600 dark:text-slate-300">Generate 6 Test Accounts</button>
+          </div>
           <form onSubmit={handleAdd} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>
@@ -443,6 +475,67 @@ const TabTeam = ({ appUser, users, addToast }) => {
 
 
 
+// --- Tab: Published Shifts ---
+const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, addToast }) => {
+  const monthStr = getMonthStr(currentDate);
+  const displayUsers = users.length > 0 ? users : [appUser];
+  const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && s.isPublished);
+
+  // Group published shifts by day
+  const groupedShifts = monthShifts.reduce((acc, shift) => {
+    if (!acc[shift.date]) acc[shift.date] = [];
+    acc[shift.date].push(shift);
+    return acc;
+  }, {});
+
+  const sortedDates = Object.keys(groupedShifts).sort();
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+        <h2 className="text-2xl font-black text-slate-900 dark:text-white">🗓️ Your Upcoming Shifts</h2>
+        <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 font-bold px-3 py-1 rounded-lg text-sm border border-emerald-200 dark:border-emerald-800">Published</span>
+      </div>
+
+      {sortedDates.length === 0 ? (
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl text-center border border-slate-200 dark:border-slate-700 shadow-sm">
+          <p className="text-slate-500 font-medium text-lg">No published shifts available yet for {formatDisplayMonth(monthStr)}.</p>
+        </div>
+      ) : (
+        sortedDates.map(date => (
+          <div key={date} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+            <div className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 p-3 font-black text-slate-800 dark:text-white flex items-center gap-2 text-lg">
+              {formatDisplayDate(date)}
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+              {groupedShifts[date].map(s => {
+                const emp = displayUsers.find(u => u.id === s.employeeId);
+                const isMe = appUser?.id === s.employeeId;
+                return (
+                  <div key={s.id} className={`p-4 flex justify-between items-center ${isMe ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2 h-10 rounded-full ${s.role === 'Bartender' ? 'bg-blue-500' : 'bg-orange-500'}`}></span>
+                      <div>
+                        <span className={`font-bold block ${isMe ? 'text-blue-700 dark:text-blue-400 text-lg' : 'text-slate-800 dark:text-slate-200'}`}>{emp?.name} {isMe && '(You)'}</span>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{s.role}</span>
+                      </div>
+                    </div>
+                    <div className="text-sm font-bold bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300">
+                      {formatTime12Hour(s.startTime)} - {formatTime12Hour(s.endTime)}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+};
+
+
+
 // --- Tab: Month View ---
 const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate, addToast }) => {
   const monthStr = getMonthStr(currentDate);
@@ -450,18 +543,6 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
   const holidayMap = getHolidays(year);
   const firstDay = new Date(monthStr + '-01T12:00:00').getDay();
   const displayUsers = users.length > 0 ? users : [];
-
-  const handlePublishMonth = async () => {
-    if(!window.confirm(`Publish all shifts for ${formatDisplayMonth(monthStr)}? Non-admins will now see their schedules.`)) return;
-    try {
-      const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && !s.isPublished);
-      for (const shift of monthShifts) { await updateDoc(doc(db, "shifts", shift.id), { isPublished: true }); }
-      triggerPushNotification("Schedule Published", `The schedule for ${formatDisplayMonth(monthStr)} is now live.`);
-      addToast('Schedule Published', `Staff can now view ${formatDisplayMonth(monthStr)} shifts.`);
-    } catch(err) { console.error(err); addToast('Error', 'Failed to publish schedule.'); }
-  };
-
-  const unpublishedCount = shifts.filter(s => s.date.startsWith(monthStr) && !s.isPublished).length;
 
   return (
     <div className="space-y-4 print-container">
@@ -481,15 +562,8 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
       
       <div className="hidden print-header">{formatDisplayMonth(monthStr)} Schedule</div>
       
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
-        {appUser?.isAdmin && unpublishedCount > 0 ? (
-           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 rounded-2xl flex-1 flex justify-between items-center shadow-sm w-full">
-             <div><h4 className="font-bold text-blue-900 dark:text-blue-300">Unpublished Shifts</h4><p className="text-sm font-medium text-blue-700 dark:text-blue-400">There are {unpublishedCount} hidden shifts this month.</p></div>
-             <button onClick={handlePublishMonth} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold shadow-sm transition-colors">Publish Schedule</button>
-           </div>
-        ) : <div className="flex-1"></div>}
-        
-        <button onClick={() => window.print()} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-3.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 transition-colors w-full sm:w-auto">🖨️ Print Roster</button>
+      <div className="flex justify-end gap-4 no-print mb-4">
+        <button onClick={() => window.print()} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-3.5 rounded-xl font-bold shadow-sm hover:bg-slate-800 transition-colors w-full sm:w-auto">🖨️ Print Full Month Roster</button>
       </div>
 
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm grid grid-cols-7 border-t border-l print-grid">
@@ -497,19 +571,23 @@ const TabMonth = ({ currentDate, appUser, users, shifts, events, setCurrentDate,
         {Array.from({length: firstDay}).map((_, i) => <div key={i} className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-r border-slate-200 dark:border-slate-700 min-h-[100px] print-cell" />)}
         {Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => {
           const date = `${monthStr}-${String(i + 1).padStart(2, '0')}`;
-          const isUnpub = shifts.some(s => s.date === date && !s.isPublished);
           return (
-            <div key={date} onClick={() => setCurrentDate(date)} className={`p-2 border-b border-r border-slate-200 dark:border-slate-700 min-h-[120px] hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer flex flex-col justify-between transition-colors print-cell ${isUnpub && appUser?.isAdmin ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
-              <div className="flex flex-col items-end gap-1 w-full">
+            <div key={date} className="p-2 border-b border-r border-slate-200 dark:border-slate-700 min-h-[140px] flex flex-col transition-colors print-cell">
+              <div className="flex flex-col items-end gap-1 w-full mb-1">
                 <span className="text-right text-sm font-bold text-slate-400 dark:text-slate-500 print-text">{i+1}</span>
                 {holidayMap[date] && (<span className="text-[9px] font-black tracking-tight text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 px-1.5 py-0.5 rounded truncate w-full text-center print-text" title={holidayMap[date]}>{holidayMap[date]}</span>)}
               </div>
-              <div className="space-y-1 max-h-[65px] overflow-hidden mt-1 w-full">
-                {shifts.filter(s => s.date === date && (s.isPublished || appUser?.isAdmin)).map(s => {
+              <div className="flex-1 overflow-y-auto space-y-1.5 w-full custom-scrollbar">
+                {shifts.filter(s => s.date === date && s.isPublished).sort((a,b) => a.role === b.role ? 0 : (a.role === 'Bartender' ? -1 : 1)).map(s => {
                   const emp = displayUsers.find(u => u.id === s.employeeId);
-                  const startFmt = formatTime12Hour(s.startTime) || '';
-                  const endFmt = formatTime12Hour(s.endTime) || '';
-                  return <div key={s.id} className={`text-[10px] font-bold px-1.5 py-0.5 rounded truncate print-text ${!s.isPublished ? 'border border-dashed border-blue-400 bg-transparent text-blue-500' : (s.role === 'Bartender' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300' : 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300')}`}>{emp?.name?.split(' ')[0] || '?'} {startFmt.replace(/(AM|PM| )/g, '')}-{endFmt.replace(/(AM|PM| )/g, '')}</div>
+                  const startFmt = formatTime12Hour(s.startTime)?.replace(/(AM|PM| )/g, '') || '';
+                  const endFmt = formatTime12Hour(s.endTime)?.replace(/(AM|PM| )/g, '') || '';
+                  return (
+                     <div key={s.id} className={`text-[10px] font-bold px-1.5 py-1 rounded print-text leading-tight ${s.role === 'Bartender' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800' : 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300 border border-orange-200 dark:border-orange-800'}`}>
+                        <span className="block truncate">{emp?.name || '?'}</span>
+                        <span className="block opacity-80">{startFmt}-{endFmt}</span>
+                     </div>
+                  )
                 })}
               </div>
             </div>
@@ -707,28 +785,38 @@ const TabPrep = ({ currentDate, prepItems }) => {
 };
 
 
-// --- Tab: Schedule ---
-const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff, events, addToast }) => {
+// --- Tab: Schedule Maker ---
+const TabSchedule = ({ currentDate, appUser, users, shifts, timeOff, events, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); 
+  const [assignDates, setAssignDates] = useState([]);
+  const [presetShift, setPresetShift] = useState('Custom');
   const [startTime, setStartTime] = useState('16:00'); 
   const [endTime, setEndTime] = useState('23:00');
-  const [assignDates, setAssignDates] = useState([currentDate]);
-  
+  const [selectedShiftId, setSelectedShiftId] = useState(null); // Used if clicking an existing shift
+
+  const [eventDate, setEventDate] = useState(currentDate);
   const [eventTitle, setEventTitle] = useState(''); 
   const [eventStart, setEventStart] = useState(''); 
   const [eventEnd, setEventEnd] = useState('');
 
-  const displayUsers = users.length > 0 ? users : (appUser && appUser.id !== 'dev-backdoor' ? [appUser] : []);
-  const displayShifts = shifts.filter(s => s.date === currentDate && (s.isPublished || appUser?.isAdmin));
-  const dayEvents = events.filter(e => e.date === currentDate && e.type !== 'note');
-  
-  const year = parseInt(currentDate.split('-')[0], 10); 
-  const holidayMap = getHolidays(year); 
-  const todayHoliday = holidayMap[currentDate];
+  // Sort: Bartenders first, then alphabetically
+  const displayUsers = [...users].sort((a,b) => {
+    if (a.role === b.role) return a.name.localeCompare(b.name);
+    return a.role === 'Bartender' ? -1 : 1;
+  });
 
-  // Helper to make shift times ultra-short for the grid (e.g. 16:00 -> 4p)
+  const monthStr = getMonthStr(currentDate);
+  const daysInMonth = getDaysInMonth(monthStr);
+  const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
+
+  // All shifts for the month
+  const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
+  const hasPublished = monthShifts.some(s => s.isPublished);
+  const hasUnpublished = monthShifts.some(s => !s.isPublished);
+
   const formatShortTime = (time24) => {
     if (!time24) return '';
+    if (time24 === 'CLOSE') return 'CL';
     let [h, m] = time24.split(':');
     h = parseInt(h, 10);
     const ampm = h >= 12 ? 'p' : 'a';
@@ -736,271 +824,292 @@ const TabSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOff,
     return m === '00' ? `${hr}${ampm}` : `${hr}:${m}${ampm}`;
   };
 
+  const SHIFT_PRESETS = [
+    { label: "9a-3p", start: "09:00", end: "15:00" },
+    { label: "10a-4p", start: "10:00", end: "16:00" },
+    { label: "10a-9p", start: "10:00", end: "21:00" },
+    { label: "11a-3p", start: "11:00", end: "15:00" },
+    { label: "11a-4p", start: "11:00", end: "16:00" },
+    { label: "4p-9p", start: "16:00", end: "21:00" },
+    { label: "7p-close", start: "19:00", end: "CLOSE" },
+    { label: "9p-close", start: "21:00", end: "CLOSE" },
+    { label: "Custom", start: "", end: "" }
+  ];
+
+  const handlePresetChange = (e) => {
+    const val = e.target.value;
+    setPresetShift(val);
+    const preset = SHIFT_PRESETS.find(p => p.label === val);
+    if (preset && val !== 'Custom') {
+      setStartTime(preset.start);
+      // If CLOSE, we handle it during save based on day of week
+      if (preset.end !== 'CLOSE') setEndTime(preset.end);
+    }
+  };
+
+  const getCalculatedEndTime = (baseTime, targetDateStr) => {
+    if (baseTime !== 'CLOSE') return baseTime;
+    const dObj = new Date(targetDateStr + 'T12:00:00');
+    const day = dObj.getDay();
+    return (day === 5 || day === 6) ? '02:30' : '02:00'; // Fri/Sat = 2:30am
+  };
+
   const handleSaveShift = async () => {
     if (!selectedEmp || assignDates.length === 0) return;
     const emp = displayUsers.find(u => u.id === selectedEmp);
+    
+    // If updating a specific clicked shift
+    if (selectedShiftId && assignDates.length === 1) {
+       const finalEnd = getCalculatedEndTime(presetShift.includes('close') ? 'CLOSE' : endTime, assignDates[0]);
+       await updateDoc(doc(db, "shifts", selectedShiftId), { startTime, endTime: finalEnd });
+       addToast('Shift Updated', 'Changes saved.');
+       setSelectedShiftId(null); setAssignDates([]); return;
+    }
+
+    // Assigning new shifts
     let count = 0;
     for (const d of assignDates) { 
-      await addDoc(collection(db, "shifts"), { 
-        date: d, 
-        employeeId: emp.id, 
-        role: emp.role, 
-        startTime, 
-        endTime, 
-        isPublished: false 
-      }); 
+      const finalEnd = getCalculatedEndTime(presetShift.includes('close') ? 'CLOSE' : endTime, d);
+      await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime, endTime: finalEnd, isPublished: false }); 
       count++; 
     }
-    setSelectedEmp(''); 
-    setAssignDates([currentDate]);
+    setSelectedEmp(''); setAssignDates([]); setPresetShift('Custom');
     addToast('Shifts Assigned', `Assigned ${count} shifts to ${emp.name.split(' ')[0]}.`);
+  };
+
+  const handleDeleteShift = async () => {
+    if (!selectedShiftId) return;
+    await deleteDoc(doc(db, "shifts", selectedShiftId));
+    setSelectedShiftId(null); setAssignDates([]);
+    addToast('Shift Deleted', 'Removed from matrix.');
+  };
+
+  // --- VALIDATION ENGINE ---
+  const validateSchedule = () => {
+    const warnings = [];
+    monthDaysArray.forEach(d => {
+       const dayShifts = monthShifts.filter(s => s.date === d);
+       if (dayShifts.length === 0) return; // Ignore entirely empty days
+       const dObj = new Date(d + 'T12:00:00');
+       const day = dObj.getDay(); // 0=Sun, 1=Mon... 5=Fri, 6=Sat
+       const isWeekendDay = day === 0 || day === 6;
+       const isFriSat = day === 5 || day === 6;
+
+       const bar = dayShifts.filter(s => s.role === 'Bartender');
+       const kit = dayShifts.filter(s => s.role === 'Kitchen');
+
+       // 1. Minimum Coverage Bounds
+       if (!kit.some(s => s.startTime <= '10:00') || !kit.some(s => s.endTime >= '21:00')) warnings.push(`${d}: Missing full kitchen bounds (9a-9p)`);
+       if (!bar.some(s => s.startTime <= '11:00') || !bar.some(s => s.endTime >= '02:00')) warnings.push(`${d}: Missing full bar bounds (11a-Close)`);
+
+       // 2. Closers
+       const closers = bar.filter(s => s.endTime >= '02:00').length;
+       if (isFriSat && closers < 2) warnings.push(`${d}: Needs 2 closing bartenders for weekend. Only scheduled ${closers}.`);
+       if (!isFriSat && closers < 1) warnings.push(`${d}: Needs at least 1 closing bartender.`);
+
+       // 3. Rushes (Approximate overlap counting)
+       const countOverlap = (arr, start, end) => arr.filter(s => s.startTime <= start && s.endTime >= end).length;
+       
+       const lunchBar = countOverlap(bar, '12:00', '13:00');
+       const lunchKit = countOverlap(kit, '12:00', '13:00');
+       if (day === 5 && (lunchBar < 2 || lunchKit < 3)) warnings.push(`${d}: Friday Lunch needs 2 Bar / 3 Kit. Have ${lunchBar} Bar / ${lunchKit} Kit.`);
+       if (day >= 1 && day <= 4 && (lunchBar < 2 || lunchKit < 2)) warnings.push(`${d}: Weekday Lunch needs 2 Bar / 2 Kit.`);
+
+       const dinBar = countOverlap(bar, '17:30', '19:00');
+       const dinKit = countOverlap(kit, '17:30', '19:00');
+       if (day === 5 && (dinBar < 2 || dinKit < 3)) warnings.push(`${d}: Friday Dinner needs 2 Bar / 3 Kit.`);
+       if (day >= 1 && day <= 4 && (dinBar < 2 || dinKit < 2)) warnings.push(`${d}: Weekday Dinner needs 2 Bar / 2 Kit.`);
+       
+       // 4. Weekend Days
+       if (isWeekendDay) {
+         const dayBar = countOverlap(bar, '12:00', '15:00');
+         const dayKit = countOverlap(kit, '12:00', '15:00');
+         if (dayBar < 1 || dayKit < 2) warnings.push(`${d}: Weekend daytime needs 1 Bar / 2 Kit.`);
+       }
+    });
+    return warnings;
+  };
+
+  const handlePublish = async () => {
+    const warnings = validateSchedule();
+    if (warnings.length > 0) {
+      if (!window.confirm(`⚠️ SCHEDULE WARNINGS FOUND:\n\n${warnings.join('\n')}\n\nDo you want to publish anyway?`)) return;
+    } else {
+      if (!window.confirm(`Publish all shifts for ${formatDisplayMonth(monthStr)}?`)) return;
+    }
+    
+    const unpubShifts = monthShifts.filter(s => !s.isPublished);
+    for (const shift of unpubShifts) { await updateDoc(doc(db, "shifts", shift.id), { isPublished: true }); }
+    addToast('Schedule Published', 'Staff can now view these shifts.');
+  };
+
+  const handleUnpublish = async () => {
+    if (!window.confirm("Unpublish the entire month? Staff will no longer see these shifts.")) return;
+    const pubShifts = monthShifts.filter(s => s.isPublished);
+    for (const shift of pubShifts) { await updateDoc(doc(db, "shifts", shift.id), { isPublished: false }); }
+    addToast('Schedule Hidden', 'All shifts reverted to draft.');
   };
 
   const handleAddEvent = async (e) => {
     e.preventDefault(); if(!eventTitle.trim()) return;
-    await addDoc(collection(db, "events"), { date: currentDate, title: eventTitle.trim(), startTime: eventStart, endTime: eventEnd, type: 'event' });
+    await addDoc(collection(db, "events"), { date: eventDate, title: eventTitle.trim(), startTime: eventStart, endTime: eventEnd, type: 'event' });
     setEventTitle(''); setEventStart(''); setEventEnd(''); addToast('Event Added', 'Saved to calendar.');
   };
 
-  const handleDeleteShift = async (id) => await deleteDoc(doc(db, "shifts", id));
-  const handleDeleteEvent = async (id) => await deleteDoc(doc(db, "events", id));
-
-  const handleOfferSwap = async (shift) => {
-    if (window.confirm("Offer this shift on the Trade Board?")) {
-      await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
-      addToast('Trade Board', 'Shift posted successfully.');
-    }
-  };
-
-  const handleClaimSwap = async (swap) => {
-    await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'pending_approval', claimedById: appUser.id });
-    addToast('Shift Claimed', 'Awaiting manager approval.');
-  };
-
-  const handleApproveSwap = async (swap) => {
-    await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: swap.claimedById });
-    await deleteDoc(doc(db, "shiftSwaps", swap.id));
-    addToast('Trade Approved', 'Master schedule updated automatically.');
-  };
-
-  const handleDenySwap = async (swap) => {
-    await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'available', claimedById: null });
-  };
-
-  const pendingApprovals = shiftSwaps.filter(sw => sw.status === 'pending_approval');
-  const availableSwaps = shiftSwaps.filter(sw => sw.status === 'available');
-
-  const monthStr = getMonthStr(currentDate);
-  const daysInMonth = getDaysInMonth(monthStr);
-  const monthDaysArray = Array.from({length: daysInMonth}).map((_, i) => `${monthStr}-${String(i + 1).padStart(2, '0')}`);
-
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
       
-      {todayHoliday && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-400 p-4 rounded-2xl font-bold flex items-center gap-4 shadow-sm border-l-4 border-l-amber-500">
-          <AlertTriangle className="text-amber-600 dark:text-amber-500 flex-shrink-0" size={24} />
-          <div><span className="text-amber-900 dark:text-amber-300 block font-black text-base">⚠️ {todayHoliday} Notice</span><span className="text-sm font-semibold">Today is a recognized holiday.</span></div>
-        </div>
-      )}
-
-      {dayEvents.length > 0 && (
-        <div className="space-y-3">
-           {dayEvents.map(ev => (
-              <div key={ev.id} className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-300 p-4 rounded-2xl font-bold flex items-center justify-between shadow-sm border-l-4 border-l-purple-500">
-                <div className="flex items-center gap-4">
-                  <Calendar className="text-purple-600 dark:text-purple-400 flex-shrink-0" size={24} />
-                  <div>
-                    <span className="text-purple-900 dark:text-purple-200 block font-black text-base">📅 {ev.title}</span>
-                    <span className="text-sm font-semibold text-purple-700 dark:text-purple-400">Event / Catering {ev.startTime && `• ${formatTime12Hour(ev.startTime)} - ${formatTime12Hour(ev.endTime)}`}</span>
-                  </div>
-                </div>
-                {appUser?.isAdmin && <button onClick={() => handleDeleteEvent(ev.id)} className="text-purple-400 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>}
-              </div>
-           ))}
-        </div>
-      )}
-
-      {(pendingApprovals.length > 0 || availableSwaps.length > 0) && (
-        <div className="bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800 p-6 rounded-3xl shadow-sm space-y-4">
-          <h3 className="font-black text-xl text-indigo-900 dark:text-indigo-300 flex items-center gap-2"><Repeat size={20}/> Shift Trade Board</h3>
-          {appUser?.isAdmin && pendingApprovals.length > 0 && (
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-700 space-y-3">
-              <h4 className="font-bold text-sm uppercase tracking-wider text-indigo-500">Approvals Needed</h4>
-              {pendingApprovals.map(sw => {
-                const orig = displayUsers.find(u => u.id === sw.originalEmployeeId);
-                const claimer = displayUsers.find(u => u.id === sw.claimedById);
-                return (
-                  <div key={sw.id} className="flex flex-col sm:flex-row justify-between items-center bg-indigo-50/50 dark:bg-slate-700 p-3 rounded-xl border border-indigo-100 dark:border-slate-600 gap-3">
-                    <div className="text-sm font-medium text-slate-700 dark:text-slate-300"><strong>{claimer?.name}</strong> wants to cover <strong>{orig?.name}'s</strong> {formatDisplayDate(sw.date)} shift.</div>
-                    <div className="flex gap-2"><button onClick={() => handleApproveSwap(sw)} className="bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold text-sm">Approve</button><button onClick={() => handleDenySwap(sw)} className="bg-white border text-slate-600 px-4 py-2 rounded-lg font-bold text-sm">Deny</button></div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-          {availableSwaps.length > 0 && (
-             <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-700 space-y-3">
-               <h4 className="font-bold text-sm uppercase tracking-wider text-indigo-500">Available to Claim</h4>
-               {availableSwaps.map(sw => {
-                 const orig = displayUsers.find(u => u.id === sw.originalEmployeeId);
-                 const canClaim = appUser.id !== sw.originalEmployeeId && appUser.role === sw.role;
-                 return (
-                   <div key={sw.id} className="flex justify-between items-center bg-indigo-50/50 dark:bg-slate-700 p-3 rounded-xl border border-indigo-100 dark:border-slate-600 gap-2">
-                     <div><span className="font-bold text-indigo-900 dark:text-indigo-300 block">{orig?.name || 'Unknown'} - {sw.role}</span><span className="text-sm font-medium text-slate-600 dark:text-slate-400">{formatDisplayDate(sw.date)}</span></div>
-                     {canClaim && <button onClick={() => handleClaimSwap(sw)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm">Claim Shift</button>}
-                   </div>
-                 )
-               })}
-             </div>
-          )}
-        </div>
-      )}
-
-      {appUser?.isAdmin && (
-        <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm space-y-6">
-          
+      <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
-              <h3 className="font-black text-2xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-blue-500" size={24}/> God-View Scheduler</h3>
-              <div className="text-xs font-bold text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800">
-                Tap grid cells to instantly select staff & dates
-              </div>
-            </div>
-            
-            {/* The Matrix Grid */}
-            <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 mb-6 shadow-inner custom-scrollbar">
-              <table className="w-full text-left text-[10px] min-w-[1000px] border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-3 font-bold text-slate-600 dark:text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-800 z-20 w-28 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
+            <h3 className="font-black text-2xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-blue-500" size={24}/> Schedule Maker</h3>
+            <p className="text-slate-500 font-medium text-sm mt-1">Tap a cell to select staff and dates. Tap an existing shift to edit or delete.</p>
+          </div>
+          <div className="flex items-center gap-2">
+             {hasPublished && <button onClick={handleUnpublish} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl transition-colors text-sm">Unpublish</button>}
+             <button onClick={handlePublish} className={`${hasPublished && hasUnpublished ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'} text-white px-6 py-2 rounded-xl font-bold transition-colors shadow-sm`}>
+               {hasPublished && hasUnpublished ? '⚠️ Republish Changes' : 'Publish Schedule'}
+             </button>
+          </div>
+        </div>
+        
+        {/* The Matrix Grid */}
+        <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner custom-scrollbar">
+          <table className="w-full text-left text-[10px] border-collapse">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                <th className="p-3 font-bold text-slate-600 dark:text-slate-400 sticky left-0 bg-slate-50 dark:bg-slate-800 z-20 w-28 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Staff List</th>
+                {monthDaysArray.map(d => {
+                  const dateObj = new Date(d + 'T12:00:00');
+                  const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+                  return (
+                    <th key={d} className={`p-1.5 text-center border-l border-slate-200 dark:border-slate-700 min-w-[50px] ${assignDates.includes(d) ? 'bg-blue-100 dark:bg-blue-900/40' : (isWeekend ? 'bg-slate-100/50 dark:bg-slate-700/30' : '')}`}>
+                      <div className={`text-[9px] font-bold uppercase ${isWeekend ? 'text-indigo-400' : 'text-slate-400'}`}>{dateObj.toLocaleDateString('en-US', {weekday: 'short'})}</div>
+                      <div className={`text-sm font-black ${assignDates.includes(d) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`}>{parseInt(d.split('-')[2], 10)}</div>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              {displayUsers.map(u => {
+                const isSelectedEmp = selectedEmp === u.id;
+                const isBartender = u.role === 'Bartender';
+                return (
+                  <tr key={u.id} className={`transition-colors ${isSelectedEmp ? 'bg-blue-50/30 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                    <td className={`p-3 font-bold text-sm sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate ${isSelectedEmp ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${isBartender ? 'bg-blue-500' : 'bg-orange-500'}`}></span>
+                        {u.name.split(' ')[0]}
+                      </div>
+                    </td>
                     {monthDaysArray.map(d => {
-                      const dateObj = new Date(d + 'T12:00:00');
-                      const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+                      const shift = monthShifts.find(s => s.date === d && s.employeeId === u.id);
+                      const off = timeOff.some(t => t.employeeId === u.id && t.startDate === d);
+                      const isDateSelected = assignDates.includes(d);
+                      const shiftBgColor = shift ? (shift.isPublished ? (isBartender ? 'bg-blue-500' : 'bg-orange-500') : 'bg-slate-400') : '';
+                      const shiftOutline = shift && selectedShiftId === shift.id ? 'ring-2 ring-red-500 ring-offset-1' : '';
+                      
+                      const handleCellClick = () => {
+                        if (off) return addToast('Unavailable', `${u.name.split(' ')[0]} requested this day off.`);
+                        
+                        if (shift) {
+                          // Clicked an existing shift to edit/delete
+                          setSelectedEmp(u.id);
+                          setAssignDates([d]);
+                          setSelectedShiftId(shift.id);
+                          setPresetShift('Custom');
+                          setStartTime(shift.startTime);
+                          setEndTime(shift.endTime);
+                        } else {
+                          // Clicking empty cell to add
+                          setSelectedShiftId(null);
+                          if (selectedEmp !== u.id) {
+                            setSelectedEmp(u.id);
+                            setAssignDates([d]);
+                          } else {
+                            if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x !== d));
+                            else setAssignDates([...assignDates, d].sort());
+                          }
+                        }
+                      };
+
                       return (
-                        <th key={d} className={`p-1.5 text-center border-l border-slate-200 dark:border-slate-700 min-w-[65px] ${assignDates.includes(d) ? 'bg-blue-100 dark:bg-blue-900/40' : (isWeekend ? 'bg-slate-100/50 dark:bg-slate-700/30' : '')}`}>
-                          <div className={`text-[9px] font-bold uppercase ${isWeekend ? 'text-indigo-400' : 'text-slate-400'}`}>{dateObj.toLocaleDateString('en-US', {weekday: 'short'})}</div>
-                          <div className={`text-sm font-black ${assignDates.includes(d) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300'}`}>{parseInt(d.split('-')[2], 10)}</div>
-                        </th>
+                        <td key={d} onClick={handleCellClick} className={`p-1 border-l border-slate-200 dark:border-slate-700 cursor-pointer transition-all relative ${isSelectedEmp && isDateSelected ? 'bg-blue-100 dark:bg-blue-900/40' : isSelectedEmp ? 'hover:bg-blue-100 dark:hover:bg-blue-900/30' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                          {off ? (
+                            <div className="w-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-black text-[10px] py-1.5 rounded text-center">OFF</div>
+                          ) : shift ? (
+                            <div className={`w-full rounded font-bold text-[10px] py-1 text-center text-white shadow-sm ${shiftBgColor} ${shiftOutline}`} title={`${formatTime12Hour(shift.startTime)} - ${formatTime12Hour(shift.endTime)}`}>
+                              {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
+                            </div>
+                          ) : (
+                            <div className="w-full h-6 rounded flex items-center justify-center text-slate-200 dark:text-slate-700 font-bold opacity-0 hover:opacity-100 transition-opacity">
+                              <Plus size={14}/>
+                            </div>
+                          )}
+                        </td>
                       )
                     })}
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                  {displayUsers.map(u => {
-                    const isSelectedEmp = selectedEmp === u.id;
-                    return (
-                      <tr key={u.id} className={`transition-colors ${isSelectedEmp ? 'bg-blue-50/30 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
-                        <td className={`p-3 font-bold text-sm sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate ${isSelectedEmp ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'}`}>
-                          {u.name.split(' ')[0]}
-                        </td>
-                        {monthDaysArray.map(d => {
-                          const shift = shifts.find(s => s.date === d && s.employeeId === u.id);
-                          const off = timeOff.some(t => t.employeeId === u.id && t.startDate === d);
-                          const isDateSelected = assignDates.includes(d);
-                          
-                          const handleCellClick = () => {
-                            if (off) {
-                              addToast('Unavailable', `${u.name.split(' ')[0]} requested this day off.`);
-                              return;
-                            }
-                            if (selectedEmp !== u.id) {
-                              setSelectedEmp(u.id);
-                              setAssignDates([d]);
-                            } else {
-                              if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x !== d));
-                              else setAssignDates([...assignDates, d].sort());
-                            }
-                          };
-
-                          return (
-                            <td key={d} onClick={handleCellClick} className={`p-1 border-l border-slate-200 dark:border-slate-700 cursor-pointer transition-all relative ${isSelectedEmp && isDateSelected ? 'bg-blue-100 dark:bg-blue-900/40 ring-1 ring-inset ring-blue-500' : isSelectedEmp ? 'hover:bg-blue-100 dark:hover:bg-blue-900/30' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                              {off ? (
-                                <div className="w-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-black text-[10px] py-1.5 rounded text-center">OFF</div>
-                              ) : shift ? (
-                                <div className={`w-full rounded font-bold text-[10px] py-1.5 text-center ${shift.isPublished ? 'bg-emerald-500 text-white shadow-sm' : 'bg-blue-400 text-white shadow-sm'}`} title={`${formatTime12Hour(shift.startTime)} - ${formatTime12Hour(shift.endTime)}`}>
-                                  {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
-                                </div>
-                              ) : (
-                                <div className="w-full h-7 rounded flex items-center justify-center text-slate-200 dark:text-slate-700 font-bold opacity-0 hover:opacity-100 transition-opacity">
-                                  <Plus size={14}/>
-                                </div>
-                              )}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Quick Action Control Panel */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-              <div className="md:col-span-4">
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Selected Staff</label>
-                <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setAssignDates([]);}} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none">
-                  <option value="">-- Choose Employee --</option>
-                  {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Start Time</label>
-                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">End Time</label>
-                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none" />
-              </div>
-              <div className="md:col-span-4 flex flex-col justify-end">
-                <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="w-full h-[46px] bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black shadow-sm disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
-                  <Check size={18}/> Assign {assignDates.length} Shifts
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <hr className="border-slate-100 dark:border-slate-700"/>
-
-          <div>
-            <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={18}/> Add Event to {formatDisplayDate(currentDate)}</h3>
-            <form onSubmit={handleAddEvent} className="flex flex-col sm:flex-row gap-2">
-              <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Event Name" className="flex-1 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required />
-              <div className="flex gap-2"><input type="time" value={eventStart} onChange={e => setEventStart(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /><input type="time" value={eventEnd} onChange={e => setEventEnd(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /></div>
-              <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-colors">Add Event</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      <div className="grid md:grid-cols-2 gap-6 pt-2">
-        {['Bartender', 'Kitchen'].map(role => (
-          <div key={role} className="space-y-3">
-            <h3 className={`text-lg font-black uppercase tracking-wider pl-2 ${role === 'Bartender' ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>{role}s</h3>
-            {displayShifts.filter(s => s.role === role).length === 0 ? (
-               <div className="p-6 bg-white dark:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl text-center text-slate-400 font-medium">No shifts scheduled.</div>
-            ) : (
-              displayShifts.filter(s => s.role === role).map(s => {
-                const emp = displayUsers.find(u => u.id === s.employeeId);
-                const isMyShift = appUser.id === s.employeeId;
-                const isSwappedOut = shiftSwaps.some(sw => sw.shiftId === s.id);
-                
-                return (
-                  <div key={s.id} className={`bg-white dark:bg-slate-800 border p-4 rounded-2xl shadow-sm flex flex-col gap-2 ${!s.isPublished ? 'border-dashed border-blue-300 dark:border-blue-700' : 'border-slate-200 dark:border-slate-700'}`}>
-                    <div className="flex justify-between items-center w-full">
-                      <div className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">{emp?.name || 'Unknown'} {!s.isPublished && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase">Draft</span>}</div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">{formatTime12Hour(s.startTime)} - {formatTime12Hour(s.endTime)}</div>
-                        {appUser?.isAdmin && <button onClick={() => handleDeleteShift(s.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>}
-                      </div>
-                    </div>
-                  </div>
                 )
-              })
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Compact Quick Action Control Panel */}
+        <div className="flex flex-col md:flex-row items-end gap-3 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+          <div className="w-full md:w-48">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Staff</label>
+            <select value={selectedEmp} onChange={e => {setSelectedEmp(e.target.value); setAssignDates([]); setSelectedShiftId(null);}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none">
+              <option value="">- Choose -</option>
+              {displayUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+          <div className="w-full md:w-36">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Preset</label>
+            <select value={presetShift} onChange={handlePresetChange} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none">
+              {SHIFT_PRESETS.map(p => <option key={p.label} value={p.label}>{p.label}</option>)}
+            </select>
+          </div>
+          <div className="w-full md:w-28">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Start</label>
+            <input type="time" value={startTime} onChange={e => {setStartTime(e.target.value); setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none" />
+          </div>
+          <div className="w-full md:w-28">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">End</label>
+            <input type="time" value={presetShift.includes('close') ? '' : endTime} disabled={presetShift.includes('close')} onChange={e => {setEndTime(e.target.value); setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none disabled:bg-slate-100 disabled:text-slate-400" />
+          </div>
+          <div className="flex-1 flex gap-2 w-full mt-2 md:mt-0">
+            <button onClick={handleSaveShift} disabled={!selectedEmp || assignDates.length===0} className="flex-1 h-[42px] bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-sm disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+              <Check size={18}/> {selectedShiftId ? 'Update' : `Assign (${assignDates.length})`}
+            </button>
+            {selectedShiftId && (
+              <button onClick={handleDeleteShift} className="h-[42px] px-4 bg-red-100 text-red-600 hover:bg-red-200 rounded-lg font-bold shadow-sm transition-colors flex items-center justify-center" title="Delete Shift">
+                <Trash2 size={18}/>
+              </button>
             )}
           </div>
-        ))}
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 p-6 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm">
+        <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white mb-4"><Calendar size={18}/> Add Special Event</h3>
+        <form onSubmit={handleAddEvent} className="flex flex-col sm:flex-row gap-2 items-end">
+          <div className="w-full sm:w-auto">
+             <label className="block text-xs font-bold text-slate-500 mb-1">Date</label>
+             <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required />
+          </div>
+          <div className="flex-1 w-full">
+             <label className="block text-xs font-bold text-slate-500 mb-1">Event Name</label>
+             <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} placeholder="Catering, Private Party..." className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required />
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+             <div><label className="block text-xs font-bold text-slate-500 mb-1">Start</label><input type="time" value={eventStart} onChange={e => setEventStart(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /></div>
+             <div><label className="block text-xs font-bold text-slate-500 mb-1">End</label><input type="time" value={eventEnd} onChange={e => setEventEnd(e.target.value)} className="w-full sm:w-28 p-3 border rounded-xl" /></div>
+          </div>
+          <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold transition-colors w-full sm:w-auto h-[50px]">Add Event</button>
+        </form>
       </div>
     </div>
   );
@@ -1317,7 +1426,9 @@ const TabInventory = ({ inventoryItems, addToast, appUser }) => {
                 <div key={item.id} className="flex justify-between items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all">
                   <div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded mt-0.5 inline-block uppercase tracking-wider">{item.category} • {item.packSize || '1 CS'}</span></div>
                   <div className="flex gap-1 items-center">
-                    <button onClick={() => toggleStar(item)} className={`p-1.5 rounded-md transition-colors ${item.isStarred ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : 'text-slate-300 hover:text-yellow-400'}`} title="Star Item"><Star size={16} fill={item.isStarred ? 'currentColor' : 'none'} strokeWidth={item.isStarred ? 1 : 2}/></button>
+                    <button onClick={() => toggleStar(item)} className={`p-1.5 rounded-md transition-colors ${item.isStarred ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : 'text-slate-300 hover:text-yellow-400'}`} title="Star Item">
+                      {item.isStarred ? '⭐' : <Star size={16} />} 
+                    </button>
                     <button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-indigo-500 p-1.5 rounded-md transition-colors"><Edit size={16}/></button>
                     <button onClick={() => deleteItem(item.id)} className="text-slate-400 hover:text-red-500 p-1.5 rounded-md transition-colors"><Trash2 size={16}/></button>
                   </div>
