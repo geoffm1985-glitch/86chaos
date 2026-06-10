@@ -482,13 +482,18 @@ const TabSettings = ({ addToast }) => {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') return addToast('Denied', 'Notifications blocked.');
       
-      addToast('Connecting...', 'Registering device...');
+      addToast('Connecting...', 'Activating secure worker...');
       
-      // Force service worker registration first
+      // Register the file path explicitly
       const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      await navigator.serviceWorker.ready;
       
-      // Get token with explicit serviceWorkerRegistration passed
+      // Fail-safe loop: Wait for the phone to flip the status to active
+      let attempts = 0;
+      while (!registration.active && attempts < 20) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        attempts++;
+      }
+      
       const token = await getToken(messaging, { 
         vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU',
         serviceWorkerRegistration: registration 
@@ -497,10 +502,11 @@ const TabSettings = ({ addToast }) => {
       if (token) {
         await updateDoc(doc(db, "users", appUser.id), { fcmToken: token });
         addToast('Success', 'Notifications enabled.');
+      } else {
+        addToast('Error', 'Failed to generate token.');
       }
     } catch (err) { 
-      console.error("FCM Error Details:", err);
-      // This will show the actual error in the toast
-      addToast('Error', err.code || 'Registration failed.'); 
+      console.error(err);
+      addToast('Error', err.message || 'Push registration failed.'); 
     }
   };
