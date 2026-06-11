@@ -949,21 +949,51 @@ const TabSchedule = ({ currentDate, users, shifts, events, addToast, appUser }) 
   );
 };
 
-// --- TIME OFF REQUESTS (Restored & Upgraded) ---
+// --- TIME OFF REQUESTS (Mass-Select Calendar & Partial Days) ---
 const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
-  const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState(''); const [reason, setReason] = useState('');
+  const [calMonth, setCalMonth] = useState(getToday().substring(0, 7));
+  const [selectedDates, setSelectedDates] = useState([]);
+  const [isPartial, setIsPartial] = useState(false);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('17:00');
   const [selectedReqs, setSelectedReqs] = useState([]);
 
   const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-  const pendingRequests = timeOffRequests.filter(r => r.status === 'Pending').sort((a,b) => new Date(a.startDate) - new Date(b.startDate));
+  const pendingRequests = timeOffRequests.filter(r => r.status === 'Pending').sort((a,b) => new Date(a.date || a.startDate) - new Date(b.date || b.startDate));
 
-  const handleSubmit = async (e) => {
-    e.preventDefault(); if (!startDate || !endDate) return;
-    await addDoc(collection(db, "timeOffRequests"), { userId: appUser.id, userName: appUser.name, startDate, endDate, reason: reason.trim() || 'No reason provided', status: 'Pending', submittedAt: new Date().toISOString() });
-    setStartDate(''); setEndDate(''); setReason(''); addToast('Submitted', 'Time off request sent to manager.');
+  const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
+  const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
+
+  const changeMonth = (offset) => {
+    const d = new Date(calMonth + '-01T12:00:00');
+    d.setMonth(d.getMonth() + offset);
+    setCalMonth(d.toISOString().substring(0, 7));
   };
 
-  const toggleSelect = (id) => setSelectedReqs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const handleToggleDate = (d) => {
+    if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
+    if (myRequests.some(r => (r.date === d || (r.startDate <= d && r.endDate >= d)) && r.status !== 'Denied')) return addToast('Exists', 'Already requested this date.');
+    setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); 
+    if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.');
+    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.');
+
+    for (const d of selectedDates) {
+      await addDoc(collection(db, "timeOffRequests"), { 
+        userId: appUser.id, userName: appUser.name, date: d, 
+        isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, 
+        status: 'Pending', submittedAt: new Date().toISOString() 
+      });
+    }
+    
+    addToast('Submitted', `Requested ${selectedDates.length} days off.`);
+    setSelectedDates([]); setIsPartial(false);
+  };
+
+  const toggleSelectReq = (id) => setSelectedReqs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   
   const handleBatchProcess = async (status) => {
     if (selectedReqs.length === 0) return;
@@ -978,7 +1008,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       
       {/* MANAGER VIEW */}
       {appUser?.isAdmin && (
@@ -992,51 +1022,107 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
               </div>
             )}
           </div>
-          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+          <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-y-auto custom-scrollbar">
             {pendingRequests.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400">All caught up! No pending requests.</div>}
             {pendingRequests.map(r => (
               <div key={r.id} className={`p-4 flex items-center gap-4 transition-colors ${selectedReqs.includes(r.id) ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-                <input type="checkbox" checked={selectedReqs.includes(r.id)} onChange={() => toggleSelect(r.id)} className="w-5 h-5 rounded border-slate-300 accent-blue-600 cursor-pointer flex-shrink-0" />
+                <input type="checkbox" checked={selectedReqs.includes(r.id)} onChange={() => toggleSelectReq(r.id)} className="w-5 h-5 rounded border-slate-300 accent-blue-600 cursor-pointer flex-shrink-0" />
                 <div className="flex-1">
                   <div className="font-black text-slate-900 dark:text-white">{r.userName}</div>
-                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400">{formatDisplayDate(r.startDate)} — {formatDisplayDate(r.endDate)}</div>
+                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    {r.date ? formatDisplayDate(r.date) : `${formatDisplayDate(r.startDate)} — ${formatDisplayDate(r.endDate)}`} 
+                    {r.isPartial && <span className="ml-2 text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-600 dark:text-slate-300">{formatShortTime(r.startTime)} to {formatShortTime(r.endTime)}</span>}
+                  </div>
                 </div>
-                <div className="text-xs font-medium text-slate-600 dark:text-slate-400 max-w-[200px] truncate hidden sm:block">"{r.reason}"</div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* STAFF VIEW */}
+      {/* STAFF VIEW: CALENDAR & SUBMIT */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1 bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 h-max">
-          <h3 className="font-black text-lg mb-4 dark:text-white">Request Time Off</h3>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">First Day Off</label><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white" required/></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Last Day Off (Inclusive)</label><input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white" required/></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Reason (Optional)</label><textarea value={reason} onChange={e=>setReason(e.target.value)} rows="3" className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm dark:text-white custom-scrollbar"/></div>
-            <button type="submit" className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Submit Request</button>
-          </form>
+        
+        {/* MASS SELECT CALENDAR */}
+        <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="bg-slate-50 dark:bg-slate-900 p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+            <button onClick={() => changeMonth(-1)} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-white transition-colors"><ChevronLeft size={16}/></button>
+            <h3 className="font-black text-lg dark:text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3>
+            <button onClick={() => changeMonth(1)} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-white transition-colors"><ChevronRight size={16}/></button>
+          </div>
+          
+          <div className="grid grid-cols-7 border-t border-slate-100 dark:border-slate-700">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-2 text-center text-[10px] font-black text-slate-400 uppercase border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">{d}</div>)}
+            {Array.from({length: firstDayOffset}).map((_,i) => <div key={`empty-${i}`} className="p-2 border-b border-r border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/20 min-h-[70px]" />)}
+            {monthDays.map(d => {
+              const isSelected = selectedDates.includes(d);
+              const existingReq = myRequests.find(r => r.date === d || (r.startDate <= d && r.endDate >= d));
+              const isPast = d < getToday();
+              
+              return (
+                <div key={d} onClick={() => !isPast && (!existingReq || existingReq.status==='Denied') && handleToggleDate(d)} className={`p-2 border-b border-r border-slate-100 dark:border-slate-700 min-h-[70px] flex flex-col justify-between transition-colors ${(isPast || (existingReq && existingReq.status !== 'Denied')) ? 'bg-slate-50 dark:bg-slate-900/50 opacity-60 cursor-not-allowed' : isSelected ? 'bg-blue-100 dark:bg-blue-900/40 cursor-pointer shadow-inner' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer'}`}>
+                  <span className={`text-sm font-black ${isSelected ? 'text-blue-700 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                  {existingReq && existingReq.status !== 'Denied' && <span className={`text-[8px] font-black uppercase rounded px-1 mt-1 truncate ${existingReq.status === 'Approved' ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40' : 'text-amber-600 bg-amber-100 dark:bg-amber-900/40'}`}>{existingReq.status}</span>}
+                  {isSelected && <span className="text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-0.5"><Check size={10}/> Selected</span>}
+                </div>
+              )
+            })}
+          </div>
         </div>
 
-        <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <div className="bg-slate-50 dark:bg-slate-900 p-4 border-b border-slate-200 dark:border-slate-700"><h3 className="font-black text-lg dark:text-white">My Request History</h3></div>
-          <div className="divide-y divide-slate-100 dark:divide-slate-700">
-             {myRequests.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400">You haven't submitted any requests yet.</div>}
-             {myRequests.map(r => (
-               <div key={r.id} className="p-4 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                 <div>
-                   <div className="font-black text-sm text-slate-900 dark:text-white leading-tight mb-0.5">{formatDisplayDate(r.startDate)} — {formatDisplayDate(r.endDate)}</div>
-                   <div className="text-[10px] font-bold text-slate-400">Submitted {new Date(r.submittedAt).toLocaleDateString()}</div>
+        {/* SUBMISSION PANEL */}
+        <div className="md:col-span-1 space-y-6">
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <h3 className="font-black text-lg mb-2 dark:text-white">Submit Request</h3>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-4">Tap days on the calendar to mass-select.</p>
+            
+            <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-700 mb-4 text-center">
+               <span className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Selected Days</span>
+               <span className="text-3xl font-black text-blue-600 dark:text-blue-400">{selectedDates.length}</span>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 cursor-pointer p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                <input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-5 h-5 rounded border-slate-300 accent-blue-600" />
+                Partial Day Request?
+              </label>
+
+              {isPartial && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
+                  <div><label className="block text-[10px] font-bold text-blue-800 dark:text-blue-300 uppercase mb-1">Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg outline-none font-bold text-xs dark:text-white" required/></div>
+                  <div><label className="block text-[10px] font-bold text-blue-800 dark:text-blue-300 uppercase mb-1">End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg outline-none font-bold text-xs dark:text-white" required/></div>
+                </div>
+              )}
+              
+              <button type="submit" disabled={selectedDates.length === 0} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-4 rounded-xl font-black text-sm shadow-md hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Send Request</button>
+            </form>
+          </div>
+        </div>
+
+      </div>
+
+      {/* HISTORY TABLE */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="bg-slate-50 dark:bg-slate-900 p-4 border-b border-slate-200 dark:border-slate-700"><h3 className="font-black text-lg dark:text-white">My Request History</h3></div>
+        <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-y-auto custom-scrollbar">
+           {myRequests.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400">You haven't submitted any requests yet.</div>}
+           {myRequests.map(r => (
+             <div key={r.id} className="p-4 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+               <div>
+                 <div className="font-black text-sm text-slate-900 dark:text-white leading-tight mb-0.5">
+                   {r.date ? formatDisplayDate(r.date) : `${formatDisplayDate(r.startDate)} — ${formatDisplayDate(r.endDate)}`}
                  </div>
-                 <div className="flex items-center gap-4">
-                   <StatusBadge status={r.status} />
-                   {r.status === 'Pending' && <button onClick={() => { if(window.confirm("Cancel request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>}
+                 <div className="text-[10px] font-bold text-slate-400 flex items-center gap-2">
+                   <span>Submitted {new Date(r.submittedAt).toLocaleDateString()}</span>
+                   {r.isPartial && <span className="bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{formatShortTime(r.startTime)} to {formatShortTime(r.endTime)}</span>}
                  </div>
                </div>
-             ))}
-          </div>
+               <div className="flex items-center gap-4">
+                 <StatusBadge status={r.status} />
+                 {r.status === 'Pending' && <button onClick={() => { if(window.confirm("Cancel request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>}
+               </div>
+             </div>
+           ))}
         </div>
       </div>
 
