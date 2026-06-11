@@ -38,6 +38,9 @@ const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL
 const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 
+// Wisconsin Food Code: 7-day total shelf life. Prep Day is Day 1. Expires on Prep Date + 6 days.
+const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
+
 // --- SVG Logo ---
 const CheersLogo = ({ isDark }) => (
   <svg viewBox="0 0 400 120" className="h-10 sm:h-12 w-auto drop-shadow-sm" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -113,6 +116,79 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   );
 };
 
+// --- DEDICATED DAY DOT PRINT ENGINE ---
+// This completely unmounts the app and forces the browser to look ONLY at these labels.
+const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
+  useEffect(() => {
+    // Automatically open the print dialog when this screen mounts
+    const timer = setTimeout(() => window.print(), 800);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black">
+      <style>{`
+        @media print {
+          @page { size: 3.5in 1.1in; margin: 0; }
+          body, html { margin: 0 !important; padding: 0 !important; background: white !important; }
+          
+          /* Hide EVERYTHING else. This guarantees no UI renders on the printer. */
+          .no-print, header, nav, main, footer { display: none !important; }
+          
+          /* Show ONLY the labels */
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .dk-label { 
+            width: 3.5in !important; 
+            height: 1.1in !important; 
+            display: flex !important; 
+            flex-direction: column !important; 
+            justify-content: center !important; 
+            padding: 0.05in 0.15in !important; 
+            box-sizing: border-box !important; 
+            page-break-after: always !important; 
+            page-break-inside: avoid !important; 
+            margin: 0 !important;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+            overflow: hidden !important;
+            border: none !important;
+          }
+          .dk-title { font-size: 16px !important; font-weight: 900 !important; color: black !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+          .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; color: black !important; margin-bottom: 2px !important; }
+          .dk-exp { display: flex !important; justify-content: center !important; font-size: 14px !important; font-weight: 900 !important; color: black !important; border-top: 2px solid black !important; padding-top: 2px !important; margin-top: 1px !important; }
+        }
+      `}</style>
+      
+      {/* User Interface to Return to the App */}
+      <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
+         <Loader2 className="animate-spin text-blue-600 mb-6" size={64} />
+         <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
+         <p className="text-slate-600 font-bold mb-8">Please select Brother QL-810W in your print settings.</p>
+         <button onClick={onClose} className="bg-slate-900 text-white px-8 py-4 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800">
+           Cancel / Return to App
+         </button>
+      </div>
+
+      {/* The Actual Labels (Visible only to the printer) */}
+      <div id="print-data">
+        {labelsToPrint.map((item, idx) => {
+          const prepDateParts = formatDisplayDate(prepDate).split(',');
+          const prepStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
+          return (
+            <div key={`print-${idx}`} className="dk-label">
+              <div className="dk-title">{item.text}</div>
+              <div className="dk-row">
+                <span>PREP: {prepStr}</span>
+                <span>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span>
+              </div>
+              <div className="dk-exp">EXP: {getExpDate(prepDate)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // --- Main Application Layout ---
 export default function App() {
   const users = useLiveCollection('users');
@@ -126,6 +202,7 @@ export default function App() {
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const [activeTabState, setActiveTabState] = useState('published');
   const [isDark, setIsDark] = useState(() => { return localStorage.getItem('theme') === 'dark'; });
+  const [labelsToPrint, setLabelsToPrint] = useState(null); // The Master Print Trigger
 
   useEffect(() => {
     if (isDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); } 
@@ -162,6 +239,12 @@ export default function App() {
     setToasts(prev => [...prev, { id, title, message }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
+
+  // --- THE MASTER PRINT OVERRIDE ---
+  // If labels are loaded, the entire app vanishes and ONLY the DayDotPrintScreen is rendered.
+  if (labelsToPrint) {
+    return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
+  }
 
   if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} isDark={isDark} addToast={addToast} />;
 
@@ -208,7 +291,7 @@ export default function App() {
         {activeTabState === 'month' && <TabMonth currentDate={currentDate} users={users} shifts={shifts} />}
         {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
         {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} />}
+        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
@@ -284,6 +367,7 @@ const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
   );
 };
 
+
 // --- Tab: Sales & Trends ---
 const TabSales = ({ sales, addToast }) => {
   const [date, setDate] = useState(getToday());
@@ -330,7 +414,7 @@ const TabSales = ({ sales, addToast }) => {
   );
 };
 
-// --- Tab: Team (With Avatar & SMS Onboarding) ---
+// --- Tab: Team (Compacted) ---
 const TabTeam = ({ appUser, users, addToast }) => {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [role, setRole] = useState('Bartender'); const [photoURL, setPhotoURL] = useState(''); const [isAdmin, setIsAdmin] = useState(false);
   const [editModalUser, setEditModalUser] = useState(null);
@@ -346,11 +430,9 @@ const TabTeam = ({ appUser, users, addToast }) => {
     try {
       await addDoc(collection(db, "users"), { name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: tPass, role, isAdmin, isActive: true, forcePasswordChange: true, photoURL: photoURL.trim() });
       addToast('Staff Added', `Auto-generated password: ${tPass}`);
-      
       const msg = `Welcome to Cheers! Log in at cheers-portal.vercel.app. Your email is ${email.trim()} and your temporary password is: ${tPass}`;
       if (phone) window.location.href = `sms:${phone}?body=${encodeURIComponent(msg)}`;
       else window.location.href = `mailto:${email}?subject=Cheers Portal Access&body=${encodeURIComponent(msg)}`;
-      
       setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setIsAdmin(false);
     } catch (err) { console.error(err); }
   };
@@ -443,7 +525,7 @@ const TabTeam = ({ appUser, users, addToast }) => {
   );
 };
 
-// --- PUBLISHED SHIFTS & TRADE BOARD (With Avatars) ---
+// --- PUBLISHED SHIFTS & TRADE BOARD (Compacted) ---
 const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, addToast }) => {
   const monthStr = getMonthStr(currentDate);
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && s.isPublished).sort((a,b)=>a.date.localeCompare(b.date));
@@ -662,28 +744,10 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
   );
 };
 
-// --- PREP LIST (WI Food Code + DK-1201 Brother QL-810W Engine) ---
-const TabPrep = ({ currentDate, prepItems, appUser }) => {
-  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const [isPrinting, setIsPrinting] = useState(false);
+// --- PREP LIST (Normal UI - Triggers the App-Level Print Screen) ---
+const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
+  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate);
   const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
-  
-  // Pure React Print Trigger: Waits for the DOM to physically swap to the print view
-  useEffect(() => {
-    let timer;
-    if (isPrinting && printItems.length > 0) {
-      timer = setTimeout(() => { window.print(); }, 800); 
-    }
-    return () => clearTimeout(timer);
-  }, [isPrinting, printItems]);
-
-  // Reverts the UI back to normal after the print dialog closes
-  useEffect(() => {
-    const handleClosePrint = () => { setIsPrinting(false); setPrintItems([]); };
-    window.addEventListener('afterprint', handleClosePrint);
-    const handleFocus = () => { if(isPrinting) setTimeout(handleClosePrint, 1000); };
-    window.addEventListener('focus', handleFocus);
-    return () => { window.removeEventListener('afterprint', handleClosePrint); window.removeEventListener('focus', handleFocus); };
-  }, [isPrinting]);
 
   const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
   const toggleStatus = async (item) => { 
@@ -701,73 +765,14 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
   const triggerBatchPrint = () => {
     const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
     const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}-${Date.now()}` }); } });
-    setPrintItems(toPrint);
-    setIsPrinting(true); 
+    
+    // THIS CALLS THE APP-LEVEL COMPONENT. It destroys TabPrep entirely so the browser CANNOT see it.
+    setLabelsToPrint({ items: toPrint, prepDate }); 
   };
 
-  const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
   const globalSelectedCount = items.filter(i => i.isSelected).length;
   const groupedItems = items.reduce((acc, i) => { const c = i.category || 'General'; if(!acc[c]) acc[c]=[]; acc[c].push(i); return acc; }, {});
 
-  // --- ISOLATED PRINT VIEW (DK-1201: 3.5" wide x 1.1" tall) ---
-  if (isPrinting) {
-    return (
-      <div className="bg-white min-h-screen text-black">
-        <style>{`
-          @media print {
-            @page { size: 3.5in 1.1in; margin: 0; }
-            body, html { margin: 0 !important; padding: 0 !important; background: white !important; }
-            .no-print { display: none !important; }
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            .label-page { 
-              width: 3.5in !important; 
-              height: 1.1in !important; 
-              display: flex !important; 
-              flex-direction: column !important; 
-              justify-content: center !important; 
-              padding: 0.05in 0.15in !important; 
-              box-sizing: border-box !important; 
-              page-break-after: always !important; 
-              page-break-inside: avoid !important; 
-              margin: 0 !important;
-              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
-              overflow: hidden !important;
-            }
-            .label-title { font-size: 16px !important; font-weight: 900 !important; color: black !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
-            .label-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; color: black !important; margin-bottom: 2px !important; }
-            .label-exp { display: flex !important; justify-content: center !important; font-size: 13px !important; font-weight: 900 !important; color: black !important; border-top: 2px solid black !important; padding-top: 2px !important; margin-top: 1px !important; }
-          }
-        `}</style>
-        
-        {/* Loading UI shown on screen while waiting for the print dialog */}
-        <div className="no-print flex flex-col items-center justify-center h-[80vh]">
-           <Loader2 className="animate-spin text-blue-600 mb-4" size={64} />
-           <h2 className="text-2xl font-black text-slate-900">Formatting Labels...</h2>
-           <p className="text-slate-500 font-bold mt-2">Sending to Brother QL-810W (DK-1201)</p>
-        </div>
-        
-        {/* Actual printable labels mapped perfectly to DK-1201 layout */}
-        <div>
-          {printItems.map(i => {
-            const prepDateParts = formatDisplayDate(prepDate).split(',');
-            const prepStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
-            return (
-              <div key={i.printId} className="label-page">
-                <div className="label-title">{i.text}</div>
-                <div className="label-row">
-                  <span>PREP: {prepStr}</span>
-                  <span>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span>
-                </div>
-                <div className="label-exp">EXP: {getExpDate(prepDate)}</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  // --- NORMAL UI RENDER ---
   return (
     <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
       <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm">
