@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp } from 'lucide-react';
+import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
@@ -98,6 +98,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   tabs.push({ id: 'published', label: 'Master Roster', icon: <Clock size={18}/> });
   tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={18}/> });
   tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
+  tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   
   if (appUser?.isAdmin || appUser?.role === 'Kitchen') { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); }
   
@@ -246,6 +247,7 @@ export default function App() {
   const shiftSwaps = useLiveCollection('shiftSwaps');
   const events = useLiveCollection('events');
   const sales = useLiveCollection('sales');
+  const recipes = useLiveCollection('recipes');
   
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const [activeTabState, setActiveTabState] = useState('published');
@@ -339,6 +341,7 @@ export default function App() {
         {activeTabState === 'month' && <TabMonth currentDate={currentDate} users={users} shifts={shifts} />}
         {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
         {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
@@ -364,6 +367,144 @@ export default function App() {
   );
 }
 
+
+        // --- RECIPE BOOK (Digital Spec Sheets) ---
+const TabRecipes = ({ recipes, appUser, addToast }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCat, setFilterCat] = useState('All');
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [activeRecipe, setActiveRecipe] = useState(null);
+
+  // Form State
+  const [title, setTitle] = useState(''); const [category, setCategory] = useState('Sauce/Dressing');
+  const [prepTime, setPrepTime] = useState(''); const [yieldAmt, setYieldAmt] = useState('');
+  const [ingredients, setIngredients] = useState(''); const [instructions, setInstructions] = useState('');
+
+  const categories = ['All', 'Sauce/Dressing', 'Meat Prep', 'Appetizer', 'Entree', 'Side', 'Dessert', 'Cocktail'];
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !ingredients.trim() || !instructions.trim()) return addToast('Error', 'Missing required fields.');
+    try {
+      await addDoc(collection(db, "recipes"), {
+        title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--',
+        ingredients: ingredients.trim(), instructions: instructions.trim(),
+        authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString()
+      });
+      addToast('Recipe Saved', `${title} added to the book.`);
+      setIsFormOpen(false); setTitle(''); setPrepTime(''); setYieldAmt(''); setIngredients(''); setInstructions('');
+    } catch (err) { addToast('Error', 'Could not save recipe.'); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Permanently delete this recipe?")) return;
+    await deleteDoc(doc(db, "recipes", id));
+    setActiveRecipe(null); addToast('Deleted', 'Recipe removed.');
+  };
+
+  const filteredRecipes = recipes.filter(r => {
+    const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCat = filterCat === 'All' || r.category === filterCat;
+    return matchesSearch && matchesCat;
+  }).sort((a,b) => a.title.localeCompare(b.title));
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      
+      {/* SEARCH & FILTER HEADER */}
+      <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="flex-1 w-full relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
+          <input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"/>
+        </div>
+        <div className="flex w-full md:w-auto gap-3">
+          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className="flex-1 md:w-48 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm outline-none dark:text-white">
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button onClick={() => setIsFormOpen(true)} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"><Plus size={18}/> New Recipe</button>
+        </div>
+      </div>
+
+      {/* RECIPE GRID */}
+      {filteredRecipes.length === 0 ? (
+        <div className="text-center py-20 px-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl"><ChefHat className="mx-auto text-slate-300 dark:text-slate-600 mb-4" size={48}/><h3 className="text-lg font-black text-slate-500 dark:text-slate-400">No recipes found.</h3><p className="text-sm font-bold text-slate-400 dark:text-slate-500 mt-1">Adjust your search or add a new spec.</p></div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredRecipes.map(r => (
+            <div key={r.id} onClick={() => setActiveRecipe(r)} className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer group flex flex-col h-full">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-2 py-1 rounded-md">{r.category}</span>
+                <span className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors">View Spec →</span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mb-auto leading-tight">{r.title}</h3>
+              <div className="flex items-center gap-4 mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400"><Clock size={14}/> {r.prepTime}</div>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400"><Scale size={14}/> Yield: {r.yieldAmt}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* VIEW MODAL (The Spec Sheet) */}
+      <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
+        {activeRecipe && (
+          <div className="space-y-6">
+            <div className="border-b border-slate-100 dark:border-slate-700 pb-4">
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white leading-tight mb-2">{activeRecipe.title}</h2>
+              <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{activeRecipe.category}</span>
+                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1"><Clock size={12}/> {activeRecipe.prepTime}</span>
+                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1"><Scale size={12}/> Yield: {activeRecipe.yieldAmt}</span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+              <div className="md:col-span-2 space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1">Ingredients</h4>
+                <ul className="space-y-2 text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0"/><span>{ing}</span></li>)}
+                </ul>
+              </div>
+              
+              <div className="md:col-span-3 space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1">Method</h4>
+                <div className="space-y-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {activeRecipe.instructions.split('\n').map((step, i) => step.trim() && <p key={i} className="leading-relaxed"><strong className="text-slate-900 dark:text-white mr-1">{i+1}.</strong>{step}</p>)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-6 border-t border-slate-100 dark:border-slate-700 mt-6">
+              <div className="text-[10px] font-bold text-slate-400">Added by {activeRecipe.authorName}</div>
+              {(appUser?.isAdmin || appUser?.id === activeRecipe.authorId) && (
+                <button onClick={() => handleDelete(activeRecipe.id)} className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-lg transition-colors"><Trash2 size={14}/> Delete Recipe</button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ADD MODAL */}
+      <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title="Add New Spec">
+        <form onSubmit={handleSave} className="space-y-4">
+          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Recipe Title</label><input type="text" value={title} onChange={(e)=>setTitle(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500" required placeholder="e.g. House Ranch"/></div>
+          <div className="grid grid-cols-3 gap-3">
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Category</label><select value={category} onChange={(e)=>setCategory(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none">{categories.slice(1).map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Prep Time</label><input type="text" value={prepTime} onChange={(e)=>setPrepTime(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none" placeholder="e.g. 15 mins"/></div>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Yield</label><input type="text" value={yieldAmt} onChange={(e)=>setYieldAmt(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none" placeholder="e.g. 4 Quarts"/></div>
+          </div>
+          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Ingredients (One per line)</label><textarea value={ingredients} onChange={(e)=>setIngredients(e.target.value)} rows="5" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-medium text-sm outline-none custom-scrollbar" required placeholder="1 Cup Mayo&#10;1/2 Cup Buttermilk&#10;1 Tbsp Dill"/></div>
+          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Method / Instructions (One step per line)</label><textarea value={instructions} onChange={(e)=>setInstructions(e.target.value)} rows="5" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-medium text-sm outline-none custom-scrollbar" required placeholder="Combine mayo and buttermilk in cambro.&#10;Whisk in dry seasoning.&#10;Label and date."/></div>
+          <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl font-black text-sm shadow-md hover:bg-blue-700 transition-colors">Save Recipe</button>
+        </form>
+      </Modal>
+
+    </div>
+  );
+};
+
+        
 // --- LOGIN & PASSWORD RECOVERY ---
 const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [isRecover, setIsRecover] = useState(false); const [loading, setLoading] = useState(false); const [resetUser, setResetUser] = useState(null);
