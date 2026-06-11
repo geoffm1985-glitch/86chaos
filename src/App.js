@@ -1091,7 +1091,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   )
 };
 
-// --- COMPACT MONTH VIEW (Strict One-Page Print) ---
+// --- COMPACT MONTH VIEW (Absolute Physical Inches Fix) ---
 const TabMonth = ({ currentDate, users, shifts }) => {
   const monthStr = getMonthStr(currentDate); 
   const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); 
@@ -1102,9 +1102,9 @@ const TabMonth = ({ currentDate, users, shifts }) => {
     <div className="space-y-4">
       <style>{`
         @media print { 
-          /* 1. Force paper size */
-          @page { size: landscape !important; margin: 0.15in !important; }
-          html, body { width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: white !important; margin: 0 !important; padding: 0 !important; }
+          /* 1. Force Landscape and 0.25in margins */
+          @page { size: landscape !important; margin: 0.25in !important; }
+          html, body { width: 10.5in !important; height: 8in !important; overflow: hidden !important; background: white !important; margin: 0 !important; padding: 0 !important; }
           
           /* 2. Defeat the Day Dot invisibility rules */
           html body .app-root { display: block !important; }
@@ -1113,16 +1113,16 @@ const TabMonth = ({ currentDate, users, shifts }) => {
           /* 3. Hide all siblings (nav, headers, footers, toasts) */
           html body .app-root > * { display: none !important; }
           
-          /* 4. Show the main container but strip all padding/margins */
+          /* 4. Show the main container but strip all layout constraints */
           html body .app-root > main { display: block !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
           
-          /* 5. THE FIX: Pin the calendar directly to the paper corners so it cannot paginate */
+          /* 5. THE FIX: Absolute physical dimensions (Inches) */
           #calendar-print-wrapper {
-             position: fixed !important;
+             position: absolute !important;
              top: 0 !important;
              left: 0 !important;
-             width: 100vw !important;
-             height: 100vh !important;
+             width: 10.5in !important;
+             height: 8in !important; /* Fits perfectly inside 8.5in paper with 0.25in margins */
              display: flex !important;
              flex-direction: column !important;
              background: white !important;
@@ -1132,36 +1132,48 @@ const TabMonth = ({ currentDate, users, shifts }) => {
              border-radius: 0 !important;
              margin: 0 !important;
              padding: 0 !important;
+             overflow: hidden !important;
           }
           
           .no-print { display: none !important; }
           
-          /* 6. Formatting for the ink */
+          /* 6. Hardcoded header height */
           .print-header {
-             height: 40px !important;
-             line-height: 40px !important;
-             font-size: 24px !important;
+             height: 0.4in !important;
+             line-height: 0.4in !important;
+             font-size: 22px !important;
              font-weight: 900 !important;
              text-align: center !important;
              color: black !important;
              text-transform: uppercase !important;
              letter-spacing: 2px !important;
-             margin: 0 !important;
+             margin: 0 0 0.1in 0 !important;
              padding: 0 !important;
           }
           
-          /* 7. Flex the grid to dynamically fill the exact remaining space on the page */
+          /* 7. Hardcoded grid height (7.4in + 0.4in header + 0.1in margin = 7.9in total, leaving 0.1in safe buffer at bottom) */
           .print-grid { 
-            flex: 1 !important;
+            height: 7.4in !important;
             display: grid !important; 
             grid-template-columns: repeat(7, minmax(0, 1fr)) !important; 
-            grid-template-rows: 20px repeat(${totalRows}, minmax(0, 1fr)) !important;
-            border: 2px solid black !important;
+            grid-template-rows: 0.25in repeat(${totalRows}, minmax(0, 1fr)) !important;
+            border-top: 2px solid black !important;
+            border-left: 2px solid black !important;
             box-sizing: border-box !important;
             margin: 0 !important;
           }
           
-          .cell { border: 1px solid black !important; padding: 2px !important; overflow: hidden !important; min-height: 0 !important; }
+          /* 8. Single-sided borders prevent pixel doubling overflow */
+          .cell { 
+            border-right: 2px solid black !important; 
+            border-bottom: 2px solid black !important; 
+            border-top: none !important;
+            border-left: none !important;
+            background: transparent !important; 
+            padding: 2px !important; 
+            overflow: hidden !important; 
+            min-height: 0 !important; 
+          }
           .print-text { color: black !important; }
         }
       `}</style>
