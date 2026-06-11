@@ -1091,7 +1091,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   )
 };
 
-// --- COMPACT MONTH VIEW (Print Landscape Fix) ---
+// --- COMPACT MONTH VIEW (Strict One-Page Print) ---
 const TabMonth = ({ currentDate, users, shifts }) => {
   const monthStr = getMonthStr(currentDate); 
   const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); 
@@ -1099,68 +1099,89 @@ const TabMonth = ({ currentDate, users, shifts }) => {
   const totalRows = Math.ceil((firstDay + days) / 7);
 
   return (
-    <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
+    <div className="space-y-4">
       <style>{`
         @media print { 
-          /* 1. Defeat the Day Dot global invisibility rule */
-          html body .app-root { display: flex !important; }
+          /* 1. Force paper size */
+          @page { size: landscape !important; margin: 0.15in !important; }
+          html, body { width: 100vw !important; height: 100vh !important; overflow: hidden !important; background: white !important; margin: 0 !important; padding: 0 !important; }
+          
+          /* 2. Defeat the Day Dot invisibility rules */
+          html body .app-root { display: block !important; }
           html body .print-root { display: none !important; }
           
-          /* 2. Nuclear override: Hide everything in the app EXCEPT the <main> content area */
-          html body .app-root > *:not(main) { display: none !important; }
+          /* 3. Hide all siblings (nav, headers, footers, toasts) */
+          html body .app-root > * { display: none !important; }
           
-          /* 3. Strip main's layout constraints to maximize paper space */
-          html body .app-root > main { 
-            padding: 0 !important; 
-            margin: 0 !important; 
-            max-width: 100% !important; 
-            display: block !important;
-          }
+          /* 4. Show the main container but strip all padding/margins */
+          html body .app-root > main { display: block !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
           
-          /* 4. Tell the printer we want Landscape (some phones require you to manually tap Landscape in settings) */
-          @page { size: landscape; margin: 0.25in; }
-          
-          /* 5. Force the calendar to dynamically fill EXACTLY one page */
-          .print-grid { 
-            display: grid !important; 
-            grid-template-columns: repeat(7, minmax(0, 1fr)) !important; 
-            grid-template-rows: auto repeat(${totalRows}, minmax(0, 1fr)) !important;
-            width: 100% !important;
-            
-            /* 'vh' represents the height of the physical paper. This stops page 2 from generating. */
-            height: 90vh !important; 
-            
-            border: 2px solid black !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            margin: 0 !important;
-          }
-          
-          /* 6. Clean up the cells for ink */
-          .cell { 
-            border: 1px solid black !important; 
-            background: transparent !important; 
-            min-height: 0 !important; 
-            padding: 2px !important; 
-            overflow: hidden !important; 
+          /* 5. THE FIX: Pin the calendar directly to the paper corners so it cannot paginate */
+          #calendar-print-wrapper {
+             position: fixed !important;
+             top: 0 !important;
+             left: 0 !important;
+             width: 100vw !important;
+             height: 100vh !important;
+             display: flex !important;
+             flex-direction: column !important;
+             background: white !important;
+             z-index: 999999 !important;
+             border: none !important;
+             box-shadow: none !important;
+             border-radius: 0 !important;
+             margin: 0 !important;
+             padding: 0 !important;
           }
           
           .no-print { display: none !important; }
+          
+          /* 6. Formatting for the ink */
+          .print-header {
+             height: 40px !important;
+             line-height: 40px !important;
+             font-size: 24px !important;
+             font-weight: 900 !important;
+             text-align: center !important;
+             color: black !important;
+             text-transform: uppercase !important;
+             letter-spacing: 2px !important;
+             margin: 0 !important;
+             padding: 0 !important;
+          }
+          
+          /* 7. Flex the grid to dynamically fill the exact remaining space on the page */
+          .print-grid { 
+            flex: 1 !important;
+            display: grid !important; 
+            grid-template-columns: repeat(7, minmax(0, 1fr)) !important; 
+            grid-template-rows: 20px repeat(${totalRows}, minmax(0, 1fr)) !important;
+            border: 2px solid black !important;
+            box-sizing: border-box !important;
+            margin: 0 !important;
+          }
+          
+          .cell { border: 1px solid black !important; padding: 2px !important; overflow: hidden !important; min-height: 0 !important; }
           .print-text { color: black !important; }
         }
       `}</style>
       
-      <div className="flex justify-between items-center p-4 bg-slate-900 no-print">
-        <h3 className="font-black text-white flex items-center gap-2"><Calendar size={20}/> {formatDisplayMonth(monthStr)}</h3>
-        <button onClick={()=>window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-black text-sm shadow-md transition-colors active:scale-95">Print Calendar</button>
-      </div>
-      
-      <div className="p-0 bg-transparent print:p-0 w-full">
-        {/* Only visible on the physical paper */}
-        <h2 className="hidden print:block text-xl font-black text-center text-black mb-2 uppercase tracking-widest">{formatDisplayMonth(monthStr)}</h2>
+      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm" id="calendar-print-wrapper">
         
+        {/* Web UI Header */}
+        <div className="flex justify-between items-center p-4 bg-slate-900 no-print">
+          <h3 className="font-black text-white flex items-center gap-2"><Calendar size={20}/> {formatDisplayMonth(monthStr)}</h3>
+          <button onClick={()=>window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-black text-sm shadow-md transition-colors active:scale-95">Print Calendar</button>
+        </div>
+        
+        {/* Print Only Header */}
+        <div className="hidden print:block print-header">
+          {formatDisplayMonth(monthStr)}
+        </div>
+        
+        {/* Grid Area */}
         <div className="grid grid-cols-7 border-t border-l dark:border-slate-700 print-grid">
-          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-2 bg-slate-50 dark:bg-slate-900 text-center font-black text-[10px] text-slate-500 uppercase tracking-widest cell print-text">{d}</div>)}
+          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-1 bg-slate-50 dark:bg-slate-900 text-center font-black text-[10px] text-slate-500 uppercase tracking-widest cell print-text flex items-center justify-center">{d}</div>)}
           
           {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className="bg-slate-50/50 dark:bg-slate-800/50 min-h-[80px] print:min-h-0 cell"/>)}
           
@@ -1168,7 +1189,7 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
             return (
               <div key={date} className="p-1 min-h-[80px] print:min-h-0 flex flex-col cell overflow-hidden">
-                <span className="text-right text-[10px] font-black text-slate-400 mb-1 print-text">{i+1}</span>
+                <span className="text-right text-[10px] font-black text-slate-400 mb-1 print-text leading-none">{i+1}</span>
                 <div className="space-y-1 overflow-y-auto custom-scrollbar flex-1">
                   {dayShifts.map(s=><div key={s.id} className={`text-[9px] font-black px-1 py-0.5 rounded leading-tight truncate print-text ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}
                 </div>
@@ -1176,6 +1197,7 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             )
           })}
         </div>
+
       </div>
     </div>
   );
