@@ -54,30 +54,19 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
   });
 }
 
-// --- Audit Log Helper ---
-const logAudit = (user, action, target, details) => {
-  if(!user) return;
-  addDoc(collection(db, "auditLogs"), { userName: user.name, action, target, details, timestamp: new Date().toISOString() }).catch(console.error);
-};
-
-// --- SVG Logo ---
-const CheersLogo = ({ isDark }) => (
-  <svg viewBox="0 0 400 120" className="h-10 sm:h-12 w-auto drop-shadow-sm" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M190,20 C70,0 0,35 0,65 C0,95 100,110 270,110 L270,105 C100,105 30,95 30,65 C30,40 80,25 190,20 Z" className={isDark ? "text-slate-100" : "text-slate-900"} />
-    <text x="95" y="85" fontFamily="'Brush Script MT', 'Great Vibes', cursive" fontStyle="italic" fontSize="90" fontWeight="900" className={isDark ? "text-slate-100" : "text-slate-900"} letterSpacing="-1">Cheers</text>
-  </svg>
-);
-
-const Modal = ({ isOpen, onClose, title, children }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-700">
-        <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-slate-700"><h3 className="font-bold text-lg dark:text-white">{title}</h3><button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full dark:text-slate-400"><X size={20}/></button></div>
-        <div className="p-4">{children}</div>
-      </div>
-    </div>
-  );
+// --- Audit Log Helper (Failsafe) ---
+const logAudit = async (user, action, target, details) => {
+  try {
+    await addDoc(collection(db, "auditLogs"), { 
+      userName: user?.name || user?.email || "Unknown User", 
+      action: action || "UNKNOWN_ACTION", 
+      target: target || "System", 
+      details: details || "No details provided.", 
+      timestamp: new Date().toISOString() 
+    });
+  } catch (error) {
+    console.error("Audit failed to save:", error);
+  }
 };
 
 // --- Navigation Drawer Component ---
@@ -353,6 +342,14 @@ const TabAuditLog = ({ appUser }) => {
           <h2 className="text-lg font-black text-white flex items-center gap-2">
             <Shield className={view === 'crashes' ? 'text-orange-500' : 'text-red-500'}/> 
             {view === 'crashes' ? 'System Crash Reports' : 'System Audit Logs'}
+         <h2 className="text-lg font-black text-white flex items-center gap-2">
+            <Shield className={view === 'crashes' ? 'text-orange-500' : 'text-red-500'}/> 
+            {view === 'crashes' ? 'System Crash Reports' : 'System Audit Logs'}
+            {view === 'audit' && (
+               <button onClick={() => logAudit(appUser, 'TEST_FIRE', 'Connection', 'Manual test triggered.')} className="ml-4 bg-emerald-600 text-white px-3 py-1 rounded text-[10px] uppercase tracking-wider hover:bg-emerald-500 active:scale-95 transition-all">
+                 Force Test
+               </button>
+            )}
           </h2>
           <div className="flex gap-2 bg-slate-800 p-1 rounded-xl border border-slate-700">
             <button onClick={() => setView('audit')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-colors ${view === 'audit' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>Logs</button>
