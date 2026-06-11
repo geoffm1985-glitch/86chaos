@@ -120,10 +120,31 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 // This completely unmounts the app and forces the browser to look ONLY at these labels.
 const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   useEffect(() => {
-    // Automatically open the print dialog when this screen mounts
-    const timer = setTimeout(() => window.print(), 800);
-    return () => clearTimeout(timer);
-  }, []);
+    let printed = false;
+    
+    // Auto-close when returning to the app from the print dialog
+    const resumeApp = () => {
+      if (printed) {
+        setTimeout(() => onClose(), 500);
+      }
+    };
+
+    // 800ms delay ensures labels render before Chrome takes the snapshot
+    const timer = setTimeout(() => { 
+      printed = true;
+      window.print(); 
+    }, 800);
+    
+    // Listeners for when the print dialog closes
+    window.addEventListener('afterprint', resumeApp);
+    window.addEventListener('focus', resumeApp);
+
+    return () => { 
+      clearTimeout(timer);
+      window.removeEventListener('afterprint', resumeApp);
+      window.removeEventListener('focus', resumeApp);
+    };
+  }, [onClose]);
 
   return (
     <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black">
