@@ -1099,91 +1099,83 @@ const TabMonth = ({ currentDate, users, shifts }) => {
   const totalRows = Math.ceil((firstDay + days) / 7);
 
   return (
-    <div id="month-wrapper" className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
+    <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
       <style>{`
         @media print { 
-          /* Force Landscape and tight margins */
-          @page { size: landscape !important; margin: 0.25in !important; }
-          html, body { background: white !important; padding: 0 !important; margin: 0 !important; width: 11in !important; height: 8.5in !important; overflow: hidden !important; }
-          
-          /* 1. Override the global Day Dot printer block */
-          html body .app-root { display: block !important; background: white !important; }
+          /* 1. Defeat the Day Dot global invisibility rule */
+          html body .app-root { display: flex !important; }
           html body .print-root { display: none !important; }
           
-          /* 2. Hide ALL siblings of <main> (Headers, Footers, Modals) */
-          html body .app-root > * { display: none !important; }
+          /* 2. Nuclear override: Hide everything in the app EXCEPT the <main> content area */
+          html body .app-root > *:not(main) { display: none !important; }
           
-          /* 3. Explicitly SHOW <main> and remove its padding */
+          /* 3. Strip main's layout constraints to maximize paper space */
           html body .app-root > main { 
-            display: block !important; 
             padding: 0 !important; 
             margin: 0 !important; 
-            max-width: none !important; 
+            max-width: 100% !important; 
+            display: block !important;
           }
           
-          /* 4. Strip styling from the month wrapper */
-          #month-wrapper {
-            border: none !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
+          /* 4. Tell the printer we want Landscape (some phones require you to manually tap Landscape in settings) */
+          @page { size: landscape; margin: 0.25in; }
           
-          /* 5. Hide buttons and UI */
-          .no-print { display: none !important; }
-          
-          /* 6. Force the grid to hardcoded physical paper dimensions */
+          /* 5. Force the calendar to dynamically fill EXACTLY one page */
           .print-grid { 
             display: grid !important; 
             grid-template-columns: repeat(7, minmax(0, 1fr)) !important; 
             grid-template-rows: auto repeat(${totalRows}, minmax(0, 1fr)) !important;
-            width: 10.5in !important;
-            height: 7.7in !important; /* Safely fits inside 8.5" with margins */
+            width: 100% !important;
+            
+            /* 'vh' represents the height of the physical paper. This stops page 2 from generating. */
+            height: 90vh !important; 
+            
             border: 2px solid black !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             margin: 0 !important;
           }
           
-          /* 7. Strict cell formatting */
+          /* 6. Clean up the cells for ink */
           .cell { 
             border: 1px solid black !important; 
             background: transparent !important; 
             min-height: 0 !important; 
-            padding: 4px !important; 
+            padding: 2px !important; 
             overflow: hidden !important; 
           }
           
+          .no-print { display: none !important; }
           .print-text { color: black !important; }
         }
       `}</style>
       
-      {/* Web UI Header */}
       <div className="flex justify-between items-center p-4 bg-slate-900 no-print">
         <h3 className="font-black text-white flex items-center gap-2"><Calendar size={20}/> {formatDisplayMonth(monthStr)}</h3>
         <button onClick={()=>window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-black text-sm shadow-md transition-colors active:scale-95">Print Calendar</button>
       </div>
       
-      {/* Print Only Header */}
-      <h2 className="hidden print:block text-2xl font-black text-left text-black mb-2 uppercase tracking-widest">{formatDisplayMonth(monthStr)}</h2>
-      
-      <div className="grid grid-cols-7 border-t border-l dark:border-slate-700 print-grid">
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-2 bg-slate-50 dark:bg-slate-900 text-center font-black text-[10px] text-slate-500 uppercase tracking-widest cell print-text">{d}</div>)}
+      <div className="p-0 bg-transparent print:p-0 w-full">
+        {/* Only visible on the physical paper */}
+        <h2 className="hidden print:block text-xl font-black text-center text-black mb-2 uppercase tracking-widest">{formatDisplayMonth(monthStr)}</h2>
         
-        {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className="bg-slate-50/50 dark:bg-slate-800/50 min-h-[80px] print:min-h-0 cell"/>)}
-        
-        {Array.from({length:days}).map((_,i)=>{
-          const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
-          return (
-            <div key={date} className="p-1 min-h-[80px] print:min-h-0 flex flex-col cell overflow-hidden">
-              <span className="text-right text-[10px] font-black text-slate-400 mb-1 print-text">{i+1}</span>
-              <div className="space-y-1 overflow-y-auto custom-scrollbar flex-1">
-                {dayShifts.map(s=><div key={s.id} className={`text-[9px] font-black px-1 py-0.5 rounded leading-tight truncate print-text ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}
+        <div className="grid grid-cols-7 border-t border-l dark:border-slate-700 print-grid">
+          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-2 bg-slate-50 dark:bg-slate-900 text-center font-black text-[10px] text-slate-500 uppercase tracking-widest cell print-text">{d}</div>)}
+          
+          {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className="bg-slate-50/50 dark:bg-slate-800/50 min-h-[80px] print:min-h-0 cell"/>)}
+          
+          {Array.from({length:days}).map((_,i)=>{
+            const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
+            return (
+              <div key={date} className="p-1 min-h-[80px] print:min-h-0 flex flex-col cell overflow-hidden">
+                <span className="text-right text-[10px] font-black text-slate-400 mb-1 print-text">{i+1}</span>
+                <div className="space-y-1 overflow-y-auto custom-scrollbar flex-1">
+                  {dayShifts.map(s=><div key={s.id} className={`text-[9px] font-black px-1 py-0.5 rounded leading-tight truncate print-text ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   );
