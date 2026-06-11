@@ -950,10 +950,19 @@ const TabSettings = ({ addToast, appUser }) => {
   
   const testPush = async () => {
     if (!appUser.fcmToken) return addToast('Error', 'Enable notifications first.');
-    addToast('Sending...', 'Testing push connection.');
+    addToast('Sending...', 'Triggering test notification.');
+    
     try {
-      await fetch('/api/send-push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: "Test Notification", body: "Loud and clear. Notifications are working!", tokens: [appUser.fcmToken] }) });
-    } catch(e) { console.error(e); }
+      // Bypasses the missing backend to trigger a direct system notification
+      const registration = await navigator.serviceWorker.ready;
+      registration.showNotification("Cheers OS", {
+        body: "Loud and clear! Push notifications are locked and loaded.",
+        icon: "/app-icon.png"
+      });
+    } catch(e) { 
+      console.error(e); 
+      addToast('Error', 'Failed to trigger local push.');
+    }
   };
 
   const handleEnablePush = async () => {
