@@ -354,9 +354,9 @@ const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
 };
 
 
-// --- Tab: Request Off (NEW) ---
+// --- Tab: Request Off (Mass Select Calendar) ---
 const TabRequestOff = ({ currentDate, appUser, timeOff, addToast }) => {
-  const [date, setDate] = useState(currentDate);
+  const [selectedDates, setSelectedDates] = useState([]);
   const [type, setType] = useState('full');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
@@ -365,20 +365,37 @@ const TabRequestOff = ({ currentDate, appUser, timeOff, addToast }) => {
   const myRequests = timeOff.filter(t => t.employeeId === appUser.id).sort((a,b) => b.date.localeCompare(a.date));
   const allRequests = timeOff.sort((a,b) => b.date.localeCompare(a.date));
 
+  // Calendar Math
+  const monthStr = getMonthStr(currentDate); 
+  const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); 
+  const daysInMonth = getDaysInMonth(monthStr);
+
+  const toggleDate = (d) => {
+    if (d < getToday()) return addToast('Error', 'Cannot request past dates.');
+    if (selectedDates.includes(d)) setSelectedDates(selectedDates.filter(x => x !== d));
+    else setSelectedDates([...selectedDates, d]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (date < getToday()) return addToast('Error', 'Cannot request past dates off.');
-    const existing = timeOff.find(t => t.employeeId === appUser.id && t.date === date);
-    if (existing) return addToast('Error', 'You already have a request for this date.');
+    if (selectedDates.length === 0) return addToast('Error', 'Please select at least one date from the calendar.');
     
-    await addDoc(collection(db, "timeOffRequests"), {
-      employeeId: appUser.id, employeeName: appUser.name, date, type, 
-      startTime: type === 'partial' ? startTime : null, 
-      endTime: type === 'partial' ? endTime : null, 
-      reason, status: 'pending', submittedAt: new Date().toISOString()
-    });
-    addToast('Submitted', 'Your time off request has been logged.');
-    setReason('');
+    let addedCount = 0;
+    for (const d of selectedDates) {
+      const existing = timeOff.find(t => t.employeeId === appUser.id && t.date === d);
+      if (!existing) {
+        await addDoc(collection(db, "timeOffRequests"), {
+          employeeId: appUser.id, employeeName: appUser.name, date: d, type, 
+          startTime: type === 'partial' ? startTime : null, 
+          endTime: type === 'partial' ? endTime : null, 
+          reason, status: 'pending', submittedAt: new Date().toISOString()
+        });
+        addedCount++;
+      }
+    }
+    
+    if (addedCount > 0) addToast('Submitted', `Logged ${addedCount} time off request(s).`);
+    setSelectedDates([]); setReason('');
   };
 
   const handleDelete = async (id) => {
@@ -394,7 +411,38 @@ const TabRequestOff = ({ currentDate, appUser, timeOff, addToast }) => {
         <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border dark:border-slate-700 shadow-sm">
           <h3 className="font-black text-lg mb-4 dark:text-white flex items-center gap-2"><CalendarOff size={18}/> Request Time Off</h3>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white" required/></div>
+            
+            {/* Mass Select Interactive Calendar Grid */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Select Dates</label>
+              <div className="bg-slate-50 dark:bg-slate-900 border dark:border-slate-700 rounded-xl p-3 shadow-inner">
+                <div className="grid grid-cols-7 gap-1 mb-2">
+                  {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><div key={d} className="text-center text-[9px] font-black text-slate-400 uppercase">{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`}/>)}
+                  {Array.from({length:daysInMonth}).map((_,i)=>{
+                    const d = `${monthStr}-${String(i+1).padStart(2,'0')}`;
+                    const isPast = d < getToday();
+                    const isSelected = selectedDates.includes(d);
+                    const alreadyRequested = timeOff.some(t => t.employeeId === appUser.id && t.date === d);
+                    
+                    let btnClass = "h-8 rounded-lg text-xs font-bold transition-all shadow-sm ";
+                    if (alreadyRequested) btnClass += "bg-slate-200 dark:bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed";
+                    else if (isPast) btnClass += "text-slate-300 dark:text-slate-600 cursor-not-allowed bg-transparent shadow-none";
+                    else if (isSelected) btnClass += "bg-blue-600 text-white scale-110 shadow-md ring-2 ring-blue-300 z-10";
+                    else btnClass += "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600";
+
+                    return (
+                      <button key={d} type="button" disabled={isPast || alreadyRequested} onClick={() => toggleDate(d)} className={btnClass}>
+                        {i+1}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
             <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label><select value={type} onChange={e=>setType(e.target.value)} className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white"><option value="full">Full Day</option><option value="partial">Partial Day</option></select></div>
             {type === 'partial' && (
               <div className="grid grid-cols-2 gap-3">
@@ -403,7 +451,10 @@ const TabRequestOff = ({ currentDate, appUser, timeOff, addToast }) => {
               </div>
             )}
             <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Reason (Optional)</label><input type="text" value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Doctor appointment" className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white"/></div>
-            <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold shadow-sm">Submit Request</button>
+            
+            <button type="submit" disabled={selectedDates.length === 0} className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold shadow-md disabled:opacity-50 disabled:shadow-none hover:bg-blue-500 transition-colors">
+              Submit Request {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}
+            </button>
           </form>
         </div>
       </div>
@@ -435,7 +486,6 @@ const TabRequestOff = ({ currentDate, appUser, timeOff, addToast }) => {
     </div>
   );
 };
-
 // --- SCHEDULE MAKER (Upgraded & Protected against Time Off) ---
 const TabSchedule = ({ currentDate, users, shifts, timeOff, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); const [assignDates, setAssignDates] = useState([]); const [presetShift, setPresetShift] = useState('Custom'); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('21:00');
