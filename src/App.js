@@ -662,7 +662,7 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
   );
 };
 
-// --- PREP LIST (WI Food Code + Bulletproof Iframe Print Engine) ---
+// --- PREP LIST (WI Food Code + Android Chrome DOM Override Engine) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
   const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate);
   const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
@@ -680,11 +680,10 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     for (const item of toComplete) { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true, completedBy: appUser.name, isSelected: false }); } }
   };
 
-  // Wisconsin Food Code: 7-day total shelf life for TCS foods held at 41°F or below.
-  // Day of preparation counts as Day 1. Expires on Prep Date + 6 days.
+  // Wisconsin Food Code: 7-day total shelf life. Prep Day is Day 1. Expires on Prep Date + 6 days.
   const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
-  // --- BULLETPROOF IFRAME PRINT ENGINE ---
+  // --- ANDROID CHROME DOM OVERRIDE ENGINE ---
   const triggerBatchPrint = () => {
     const selected = items.filter(i => i.isSelected); 
     if (selected.length === 0) return;
@@ -692,79 +691,46 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     const toPrint = []; 
     selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item }); } });
 
-    // 1. Build a pure HTML document string entirely isolated from the React app
-    let printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>Print Labels</title>
-          <style>
-            @page { size: 2.4in 2.4in; margin: 0; }
-            body { margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: white; color: black; }
-            .label-page {
-              width: 2.4in;
-              height: 2.4in;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              text-align: center;
-              padding: 0.1in;
-              box-sizing: border-box;
-              page-break-after: always;
-              page-break-inside: avoid;
-              margin: 0;
-              overflow: hidden;
-            }
-            .label-title { font-size: 20px; font-weight: 900; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; word-wrap: break-word; }
-            .label-text { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
-            .label-exp { font-size: 18px; font-weight: 900; margin-top: 4px; border-top: 2px solid black; padding-top: 4px; width: 90%; }
-          </style>
-        </head>
-        <body>
-    `;
+    // 1. Build raw HTML mapping exactly to the Brother 2.4"x2.4" layout
+    let htmlContent = `<div style="background: white; width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 999999; margin: 0; padding: 0;">
+      <style>
+        @page { size: 2.4in 2.4in; margin: 0; }
+        body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      </style>`;
 
-    // 2. Map the data directly into the raw HTML
     toPrint.forEach(item => {
       const empName = appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '______';
       const prepDateParts = formatDisplayDate(prepDate).split(',');
       const prepDateStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
       const expDateStr = getExpDate(prepDate);
 
-      printContent += `
-        <div class="label-page">
-          <div class="label-title">${item.text}</div>
-          <div class="label-text">PREP: ${prepDateStr}</div>
-          <div class="label-exp">EXP: ${expDateStr}</div>
-          <div class="label-text" style="margin-top: 4px;">EMP: ${empName}</div>
+      htmlContent += `
+        <div style="width: 2.4in; height: 2.4in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0.1in; box-sizing: border-box; page-break-after: always; page-break-inside: avoid; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0;">
+          <div style="font-size: 20px; font-weight: 900; color: black; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; word-wrap: break-word;">${item.text}</div>
+          <div style="font-size: 14px; font-weight: bold; color: black; margin-bottom: 2px;">PREP: ${prepDateStr}</div>
+          <div style="font-size: 18px; font-weight: 900; color: black; margin-top: 4px; border-top: 2px solid black; padding-top: 4px; width: 90%;">EXP: ${expDateStr}</div>
+          <div style="font-size: 14px; font-weight: bold; color: black; margin-top: 4px;">EMP: ${empName}</div>
         </div>
       `;
     });
+    
+    htmlContent += `</div>`;
 
-    printContent += `</body></html>`;
+    // 2. Create an isolated container at the root of the document
+    const printContainer = document.createElement('div');
+    printContainer.id = 'android-print-override';
+    printContainer.innerHTML = htmlContent;
+    document.body.appendChild(printContainer);
 
-    // 3. Inject a hidden iframe into the actual device DOM
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
+    // 3. Temporarily hide the entire React app from the browser
+    const rootElement = document.getElementById('root');
+    if (rootElement) rootElement.style.display = 'none';
 
-    // 4. Write the HTML and trigger the print strictly on the iframe
-    const docObj = iframe.contentWindow.document;
-    docObj.open();
-    docObj.write(printContent);
-    docObj.close();
-
-    // Give the iframe 500ms to render the text, open the dialog, then delete the iframe
+    // 4. Force print (the browser now only sees the labels), then restore the app
     setTimeout(() => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-      setTimeout(() => { document.body.removeChild(iframe); }, 3000);
+      window.print();
+      if (rootElement) rootElement.style.display = 'block';
+      document.body.removeChild(printContainer);
     }, 500);
   };
 
