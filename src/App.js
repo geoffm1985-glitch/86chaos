@@ -486,7 +486,8 @@ const TabRequestOff = ({ currentDate, appUser, timeOff, addToast }) => {
     </div>
   );
 };
-// --- SCHEDULE MAKER (Upgraded & Protected against Time Off) ---
+
+// --- SCHEDULE MAKER (Upgraded, Protected against Time Off & Validated) ---
 const TabSchedule = ({ currentDate, users, shifts, timeOff, addToast }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); const [assignDates, setAssignDates] = useState([]); const [presetShift, setPresetShift] = useState('Custom'); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('21:00');
   const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
@@ -496,12 +497,59 @@ const TabSchedule = ({ currentDate, users, shifts, timeOff, addToast }) => {
   const SHIFT_PRESETS = [ { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" }, { label: "Custom", start: "", end: "" } ];
   const handlePresetChange = (e) => { const val = e.target.value; setPresetShift(val); const p = SHIFT_PRESETS.find(x => x.label === val); if (p && val !== 'Custom') { setStartTime(p.start); if (p.end !== 'CLOSE') setEndTime(p.end); } };
 
+  // --- Strict Validation Engine ---
+  const validateSchedule = () => {
+    const warnings = [];
+    monthDays.forEach(d => {
+       const dShifts = monthShifts.filter(s => s.date === d);
+       if (dShifts.length === 0) return; // Only check days that have at least one shift scheduled
+
+       const dObj = new Date(d + 'T12:00:00'); const day = dObj.getDay();
+       const isFri = day===5; const isSat = day===6; const isSun = day===0;
+       const dateFmt = `${dObj.getMonth()+1}/${dObj.getDate()}`;
+       
+       const bar = dShifts.filter(s => s.role === 'Bartender'); 
+       const kit = dShifts.filter(s => s.role === 'Kitchen');
+
+       const overlaps = (s, st, en) => { const shiftEnd = s.endTime === 'CLOSE' ? '24:00' : s.endTime; return s.startTime < en && shiftEnd > st; };
+       const countO = (arr, st, en) => arr.filter(s => overlaps(s, st, en)).length;
+
+       if (kit.length === 0) warnings.push(`[${dateFmt}] Kitchen: No staff scheduled.`);
+       else {
+         if (!kit.some(s => s.startTime >= '09:00' && s.startTime <= '10:00')) warnings.push(`[${dateFmt}] Kitchen: Missing opener (9am-10am)`);
+         if (!kit.some(s => s.endTime === 'CLOSE' || s.endTime >= '21:00')) warnings.push(`[${dateFmt}] Kitchen: Missing closer (9pm)`);
+       }
+       
+       const bCloseTime = (isFri || isSat) ? '02:30' : '02:00';
+       if (bar.length === 0) warnings.push(`[${dateFmt}] Bar: No bartenders scheduled.`);
+       else {
+         if (!bar.some(s => s.startTime <= '11:00')) warnings.push(`[${dateFmt}] Bar: Missing opener (11am)`);
+         const closers = bar.filter(s => s.endTime === 'CLOSE' || s.endTime >= bCloseTime).length;
+         if ((isFri || isSat) && closers < 2) warnings.push(`[${dateFmt}] Bar: Needs 2 closers (${bCloseTime==='02:30'?'2:30am':'2am'}), found ${closers}`);
+         else if (!isFri && !isSat && closers < 1) warnings.push(`[${dateFmt}] Bar: Needs 1 closer (${bCloseTime==='02:30'?'2:30am':'2am'}), found ${closers}`);
+       }
+
+       const lBar = countO(bar, '11:00', '14:00'); const lKit = countO(kit, '11:00', '14:00');
+       const dBar = countO(bar, '17:00', '20:00'); const dKit = countO(kit, '17:00', '20:00');
+       
+       if (day >= 1 && day <= 4) {
+         if(lBar < 2 || lKit < 2) warnings.push(`[${dateFmt}] Lunch (M-Th): Needs 2 Bar/2 Kit, found ${lBar} Bar/${lKit} Kit`);
+         if(dBar < 2 || dKit < 2) warnings.push(`[${dateFmt}] Dinner (M-Th): Needs 2 Bar/2 Kit, found ${dBar} Bar/${dKit} Kit`);
+       } else if (isFri) {
+         if(lBar < 2 || lKit < 3) warnings.push(`[${dateFmt}] Lunch (Fri): Needs 2 Bar/3 Kit, found ${lBar} Bar/${lKit} Kit`);
+         if(dBar < 2 || dKit < 3) warnings.push(`[${dateFmt}] Dinner (Fri): Needs 2 Bar/3 Kit, found ${dBar} Bar/${dKit} Kit`);
+       } else if (isSat || isSun) {
+         const dayBar = countO(bar, '11:00', '17:00'); const dayKit = countO(kit, '11:00', '17:00');
+         if(dayBar < 1 || dayKit < 2) warnings.push(`[${dateFmt}] Day Rush (Sat-Sun): Needs 1 Bar/2 Kit, found ${dayBar} Bar/${dayKit} Kit`);
+       }
+    });
+    return warnings;
+  };
+
   const handleCellClick = (d, empId) => {
     if (d < getToday()) return addToast("Locked", "Cannot edit past dates.");
     const existing = monthShifts.find(s => s.date === d && s.employeeId === empId);
     if (existing) { if(window.confirm("Delete shift?")) deleteDoc(doc(db,"shifts",existing.id)); return; }
-    
-    // UI selection logic
     setSelectedEmp(empId); if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x!==d)); else setAssignDates([...assignDates, d]);
   };
 
@@ -531,7 +579,12 @@ const TabSchedule = ({ currentDate, users, shifts, timeOff, addToast }) => {
   };
 
   const handlePublish = async () => {
-    if(!window.confirm("Publish schedule?")) return;
+    const warnings = validateSchedule();
+    if (warnings.length > 0) {
+      if (!window.confirm(`⚠️ SCHEDULE WARNINGS FOUND:\n\n${warnings.join('\n')}\n\nDo you want to publish anyway?`)) return;
+    } else {
+      if(!window.confirm("Publish schedule?")) return;
+    }
     const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true});
     addToast("Published", "Schedule is live.");
   };
@@ -587,6 +640,7 @@ const TabSchedule = ({ currentDate, users, shifts, timeOff, addToast }) => {
     </div>
   );
 };
+
 
 // --- PREP LIST (Fully Locked Down & Categorized) ---
 const TabPrep = ({ currentDate, prepItems, appUser, setPrintLabels }) => {
