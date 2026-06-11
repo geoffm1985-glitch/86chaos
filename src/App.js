@@ -969,13 +969,48 @@ const TabSales = ({ sales, addToast }) => {
   );
 };
 
-// --- MESSAGE BOARD (Threaded Replies & Deletions) ---
+// --- MESSAGE BOARD (Threaded Replies, Deletions, & Important Push) ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
-  const [message, setMessage] = useState(''); 
+  const [message, setMessage] = useState('');
+  const [isImportant, setIsImportant] = useState(false);
   const [replyText, setReplyText] = useState({});
+  
   const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
   
-  const handleBroadcast = async (e) => { e.preventDefault(); if(!message.trim()) return; await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, replies: [] }); setMessage(''); addToast('Posted', 'Message sent.'); };
+  const handleBroadcast = async (e) => {
+    e.preventDefault();
+    if(!message.trim()) return;
+    
+    await addDoc(collection(db, "events"), {
+      date: new Date().toISOString(),
+      title: message.trim(),
+      type: 'note',
+      author: appUser.name,
+      isImportant: isImportant,
+      replies: []
+    });
+    
+    // Push Notification Trigger for Important Messages
+    if (isImportant) {
+      // Gather all tokens except the person sending the message
+      const tokens = users.filter(u => u.fcmToken && u.id !== appUser.id).map(u => u.fcmToken);
+      if (tokens.length > 0) {
+         fetch('/api/send-push', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             title: `🚨 Urgent: ${appUser.name.split(' ')[0]}`,
+             body: message.trim(),
+             tokens
+           })
+         }).catch(err => console.error("Push error:", err));
+      }
+    }
+    
+    setMessage('');
+    setIsImportant(false);
+    addToast(isImportant ? 'Alert Sent' : 'Posted', 'Message sent.');
+  };
   
   const handleReply = async (eventId) => {
     const text = replyText[eventId]; if(!text || !text.trim()) return;
@@ -993,47 +1028,56 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border dark:border-slate-700">
-        <h3 className="font-black text-lg mb-3 flex items-center gap-2 dark:text-white"><MessageSquare size={18}/> Post a Message</h3>
-        <form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3">
-          <textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none font-medium dark:text-white" rows="2" placeholder="Message the team..." required></textarea>
-          <button className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black shadow-md hover:bg-blue-500 transition-colors">Post</button>
+    <div className="max-w-2xl mx-auto space-y-4">
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <h3 className="font-black text-base mb-3 flex items-center gap-2 text-slate-800 dark:text-white"><MessageSquare size={16}/> Post a Message</h3>
+        <form onSubmit={handleBroadcast} className="space-y-3">
+          <textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 outline-none text-sm font-medium dark:text-white transition-colors focus:border-blue-400" rows="2" placeholder="Message the team..." required></textarea>
+          <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"/>
+              <span className="text-xs font-bold text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors uppercase tracking-wider">Mark as Important (Sends Alert)</span>
+            </label>
+            <button type="submit" className={`px-6 py-2.5 rounded-xl font-bold text-sm text-white shadow-sm transition-all active:scale-95 ${isImportant ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'}`}>Post</button>
+          </div>
         </form>
       </div>
       
-      <div className="space-y-4">{allNotes.map(n => {
+      <div className="space-y-3">{allNotes.map(n => {
         const authorUser = users.find(u => u.name === n.author);
         const canDelete = appUser?.isAdmin || n.author === appUser?.name;
         const replies = n.replies || [];
         return (
-        <div key={n.id} className={`p-5 rounded-3xl border shadow-sm ${n.isImportant ? 'bg-red-50 border-red-200' : 'bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
-          <div className="flex gap-4">
-            {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className="w-12 h-12 rounded-full border-2 border-white shadow-sm flex-shrink-0" alt="pic"/>}
-            <div className="flex-1">
+        <div key={n.id} className={`p-4 rounded-2xl border shadow-sm transition-colors ${n.isImportant ? 'bg-red-50/50 border-red-200 dark:bg-red-900/10 dark:border-red-800/50' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+          <div className="flex gap-3">
+            {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className="w-10 h-10 rounded-full border-2 border-white dark:border-slate-700 shadow-sm flex-shrink-0" alt="pic"/>}
+            <div className="flex-1 min-w-0">
               <div className="flex justify-between items-start mb-1">
-                <span className={`font-black text-base ${n.isImportant ? 'text-red-700' : 'text-blue-600 dark:text-blue-400'}`}>{n.author}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`font-black text-sm ${n.isImportant ? 'text-red-700 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>{n.author}</span>
+                  {n.isImportant && <span className="text-[8px] font-black uppercase bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded">Important</span>}
+                </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(n.date).toLocaleDateString()}</span>
-                  {canDelete && <button onClick={() => handleDelete(n.id, n.author)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>}
+                  <span className="text-[10px] font-bold text-slate-400">{new Date(n.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                  {canDelete && <button onClick={() => handleDelete(n.id, n.author)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>}
                 </div>
               </div>
-              <p className={`font-bold leading-snug mb-4 ${n.isImportant?'text-red-900':'text-slate-800 dark:text-slate-200'}`}>{n.title}</p>
+              <p className={`font-medium text-sm leading-snug mb-3 ${n.isImportant?'text-red-900 dark:text-red-100':'text-slate-700 dark:text-slate-200'}`}>{n.title}</p>
               
               {/* Replies Section */}
-              <div className="space-y-3 mt-4 border-t border-slate-100 dark:border-slate-700 pt-3">
+              <div className="space-y-2 mt-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-100 dark:border-slate-700">
                 {replies.map(r => (
-                  <div key={r.id} className="flex gap-2 items-start bg-slate-50 dark:bg-slate-700/50 p-2.5 rounded-2xl">
-                     <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black text-[9px] border border-blue-200 flex-shrink-0">{r.author.substring(0,2).toUpperCase()}</div>
-                     <div>
-                       <span className="text-xs font-black dark:text-white mr-2">{r.author}</span>
-                       <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{r.text}</span>
+                  <div key={r.id} className="flex gap-2 items-start">
+                     <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black text-[8px] flex-shrink-0 mt-0.5">{r.author.substring(0,2).toUpperCase()}</div>
+                     <div className="flex-1">
+                       <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 mr-2">{r.author}</span>
+                       <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">{r.text}</span>
                      </div>
                   </div>
                 ))}
-                <div className="flex gap-2 items-center mt-2">
-                  <input type="text" value={replyText[n.id] || ''} onChange={e => setReplyText(p => ({...p, [n.id]: e.target.value}))} placeholder="Write a reply..." className="flex-1 text-xs p-2.5 bg-slate-100 dark:bg-slate-700 border-transparent rounded-xl outline-none font-medium dark:text-white" />
-                  <button onClick={() => handleReply(n.id)} className="text-blue-600 bg-blue-50 dark:bg-slate-700 dark:text-blue-400 p-2.5 rounded-xl font-bold hover:bg-blue-100 transition-colors"><Send size={16}/></button>
+                <div className="flex gap-2 items-center pt-1 mt-1 border-t border-slate-200 dark:border-slate-700">
+                  <input type="text" value={replyText[n.id] || ''} onChange={e => setReplyText(p => ({...p, [n.id]: e.target.value}))} onKeyDown={e => {if(e.key === 'Enter'){ e.preventDefault(); handleReply(n.id);}}} placeholder="Write a reply..." className="flex-1 text-[11px] p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg outline-none font-medium dark:text-white" />
+                  <button onClick={() => handleReply(n.id)} disabled={!replyText[n.id]?.trim()} className="text-blue-600 bg-blue-50 dark:bg-slate-800 dark:text-blue-400 p-2 rounded-lg font-bold hover:bg-blue-100 transition-colors disabled:opacity-50"><Send size={14}/></button>
                 </div>
               </div>
             </div>
