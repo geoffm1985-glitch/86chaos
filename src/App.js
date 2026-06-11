@@ -120,29 +120,17 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 // This completely unmounts the app and forces the browser to look ONLY at these labels.
 const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   useEffect(() => {
-    let printed = false;
-    
-    // Auto-close when returning to the app from the print dialog
-    const resumeApp = () => {
-      if (printed) {
-        setTimeout(() => onClose(), 500);
-      }
-    };
+    // Hooks into the Android Hardware Back Button so you never get "stuck"
+    const handleBackButton = () => onClose();
+    window.history.pushState({ tab: 'prep', printScreen: true }, '');
+    window.addEventListener('popstate', handleBackButton);
 
-    // 800ms delay ensures labels render before Chrome takes the snapshot
-    const timer = setTimeout(() => { 
-      printed = true;
-      window.print(); 
-    }, 800);
-    
-    // Listeners for when the print dialog closes
-    window.addEventListener('afterprint', resumeApp);
-    window.addEventListener('focus', resumeApp);
+    // Waits 800ms to ensure labels are physically drawn, then opens the print dialog
+    const timer = setTimeout(() => window.print(), 800);
 
     return () => { 
       clearTimeout(timer);
-      window.removeEventListener('afterprint', resumeApp);
-      window.removeEventListener('focus', resumeApp);
+      window.removeEventListener('popstate', handleBackButton);
     };
   }, [onClose]);
 
@@ -188,9 +176,11 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
       <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
          <Loader2 className="animate-spin text-blue-600 mb-6" size={64} />
          <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
-         <p className="text-slate-600 font-bold mb-8">Please select Brother QL-810W in your print settings.</p>
-         <button onClick={onClose} className="bg-slate-900 text-white px-8 py-4 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800">
-           Cancel / Return to App
+         <p className="text-slate-600 font-bold mb-8">Select Brother QL-810W in print settings.</p>
+         
+         <button onClick={() => window.history.back()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 flex flex-col items-center gap-1 active:scale-95 transition-transform w-full max-w-xs">
+           <span>Done Printing</span>
+           <span className="text-xs text-slate-400 font-medium">Return to App</span>
          </button>
       </div>
 
