@@ -662,10 +662,28 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
   );
 };
 
-// --- PREP LIST (WI Food Code + Android Chrome DOM Override Engine) ---
+// --- PREP LIST (WI Food Code + DK-1201 Brother QL-810W Engine) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
-  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate);
+  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]); const [isPrinting, setIsPrinting] = useState(false);
   const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
+  
+  // Pure React Print Trigger: Waits for the DOM to physically swap to the print view
+  useEffect(() => {
+    let timer;
+    if (isPrinting && printItems.length > 0) {
+      timer = setTimeout(() => { window.print(); }, 800); 
+    }
+    return () => clearTimeout(timer);
+  }, [isPrinting, printItems]);
+
+  // Reverts the UI back to normal after the print dialog closes
+  useEffect(() => {
+    const handleClosePrint = () => { setIsPrinting(false); setPrintItems([]); };
+    window.addEventListener('afterprint', handleClosePrint);
+    const handleFocus = () => { if(isPrinting) setTimeout(handleClosePrint, 1000); };
+    window.addEventListener('focus', handleFocus);
+    return () => { window.removeEventListener('afterprint', handleClosePrint); window.removeEventListener('focus', handleFocus); };
+  }, [isPrinting]);
 
   const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
   const toggleStatus = async (item) => { 
@@ -680,63 +698,76 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     for (const item of toComplete) { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true, completedBy: appUser.name, isSelected: false }); } }
   };
 
-  // Wisconsin Food Code: 7-day total shelf life. Prep Day is Day 1. Expires on Prep Date + 6 days.
-  const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
-
-  // --- ANDROID CHROME DOM OVERRIDE ENGINE ---
   const triggerBatchPrint = () => {
-    const selected = items.filter(i => i.isSelected); 
-    if (selected.length === 0) return;
-
-    const toPrint = []; 
-    selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item }); } });
-
-    // 1. Build raw HTML mapping exactly to the Brother 2.4"x2.4" layout
-    let htmlContent = `<div style="background: white; width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 999999; margin: 0; padding: 0;">
-      <style>
-        @page { size: 2.4in 2.4in; margin: 0; }
-        body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      </style>`;
-
-    toPrint.forEach(item => {
-      const empName = appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '______';
-      const prepDateParts = formatDisplayDate(prepDate).split(',');
-      const prepDateStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
-      const expDateStr = getExpDate(prepDate);
-
-      htmlContent += `
-        <div style="width: 2.4in; height: 2.4in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0.1in; box-sizing: border-box; page-break-after: always; page-break-inside: avoid; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0;">
-          <div style="font-size: 20px; font-weight: 900; color: black; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; word-wrap: break-word;">${item.text}</div>
-          <div style="font-size: 14px; font-weight: bold; color: black; margin-bottom: 2px;">PREP: ${prepDateStr}</div>
-          <div style="font-size: 18px; font-weight: 900; color: black; margin-top: 4px; border-top: 2px solid black; padding-top: 4px; width: 90%;">EXP: ${expDateStr}</div>
-          <div style="font-size: 14px; font-weight: bold; color: black; margin-top: 4px;">EMP: ${empName}</div>
-        </div>
-      `;
-    });
-    
-    htmlContent += `</div>`;
-
-    // 2. Create an isolated container at the root of the document
-    const printContainer = document.createElement('div');
-    printContainer.id = 'android-print-override';
-    printContainer.innerHTML = htmlContent;
-    document.body.appendChild(printContainer);
-
-    // 3. Temporarily hide the entire React app from the browser
-    const rootElement = document.getElementById('root');
-    if (rootElement) rootElement.style.display = 'none';
-
-    // 4. Force print (the browser now only sees the labels), then restore the app
-    setTimeout(() => {
-      window.print();
-      if (rootElement) rootElement.style.display = 'block';
-      document.body.removeChild(printContainer);
-    }, 500);
+    const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
+    const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}-${Date.now()}` }); } });
+    setPrintItems(toPrint);
+    setIsPrinting(true); 
   };
 
+  const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
   const globalSelectedCount = items.filter(i => i.isSelected).length;
   const groupedItems = items.reduce((acc, i) => { const c = i.category || 'General'; if(!acc[c]) acc[c]=[]; acc[c].push(i); return acc; }, {});
 
+  // --- ISOLATED PRINT VIEW (DK-1201: 3.5" wide x 1.1" tall) ---
+  if (isPrinting) {
+    return (
+      <div className="bg-white min-h-screen text-black">
+        <style>{`
+          @media print {
+            @page { size: 3.5in 1.1in; margin: 0; }
+            body, html { margin: 0 !important; padding: 0 !important; background: white !important; }
+            .no-print { display: none !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .label-page { 
+              width: 3.5in !important; 
+              height: 1.1in !important; 
+              display: flex !important; 
+              flex-direction: column !important; 
+              justify-content: center !important; 
+              padding: 0.05in 0.15in !important; 
+              box-sizing: border-box !important; 
+              page-break-after: always !important; 
+              page-break-inside: avoid !important; 
+              margin: 0 !important;
+              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+              overflow: hidden !important;
+            }
+            .label-title { font-size: 16px !important; font-weight: 900 !important; color: black !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+            .label-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; color: black !important; margin-bottom: 2px !important; }
+            .label-exp { display: flex !important; justify-content: center !important; font-size: 13px !important; font-weight: 900 !important; color: black !important; border-top: 2px solid black !important; padding-top: 2px !important; margin-top: 1px !important; }
+          }
+        `}</style>
+        
+        {/* Loading UI shown on screen while waiting for the print dialog */}
+        <div className="no-print flex flex-col items-center justify-center h-[80vh]">
+           <Loader2 className="animate-spin text-blue-600 mb-4" size={64} />
+           <h2 className="text-2xl font-black text-slate-900">Formatting Labels...</h2>
+           <p className="text-slate-500 font-bold mt-2">Sending to Brother QL-810W (DK-1201)</p>
+        </div>
+        
+        {/* Actual printable labels mapped perfectly to DK-1201 layout */}
+        <div>
+          {printItems.map(i => {
+            const prepDateParts = formatDisplayDate(prepDate).split(',');
+            const prepStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
+            return (
+              <div key={i.printId} className="label-page">
+                <div className="label-title">{i.text}</div>
+                <div className="label-row">
+                  <span>PREP: {prepStr}</span>
+                  <span>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span>
+                </div>
+                <div className="label-exp">EXP: {getExpDate(prepDate)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // --- NORMAL UI RENDER ---
   return (
     <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
       <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm">
