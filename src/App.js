@@ -1093,33 +1093,77 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 
 // --- COMPACT MONTH VIEW (Print Landscape Fix) ---
 const TabMonth = ({ currentDate, users, shifts }) => {
-  const monthStr = getMonthStr(currentDate); const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); const days = getDaysInMonth(monthStr);
+  const monthStr = getMonthStr(currentDate); 
+  const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); 
+  const days = getDaysInMonth(monthStr);
+  const totalRows = Math.ceil((firstDay + days) / 7);
+
   return (
-    <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
-      <style>{`@media print { 
-        @page { size: landscape; margin: 0.5in; }
-        body, html { background: white !important; }
-        .no-print { display: none !important; }
-        .print-container { width: 100% !important; border: none !important; }
-        .cell { border: 1px solid #000 !important; background: transparent !important; }
-        .print-text { color: black !important; }
-      }`}</style>
+    <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm relative">
+      <style>{`
+        @media print { 
+          @page { size: landscape; margin: 0.25in; }
+          body, html { background: white !important; height: 100vh !important; overflow: hidden !important; }
+          
+          /* Hide EVERYTHING outside the calendar to stop multi-page overflow */
+          body * { visibility: hidden; }
+          #print-calendar-mount, #print-calendar-mount * { visibility: visible; }
+          
+          /* Force the calendar to strictly map to the exact dimensions of one page */
+          #print-calendar-mount {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            padding: 0.25in !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-direction: column !important;
+            background: white !important;
+            z-index: 99999 !important;
+          }
+
+          .no-print { display: none !important; }
+          
+          /* Force rows to fractionally share height instead of using static 80px */
+          .print-grid { 
+            flex: 1 !important; 
+            display: grid !important; 
+            grid-template-columns: repeat(7, minmax(0, 1fr)) !important; 
+            grid-template-rows: auto repeat(${totalRows}, minmax(0, 1fr)) !important;
+            border: 2px solid black !important;
+          }
+          
+          .cell { border: 1px solid #000 !important; background: transparent !important; min-height: 0 !important; padding: 2px !important; }
+          .print-text { color: black !important; }
+        }
+      `}</style>
+      
       <div className="flex justify-between items-center p-4 bg-slate-900 no-print">
         <h3 className="font-black text-white flex items-center gap-2"><Calendar size={20}/> {formatDisplayMonth(monthStr)}</h3>
-        <button onClick={()=>window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-black text-sm shadow-md transition-colors">Print Calendar</button>
+        <button onClick={()=>window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-black text-sm shadow-md transition-colors active:scale-95">Print Calendar</button>
       </div>
-      <div className="grid grid-cols-7 border-t border-l dark:border-slate-700 print-container">
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-2 bg-slate-50 dark:bg-slate-900 text-center font-black text-[10px] text-slate-500 border-b border-r dark:border-slate-700 uppercase tracking-widest cell print-text">{d}</div>)}
-        {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-r dark:border-slate-700 min-h-[80px] cell"/>)}
-        {Array.from({length:days}).map((_,i)=>{
-          const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
-          return (
-            <div key={date} className="p-1 border-b border-r dark:border-slate-700 min-h-[80px] flex flex-col cell overflow-hidden">
-              <span className="text-right text-[10px] font-black text-slate-400 mb-1 print-text">{i+1}</span>
-              <div className="space-y-1 overflow-y-auto custom-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[9px] font-black px-1 py-0.5 rounded leading-tight truncate print-text ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}</div>
-            </div>
-          )
-        })}
+      
+      <div id="print-calendar-mount" className="p-0 bg-transparent">
+        {/* Print Header (Only visible on paper) */}
+        <h2 className="hidden print:block text-2xl font-black text-center text-black mb-2">{formatDisplayMonth(monthStr)}</h2>
+        
+        <div className="grid grid-cols-7 border-t border-l dark:border-slate-700 print-grid">
+          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-2 bg-slate-50 dark:bg-slate-900 text-center font-black text-[10px] text-slate-500 uppercase tracking-widest cell print-text">{d}</div>)}
+          
+          {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className="bg-slate-50/50 dark:bg-slate-800/50 min-h-[80px] print:min-h-0 cell"/>)}
+          
+          {Array.from({length:days}).map((_,i)=>{
+            const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
+            return (
+              <div key={date} className="p-1 min-h-[80px] print:min-h-0 flex flex-col cell overflow-hidden">
+                <span className="text-right text-[10px] font-black text-slate-400 mb-1 print-text">{i+1}</span>
+                <div className="space-y-1 overflow-y-auto custom-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[9px] font-black px-1 py-0.5 rounded leading-tight truncate print-text ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}</div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   );
