@@ -324,8 +324,8 @@ export default function App() {
         ))}
       </div>
       
-      <div className="w-full text-center text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
-        Cheers Management OS • v6.0.0
+   <div className="w-full text-center text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
+        Cheers Management OS • v7.0.0
       </div>
     </div>
   );
