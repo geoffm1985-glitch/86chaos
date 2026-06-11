@@ -93,15 +93,21 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (!isOpen) return null;
   const tabs = [];
   
-  if (appUser?.isAdmin) { tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> }); }
-  tabs.push({ id: 'timeoff', label: 'Request Off', icon: <Coffee size={18}/> });
+  if (appUser?.isAdmin) { 
+    tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> }); 
+    tabs.push({ id: 'timeoff', label: 'Request Off', icon: <Coffee size={18}/> });
+  } else {
+    tabs.push({ id: 'timeoff', label: 'Request Off', icon: <Coffee size={18}/> });
+  }
   
   tabs.push({ id: 'published', label: 'Master Roster', icon: <Clock size={18}/> });
   tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={18}/> });
   tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
-  tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   
-  if (appUser?.isAdmin || appUser?.role === 'Kitchen') { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); }
+  if (appUser?.isAdmin || appUser?.role === 'Kitchen') { 
+    tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); 
+    tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
+  }
   
   tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
@@ -151,17 +157,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 };
 
 // --- DEDICATED DAY DOT PRINT ENGINE ---
-// This completely unmounts the app and forces the browser to look ONLY at these labels.
 const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   useEffect(() => {
-    // Hooks into the Android Hardware Back Button so you never get "stuck"
     const handleBackButton = () => onClose();
     window.history.pushState({ tab: 'prep', printScreen: true }, '');
     window.addEventListener('popstate', handleBackButton);
-
-    // Waits 800ms to ensure labels are physically drawn, then opens the print dialog
     const timer = setTimeout(() => window.print(), 800);
-
     return () => { 
       clearTimeout(timer);
       window.removeEventListener('popstate', handleBackButton);
@@ -174,31 +175,14 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
         @media print {
           @page { size: 3.5in 1.1in; margin: 0; }
           body, html { margin: 0 !important; padding: 0 !important; background: white !important; height: auto !important; overflow: visible !important; }
-          
-          /* CRITICAL FIX: Un-fix the wrapper so the printer doesn't cut it off at 1 page */
           #master-print-wrapper { position: relative !important; height: auto !important; overflow: visible !important; display: block !important; }
-          
-          /* Hide EVERYTHING else. This guarantees no UI renders on the printer. */
           .no-print, header, nav, main, footer { display: none !important; }
-          
-          /* Show ONLY the labels */
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .dk-label { 
-            width: 3.5in !important; 
-            height: 1.1in !important; 
-            display: flex !important; 
-            flex-direction: column !important; 
-            justify-content: center !important; 
-            padding: 0.05in 0.15in !important; 
-            box-sizing: border-box !important; 
-            page-break-after: always !important; 
-            break-after: page !important;
-            page-break-inside: avoid !important; 
-            margin: 0 !important;
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
-            overflow: hidden !important;
-            border: none !important;
-            background: white !important;
+            width: 3.5in !important; height: 1.1in !important; display: flex !important; flex-direction: column !important; justify-content: center !important; 
+            padding: 0.05in 0.15in !important; box-sizing: border-box !important; page-break-after: always !important; break-after: page !important;
+            page-break-inside: avoid !important; margin: 0 !important; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+            overflow: hidden !important; border: none !important; background: white !important;
           }
           .dk-title { font-size: 16px !important; font-weight: 900 !important; color: black !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
           .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; color: black !important; margin-bottom: 2px !important; }
@@ -206,19 +190,15 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
         }
       `}</style>
       
-      {/* User Interface to Return to the App */}
       <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
          <Loader2 className="animate-spin text-blue-600 mb-6" size={64} />
          <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
          <p className="text-slate-600 font-bold mb-8">Select Brother QL-810W in print settings.</p>
-         
          <button onClick={() => window.history.back()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 flex flex-col items-center gap-1 active:scale-95 transition-transform w-full max-w-xs">
-           <span>Done Printing</span>
-           <span className="text-xs text-slate-400 font-medium">Return to App</span>
+           <span>Done Printing</span><span className="text-xs text-slate-400 font-medium">Return to App</span>
          </button>
       </div>
 
-      {/* The Actual Labels (Visible only to the printer) */}
       <div id="print-data">
         {labelsToPrint.map((item, idx) => {
           const prepDateParts = formatDisplayDate(prepDate).split(',');
@@ -226,10 +206,7 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
           return (
             <div key={`print-${idx}`} className="dk-label">
               <div className="dk-title">{item.text}</div>
-              <div className="dk-row">
-                <span>PREP: {prepStr}</span>
-                <span>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span>
-              </div>
+              <div className="dk-row"><span>PREP: {prepStr}</span><span>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span></div>
               <div className="dk-exp">EXP: {getExpDate(prepDate)}</div>
             </div>
           );
@@ -239,484 +216,224 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   );
 };
 
-// --- Main Application Layout ---
-export default function App() {
-  const users = useLiveCollection('users');
-  const shifts = useLiveCollection('shifts');
-  const prepItems = useLiveCollection('prepItems');
-  const inventoryItems = useLiveCollection('inventoryItems');
-  const shiftSwaps = useLiveCollection('shiftSwaps');
-  const events = useLiveCollection('events');
-  const sales = useLiveCollection('sales');
-  const recipes = useLiveCollection('recipes');
-  const timeOffRequests = useLiveCollection('timeOffRequests');
-  
-  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
-  const [activeTabState, setActiveTabState] = useState('published');
-  const [isDark, setIsDark] = useState(() => { return localStorage.getItem('theme') === 'dark'; });
-  const [labelsToPrint, setLabelsToPrint] = useState(null); // The Master Print Trigger
+import React, { useState, useEffect } from 'react';
+import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getMessaging, getToken } from 'firebase/messaging';
 
-  useEffect(() => {
-    if (isDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); } 
-    else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
-  }, [isDark]);
+// --- Firebase Initialization ---
+const firebaseConfig = {
+  apiKey: "AIzaSyA0kkmRCqGNoB1LXKfuCNIl1JKDyQci9hA",
+  authDomain: "cheers-34b8d.firebaseapp.com",
+  projectId: "cheers-34b8d",
+  storageBucket: "cheers-34b8d.firebasestorage.app",
+  messagingSenderId: "762225019248",
+  appId: "1:762225019248:web:3e142c9563e58ca762a7b5"
+};
 
-  useEffect(() => {
-    const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
-    window.addEventListener('popstate', handlePopState);
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab') || (appUser?.isAdmin ? 'schedule' : 'published');
-    setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [appUser]);
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+let messaging = null;
+try { if (typeof window !== 'undefined' && 'Notification' in window) messaging = getMessaging(app); } catch (e) { console.warn("Push not supported."); }
 
-  const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
+// --- Master Configuration ---
+const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
+const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
-  useEffect(() => {
-    if (appUser) localStorage.setItem('cheersUser', JSON.stringify(appUser));
-    else localStorage.removeItem('cheersUser');
-  }, [appUser]);
+// --- Helpers ---
+const useLiveCollection = (coll) => { const [data, setData] = useState([]); useEffect(() => onSnapshot(collection(db, coll), snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() })))), [coll]); return data; };
+const formatDate = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+const getToday = () => formatDate(new Date());
+const addDays = (d, days) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + days); return formatDate(dt); };
+const getMonthStr = (d) => (d || getToday()).substring(0, 7);
+const formatDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const formatDisplayMonth = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getDate();
+const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; };
+const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
+const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 
-  useEffect(() => { signInAnonymously(auth).catch(err => console.error("Firebase Auth error:", err)); }, []);
+// Wisconsin Food Code: 7-day total shelf life. Prep Day is Day 1. Expires on Prep Date + 6 days.
+const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
-  const [currentDate, setCurrentDate] = useState(getToday());
-  const [toasts, setToasts] = useState([]);
-  const [isDateModalOpen, setIsDateModalOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
-
-  const addToast = (title, message) => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, title, message }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
+// --- Global Crash Reporter ---
+if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
+  window.crashCatcherAttached = true;
+  window.onerror = (msg, url, lineNo, columnNo, error) => {
+    addDoc(collection(db, "crashReports"), { type: 'error', message: msg, stack: error?.stack || '', time: new Date().toISOString() }).catch(()=>{});
+    return false;
   };
-
-  // --- THE MASTER PRINT OVERRIDE ---
-  // If labels are loaded, the entire app vanishes and ONLY the DayDotPrintScreen is rendered.
-  if (labelsToPrint) {
-    return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
-  }
-
-  if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} isDark={isDark} addToast={addToast} />;
-
-  return (
-    <div className={`min-h-screen font-sans flex flex-col ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      <style>{`
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        .dark input[type="date"]::-webkit-calendar-picker-indicator, .dark input[type="month"]::-webkit-calendar-picker-indicator, .dark input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); }
-      `}</style>
-
-      {/* --- Header --- */}
-      <header className={`sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-        <CheersLogo isDark={isDark} />
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}><Menu size={20} /></button>
-      </header>
-
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} isDark={isDark} toggleDark={() => setIsDark(!isDark)} />
-
-      {/* --- Date Header --- */}
-      {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
-        <div className={`py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-          <button onClick={() => setCurrentDate(addDays(currentDate, -30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
-          <h2 onClick={() => setIsDateModalOpen(true)} className={`text-xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
-            {activeTabState === 'prep' || activeTabState === 'sales' ? formatDisplayDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
-          </h2>
-          <button onClick={() => setCurrentDate(addDays(currentDate, 30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
-        </div>
-      )}
-
-      <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Date">
-        <div className="space-y-4">
-          <input type={activeTabState === 'prep' || activeTabState === 'sales' ? 'date' : 'month'} value={activeTabState === 'prep' || activeTabState === 'sales' ? currentDate : getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' ? e.target.value : e.target.value + '-01'); setIsDateModalOpen(false); } }} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-blue-500" />
-          <button onClick={() => setIsDateModalOpen(false)} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Close</button>
-        </div>
-      </Modal>
-
-      {/* --- Main Content Area --- */}
-      <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
-       {activeTabState === 'schedule' && liveAppUser?.isAdmin && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'timeoff' && <TabTimeOff timeOffRequests={timeOffRequests} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} addToast={addToast} />}
-        {activeTabState === 'month' && <TabMonth currentDate={currentDate} users={users} shifts={shifts} />}
-        {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
-        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
-        {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'audit' && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
-      </main>
-
-      {/* --- Toast Alert Engine --- */}
-      <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
-        {toasts.map(t => (
-          <div key={t.id} className="bg-slate-900 text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-slate-700 animate-toast">
-            <div className="bg-blue-500/20 p-1.5 rounded-full text-blue-400 mt-0.5"><Bell size={16} /></div>
-            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p></div>
-            <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
-          </div>
-        ))}
-      </div>
-      
-   <div className="w-full text-center text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
-        Cheers Management OS • v7.0.0
-      </div>
-    </div>
-  );
+  window.addEventListener('unhandledrejection', (event) => {
+    addDoc(collection(db, "crashReports"), { type: 'promise_rejection', message: event.reason?.message || 'Unknown', time: new Date().toISOString() }).catch(()=>{});
+  });
 }
 
-
-        // --- RECIPE BOOK (Digital Spec Sheets) ---
-const TabRecipes = ({ recipes, appUser, addToast }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCat, setFilterCat] = useState('All');
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [activeRecipe, setActiveRecipe] = useState(null);
-
-  // Form State
-  const [title, setTitle] = useState(''); const [category, setCategory] = useState('Sauce/Dressing');
-  const [prepTime, setPrepTime] = useState(''); const [yieldAmt, setYieldAmt] = useState('');
-  const [ingredients, setIngredients] = useState(''); const [instructions, setInstructions] = useState('');
-
-  const categories = ['All', 'Sauce/Dressing', 'Meat Prep', 'Appetizer', 'Entree', 'Side', 'Dessert', 'Cocktail'];
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (!title.trim() || !ingredients.trim() || !instructions.trim()) return addToast('Error', 'Missing required fields.');
-    try {
-      await addDoc(collection(db, "recipes"), {
-        title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--',
-        ingredients: ingredients.trim(), instructions: instructions.trim(),
-        authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString()
-      });
-      addToast('Recipe Saved', `${title} added to the book.`);
-      setIsFormOpen(false); setTitle(''); setPrepTime(''); setYieldAmt(''); setIngredients(''); setInstructions('');
-    } catch (err) { addToast('Error', 'Could not save recipe.'); }
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm("Permanently delete this recipe?")) return;
-    await deleteDoc(doc(db, "recipes", id));
-    setActiveRecipe(null); addToast('Deleted', 'Recipe removed.');
-  };
-
-  const filteredRecipes = recipes.filter(r => {
-    const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCat = filterCat === 'All' || r.category === filterCat;
-    return matchesSearch && matchesCat;
-  }).sort((a,b) => a.title.localeCompare(b.title));
-
-  return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      
-      {/* SEARCH & FILTER HEADER */}
-      <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="flex-1 w-full relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
-          <input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"/>
-        </div>
-        <div className="flex w-full md:w-auto gap-3">
-          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className="flex-1 md:w-48 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm outline-none dark:text-white">
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <button onClick={() => setIsFormOpen(true)} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"><Plus size={18}/> New Recipe</button>
-        </div>
-      </div>
-
-      {/* RECIPE GRID */}
-      {filteredRecipes.length === 0 ? (
-        <div className="text-center py-20 px-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl"><ChefHat className="mx-auto text-slate-300 dark:text-slate-600 mb-4" size={48}/><h3 className="text-lg font-black text-slate-500 dark:text-slate-400">No recipes found.</h3><p className="text-sm font-bold text-slate-400 dark:text-slate-500 mt-1">Adjust your search or add a new spec.</p></div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredRecipes.map(r => (
-            <div key={r.id} onClick={() => setActiveRecipe(r)} className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer group flex flex-col h-full">
-              <div className="flex justify-between items-start mb-3">
-                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-2 py-1 rounded-md">{r.category}</span>
-                <span className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors">View Spec →</span>
-              </div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white mb-auto leading-tight">{r.title}</h3>
-              <div className="flex items-center gap-4 mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400"><Clock size={14}/> {r.prepTime}</div>
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400"><Scale size={14}/> Yield: {r.yieldAmt}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* VIEW MODAL (The Spec Sheet) */}
-      <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
-        {activeRecipe && (
-          <div className="space-y-6">
-            <div className="border-b border-slate-100 dark:border-slate-700 pb-4">
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white leading-tight mb-2">{activeRecipe.title}</h2>
-              <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{activeRecipe.category}</span>
-                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1"><Clock size={12}/> {activeRecipe.prepTime}</span>
-                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1"><Scale size={12}/> Yield: {activeRecipe.yieldAmt}</span>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-              <div className="md:col-span-2 space-y-3">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1">Ingredients</h4>
-                <ul className="space-y-2 text-sm font-bold text-slate-700 dark:text-slate-300">
-                  {activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0"/><span>{ing}</span></li>)}
-                </ul>
-              </div>
-              
-              <div className="md:col-span-3 space-y-3">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1">Method</h4>
-                <div className="space-y-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                  {activeRecipe.instructions.split('\n').map((step, i) => step.trim() && <p key={i} className="leading-relaxed"><strong className="text-slate-900 dark:text-white mr-1">{i+1}.</strong>{step}</p>)}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-6 border-t border-slate-100 dark:border-slate-700 mt-6">
-              <div className="text-[10px] font-bold text-slate-400">Added by {activeRecipe.authorName}</div>
-              {(appUser?.isAdmin || appUser?.id === activeRecipe.authorId) && (
-                <button onClick={() => handleDelete(activeRecipe.id)} className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-lg transition-colors"><Trash2 size={14}/> Delete Recipe</button>
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* ADD MODAL */}
-      <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title="Add New Spec">
-        <form onSubmit={handleSave} className="space-y-4">
-          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Recipe Title</label><input type="text" value={title} onChange={(e)=>setTitle(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500" required placeholder="e.g. House Ranch"/></div>
-          <div className="grid grid-cols-3 gap-3">
-            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Category</label><select value={category} onChange={(e)=>setCategory(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none">{categories.slice(1).map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Prep Time</label><input type="text" value={prepTime} onChange={(e)=>setPrepTime(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none" placeholder="e.g. 15 mins"/></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Yield</label><input type="text" value={yieldAmt} onChange={(e)=>setYieldAmt(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none" placeholder="e.g. 4 Quarts"/></div>
-          </div>
-          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Ingredients (One per line)</label><textarea value={ingredients} onChange={(e)=>setIngredients(e.target.value)} rows="5" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-medium text-sm outline-none custom-scrollbar" required placeholder="1 Cup Mayo&#10;1/2 Cup Buttermilk&#10;1 Tbsp Dill"/></div>
-          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Method / Instructions (One step per line)</label><textarea value={instructions} onChange={(e)=>setInstructions(e.target.value)} rows="5" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-medium text-sm outline-none custom-scrollbar" required placeholder="Combine mayo and buttermilk in cambro.&#10;Whisk in dry seasoning.&#10;Label and date."/></div>
-          <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl font-black text-sm shadow-md hover:bg-blue-700 transition-colors">Save Recipe</button>
-        </form>
-      </Modal>
-
-    </div>
-  );
+// --- Audit Log Helper (Failsafe) ---
+const logAudit = async (user, action, target, details) => {
+  try {
+    await addDoc(collection(db, "auditLogs"), { 
+      userName: user?.name || user?.email || "Unknown User", 
+      action: action || "UNKNOWN_ACTION", 
+      target: target || "System", 
+      details: details || "No details provided.", 
+      timestamp: new Date().toISOString() 
+    });
+  } catch (error) {
+    console.error("Audit failed to save:", error);
+  }
 };
 
-        
-// --- LOGIN & PASSWORD RECOVERY ---
-const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [isRecover, setIsRecover] = useState(false); const [loading, setLoading] = useState(false); const [resetUser, setResetUser] = useState(null);
-  const isFirstUser = users.length === 0;
+// --- SVG Logo ---
+const CheersLogo = ({ isDark }) => (
+  <svg viewBox="0 0 400 120" className="h-10 sm:h-12 w-auto drop-shadow-sm" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M190,20 C70,0 0,35 0,65 C0,95 100,110 270,110 L270,105 C100,105 30,95 30,65 C30,40 80,25 190,20 Z" className={isDark ? "text-slate-100" : "text-slate-900"} />
+    <text x="95" y="85" fontFamily="'Brush Script MT', 'Great Vibes', cursive" fontStyle="italic" fontSize="90" fontWeight="900" className={isDark ? "text-slate-100" : "text-slate-900"} letterSpacing="-1">Cheers</text>
+  </svg>
+);
 
-  const handleLogin = async (e) => {
-    e.preventDefault(); setLoading(true);
-    if (email.trim() === 'admin' && password === 'Atticus7!') { setAppUser({ id: 'dev-backdoor', name: 'Ghost Admin', email: MASTER_ADMIN_EMAIL, role: 'Kitchen', isAdmin: true, isActive: true }); return; }
-    try {
-      if (isFirstUser) {
-        const newUser = { name: 'Admin', email: MASTER_ADMIN_EMAIL, phone: '', password, role: 'Kitchen', isAdmin: true, isActive: true, forcePasswordChange: false, photoURL: '' };
-        const docRef = await addDoc(collection(db, "users"), newUser);
-        setAppUser({ id: docRef.id, ...newUser });
-      } else {
-        const user = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
-        if (user) { if (user.forcePasswordChange) setResetUser(user); else setAppUser(user); } 
-        else addToast("Error", "Invalid credentials.");
-      }
-    } catch (err) { addToast("Error", "Connection error."); console.error(err); }
-    setLoading(false);
-  };
-
-  const handleRecover = async (e) => {
-    e.preventDefault(); setLoading(true);
-    const user = users.find(u => u.email === email.toLowerCase().trim());
-    if (user) {
-      const tempPass = generateTempPass();
-      await updateDoc(doc(db, "users", user.id), { password: tempPass, forcePasswordChange: true });
-      addToast("Manager Notified", "A temporary password has been generated. Please contact your manager.");
-    } else { addToast("Error", "Account not found."); }
-    setIsRecover(false); setLoading(false);
-  };
-
-  const handlePasswordSetup = async (e) => {
-    e.preventDefault(); setLoading(true);
-    if(password.length < 5) { addToast("Error", "Password too short."); setLoading(false); return; }
-    try {
-      await updateDoc(doc(db, "users", resetUser.id), { password: password, forcePasswordChange: false });
-      setAppUser({ ...resetUser, password: password, forcePasswordChange: false });
-    } catch (err) { addToast("Error", "Failed to update."); }
-    setLoading(false);
-  };
-
-  if (resetUser) return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}><div className={`rounded-3xl shadow-xl border p-8 max-w-md w-full ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}><h2 className={`text-xl font-black text-center mb-2 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>Welcome, {resetUser.name}!</h2><p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-6 font-medium">Please set your permanent password.</p><form onSubmit={handlePasswordSetup} className="space-y-4"><div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">New Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div><button type="submit" disabled={loading} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-md">{loading ? 'Processing...' : 'Save & Login'}</button></form></div></div>
-  );
-
+const Modal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}><div className={`rounded-3xl shadow-xl border p-8 max-w-md w-full ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}><div className="flex justify-center mb-6"><CheersLogo isDark={isDark} /></div><h2 className={`text-xl font-black text-center mb-6 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{isRecover ? 'Recover Password' : (isFirstUser ? 'Create Admin Account' : 'Staff Login')}</h2><form onSubmit={isRecover ? handleRecover : handleLogin} className="space-y-4"><div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>{!isRecover && <div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>}<button type="submit" disabled={loading} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-md mt-2">{loading ? 'Processing...' : (isRecover ? 'Reset Password' : (isFirstUser ? 'Create Account' : 'Login'))}</button></form>{!isFirstUser && <button onClick={() => { setIsRecover(!isRecover); setEmail(''); setPassword(''); }} className="w-full text-center mt-4 text-xs font-bold text-slate-500 hover:text-blue-500 transition-colors">{isRecover ? 'Back to Login' : 'Forgot Password?'}</button>}</div></div>
-  );
-};
-
-
-// --- Tab: Sales & Trends ---
-const TabSales = ({ sales, addToast }) => {
-  const [date, setDate] = useState(getToday());
-  const [amount, setAmount] = useState('');
-  const [tag, setTag] = useState('Standard Day');
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (!amount) return;
-    await addDoc(collection(db, "sales"), { date, amount: parseFloat(amount), tag, loggedAt: new Date().toISOString() });
-    setAmount('');
-    addToast('Saved', 'Daily sales logged.');
-  };
-
-  const sortedSales = [...sales].sort((a,b) => b.date.localeCompare(a.date)).slice(0, 14);
-
-  return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
-        <h2 className="text-xl font-black mb-4 flex items-center gap-2 text-slate-900 dark:text-white"><TrendingUp className="text-emerald-500"/> Log Daily Sales</h2>
-        <form onSubmit={handleSave} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-          <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2.5 border rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white outline-none"/></div>
-          <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Revenue ($)</label><input type="number" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} className="w-full p-2.5 border rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white outline-none" required/></div>
-          <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Event Tag</label><select value={tag} onChange={e=>setTag(e.target.value)} className="w-full p-2.5 border rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white outline-none">{EVENT_TAGS.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-          <button className="bg-emerald-600 text-white p-2.5 rounded-xl font-bold h-[42px]">Save Log</button>
-        </form>
-      </div>
-      
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-4">
-        <h3 className="font-bold text-lg mb-3 dark:text-white">Recent Trends</h3>
-        <div className="divide-y dark:divide-slate-700">
-          {sortedSales.length === 0 && <div className="py-4 text-center text-sm font-bold text-slate-400">No sales data logged yet.</div>}
-          {sortedSales.map(s => (
-          <div key={s.id} className="py-3 flex justify-between items-center">
-            <div>
-              <span className="font-bold block text-slate-800 dark:text-white">{formatDisplayDate(s.date)}</span>
-              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded mt-1 inline-block ${s.tag === 'Standard Day' ? 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>{s.tag}</span>
-            </div>
-            <div className="font-black text-lg text-emerald-600 dark:text-emerald-400">${s.amount.toFixed(2)}</div>
-          </div>
-        ))}</div>
+    <div className="fixed inset-0 bg-slate-900/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-700">
+        <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-slate-700"><h3 className="font-bold text-lg dark:text-white">{title}</h3><button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full dark:text-slate-400"><X size={20}/></button></div>
+        <div className="p-4">{children}</div>
       </div>
     </div>
   );
 };
 
-// --- Tab: Team (Compacted) ---
-const TabTeam = ({ appUser, users, addToast }) => {
-  const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [role, setRole] = useState('Bartender'); const [photoURL, setPhotoURL] = useState(''); const [isAdmin, setIsAdmin] = useState(false);
-  const [editModalUser, setEditModalUser] = useState(null);
+// --- Navigation Drawer Component ---
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, isDark, toggleDark }) => {
+  if (!isOpen) return null;
+  const tabs = [];
   
-  const displayUsers = [...users].sort((a,b) => {
-    if (a.role === b.role) return a.name.localeCompare(b.name);
-    return a.role === 'Bartender' ? -1 : 1;
-  });
+  if (appUser?.isAdmin) { 
+    tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> }); 
+    tabs.push({ id: 'timeoff', label: 'Request Off', icon: <Coffee size={18}/> });
+  } else {
+    tabs.push({ id: 'timeoff', label: 'Request Off', icon: <Coffee size={18}/> });
+  }
+  
+  tabs.push({ id: 'published', label: 'Master Roster', icon: <Clock size={18}/> });
+  tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={18}/> });
+  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
+  
+  if (appUser?.isAdmin || appUser?.role === 'Kitchen') { 
+    tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); 
+    tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
+  }
+  
+  tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
+  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
+  
+  if (appUser?.isAdmin) { 
+    tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> }); 
+    if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) {
+      tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
+    }
+  }
+  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
-  const handleAdd = async (e) => {
-    e.preventDefault(); if (!name.trim() || !email.trim()) return;
-    const tPass = generateTempPass();
-    try {
-      await addDoc(collection(db, "users"), { name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: tPass, role, isAdmin, isActive: true, forcePasswordChange: true, photoURL: photoURL.trim() });
-      addToast('Staff Added', `Auto-generated password: ${tPass}`);
-      const msg = `Welcome to Cheers! Log in at cheers-portal.vercel.app. Your email is ${email.trim()} and your temporary password is: ${tPass}`;
-      if (phone) window.location.href = `sms:${phone}?body=${encodeURIComponent(msg)}`;
-      else window.location.href = `mailto:${email}?subject=Cheers Portal Access&body=${encodeURIComponent(msg)}`;
-      setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setIsAdmin(false);
-    } catch (err) { console.error(err); }
-  };
-
-  const handleUpdateUser = async (e) => {
-    e.preventDefault(); if (!editModalUser.name.trim() || !editModalUser.email.trim()) return;
-    try {
-      const updates = { name: editModalUser.name.trim(), email: editModalUser.email.toLowerCase().trim(), phone: editModalUser.phone || '', role: editModalUser.role, photoURL: editModalUser.photoURL || '' };
-      if (editModalUser.newPassword) { updates.password = editModalUser.newPassword; updates.forcePasswordChange = true; }
-      await updateDoc(doc(db, "users", editModalUser.id), updates);
-      addToast('Profile Updated', `${editModalUser.name}'s info has been saved.`); setEditModalUser(null);
-    } catch (err) { console.error(err); addToast('Update Failed', 'Could not save profile changes.'); }
-  };
-
-  const handleToggleAdmin = async (id, currentStatus) => { await updateDoc(doc(db, "users", id), { isAdmin: !currentStatus }); };
-  const handleDelete = async (id) => { if (window.confirm("Remove this staff member? This cannot be undone.")) { await deleteDoc(doc(db, "users", id)); addToast('Staff Removed', 'Account permanently deleted.'); logAudit(appUser, 'DELETE_STAFF', 'Team Roster', 'Permanently removed a staff member.'); } };
+  const handleLogout = () => { localStorage.removeItem('cheersUser'); setAppUser(null); onClose(); };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      <Modal isOpen={!!editModalUser} onClose={() => setEditModalUser(null)} title={`Edit Profile: ${editModalUser?.name}`}>
-        {editModalUser && (
-          <form onSubmit={handleUpdateUser} className="space-y-3">
-            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Name</label><input type="text" value={editModalUser.name} onChange={e => setEditModalUser({...editModalUser, name: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Email</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Phone</label><input type="tel" value={editModalUser.phone || ''} onChange={e => setEditModalUser({...editModalUser, phone: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Avatar URL</label><input type="url" value={editModalUser.photoURL || ''} onChange={e => setEditModalUser({...editModalUser, photoURL: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Role</label><select value={editModalUser.role} onChange={e => setEditModalUser({...editModalUser, role: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-600"><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5 text-red-500">Force Password Reset</label><input type="text" placeholder="Enter temporary password..." value={editModalUser.newPassword || ''} onChange={e => setEditModalUser({...editModalUser, newPassword: e.target.value})} className="w-full p-2 text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg outline-none text-slate-900 dark:text-white" /></div>
-            <button type="submit" className="w-full bg-blue-600 text-white p-2.5 rounded-lg font-bold hover:bg-blue-700 transition-colors mt-2 text-sm">Save Profile</button>
-          </form>
-        )}
-      </Modal>
+     <div className="fixed inset-0 z-[70] flex justify-end">
+       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
+       <div className="w-72 bg-white dark:bg-slate-800 h-full shadow-2xl flex flex-col relative border-l border-slate-200 dark:border-slate-700 animate-[slideIn_0.3s_ease-out]">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-800 flex justify-between items-start">
+             <div className="flex items-center gap-3">
+               <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className="w-10 h-10 rounded-full shadow-sm object-cover bg-white"/>
+               <div>
+                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div>
+                 <div className="text-slate-900 dark:text-white font-black text-lg tracking-tight leading-none">{appUser.name}</div>
+                 <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider mt-1 bg-blue-50 dark:bg-blue-900/30 w-max px-2 py-0.5 rounded-md">{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
+               </div>
+             </div>
+             <button onClick={onClose} className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"><X size={18}/></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+             {tabs.map(tab => (
+               <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? 'bg-slate-900 dark:bg-slate-700 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'}`}>
+                 <div className="flex items-center gap-3"><span className={activeTab === tab.id ? 'text-blue-400' : 'text-slate-400 dark:text-slate-500'}>{tab.icon}</span>{tab.label}</div>
+               </button>
+             ))}
+          </div>
+          <div className="p-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 space-y-2">
+            <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm cursor-pointer" onClick={toggleDark}>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">{isDark ? <Moon size={14}/> : <Sun size={14}/>} Dark Mode</span>
+              <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-1 ${isDark ? 'bg-blue-600' : 'bg-slate-300'}`}><div className={`w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-transform ${isDark ? 'translate-x-3.5' : 'translate-x-0'}`}></div></div>
+            </div>
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-600 dark:text-red-400 text-sm font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
+          </div>
+       </div>
+     </div>
+  );
+};
 
-      {appUser?.isAdmin && (
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-          <h3 className="font-bold text-base flex items-center gap-2 text-slate-800 dark:text-white mb-3"><Users size={18}/> Add Staff</h3>
-          <form onSubmit={handleAdd} className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              <div><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
-              <div><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
-              <div><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-              <div><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Avatar URL</label><input type="url" placeholder="Optional" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-            </div>
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="w-full sm:w-40"><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Role</label><select value={role} onChange={e => setRole(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
-              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 mt-3 cursor-pointer flex-1"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-blue-600" /> Admin</label>
-              <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold w-full sm:w-auto shadow-sm mt-3 sm:mt-0 text-sm">Add Staff</button>
-            </div>
-          </form>
-        </div>
-      )}
+// --- DEDICATED DAY DOT PRINT ENGINE ---
+const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
+  useEffect(() => {
+    const handleBackButton = () => onClose();
+    window.history.pushState({ tab: 'prep', printScreen: true }, '');
+    window.addEventListener('popstate', handleBackButton);
+    const timer = setTimeout(() => window.print(), 800);
+    return () => { 
+      clearTimeout(timer);
+      window.removeEventListener('popstate', handleBackButton);
+    };
+  }, [onClose]);
+
+  return (
+    <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black">
+      <style>{`
+        @media print {
+          @page { size: 3.5in 1.1in; margin: 0; }
+          body, html { margin: 0 !important; padding: 0 !important; background: white !important; height: auto !important; overflow: visible !important; }
+          #master-print-wrapper { position: relative !important; height: auto !important; overflow: visible !important; display: block !important; }
+          .no-print, header, nav, main, footer { display: none !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .dk-label { 
+            width: 3.5in !important; height: 1.1in !important; display: flex !important; flex-direction: column !important; justify-content: center !important; 
+            padding: 0.05in 0.15in !important; box-sizing: border-box !important; page-break-after: always !important; break-after: page !important;
+            page-break-inside: avoid !important; margin: 0 !important; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+            overflow: hidden !important; border: none !important; background: white !important;
+          }
+          .dk-title { font-size: 16px !important; font-weight: 900 !important; color: black !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+          .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; color: black !important; margin-bottom: 2px !important; }
+          .dk-exp { display: flex !important; justify-content: center !important; font-size: 14px !important; font-weight: 900 !important; color: black !important; border-top: 2px solid black !important; padding-top: 2px !important; margin-top: 1px !important; }
+        }
+      `}</style>
       
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto custom-scrollbar">
-        <table className="w-full text-left border-collapse min-w-[450px]">
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-            {displayUsers.map(u => {
-              const isMaster = u.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
-              return (
-              <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                <td className="p-2 flex items-center gap-2">
-                  <img src={getAvatar(u.name, u.photoURL)} className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-600 object-cover bg-white" alt="Avatar"/>
-                  <div className="font-bold text-slate-900 dark:text-white text-sm">{u.name}</div>
-                </td>
-                <td className="p-2">
-                  <div className="text-[9px] font-bold bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded w-max border border-slate-200 dark:border-slate-600 flex items-center gap-1 dark:text-slate-300">
-                    <span>📱</span>{u.phone ? <a href={`tel:${u.phone}`} className="text-blue-600 dark:text-blue-400 hover:underline">{u.phone}</a> : <span className="text-slate-500">No phone</span>}
-                  </div>
-                </td>
-                <td className="p-2">
-                  <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded-full inline-block ${u.role === 'Bartender' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'}`}>{u.role}</span>
-                  {appUser?.isAdmin && !isMaster && (
-                    <label className="flex items-center gap-1 mt-1 cursor-pointer w-max">
-                      <input type="checkbox" checked={u.isAdmin} onChange={() => handleToggleAdmin(u.id, u.isAdmin)} className="w-3 h-3 rounded border-slate-300 dark:border-slate-600" /><span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase">Admin</span>
-                    </label>
-                  )}
-                  {isMaster && <span className="block mt-1 text-[9px] font-black bg-slate-900 dark:bg-slate-600 text-white px-1.5 py-0.5 rounded w-max">Master Admin</span>}
-                </td>
-                <td className="p-2 text-right">
-                  <div className="flex justify-end gap-1">
-                     {appUser?.isAdmin && <button onClick={() => setEditModalUser(u)} className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1.5 rounded transition-colors"><Edit size={16}/></button>}
-                     {appUser?.isAdmin && !isMaster && (<button onClick={() => handleDelete(u.id)} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1.5 rounded transition-colors"><Trash2 size={16}/></button>)}
-                  </div>
-                </td>
-              </tr>
-            )})}
-          </tbody>
-        </table>
+      <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
+         <Loader2 className="animate-spin text-blue-600 mb-6" size={64} />
+         <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
+         <p className="text-slate-600 font-bold mb-8">Select Brother QL-810W in print settings.</p>
+         <button onClick={() => window.history.back()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 flex flex-col items-center gap-1 active:scale-95 transition-transform w-full max-w-xs">
+           <span>Done Printing</span><span className="text-xs text-slate-400 font-medium">Return to App</span>
+         </button>
+      </div>
+
+      <div id="print-data">
+        {labelsToPrint.map((item, idx) => {
+          const prepDateParts = formatDisplayDate(prepDate).split(',');
+          const prepStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
+          return (
+            <div key={`print-${idx}`} className="dk-label">
+              <div className="dk-title">{item.text}</div>
+              <div className="dk-row"><span>PREP: {prepStr}</span><span>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span></div>
+              <div className="dk-exp">EXP: {getExpDate(prepDate)}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 };
+
 
 // --- PUBLISHED SHIFTS & TRADE BOARD (Compacted) ---
 const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, addToast }) => {
@@ -836,8 +553,8 @@ const TabMonth = ({ currentDate, users, shifts }) => {
   );
 };
 
-// --- SCHEDULE MAKER (Redesigned & Sleek + Events) ---
-const TabSchedule = ({ currentDate, users, shifts, events, addToast, appUser }) => {
+// --- SCHEDULE MAKER (Redesigned & Sleek + Events & Time Off Blocks) ---
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addToast, appUser }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); const [assignDates, setAssignDates] = useState([]); const [presetShift, setPresetShift] = useState('Custom'); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('21:00');
   const [isEventModalOpen, setIsEventModalOpen] = useState(false); const [eventDate, setEventDate] = useState(getToday()); const [eventTitle, setEventTitle] = useState('');
   
@@ -858,15 +575,35 @@ const TabSchedule = ({ currentDate, users, shifts, events, addToast, appUser }) 
 
   const handleAssign = async () => {
     if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
-    for (const d of assignDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false }); }
-    setAssignDates([]); addToast('Assigned', `Added ${assignDates.length} shifts.`);
+    const sTime = startTime; const eTime = presetShift.includes('close') ? '23:59' : endTime;
+    
+    const validDates = [];
+    for (const d of assignDates) { 
+      const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id);
+      if (req) {
+        if (!req.isPartial) {
+          addToast('Blocked', `${emp.name.split(' ')[0]} requested ${formatDisplayDate(d)} completely off.`);
+          return; // Abort entire assignment block
+        } else {
+          const reqEnd = req.endTime || '23:59';
+          if ((sTime < reqEnd) && (eTime > req.startTime)) {
+            addToast('Blocked', `${emp.name.split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`);
+            return; // Abort due to time overlap
+          }
+        }
+      }
+      validDates.push(d);
+    }
+
+    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false }); }
+    setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
   const handlePublish = async () => {
     if(!window.confirm("Publish schedule? Notifications will be sent.")) return;
     const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true});
     addToast("Published", "Schedule is live.");
-    logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.');
+    if (typeof logAudit === 'function') logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.');
   };
 
   const handleAddEvent = async (e) => {
@@ -911,8 +648,18 @@ const TabSchedule = ({ currentDate, users, shifts, events, addToast, appUser }) 
             <tr key={u.id} className={selectedEmp===u.id?'bg-blue-50/50 dark:bg-blue-900/20':''}>
               <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-2 font-bold sticky left-0 z-10 border-r border-slate-200 dark:border-slate-700 cursor-pointer truncate shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${selectedEmp===u.id?'bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-white':'bg-white dark:bg-slate-800 dark:text-slate-300'}`}>{u.name.split(' ')[0]}</td>
               {monthDays.map(d => {
-                const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); const sel = assignDates.includes(d) && selectedEmp===u.id;
-                return (<td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-slate-100 dark:border-slate-700 cursor-pointer transition-all ${sel?'bg-amber-400 dark:bg-amber-500 outline outline-4 outline-amber-500 shadow-xl scale-[1.15] z-50 relative':'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>{shift ? <div className={`w-full rounded font-bold text-[9px] py-1 text-center text-white ${shift.isPublished?(u.role==='Bartender'?'bg-blue-500':'bg-orange-500'):'bg-slate-400'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div> : <div className="h-5 rounded"></div>}</td>)
+                const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id);
+                const sel = assignDates.includes(d) && selectedEmp===u.id;
+                
+                return (<td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-slate-100 dark:border-slate-700 cursor-pointer transition-all ${sel?'bg-amber-400 dark:bg-amber-500 outline outline-4 outline-amber-500 shadow-xl scale-[1.15] z-50 relative':'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                  <div className="flex flex-col gap-[1px]">
+                    {req && !req.isPartial && <div className="w-full rounded font-black text-[8px] py-1 text-center text-red-700 bg-red-100 dark:bg-red-900/40 dark:text-red-400 uppercase tracking-tighter leading-tight" title="Requested Off">Unavail</div>}
+                    {req && req.isPartial && <div className="w-full rounded font-black text-[8px] py-1 px-0.5 text-center text-amber-700 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-400 uppercase tracking-tighter leading-tight" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>Off: {formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
+                    {shift && <div className={`w-full rounded font-bold text-[9px] py-1 text-center text-white ${shift.isPublished?(u.role==='Bartender'?'bg-blue-500':'bg-orange-500'):'bg-slate-400'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
+                    {!req && !shift && <div className="h-5 rounded"></div>}
+                  </div>
+                </td>)
               })}
             </tr>
           ))}</tbody>
@@ -949,186 +696,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, addToast, appUser }) 
   );
 };
 
-// --- TIME OFF REQUESTS (Mass-Select Calendar & Partial Days) ---
-const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
-  const [calMonth, setCalMonth] = useState(getToday().substring(0, 7));
-  const [selectedDates, setSelectedDates] = useState([]);
-  const [isPartial, setIsPartial] = useState(false);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('17:00');
-  const [selectedReqs, setSelectedReqs] = useState([]);
-
-  const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-  const pendingRequests = timeOffRequests.filter(r => r.status === 'Pending').sort((a,b) => new Date(a.date || a.startDate) - new Date(b.date || b.startDate));
-
-  const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
-  const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
-
-  const changeMonth = (offset) => {
-    const d = new Date(calMonth + '-01T12:00:00');
-    d.setMonth(d.getMonth() + offset);
-    setCalMonth(d.toISOString().substring(0, 7));
-  };
-
-  const handleToggleDate = (d) => {
-    if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
-    if (myRequests.some(r => (r.date === d || (r.startDate <= d && r.endDate >= d)) && r.status !== 'Denied')) return addToast('Exists', 'Already requested this date.');
-    setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault(); 
-    if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.');
-    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.');
-
-    for (const d of selectedDates) {
-      await addDoc(collection(db, "timeOffRequests"), { 
-        userId: appUser.id, userName: appUser.name, date: d, 
-        isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, 
-        status: 'Pending', submittedAt: new Date().toISOString() 
-      });
-    }
-    
-    addToast('Submitted', `Requested ${selectedDates.length} days off.`);
-    setSelectedDates([]); setIsPartial(false);
-  };
-
-  const toggleSelectReq = (id) => setSelectedReqs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  
-  const handleBatchProcess = async (status) => {
-    if (selectedReqs.length === 0) return;
-    for (const id of selectedReqs) { await updateDoc(doc(db, "timeOffRequests", id), { status }); }
-    addToast('Processed', `${selectedReqs.length} requests marked as ${status}.`);
-    setSelectedReqs([]);
-  };
-
-  const StatusBadge = ({ status }) => {
-    const colors = { 'Pending': 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800', 'Approved': 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800', 'Denied': 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800' };
-    return <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${colors[status]}`}>{status}</span>;
-  };
-
-  return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      
-      {/* MANAGER VIEW */}
-      {appUser?.isAdmin && (
-        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <div className="bg-slate-50 dark:bg-slate-900 p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-            <h3 className="font-black text-lg flex items-center gap-2 dark:text-white"><Coffee className="text-blue-500"/> Pending Requests</h3>
-            {selectedReqs.length > 0 && (
-              <div className="flex gap-2 animate-[slideIn_0.2s_ease-out]">
-                <button onClick={() => handleBatchProcess('Approved')} className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-emerald-500 transition-colors">Approve ({selectedReqs.length})</button>
-                <button onClick={() => handleBatchProcess('Denied')} className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-red-500 transition-colors">Deny ({selectedReqs.length})</button>
-              </div>
-            )}
-          </div>
-          <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-y-auto custom-scrollbar">
-            {pendingRequests.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400">All caught up! No pending requests.</div>}
-            {pendingRequests.map(r => (
-              <div key={r.id} className={`p-4 flex items-center gap-4 transition-colors ${selectedReqs.includes(r.id) ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-                <input type="checkbox" checked={selectedReqs.includes(r.id)} onChange={() => toggleSelectReq(r.id)} className="w-5 h-5 rounded border-slate-300 accent-blue-600 cursor-pointer flex-shrink-0" />
-                <div className="flex-1">
-                  <div className="font-black text-slate-900 dark:text-white">{r.userName}</div>
-                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                    {r.date ? formatDisplayDate(r.date) : `${formatDisplayDate(r.startDate)} — ${formatDisplayDate(r.endDate)}`} 
-                    {r.isPartial && <span className="ml-2 text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-600 dark:text-slate-300">{formatShortTime(r.startTime)} to {formatShortTime(r.endTime)}</span>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* STAFF VIEW: CALENDAR & SUBMIT */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-        {/* MASS SELECT CALENDAR */}
-        <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <div className="bg-slate-50 dark:bg-slate-900 p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-            <button onClick={() => changeMonth(-1)} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-white transition-colors"><ChevronLeft size={16}/></button>
-            <h3 className="font-black text-lg dark:text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3>
-            <button onClick={() => changeMonth(1)} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-white transition-colors"><ChevronRight size={16}/></button>
-          </div>
-          
-          <div className="grid grid-cols-7 border-t border-slate-100 dark:border-slate-700">
-            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-2 text-center text-[10px] font-black text-slate-400 uppercase border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">{d}</div>)}
-            {Array.from({length: firstDayOffset}).map((_,i) => <div key={`empty-${i}`} className="p-2 border-b border-r border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/20 min-h-[70px]" />)}
-            {monthDays.map(d => {
-              const isSelected = selectedDates.includes(d);
-              const existingReq = myRequests.find(r => r.date === d || (r.startDate <= d && r.endDate >= d));
-              const isPast = d < getToday();
-              
-              return (
-                <div key={d} onClick={() => !isPast && (!existingReq || existingReq.status==='Denied') && handleToggleDate(d)} className={`p-2 border-b border-r border-slate-100 dark:border-slate-700 min-h-[70px] flex flex-col justify-between transition-colors ${(isPast || (existingReq && existingReq.status !== 'Denied')) ? 'bg-slate-50 dark:bg-slate-900/50 opacity-60 cursor-not-allowed' : isSelected ? 'bg-blue-100 dark:bg-blue-900/40 cursor-pointer shadow-inner' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer'}`}>
-                  <span className={`text-sm font-black ${isSelected ? 'text-blue-700 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
-                  {existingReq && existingReq.status !== 'Denied' && <span className={`text-[8px] font-black uppercase rounded px-1 mt-1 truncate ${existingReq.status === 'Approved' ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40' : 'text-amber-600 bg-amber-100 dark:bg-amber-900/40'}`}>{existingReq.status}</span>}
-                  {isSelected && <span className="text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-0.5"><Check size={10}/> Selected</span>}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* SUBMISSION PANEL */}
-        <div className="md:col-span-1 space-y-6">
-          <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <h3 className="font-black text-lg mb-2 dark:text-white">Submit Request</h3>
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-4">Tap days on the calendar to mass-select.</p>
-            
-            <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-700 mb-4 text-center">
-               <span className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Selected Days</span>
-               <span className="text-3xl font-black text-blue-600 dark:text-blue-400">{selectedDates.length}</span>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 cursor-pointer p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                <input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-5 h-5 rounded border-slate-300 accent-blue-600" />
-                Partial Day Request?
-              </label>
-
-              {isPartial && (
-                <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
-                  <div><label className="block text-[10px] font-bold text-blue-800 dark:text-blue-300 uppercase mb-1">Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg outline-none font-bold text-xs dark:text-white" required/></div>
-                  <div><label className="block text-[10px] font-bold text-blue-800 dark:text-blue-300 uppercase mb-1">End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg outline-none font-bold text-xs dark:text-white" required/></div>
-                </div>
-              )}
-              
-              <button type="submit" disabled={selectedDates.length === 0} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-4 rounded-xl font-black text-sm shadow-md hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Send Request</button>
-            </form>
-          </div>
-        </div>
-
-      </div>
-
-      {/* HISTORY TABLE */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-        <div className="bg-slate-50 dark:bg-slate-900 p-4 border-b border-slate-200 dark:border-slate-700"><h3 className="font-black text-lg dark:text-white">My Request History</h3></div>
-        <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-y-auto custom-scrollbar">
-           {myRequests.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400">You haven't submitted any requests yet.</div>}
-           {myRequests.map(r => (
-             <div key={r.id} className="p-4 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-               <div>
-                 <div className="font-black text-sm text-slate-900 dark:text-white leading-tight mb-0.5">
-                   {r.date ? formatDisplayDate(r.date) : `${formatDisplayDate(r.startDate)} — ${formatDisplayDate(r.endDate)}`}
-                 </div>
-                 <div className="text-[10px] font-bold text-slate-400 flex items-center gap-2">
-                   <span>Submitted {new Date(r.submittedAt).toLocaleDateString()}</span>
-                   {r.isPartial && <span className="bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{formatShortTime(r.startTime)} to {formatShortTime(r.endTime)}</span>}
-                 </div>
-               </div>
-               <div className="flex items-center gap-4">
-                 <StatusBadge status={r.status} />
-                 {r.status === 'Pending' && <button onClick={() => { if(window.confirm("Cancel request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>}
-               </div>
-             </div>
-           ))}
-        </div>
-      </div>
-
-    </div>
-  );
-};
 
 // --- PREP LIST (Normal UI - Triggers the App-Level Print Screen) ---
 const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
@@ -1151,8 +718,6 @@ const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
   const triggerBatchPrint = () => {
     const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
     const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}-${Date.now()}` }); } });
-    
-    // THIS CALLS THE APP-LEVEL COMPONENT. It destroys TabPrep entirely so the browser CANNOT see it.
     setLabelsToPrint({ items: toPrint, prepDate }); 
   };
 
@@ -1188,7 +753,7 @@ const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg border dark:border-slate-600 h-8"><button onClick={()=>updateQty(i.id,qty,-1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">-</button><span className="w-5 text-center text-xs font-bold dark:text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">+</button></div>
                     <button onClick={()=>toggleStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${isDone?'bg-slate-200 text-slate-500 dark:bg-slate-600':'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-400'}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
-                    <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); logAudit(appUser, 'DELETE_PREP', i.text, 'Deleted a master prep item.'); }} className="text-slate-300 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                    <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); if(typeof logAudit === 'function') logAudit(appUser, 'DELETE_PREP', i.text, 'Deleted a master prep item.'); }} className="text-slate-300 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
                   </div>
                 </div>
               )})}
@@ -1323,7 +888,6 @@ const TabSettings = ({ addToast, appUser }) => {
     addToast('Sending...', 'Triggering test notification.');
     
     try {
-      // Bypasses the missing backend to trigger a direct system notification
       const registration = await navigator.serviceWorker.ready;
       registration.showNotification("Cheers OS", {
         body: "Loud and clear! Push notifications are locked and loaded.",
@@ -1500,3 +1064,269 @@ const TabAuditLog = ({ appUser }) => {
     </div>
   );
 };
+
+// --- RECIPE BOOK (Digital Spec Sheets) ---
+const TabRecipes = ({ recipes, appUser, addToast }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCat, setFilterCat] = useState('All');
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [activeRecipe, setActiveRecipe] = useState(null);
+
+  // Form State
+  const [title, setTitle] = useState(''); const [category, setCategory] = useState('Sauce/Dressing');
+  const [prepTime, setPrepTime] = useState(''); const [yieldAmt, setYieldAmt] = useState('');
+  const [ingredients, setIngredients] = useState(''); const [instructions, setInstructions] = useState('');
+
+  const categories = ['All', 'Sauce/Dressing', 'Meat Prep', 'Appetizer', 'Entree', 'Side', 'Dessert', 'Cocktail'];
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !ingredients.trim() || !instructions.trim()) return addToast('Error', 'Missing required fields.');
+    try {
+      await addDoc(collection(db, "recipes"), {
+        title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--',
+        ingredients: ingredients.trim(), instructions: instructions.trim(),
+        authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString()
+      });
+      addToast('Recipe Saved', `${title} added to the book.`);
+      setIsFormOpen(false); setTitle(''); setPrepTime(''); setYieldAmt(''); setIngredients(''); setInstructions('');
+    } catch (err) { addToast('Error', 'Could not save recipe.'); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Permanently delete this recipe?")) return;
+    await deleteDoc(doc(db, "recipes", id));
+    setActiveRecipe(null); addToast('Deleted', 'Recipe removed.');
+  };
+
+  const filteredRecipes = recipes.filter(r => {
+    const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCat = filterCat === 'All' || r.category === filterCat;
+    return matchesSearch && matchesCat;
+  }).sort((a,b) => a.title.localeCompare(b.title));
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+      
+      {/* SEARCH & FILTER HEADER */}
+      <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="flex-1 w-full relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
+          <input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"/>
+        </div>
+        <div className="flex w-full md:w-auto gap-3">
+          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className="flex-1 md:w-48 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-sm outline-none dark:text-white">
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button onClick={() => setIsFormOpen(true)} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"><Plus size={18}/> New Spec</button>
+        </div>
+      </div>
+
+      {/* RECIPE GRID */}
+      {filteredRecipes.length === 0 ? (
+        <div className="text-center py-20 px-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl"><ChefHat className="mx-auto text-slate-300 dark:text-slate-600 mb-4" size={48}/><h3 className="text-lg font-black text-slate-500 dark:text-slate-400">No recipes found.</h3><p className="text-sm font-bold text-slate-400 dark:text-slate-500 mt-1">Adjust your search or add a new spec.</p></div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredRecipes.map(r => (
+            <div key={r.id} onClick={() => setActiveRecipe(r)} className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer group flex flex-col h-full">
+              <div className="flex justify-between items-start mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-2 py-1 rounded-md">{r.category}</span>
+                <span className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors">View Spec →</span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mb-auto leading-tight">{r.title}</h3>
+              <div className="flex items-center gap-4 mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400"><Clock size={14}/> {r.prepTime}</div>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400"><Scale size={14}/> Yield: {r.yieldAmt}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* VIEW MODAL (The Spec Sheet) */}
+      <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
+        {activeRecipe && (
+          <div className="space-y-6">
+            <div className="border-b border-slate-100 dark:border-slate-700 pb-4">
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white leading-tight mb-2">{activeRecipe.title}</h2>
+              <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{activeRecipe.category}</span>
+                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1"><Clock size={12}/> {activeRecipe.prepTime}</span>
+                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1"><Scale size={12}/> Yield: {activeRecipe.yieldAmt}</span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+              <div className="md:col-span-2 space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1">Ingredients</h4>
+                <ul className="space-y-2 text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0"/><span>{ing}</span></li>)}
+                </ul>
+              </div>
+              
+              <div className="md:col-span-3 space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1">Method</h4>
+                <div className="space-y-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {activeRecipe.instructions.split('\n').map((step, i) => step.trim() && <p key={i} className="leading-relaxed"><strong className="text-slate-900 dark:text-white mr-1">{i+1}.</strong>{step}</p>)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-6 border-t border-slate-100 dark:border-slate-700 mt-6">
+              <div className="text-[10px] font-bold text-slate-400">Added by {activeRecipe.authorName}</div>
+              {(appUser?.isAdmin || appUser?.id === activeRecipe.authorId) && (
+                <button onClick={() => handleDelete(activeRecipe.id)} className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-lg transition-colors"><Trash2 size={14}/> Delete Recipe</button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ADD MODAL */}
+      <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title="Add New Spec">
+        <form onSubmit={handleSave} className="space-y-4">
+          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Recipe Title</label><input type="text" value={title} onChange={(e)=>setTitle(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500" required placeholder="e.g. House Ranch"/></div>
+          <div className="grid grid-cols-3 gap-3">
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Category</label><select value={category} onChange={(e)=>setCategory(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none">{categories.slice(1).map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Prep Time</label><input type="text" value={prepTime} onChange={(e)=>setPrepTime(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none" placeholder="e.g. 15 mins"/></div>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Yield</label><input type="text" value={yieldAmt} onChange={(e)=>setYieldAmt(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-bold text-sm outline-none" placeholder="e.g. 4 Quarts"/></div>
+          </div>
+          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Ingredients (One per line)</label><textarea value={ingredients} onChange={(e)=>setIngredients(e.target.value)} rows="5" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-medium text-sm outline-none custom-scrollbar" required placeholder="1 Cup Mayo&#10;1/2 Cup Buttermilk&#10;1 Tbsp Dill"/></div>
+          <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Method / Instructions (One step per line)</label><textarea value={instructions} onChange={(e)=>setInstructions(e.target.value)} rows="5" className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl font-medium text-sm outline-none custom-scrollbar" required placeholder="Combine mayo and buttermilk in cambro.&#10;Whisk in dry seasoning.&#10;Label and date."/></div>
+          <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl font-black text-sm shadow-md hover:bg-blue-700 transition-colors">Save Recipe</button>
+        </form>
+      </Modal>
+
+    </div>
+  );
+};
+
+// --- TIME OFF REQUESTS (Compact, Direct Logic, No Approvals) ---
+const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
+  const [calMonth, setCalMonth] = useState(getToday().substring(0, 7));
+  const [selectedDates, setSelectedDates] = useState([]);
+  const [isPartial, setIsPartial] = useState(false);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('17:00');
+
+  const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(a.date) - new Date(b.date));
+  const allFutureRequests = timeOffRequests.filter(r => r.date >= getToday()).sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
+  const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
+
+  const changeMonth = (offset) => {
+    const d = new Date(calMonth + '-01T12:00:00');
+    d.setMonth(d.getMonth() + offset);
+    setCalMonth(d.toISOString().substring(0, 7));
+  };
+
+  const handleToggleDate = (d) => {
+    if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
+    if (myRequests.some(r => r.date === d)) return addToast('Exists', 'Already requested this date.');
+    setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); 
+    if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.');
+    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.');
+
+    for (const d of selectedDates) {
+      await addDoc(collection(db, "timeOffRequests"), { 
+        userId: appUser.id, userName: appUser.name, date: d, 
+        isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, 
+        submittedAt: new Date().toISOString() 
+      });
+    }
+    
+    addToast('Recorded', `Logged ${selectedDates.length} days off.`);
+    setSelectedDates([]); setIsPartial(false);
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+      
+      {/* ADMIN OVERRIDE VIEW */}
+      {appUser?.isAdmin && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden mb-6">
+          <div className="bg-slate-50 dark:bg-slate-900 p-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+             <h3 className="font-black text-sm text-slate-800 dark:text-white flex items-center gap-2"><Shield size={14} className="text-red-500"/> Master Override Log</h3>
+             <span className="text-[10px] font-bold text-slate-500">Delete a record to allow scheduling.</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto custom-scrollbar divide-y divide-slate-100 dark:divide-slate-700">
+            {allFutureRequests.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-400">No upcoming time off for any staff.</div>}
+            {allFutureRequests.map(r => (
+              <div key={r.id} className="p-2 sm:px-4 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                <div className="flex-1">
+                  <div className="font-black text-sm text-slate-900 dark:text-white leading-tight">{r.userName}</div>
+                  <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+                    {formatDisplayDate(r.date)} {r.isPartial && <span className="ml-1 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1 rounded">({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}
+                  </div>
+                </div>
+                <button onClick={() => { if(window.confirm("Force delete this request? This will allow them to be scheduled.")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-300 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* STAFF VIEW: COMPACT CALENDAR & SUBMIT */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* COMPACT CALENDAR */}
+        <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="bg-slate-50 dark:bg-slate-900 p-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+            <button onClick={() => changeMonth(-1)} className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-white transition-colors"><ChevronLeft size={16}/></button>
+            <h3 className="font-black text-base dark:text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3>
+            <button onClick={() => changeMonth(1)} className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-white transition-colors"><ChevronRight size={16}/></button>
+          </div>
+          
+          <div className="grid grid-cols-7 border-t border-slate-100 dark:border-slate-700">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="py-1.5 text-center text-[9px] font-black text-slate-400 uppercase border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">{d}</div>)}
+            {Array.from({length: firstDayOffset}).map((_,i) => <div key={`empty-${i}`} className="p-1 border-b border-r border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/20 min-h-[45px]" />)}
+            {monthDays.map(d => {
+              const isSelected = selectedDates.includes(d);
+              const existingReq = myRequests.find(r => r.date === d);
+              const isPast = d < getToday();
+              
+              return (
+                <div key={d} onClick={() => !isPast && !existingReq && handleToggleDate(d)} className={`p-1.5 border-b border-r border-slate-100 dark:border-slate-700 min-h-[45px] flex flex-col items-center justify-center transition-colors ${(isPast || existingReq) ? 'bg-slate-50 dark:bg-slate-900/50 opacity-60 cursor-not-allowed' : isSelected ? 'bg-blue-100 dark:bg-blue-900/40 cursor-pointer shadow-inner' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer'}`}>
+                  <span className={`text-xs font-black ${isSelected ? 'text-blue-700 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                  {existingReq && <span className="text-[7px] font-black uppercase text-red-500 mt-0.5">Off</span>}
+                  {isSelected && <Check size={10} className="text-blue-600 dark:text-blue-400 mt-0.5"/>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* SUBMISSION PANEL */}
+        <div className="md:col-span-1">
+          <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 sticky top-20">
+            <h3 className="font-black text-base mb-1 dark:text-white">Log Availability</h3>
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-4 leading-tight">Tap days on the calendar to mark yourself unavailable.</p>
+            
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                <input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded border-slate-300 accent-blue-600" />
+                Partial Day Only?
+              </label>
+
+              {isPartial && (
+                <div className="grid grid-cols-2 gap-2 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-800/50">
+                  <div><label className="block text-[9px] font-bold text-amber-800 dark:text-amber-400 uppercase mb-1">Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-lg outline-none font-bold text-xs dark:text-white" required/></div>
+                  <div><label className="block text-[9px] font-bold text-amber-800 dark:text-amber-400 uppercase mb-1">End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className="w-full p-2 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-lg outline-none font-bold text-xs dark:text-white" required/></div>
+                </div>
+              )}
+              
+              <button type="submit" disabled={selectedDates.length === 0} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-black text-sm shadow-md hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
