@@ -688,6 +688,7 @@ const TabSchedule = ({ currentDate, users, shifts, timeOff, addToast }) => {
     }
     const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true});
     addToast("Published", "Schedule is live.");
+    logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.');
   };
 
   return (
@@ -803,7 +804,7 @@ const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
                     <div className="flex items-center bg-slate-50 dark:bg-slate-700 rounded-lg border dark:border-slate-600 h-9"><button onClick={()=>updateQty(i.id,qty,-1)} className="w-7 h-full font-black dark:text-white hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">-</button><span className="w-5 text-center text-xs font-black dark:text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-7 h-full font-black dark:text-white hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">+</button></div>
                     <button onClick={()=>toggleStatus(i)} className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-slate-200 text-slate-500 dark:bg-slate-600':'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-400'}`}>{isDone ? <Repeat size={16}/> : <Check size={18}/>}</button>
                     {/* ONLY ADMINS CAN DELETE PREP ITEMS */}
-                    {appUser?.isAdmin && <button onClick={()=>deleteDoc(doc(db,"prepItems",i.id))} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18}/></button>}
+                    {appUser?.isAdmin && <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); logAudit(appUser, 'DELETE_PREP', i.text, 'Deleted a master prep item.'); }} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18}/></button>}
                   </div>
                 </div>
               )})}
@@ -946,7 +947,7 @@ const TabTeam = ({ appUser, users, addToast }) => {
   };
 
   const handleToggleAdmin = async (id, currentStatus) => { await updateDoc(doc(db, "users", id), { isAdmin: !currentStatus }); };
-  const handleDelete = async (id) => { if (window.confirm("Remove this staff member? This cannot be undone.")) { await deleteDoc(doc(db, "users", id)); addToast('Staff Removed', 'Account permanently deleted.'); } };
+  const handleDelete = async (id) => { if (window.confirm("Remove this staff member? This cannot be undone.")) { await deleteDoc(doc(db, "users", id)); addToast('Staff Removed', 'Account permanently deleted.'); logAudit(appUser, 'DELETE_STAFF', 'Team Roster', 'Permanently removed a staff member.'); } };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
