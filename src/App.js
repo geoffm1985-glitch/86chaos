@@ -254,11 +254,11 @@ export default function App() {
       {/* --- Date Header --- */}
       {['schedule', 'published', 'month', 'sales', 'prep', 'requestOff'].includes(activeTabState) && (
         <div className={`py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-          <button onClick={() => setCurrentDate(addDays(currentDate, -30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
+          <button onClick={() => setCurrentDate(addDays(currentDate, (activeTabState === 'prep' || activeTabState === 'sales') ? -1 : -30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
           <h2 onClick={() => setIsDateModalOpen(true)} className={`text-xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
             {activeTabState === 'prep' || activeTabState === 'sales' ? formatDisplayDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
           </h2>
-          <button onClick={() => setCurrentDate(addDays(currentDate, 30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
+          <button onClick={() => setCurrentDate(addDays(currentDate, (activeTabState === 'prep' || activeTabState === 'sales') ? 1 : 30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
         </div>
       )}
 
