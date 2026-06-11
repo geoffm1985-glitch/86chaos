@@ -642,8 +642,8 @@ const TabSchedule = ({ currentDate, users, shifts, timeOff, addToast }) => {
 };
 
 
-// --- PREP LIST (Fully Locked Down & Categorized) ---
-const TabPrep = ({ currentDate, prepItems, appUser, setPrintLabels }) => {
+// --- PREP LIST (Fully Locked Down, Categorized, Print Bug Fixed) ---
+const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
   const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true);
   const items = prepItems.filter(p=>p.date===currentDate||p.isMaster);
 
@@ -665,7 +665,7 @@ const TabPrep = ({ currentDate, prepItems, appUser, setPrintLabels }) => {
     const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}-${Date.now()}` }); } });
     
     // Sends the exact array to the master App component for strict label rendering
-    setPrintLabels(toPrint); 
+    setLabelsToPrint(toPrint); 
   };
 
   const globalSelectedCount = items.filter(i => i.isSelected).length;
@@ -712,10 +712,10 @@ const TabPrep = ({ currentDate, prepItems, appUser, setPrintLabels }) => {
       </div>
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-slate-900 border-t dark:border-slate-800 z-50 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.1)]">
         <div className="max-w-2xl mx-auto flex gap-3">
-          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-black text-base disabled:opacity-50 shadow-md flex items-center justify-center gap-2">
+          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-black text-base disabled:opacity-50 shadow-md flex items-center justify-center gap-2 hover:bg-blue-500 active:scale-95 transition-all">
             <ClipboardList size={20}/> Print Labels ({globalSelectedCount})
           </button>
-          <button onClick={handleBatchDone} disabled={globalSelectedCount===0} className="flex-1 bg-emerald-600 text-white py-3.5 rounded-xl font-black text-base disabled:opacity-50 shadow-md">Mark Done</button>
+          <button onClick={handleBatchDone} disabled={globalSelectedCount===0} className="flex-1 bg-emerald-600 text-white py-3.5 rounded-xl font-black text-base disabled:opacity-50 shadow-md hover:bg-emerald-500 active:scale-95 transition-all">Mark Done</button>
         </div>
       </div>
     </div>
