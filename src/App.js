@@ -99,7 +99,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   
   if (appUser?.isAdmin) {
   tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
-  if (appUser?.email === 'your-actual-email@gmail.com') {
+  if (appUser?.email === 'geoffm1985@gmail.com') {
     tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
   }
 }
