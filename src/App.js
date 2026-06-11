@@ -126,11 +126,14 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black">
+    <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black">
       <style>{`
         @media print {
           @page { size: 3.5in 1.1in; margin: 0; }
-          body, html { margin: 0 !important; padding: 0 !important; background: white !important; }
+          body, html { margin: 0 !important; padding: 0 !important; background: white !important; height: auto !important; overflow: visible !important; }
+          
+          /* CRITICAL FIX: Un-fix the wrapper so the printer doesn't cut it off at 1 page */
+          #master-print-wrapper { position: relative !important; height: auto !important; overflow: visible !important; display: block !important; }
           
           /* Hide EVERYTHING else. This guarantees no UI renders on the printer. */
           .no-print, header, nav, main, footer { display: none !important; }
@@ -146,11 +149,13 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
             padding: 0.05in 0.15in !important; 
             box-sizing: border-box !important; 
             page-break-after: always !important; 
+            break-after: page !important;
             page-break-inside: avoid !important; 
             margin: 0 !important;
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
             overflow: hidden !important;
             border: none !important;
+            background: white !important;
           }
           .dk-title { font-size: 16px !important; font-weight: 900 !important; color: black !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
           .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; color: black !important; margin-bottom: 2px !important; }
