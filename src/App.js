@@ -662,17 +662,10 @@ const TabSchedule = ({ currentDate, users, shifts, addToast }) => {
   );
 };
 
-// --- PREP LIST (WI Food Code + Bulletproof Day Dot Print Engine) ---
+// --- PREP LIST (WI Food Code + Bulletproof Iframe Print Engine) ---
 const TabPrep = ({ currentDate, prepItems, appUser }) => {
-  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate); const [printItems, setPrintItems] = useState([]);
+  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate);
   const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
-
-  // Clears the hidden label array after printing finishes
-  useEffect(() => {
-    const afterPrint = () => setPrintItems([]);
-    window.addEventListener('afterprint', afterPrint);
-    return () => window.removeEventListener('afterprint', afterPrint);
-  }, []);
 
   const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
   const toggleStatus = async (item) => { 
@@ -687,89 +680,104 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
     for (const item of toComplete) { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true, completedBy: appUser.name, isSelected: false }); } }
   };
 
+  // Wisconsin Food Code: 7-day total shelf life for TCS foods held at 41°F or below.
+  // Day of preparation counts as Day 1. Expires on Prep Date + 6 days.
+  const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
+
+  // --- BULLETPROOF IFRAME PRINT ENGINE ---
   const triggerBatchPrint = () => {
-    const selected = items.filter(i => i.isSelected); if (selected.length === 0) return;
-    const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}-${Date.now()}` }); } });
-    setPrintItems(toPrint);
-    // Waits exactly 250ms for React to inject the new labels into the hidden DOM before firing the print dialog
-    setTimeout(() => window.print(), 250); 
+    const selected = items.filter(i => i.isSelected); 
+    if (selected.length === 0) return;
+
+    const toPrint = []; 
+    selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item }); } });
+
+    // 1. Build a pure HTML document string entirely isolated from the React app
+    let printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Print Labels</title>
+          <style>
+            @page { size: 2.4in 2.4in; margin: 0; }
+            body { margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: white; color: black; }
+            .label-page {
+              width: 2.4in;
+              height: 2.4in;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              text-align: center;
+              padding: 0.1in;
+              box-sizing: border-box;
+              page-break-after: always;
+              page-break-inside: avoid;
+              margin: 0;
+              overflow: hidden;
+            }
+            .label-title { font-size: 20px; font-weight: 900; margin-bottom: 6px; text-transform: uppercase; line-height: 1.1; word-wrap: break-word; }
+            .label-text { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+            .label-exp { font-size: 18px; font-weight: 900; margin-top: 4px; border-top: 2px solid black; padding-top: 4px; width: 90%; }
+          </style>
+        </head>
+        <body>
+    `;
+
+    // 2. Map the data directly into the raw HTML
+    toPrint.forEach(item => {
+      const empName = appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '______';
+      const prepDateParts = formatDisplayDate(prepDate).split(',');
+      const prepDateStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
+      const expDateStr = getExpDate(prepDate);
+
+      printContent += `
+        <div class="label-page">
+          <div class="label-title">${item.text}</div>
+          <div class="label-text">PREP: ${prepDateStr}</div>
+          <div class="label-exp">EXP: ${expDateStr}</div>
+          <div class="label-text" style="margin-top: 4px;">EMP: ${empName}</div>
+        </div>
+      `;
+    });
+
+    printContent += `</body></html>`;
+
+    // 3. Inject a hidden iframe into the actual device DOM
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    // 4. Write the HTML and trigger the print strictly on the iframe
+    const docObj = iframe.contentWindow.document;
+    docObj.open();
+    docObj.write(printContent);
+    docObj.close();
+
+    // Give the iframe 500ms to render the text, open the dialog, then delete the iframe
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => { document.body.removeChild(iframe); }, 3000);
+    }, 500);
   };
 
-  // Wisconsin Food Code: TCS food has 7-day shelf life. Prep Day is Day 1. Expires Prep + 6 days.
-  const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
   const globalSelectedCount = items.filter(i => i.isSelected).length;
   const groupedItems = items.reduce((acc, i) => { const c = i.category || 'General'; if(!acc[c]) acc[c]=[]; acc[c].push(i); return acc; }, {});
 
   return (
     <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
-      <style>{`
-        /* Hide the print zone on the normal screen */
-        @media screen {
-          #brother-print-zone { display: none !important; }
-        }
-        
-        /* When printing, hide the ENTIRE APP wrapper and ONLY show the print zone */
-        @media print {
-          @page { size: 2.4in 2.4in; margin: 0; }
-          
-          /* This reaches outside of TabPrep and hides the main App wrappers */
-          body * { visibility: hidden !important; }
-          
-          /* This forces the labels to be visible and positioned at the top left of the physical printer roll */
-          #brother-print-zone, #brother-print-zone * { visibility: visible !important; }
-          #brother-print-zone { 
-            display: block !important; 
-            position: absolute !important; 
-            left: 0 !important; 
-            top: 0 !important; 
-            width: 2.4in !important; 
-            margin: 0 !important; 
-            padding: 0 !important; 
-            background: white !important; 
-          }
-          
-          .label-page { 
-            width: 2.4in !important; 
-            height: 2.4in !important; 
-            display: flex !important; 
-            flex-direction: column !important; 
-            align-items: center !important; 
-            justify-content: center !important; 
-            text-align: center !important; 
-            padding: 0.1in !important; 
-            box-sizing: border-box !important; 
-            page-break-after: always !important; 
-            margin: 0 !important;
-            border: none !important;
-            background: white !important;
-          }
-          
-          .label-title { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 20px !important; font-weight: 900 !important; color: black !important; margin-bottom: 6px !important; text-transform: uppercase !important; line-height: 1.1 !important; text-align: center !important; }
-          .label-text { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px !important; font-weight: bold !important; color: black !important; margin-bottom: 2px !important; text-align: center !important; }
-          .label-exp { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 18px !important; font-weight: 900 !important; color: black !important; margin-top: 4px !important; border-top: 2px solid black !important; padding-top: 4px !important; width: 90% !important; text-align: center !important; }
-          
-          .no-print { display: none !important; }
-        }
-      `}</style>
-      
-      {/* --- HIDDEN LABEL GENERATOR --- */}
-      <div id="brother-print-zone">
-        {printItems.map(i => (
-          <div key={i.printId} className="label-page">
-            <div className="label-title">{i.text}</div>
-            <div className="label-text">PREP: {formatDisplayDate(prepDate).split(',')[1]}</div>
-            <div className="label-exp">EXP: {getExpDate(prepDate)}</div>
-            <div className="label-text" style={{marginTop: '4px'}}>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '______'}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* --- NORMAL UI --- */}
-      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm no-print">
+      <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-3 rounded-xl flex justify-between items-center shadow-sm">
          <h3 className="font-bold flex items-center gap-2 text-sm dark:text-white"><ClipboardList className="text-blue-500" size={18}/> Prep List For:</h3>
          <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 border rounded-lg outline-none text-sm font-bold dark:bg-slate-700 dark:border-slate-600 dark:text-white"/>
       </div>
-      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-3 rounded-xl flex flex-col sm:flex-row gap-2 shadow-sm items-center no-print">
+      <form onSubmit={handleAdd} className="bg-white dark:bg-slate-800 border dark:border-slate-700 p-2 pl-3 rounded-xl flex flex-col sm:flex-row gap-2 shadow-sm items-center">
         <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-1.5 bg-transparent text-sm outline-none font-medium dark:text-white" placeholder="Add prep task..." required/>
         <select value={cat} onChange={e=>setCat(e.target.value)} className="w-full sm:w-28 p-1.5 text-xs font-bold bg-slate-50 dark:bg-slate-700 border dark:border-slate-600 rounded-lg outline-none dark:text-white"><option>General</option><option>Meat</option><option>Produce</option><option>Dairy</option><option>Sauces</option><option>Line Prep</option></select>
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-2 sm:pt-0 dark:border-slate-700">
@@ -778,7 +786,7 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
         </div>
       </form>
       
-      <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 overflow-hidden shadow-sm no-print">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border dark:border-slate-700 overflow-hidden shadow-sm">
         {Object.entries(groupedItems).map(([category, catItems]) => (
           <div key={category}>
             <div className="bg-slate-50 dark:bg-slate-900/50 px-3 py-1.5 border-y dark:border-slate-700 font-black text-[10px] uppercase text-slate-500 tracking-wider flex justify-between"><span>{category}</span><span>{catItems.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{catItems.length} Done</span></div>
@@ -800,10 +808,10 @@ const TabPrep = ({ currentDate, prepItems, appUser }) => {
           </div>
         ))}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 no-print z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <div className="max-w-2xl mx-auto flex gap-2">
           <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">
-            🖨️ Print ({globalSelectedCount})
+            🖨️ Print Labels ({globalSelectedCount})
           </button>
           <button onClick={handleBatchDone} disabled={globalSelectedCount===0} className="flex-1 bg-emerald-600 text-white p-3 rounded-xl font-black text-sm disabled:opacity-50">Mark Done</button>
         </div>
