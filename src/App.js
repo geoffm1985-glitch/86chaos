@@ -959,13 +959,31 @@ const TabSettings = ({ addToast, appUser }) => {
   const handleEnablePush = async () => {
     if (!messaging) return addToast('Error', 'Push not supported.');
     try {
-      const p = await Notification.requestPermission(); if(p!=='granted') return addToast('Denied', 'Notifications blocked.');
+      const p = await Notification.requestPermission(); 
+      if(p !== 'granted') return addToast('Denied', 'Notifications blocked.');
+      
       addToast('Connecting...', 'Activating secure worker...');
       const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      let attempts = 0; while (!registration.active && attempts < 20) { await new Promise(r => setTimeout(r, 200)); attempts++; }
-      const token = await getToken(messaging, { vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjql_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGVOsPH9M6aBzGCA9AcU', serviceWorkerRegistration: registration });
-      if(token) { await updateDoc(doc(db, "users", appUser.id), { fcmToken: token }); addToast('Success', 'Push enabled.'); }
-    } catch(e) { addToast('Error', e.message); }
+      
+      let attempts = 0; 
+      while (!registration.active && attempts < 20) { 
+        await new Promise(r => setTimeout(r, 200)); 
+        attempts++; 
+      }
+      
+      const token = await getToken(messaging, { 
+        vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU', 
+        serviceWorkerRegistration: registration 
+      });
+      
+      if(token) { 
+        await updateDoc(doc(db, "users", appUser.id), { fcmToken: token }); 
+        addToast('Success', 'Push enabled.'); 
+      }
+    } catch(e) { 
+      addToast('Error', e.message); 
+      console.error(e);
+    }
   };
 
   const handlePhotoUpload = (e) => {
