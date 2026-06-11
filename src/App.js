@@ -42,7 +42,23 @@ const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase(
 // Wisconsin Food Code: 7-day total shelf life. Prep Day is Day 1. Expires on Prep Date + 6 days.
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
+// --- Global Crash Reporter ---
+if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
+  window.crashCatcherAttached = true;
+  window.onerror = (msg, url, lineNo, columnNo, error) => {
+    addDoc(collection(db, "crashReports"), { type: 'error', message: msg, stack: error?.stack || '', time: new Date().toISOString() }).catch(()=>{});
+    return false;
+  };
+  window.addEventListener('unhandledrejection', (event) => {
+    addDoc(collection(db, "crashReports"), { type: 'promise_rejection', message: event.reason?.message || 'Unknown', time: new Date().toISOString() }).catch(()=>{});
+  });
+}
 
+// --- Audit Log Helper ---
+const logAudit = (user, action, target, details) => {
+  if(!user) return;
+  addDoc(collection(db, "auditLogs"), { userName: user.name, action, target, details, timestamp: new Date().toISOString() }).catch(console.error);
+};
 
 // --- SVG Logo ---
 const CheersLogo = ({ isDark }) => (
@@ -81,7 +97,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   
-  if (appUser?.isAdmin) { tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> }); }
+  if (appUser?.isAdmin) {
+  tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
+  if (appUser?.email === 'your-actual-email@gmail.com') {
+    tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
+  }
+}
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   const handleLogout = () => { localStorage.removeItem('cheersUser'); setAppUser(null); onClose(); };
@@ -284,6 +305,7 @@ export default function App() {
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
+         {activeTabState === 'audit' && <TabAuditLog appUser={appUser} />}
       </main>
 
       {/* --- Toast Alert Engine --- */}
@@ -303,6 +325,82 @@ export default function App() {
     </div>
   );
 }
+
+
+// --- AUDIT LOGS & CRASH VIEWER (Self-Contained) ---
+const TabAuditLog = ({ appUser }) => {
+  const [logs, setLogs] = useState([]);
+  const [crashes, setCrashes] = useState([]);
+  const [view, setView] = useState('audit'); // 'audit' or 'crashes'
+
+  useEffect(() => {
+    if (appUser?.email !== 'geoffm1985@gmail.com') return;
+    const unsubLogs = onSnapshot(collection(db, "auditLogs"), snap => {
+      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)));
+    });
+    const unsubCrashes = onSnapshot(collection(db, "crashReports"), snap => {
+      setCrashes(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time) - new Date(a.time)));
+    });
+    return () => { unsubLogs(); unsubCrashes(); };
+  }, [appUser]);
+
+  if (appUser?.email !== 'your-actual-email@gmail.com') return null;
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4">
+      <div className="bg-slate-900 dark:bg-slate-800 p-5 rounded-3xl shadow-xl border border-slate-800 dark:border-slate-700">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-black text-white flex items-center gap-2">
+            <Shield className={view === 'crashes' ? 'text-orange-500' : 'text-red-500'}/> 
+            {view === 'crashes' ? 'System Crash Reports' : 'System Audit Logs'}
+          </h2>
+          <div className="flex gap-2 bg-slate-800 p-1 rounded-xl border border-slate-700">
+            <button onClick={() => setView('audit')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-colors ${view === 'audit' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>Logs</button>
+            <button onClick={() => setView('crashes')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-colors ${view === 'crashes' ? 'bg-orange-600 text-white' : 'text-slate-400 hover:text-white'}`}>Crashes ({crashes.length})</button>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
+          <div className="max-h-[600px] overflow-y-auto custom-scrollbar divide-y divide-slate-100 dark:divide-slate-800">
+            {view === 'audit' ? (
+              <>
+                {logs.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400">No events logged yet.</div>}
+                {logs.map(log => (
+                  <div key={log.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-sm text-slate-900 dark:text-white">{log.userName}</span>
+                        <span className="text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 px-2 py-0.5 rounded-md">{log.action}</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">{new Date(log.timestamp).toLocaleString()}</span>
+                    </div>
+                    <div className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Target: <span className="font-bold text-slate-800 dark:text-slate-300">{log.target}</span> • {log.details}
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                {crashes.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-400 text-emerald-500">Zero system crashes detected. Clear skies!</div>}
+                {crashes.map(crash => (
+                  <div key={crash.id} className="p-4 bg-orange-50/30 dark:bg-orange-950/10 hover:bg-orange-50/50 transition-colors">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="text-xs font-black text-orange-600 dark:text-orange-400 uppercase tracking-wide">{crash.type}</span>
+                      <span className="text-[10px] font-bold text-slate-400">{new Date(crash.time).toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 mb-1">{crash.message}</p>
+                    {crash.stack && <pre className="text-[10px] font-mono text-slate-400 bg-slate-900 p-2 rounded-lg overflow-x-auto whitespace-pre-wrap max-h-40">{crash.stack}</pre>}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // --- LOGIN & PASSWORD RECOVERY ---
 const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
