@@ -151,7 +151,17 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
               <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-1 ${isDark ? 'bg-blue-600' : 'bg-slate-300'}`}><div className={`w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-transform ${isDark ? 'translate-x-3.5' : 'translate-x-0'}`}></div></div>
             </div>
             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-600 dark:text-red-400 text-sm font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
+         <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-600 dark:text-red-400 text-sm font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
+            <div className="pt-2 mt-1 text-center border-t border-slate-200 dark:border-slate-700/50">
+              <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">&copy; 2026 Chilton App Works</span>
+            </div>
           </div>
+       </div>
+     </div>
+  );
+};
+               </div>
+              
        </div>
      </div>
   );
@@ -369,10 +379,10 @@ export default function App() {
         ))}
       </div>
       
-      <div className="w-full text-center text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
-        Cheers Management OS • v7.5.0
+     <div className="w-full flex flex-col items-center justify-center py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
+        <img src="/6139.jpg" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm" />
+        <span className="text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version</span>
       </div>
-    </div>
   );
 }
 
