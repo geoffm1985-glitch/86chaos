@@ -32,6 +32,7 @@ const getToday = () => formatDate(new Date());
 const addDays = (d, days) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + days); return formatDate(dt); };
 const getMonthStr = (d) => (d || getToday()).substring(0, 7);
 const formatDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const formatDisplayFullDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 const formatDisplayMonth = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getDate();
 const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; };
@@ -174,7 +175,7 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
       <style>{`
         @media print {
           @page { size: 3.5in 1.1in; margin: 0; }
-          body, html { margin: 0 !important; padding: 0 !important; background: white !important; height: auto !important; overflow: visible !important; }
+          body, html { margin: 0 !important; padding: 0 !important; background: white !important; height: auto !important; overflow: visible !important; display: block !important; }
           #master-print-wrapper { position: relative !important; height: auto !important; overflow: visible !important; display: block !important; }
           .no-print, header, nav, main, footer { display: none !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -269,6 +270,32 @@ export default function App() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
 
+  // Day-By-Day Navigation Functions
+  const prevDay = () => {
+    const newDate = new Date(currentDate + 'T12:00:00');
+    newDate.setDate(newDate.getDate() - 1);
+    setCurrentDate(formatDate(newDate));
+  };
+
+  const nextDay = () => {
+    const newDate = new Date(currentDate + 'T12:00:00');
+    newDate.setDate(newDate.getDate() + 1);
+    setCurrentDate(formatDate(newDate));
+  };
+
+  // Month-By-Month Navigation Functions
+  const prevMonth = () => {
+    const newDate = new Date(currentDate + 'T12:00:00');
+    newDate.setMonth(newDate.getMonth() - 1);
+    setCurrentDate(formatDate(newDate));
+  };
+
+  const nextMonth = () => {
+    const newDate = new Date(currentDate + 'T12:00:00');
+    newDate.setMonth(newDate.getMonth() + 1);
+    setCurrentDate(formatDate(newDate));
+  };
+
   // --- THE MASTER PRINT OVERRIDE ---
   if (labelsToPrint) {
     return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
@@ -294,20 +321,23 @@ export default function App() {
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} isDark={isDark} toggleDark={() => setIsDark(!isDark)} />
 
-      {/* --- Date Header --- */}
+      {/* --- Dynamic Date Header --- */}
       {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className={`py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-          <button onClick={() => setCurrentDate(addDays(currentDate, -30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
-          <h2 onClick={() => setIsDateModalOpen(true)} className={`text-xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
-            {activeTabState === 'prep' || activeTabState === 'sales' ? formatDisplayDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+          {/* Use prevDay/nextDay for Schedule and Prep, otherwise jump by month */}
+          <button onClick={['schedule', 'prep'].includes(activeTabState) ? prevDay : prevMonth} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
+          
+          <h2 onClick={() => setIsDateModalOpen(true)} className={`text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
+            {['schedule', 'prep'].includes(activeTabState) ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
           </h2>
-          <button onClick={() => setCurrentDate(addDays(currentDate, 30))} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
+          
+          <button onClick={['schedule', 'prep'].includes(activeTabState) ? nextDay : nextMonth} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
         </div>
       )}
 
       <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Date">
         <div className="space-y-4">
-          <input type={activeTabState === 'prep' || activeTabState === 'sales' ? 'date' : 'month'} value={activeTabState === 'prep' || activeTabState === 'sales' ? currentDate : getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' ? e.target.value : e.target.value + '-01'); setIsDateModalOpen(false); } }} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type={activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? 'date' : 'month'} value={activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? currentDate : getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? e.target.value : e.target.value + '-01'); setIsDateModalOpen(false); } }} className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-blue-500" />
           <button onClick={() => setIsDateModalOpen(false)} className="w-full bg-slate-900 dark:bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-slate-800 dark:hover:bg-blue-700 transition-colors">Close</button>
         </div>
       </Modal>
@@ -1193,12 +1223,39 @@ const TabAuditLog = ({ appUser }) => {
   );
 };
 
-// --- RECIPE BOOK (Digital Spec Sheets) ---
+// --- RECIPE BOOK (Digital Spec Sheets + Yield Multiplier) ---
 const TabRecipes = ({ recipes, appUser, addToast }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCat, setFilterCat] = useState('All');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [activeRecipe, setActiveRecipe] = useState(null);
+  const [yieldMult, setYieldMult] = useState(1);
+
+  // The Smart Parser: Converts text to math and back to clean fractions
+  const parseAndMultiply = (text, mult) => {
+    if (mult === 1) return text;
+    const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/);
+    if (!match) return text; 
+    let numStr = match[1], rest = match[2], val = 0;
+    
+    if (numStr.includes('/')) {
+      const parts = numStr.split(' ');
+      if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); }
+      else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); }
+    } else { val = parseFloat(numStr); }
+    
+    let finalVal = val * mult;
+    let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2);
+    
+    if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim();
+    else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim();
+    else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim();
+    else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim();
+    else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim();
+    
+    if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); // Cleans up "0 1/2" to just "1/2"
+    return `${cleanVal} ${rest}`;
+  };
 
   // Form State
   const [title, setTitle] = useState(''); const [category, setCategory] = useState('Sauce/Dressing');
@@ -1256,7 +1313,7 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredRecipes.map(r => (
-            <div key={r.id} onClick={() => setActiveRecipe(r)} className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer group flex flex-col h-full">
+            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer group flex flex-col h-full">
               <div className="flex justify-between items-start mb-3">
                 <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-2 py-1 rounded-md">{r.category}</span>
                 <span className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors">View Spec →</span>
@@ -1284,11 +1341,21 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
               </div>
             </div>
             
+            {/* YIELD TOGGLE BAR */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700 mb-6">
+              <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Yield Multiplier</span>
+              <div className="flex bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700 shadow-sm">
+                {[0.5, 1, 2, 4].map(m => (
+                  <button key={m} onClick={() => setYieldMult(m)} className={`px-4 py-1.5 text-xs font-black rounded-md transition-all ${yieldMult === m ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>{m}x</button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               <div className="md:col-span-2 space-y-3">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1">Ingredients</h4>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-700 pb-1">Ingredients <span className={`lowercase ml-1 transition-colors ${yieldMult !== 1 ? 'text-blue-500' : ''}`}>({yieldMult}x)</span></h4>
                 <ul className="space-y-2 text-sm font-bold text-slate-700 dark:text-slate-300">
-                  {activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 flex-shrink-0"/><span>{ing}</span></li>)}
+                  {activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 transition-colors ${yieldMult !== 1 ? 'bg-amber-500' : 'bg-blue-500'}`}/><span>{parseAndMultiply(ing, yieldMult)}</span></li>)}
                 </ul>
               </div>
               
