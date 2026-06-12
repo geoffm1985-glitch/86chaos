@@ -101,7 +101,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     tabs.push({ id: 'timeoff', label: 'Request Off', icon: <Coffee size={18}/> });
   }
   
-  tabs.push({ id: 'published', label: 'Master Roster', icon: <Clock size={18}/> });
+ tabs.push({ id: 'published', label: 'Schedule', icon: <Clock size={18}/> });
   tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={18}/> });
   tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
   
@@ -602,7 +602,7 @@ const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, a
   const handleOfferSwap = async (shift) => {
     if (!window.confirm("Offer shift to Trade Board?")) return;
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Master Roster!`, type: 'note', author: 'System Alert', isImportant: true });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Schedule!`, type: 'note', author: 'System Alert', isImportant: true });
     addToast('Posted', 'Shift sent to trade board.');
   };
 
@@ -639,28 +639,39 @@ const TabPublishedShifts = ({ currentDate, appUser, users, shifts, shiftSwaps, a
       )}
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 overflow-hidden shadow-sm">
-        <div className="bg-slate-50 dark:bg-slate-900 p-3 font-black border-b dark:border-slate-700 text-base flex items-center gap-2 dark:text-white"><Calendar size={16}/> Master Roster</div>
-        <div className="divide-y dark:divide-slate-700">
-          {monthShifts.map(s => {
+        <div className="bg-slate-50 dark:bg-slate-900 p-3 font-black border-b dark:border-slate-700 text-base flex items-center gap-2 dark:text-white"><Calendar size={16}/> Schedule</div>
+        <div className="flex flex-col relative">
+          {monthShifts.map((s, index) => {
              const emp = users.find(u => u.id === s.employeeId); const isMe = appUser.id === s.employeeId; const isOffered = shiftSwaps.some(sw => sw.shiftId === s.id);
+             
+             // The Divider Logic: Only show the date header if it's the first item, or if the date changes
+             const showDivider = index === 0 || s.date !== monthShifts[index - 1].date;
+             
              return (
-               <div key={s.id} className={`p-2.5 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${isMe ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
-                 <div className="flex items-center gap-2.5">
-                   <img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border-2 object-cover ${s.role==='Bartender'?'border-blue-400':'border-orange-400'}`} alt="pic"/>
-                   <div>
-                     <span className={`font-bold text-sm block leading-tight ${isMe ? 'text-blue-700 dark:text-blue-400' : 'dark:text-white'}`}>{emp?.name} {isMe && '(You)'}</span>
-                     <span className="text-[9px] font-black text-slate-400 uppercase">{formatDisplayDate(s.date)} • {s.role}</span>
+               <React.Fragment key={s.id}>
+                 {showDivider && (
+                   <div className="bg-slate-100/90 dark:bg-slate-800/90 px-3 py-1.5 border-y border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 sticky top-0 z-10 backdrop-blur-sm">
+                     {formatDisplayDate(s.date)}
+                   </div>
+                 )}
+                 <div className={`p-2.5 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors border-b last:border-b-0 border-slate-100 dark:border-slate-700 ${isMe ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+                   <div className="flex items-center gap-2.5">
+                     <img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border-2 object-cover ${s.role==='Bartender'?'border-blue-400':'border-orange-400'}`} alt="pic"/>
+                     <div>
+                       <span className={`font-bold text-sm block leading-tight ${isMe ? 'text-blue-700 dark:text-blue-400' : 'dark:text-white'}`}>{emp?.name} {isMe && '(You)'}</span>
+                       <span className="text-[9px] font-black text-slate-400 uppercase">{s.role}</span>
+                     </div>
+                   </div>
+                   <div className="flex items-center gap-2">
+                     <div className="text-xs font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md border dark:border-slate-600 dark:text-slate-200">{formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>
+                     {isMe && !isOffered && <button onClick={() => handleOfferSwap(s)} className="bg-slate-900 dark:bg-slate-600 text-white px-2 py-1 rounded-md font-bold text-[10px] shadow-sm hover:bg-slate-800 transition-colors">Trade</button>}
+                     {isOffered && <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded font-black uppercase text-slate-500">Posted</span>}
                    </div>
                  </div>
-                 <div className="flex items-center gap-2">
-                   <div className="text-xs font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md border dark:border-slate-600 dark:text-slate-200">{formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>
-                   {isMe && !isOffered && <button onClick={() => handleOfferSwap(s)} className="bg-slate-900 dark:bg-slate-600 text-white px-2 py-1 rounded-md font-bold text-[10px] shadow-sm hover:bg-slate-800 transition-colors">Trade</button>}
-                   {isOffered && <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded font-black uppercase text-slate-500">Posted</span>}
-                 </div>
-               </div>
+               </React.Fragment>
              )
           })}
-          {monthShifts.length === 0 && <div className="p-6 text-center text-xs text-slate-400 font-bold">No published shifts yet.</div>}
+          {monthShifts.length === 0 && <div className="p-6 text-center text-xs text-slate-400 font-bold border-t dark:border-slate-700">No published shifts yet.</div>}
         </div>
       </div>
     </div>
