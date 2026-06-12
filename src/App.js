@@ -1334,11 +1334,12 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
           <div className="space-y-6">
             <div className="border-b border-slate-100 dark:border-slate-700 pb-4">
               <h2 className="text-2xl font-black text-slate-900 dark:text-white leading-tight mb-2">{activeRecipe.title}</h2>
-             <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+              <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
                 <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{activeRecipe.category}</span>
                 <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1"><Clock size={12}/> {activeRecipe.prepTime}</span>
                 <span className={`bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md flex items-center gap-1 transition-colors ${yieldMult !== 1 ? 'text-amber-600 dark:text-amber-400' : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span>
               </div>
+            </div>
             
             {/* YIELD TOGGLE BAR */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700 mb-6">
