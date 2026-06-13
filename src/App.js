@@ -782,10 +782,11 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     </div>
   );
 };
-// --- INVENTORY, VENDORS, & WASTE TRACKER (Step 2) ---
+// --- INVENTORY, VENDORS, & WASTE TRACKER (Step 2.1) ---
 const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); 
   const [searchTerm, setSearchTerm] = useState(''); 
+  const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
   // Inventory Form
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState(''); 
@@ -794,8 +795,9 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, vendorId: null, items: [] });
   
   // Vendor Form
-  const [vName, setVName] = useState(''); const [vRep, setVRep] = useState(''); const [vPhone, setVPhone] = useState(''); const [vEmail, setVEmail] = useState('');
-  
+  const [vName, setVName] = useState(''); const [vRep, setVRep] = useState(''); const [vPhone, setVPhone] = useState(''); const [vEmail, setVEmail] = useState(''); const [vDays, setVDays] = useState([]); const [vTime, setVTime] = useState('');
+  const [editVendor, setEditVendor] = useState(null);
+
   // Waste Form
   const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
 
@@ -805,7 +807,13 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
   const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseInt(newStock) || 0) });
   const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseInt(newPar) || 0) });
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
-  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim() }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); addToast('Vendor Added', 'Directory updated.'); };
+  
+  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
+  const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };
+  const toggleVendorDay = (day, isEdit = false) => {
+    if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); }
+    else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); }
+  };
 
   const handleLogWaste = async (e) => {
     e.preventDefault(); if(!wItemId || !wQty) return;
@@ -834,6 +842,35 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
     setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] }); addToast('Dispatched', `Order sent to ${vendor.name}.`);
   };
 
+  const handleInjectPDF = async () => {
+    if(!window.confirm("WARNING: This will permanently delete ALL current vendors and inventory, and inject the new PDF data. Proceed?")) return;
+    for (const v of vendors) await deleteDoc(doc(db, "vendors", v.id));
+    for (const i of inventoryItems) await deleteDoc(doc(db, "inventoryItems", i.id));
+    
+    const newVendorRef = await addDoc(collection(db, "vendors"), { name: "Performance Food", rep: "Larry Ward", email: "lawrence.ward@pgfc.com", phone: "9204183353", cutOffDays: ["Sunday", "Wednesday"], cutOffTime: "15:30" });
+    const vId = newVendorRef.id;
+
+    const pdfItems = [
+      { name: 'Bun Hamburger Gourmet Sliced 4.25"', category: 'Bakery', pfgCode: 'B1938', packSize: '6/8 Cnt', price: 0, parLevel: 5 },
+      { name: 'Dough Pizza Crust 12" Readi Rise', category: 'Bakery', pfgCode: '69432', packSize: '12/17 Oz', price: 0, parLevel: 10 },
+      { name: 'Beef Ground Patty Angus 81/19', category: 'Meat', pfgCode: 'EW538', packSize: '24/7 Oz', price: 0, parLevel: 4 },
+      { name: 'Beef Taco Filling Fully Cooked', category: 'Meat', pfgCode: 'GW640', packSize: '4/2.5 Lb', price: 0, parLevel: 3 },
+      { name: 'Beverage Syrup Coca Cola Classic', category: 'Dry Goods', pfgCode: '28372', packSize: '1/5 Gal', price: 0, parLevel: 2 },
+      { name: 'Cheese Mozzarella Part Skim', category: 'Dairy', pfgCode: 'NE864', packSize: '6/5 Lb', price: 0, parLevel: 6 },
+      { name: 'Cheese Pepper Jack Sliced', category: 'Dairy', pfgCode: 'PK910', packSize: '4/2.5 Lb', price: 0, parLevel: 4 },
+      { name: 'Sauce Buffalo Wing', category: 'Dry Goods', pfgCode: 'T9466', packSize: '4/1 Gal', price: 0, parLevel: 3 },
+      { name: 'Fries Straight Cut 3/8"', category: 'Frozen', pfgCode: 'NT606', packSize: '6/5 Lb', price: 0, parLevel: 15 },
+      { name: 'Chicken Wing 1st & 2nd Joints', category: 'Meat', pfgCode: 'CK522', packSize: '4/10 Lb', price: 0, parLevel: 10 },
+      { name: 'Bacon 18-22 Single Sliced Silver', category: 'Meat', pfgCode: '40120', packSize: '1/15 Lb', price: 0, parLevel: 4 },
+      { name: 'Potato Idaho Russet 80 Count', category: 'Produce', pfgCode: 'FA248', packSize: '1/50 Lb', price: 0, parLevel: 2 },
+      { name: 'Onion Yellow Jumbo Bag', category: 'Produce', pfgCode: 'HB404', packSize: '1/50 Lb', price: 0, parLevel: 2 },
+      { name: 'Tomato Round Red Large', category: 'Produce', pfgCode: '25840', packSize: '1/10 Lb', price: 0, parLevel: 3 }
+    ];
+
+    for (const item of pdfItems) { await addDoc(collection(db, "inventoryItems"), { ...item, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null }); }
+    addToast("System Reset", "PDF Data & Vendor injected successfully!");
+  };
+
   const groupedItems = inventoryItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
   
   return (
@@ -845,15 +882,33 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
          </div>
       </Modal>
 
+      <Modal isOpen={!!editVendor} onClose={() => setEditVendor(null)} title="Edit Vendor">
+        {editVendor && (
+          <form onSubmit={handleSaveVendorEdit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3"><input type="text" value={editVendor.name} onChange={e=>setEditVendor({...editVendor, name: e.target.value})} className={T.input} required placeholder="Company Name"/><input type="text" value={editVendor.rep || ''} onChange={e=>setEditVendor({...editVendor, rep: e.target.value})} className={T.input} placeholder="Rep Name"/></div>
+            <div className="grid grid-cols-2 gap-3"><input type="tel" value={editVendor.phone || ''} onChange={e=>setEditVendor({...editVendor, phone: e.target.value})} className={T.input} placeholder="Phone"/><input type="email" value={editVendor.email || ''} onChange={e=>setEditVendor({...editVendor, email: e.target.value})} className={T.input} placeholder="Email"/></div>
+            <div>
+              <label className={T.label}>Order Cut-Off Time</label>
+              <input type="time" value={editVendor.cutOffTime || ''} onChange={e=>setEditVendor({...editVendor, cutOffTime: e.target.value})} className={T.input}/>
+            </div>
+            <div>
+              <label className={T.label}>Order Cut-Off Days</label>
+              <div className="flex flex-wrap gap-2 mt-1">{weekDays.map(d=><button type="button" key={d} onClick={()=>toggleVendorDay(d, true)} className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors ${editVendor.cutOffDays?.includes(d) ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:text-white'}`}>{d.substring(0,3)}</button>)}</div>
+            </div>
+            <button type="submit" className={`w-full ${T.btn} mt-2`}>Save Vendor Details</button>
+          </form>
+        )}
+      </Modal>
+
       <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b ${T.border} pb-3`}>
         <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Package size={24} className={T.copper}/> Inventory</h2>
-        {appUser?.isAdmin && (
-          <div className={`bg-[#12161A] p-1 rounded-xl flex border ${T.border} overflow-x-auto w-full sm:w-auto no-scrollbar`}>
-            {['count', 'order', 'manage', 'vendors', 'waste'].map(tab => (
-              <button key={tab} onClick={() => setInvTab(tab)} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === tab ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>{tab === 'waste' ? 'Burn Log' : tab}</button>
-            ))}
-          </div>
-        )}
+        <div className={`bg-[#12161A] p-1 rounded-xl flex border ${T.border} overflow-x-auto w-full sm:w-auto no-scrollbar`}>
+          <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
+          {appUser?.isAdmin && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
+          {appUser?.isAdmin && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
+          {appUser?.isAdmin && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
+          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}><Flame size={12}/> Burn Log</button>
+        </div>
       </div>
 
       {invTab === 'count' && (
@@ -907,6 +962,10 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div><div><label className={T.label}>Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
           
+          <div className="flex gap-2">
+             <button onClick={handleInjectPDF} className={`flex-1 bg-red-900/40 hover:bg-red-900 border border-red-500/50 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all`}><Flame size={18} className="inline mr-2"/> Nuke & Inject PDF Data</button>
+          </div>
+
           <form onSubmit={handleAddItem} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add New Item</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -916,7 +975,7 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
             </div>
             <button type="submit" className={`w-full ${T.btn} py-2`}><Plus size={18} className="inline mr-2"/> Add Item to Master List</button>
           </form>
-          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="font-bold text-white text-sm">{item.name}</div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="font-bold text-white text-sm">{item.name} <span className="text-[10px] text-slate-500 font-normal">[{item.pfgCode}]</span></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
         </div>
       )}
 
@@ -925,13 +984,17 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
           <form onSubmit={handleAddVendor} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add Vendor</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Company Name..." value={vName} onChange={e=>setVName(e.target.value)} className={T.input} required/><input type="text" placeholder="Rep Name..." value={vRep} onChange={e=>setVRep(e.target.value)} className={T.input}/><input type="tel" placeholder="Phone (For SMS Orders)" value={vPhone} onChange={e=>setVPhone(e.target.value)} className={T.input}/><input type="email" placeholder="Email (For PDF Orders)" value={vEmail} onChange={e=>setVEmail(e.target.value)} className={T.input}/></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className={T.label}>Cut-Off Time</label><input type="time" value={vTime} onChange={e=>setVTime(e.target.value)} className={T.input}/></div>
+              <div><label className={T.label}>Cut-Off Days</label><div className="flex flex-wrap gap-1 mt-1">{weekDays.map(d=><button type="button" key={d} onClick={()=>toggleVendorDay(d)} className={`px-2 py-1 rounded-md text-[10px] font-bold border transition-colors ${vDays.includes(d) ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#12161A] text-slate-400 border-[#2A353D]'}`}>{d.substring(0,3)}</button>)}</div></div>
+            </div>
             <button type="submit" className={`w-full ${T.btn} py-2`}>Save Vendor</button>
           </form>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><h4 className="font-black text-white text-lg">{v.name}</h4><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p></div><button onClick={()=>deleteDoc(doc(db,"vendors",v.id))} className="mt-3 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><div className="flex justify-between items-start"><h4 className="font-black text-white text-lg">{v.name}</h4><button onClick={()=>setEditVendor(v)} className="text-slate-400 hover:text-white"><Edit size={14}/></button></div><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p><p className="text-[#D4A381] mt-2">Cut-Off: {v.cutOffDays?.length > 0 ? v.cutOffDays.join(', ') : 'None'} {v.cutOffTime ? `@ ${v.cutOffTime}` : ''}</p></div><button onClick={()=>deleteDoc(doc(db,"vendors",v.id))} className="mt-4 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
         </div>
       )}
 
-      {appUser?.isAdmin && invTab === 'waste' && (
+      {invTab === 'waste' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2"><Flame size={16}/> The Burn Log</h3>
