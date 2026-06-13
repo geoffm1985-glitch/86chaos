@@ -216,7 +216,11 @@ const LoginScreen = ({ users, setAppUser, addToast }) => {
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
-  const myNextShift = shifts.find(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished);
+  
+  // FIXED: Chronologically sorted to ensure the "Next Shift" is actually the next shift
+  const myNextShift = shifts
+    .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
+    .sort((a,b) => a.date.localeCompare(b.date))[0];
 
   const handleOfferSwap = async (shift) => {
     if (!window.confirm("Offer shift to Trade Board?")) return;
@@ -224,6 +228,11 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Schedule!`, type: 'note', author: 'System Alert', isImportant: true });
     addToast('Posted', 'Shift sent to trade board.');
   };
+
+  // FIXED: Scopes shifts to the selected month and sorts them chronologically
+  const activeMonthShifts = shifts
+    .filter(s => s.date.startsWith(monthStr) && s.isPublished)
+    .sort((a,b) => a.date.localeCompare(b.date));
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24">
@@ -255,20 +264,37 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         </div>
       )}
 
+      {/* FIXED: Full Schedule now groups by date with sticky headers */}
       {subTab === 'full-schedule' && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className="bg-[#12161A] p-3 border-b border-[#2A353D]"><h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3></div>
+          <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex justify-between items-center">
+            <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
+            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{formatDisplayMonth(currentDate)}</span>
+          </div>
           <div className="divide-y divide-[#2A353D]">
-            {shifts.filter(s => s.date >= getToday() && s.isPublished).map(shift => {
+            {activeMonthShifts.map((shift, index) => {
                const emp = users.find(u => u.id === shift.employeeId);
+               
+               // Logic to detect when the date changes so we can draw a header
+               const showDivider = index === 0 || shift.date !== activeMonthShifts[index - 1].date;
+               
                return (
-                 <div key={shift.id} className={T.row}>
-                   <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border}`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name.split(' ')[0]}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{formatDisplayDate(shift.date)} • {shift.role}</div></div></div>
-                   <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
-                 </div>
+                 <React.Fragment key={shift.id}>
+                   {showDivider && (
+                     <div className="bg-[#1A2126] px-3 py-1.5 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm">
+                       {formatDisplayDate(shift.date)}
+                     </div>
+                   )}
+                   <div className={`${T.row} hover:bg-[#12161A]`}>
+                     <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name?.split(' ')[0]}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div></div></div>
+                       <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                     </div>
+                   </div>
+                 </React.Fragment>
                )
             })}
-            {shifts.filter(s => s.date >= getToday() && s.isPublished).length === 0 && <div className={`p-6 text-center text-xs font-bold ${T.muted}`}>No shifts published for this period.</div>}
+            {activeMonthShifts.length === 0 && <div className={`p-6 text-center text-xs font-bold ${T.muted}`}>No shifts published for this period.</div>}
           </div>
         </div>
       )}
