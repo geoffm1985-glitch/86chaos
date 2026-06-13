@@ -782,52 +782,93 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     </div>
   );
 };
-// --- INVENTORY TAB ---
-const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
-  const [invTab, setInvTab] = useState('count'); const [searchTerm, setSearchTerm] = useState(''); const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState('PFG'); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState(''); const [orderOverrides, setOrderOverrides] = useState({}); const [editItem, setEditItem] = useState(null); const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, items: [] });
+// --- INVENTORY, VENDORS, & WASTE TRACKER (Step 2) ---
+const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
+  const [invTab, setInvTab] = useState('count'); 
+  const [searchTerm, setSearchTerm] = useState(''); 
   
-  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim()) return; await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplier: newItemSupplier, packSize: newItemPackSize.trim(), price: parseFloat(newItemPrice) || 0, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); addToast('Inventory Updated', 'Item cataloged.'); };
-  const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category, pfgCode: editItem.pfgCode.trim(), supplier: editItem.supplier, packSize: editItem.packSize, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
+  // Inventory Form
+  const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState(''); 
+  const [editItem, setEditItem] = useState(null); 
+  const [orderOverrides, setOrderOverrides] = useState({}); 
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, vendorId: null, items: [] });
+  
+  // Vendor Form
+  const [vName, setVName] = useState(''); const [vRep, setVRep] = useState(''); const [vPhone, setVPhone] = useState(''); const [vEmail, setVEmail] = useState('');
+  
+  // Waste Form
+  const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
+
+  // --- LOGIC ---
+  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), price: parseFloat(newItemPrice) || 0, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); addToast('Inventory Updated', 'Item cataloged.'); };
+  const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category, pfgCode: editItem.pfgCode.trim(), supplierId: editItem.supplierId, packSize: editItem.packSize, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
   const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseInt(newStock) || 0) });
   const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseInt(newPar) || 0) });
-  const toggleStar = async (item) => await updateDoc(doc(db, "inventoryItems", item.id), { isStarred: !item.isStarred });
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
+  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim() }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); addToast('Vendor Added', 'Directory updated.'); };
+
+  const handleLogWaste = async (e) => {
+    e.preventDefault(); if(!wItemId || !wQty) return;
+    const item = inventoryItems.find(i => i.id === wItemId); if(!item) return;
+    const qtyNum = parseInt(wQty); const costLost = (item.price || 0) * qtyNum;
+    await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString() });
+    await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, item.currentStock - qtyNum) });
+    setWItemId(''); setWQty(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
+  };
 
   const itemsToOrder = inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : i.currentStock < i.parLevel; });
-  const getFinalOrderList = (type) => itemsToOrder.filter(i => type === 'PFG' ? (!i.supplier || i.supplier === 'PFG') : i.supplier === 'Badger').map(item => { const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock); return { ...item, orderQty: qty }; }).filter(i => i.orderQty > 0);
+  const vendorsWithDeficits = vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id));
   
-  const handleReviewOrder = (type) => { const list = getFinalOrderList(type); if (list.length === 0) return addToast('Order Empty', `No line deficits for ${type}.`); setConfirmModal({ isOpen: true, type, items: list }); };
-  const executeOrder = async () => { const { type, items } = confirmModal; let bodyText = ""; if (type === 'PFG') { bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}): ${i.orderQty}`).join('%0D%0A'); window.location.href = `mailto:geoffm1985@gmail.com?subject=PFG Order&body=${encodeURIComponent("Performance Foodservice Order\n") + bodyText}`; } else { bodyText = items.map(i => `${i.name} (${i.packSize || '1 CS'}): ${i.orderQty}`).join('%0A'); window.location.href = `sms:555-555-5555?body=${encodeURIComponent("Cheers Chilton Order:\n\n") + bodyText}`; } for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); } setOrderOverrides({}); setConfirmModal({ isOpen: false, type: null, items: [] }); addToast('Dispatched', `${type} order tracked.`); };
-  const handleReceivePending = async (supplier) => { if(!window.confirm(`Receive pending ${supplier} products?`)) return; const pendingItems = inventoryItems.filter(i => (i.pendingQty || 0) > 0 && (supplier === 'PFG' ? (!i.supplier || i.supplier === 'PFG') : i.supplier === 'Badger')); for (const item of pendingItems) { await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: item.currentStock + item.pendingQty, pendingQty: 0 }); } addToast('Inbound Ingested', `Stock loaded for ${supplier}.`); };
+  const handleReviewOrder = (vendorId) => {
+    const list = itemsToOrder.filter(i => i.supplierId === vendorId).map(item => { const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock); return { ...item, orderQty: qty }; }).filter(i => i.orderQty > 0);
+    if (list.length === 0) return addToast('Order Empty', `No deficits for this vendor.`);
+    setConfirmModal({ isOpen: true, vendorId, items: list });
+  };
 
-  const getHistoricalContext = () => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); const pastStr = d.toISOString().split('T')[0]; const pastSale = sales.find(s => s.date === pastStr); return pastSale ? `Last year (${pastStr}): $${pastSale.amount.toFixed(2)} [${pastSale.tag}]` : `No local trend data for this week last year.`; };
+  const executeOrder = async () => {
+    const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
+    let bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}): ${i.orderQty}`).join('%0D%0A');
+    if(vendor.email) window.location.href = `mailto:${vendor.email}?subject=Cheers Order&body=${encodeURIComponent(`Order for Cheers Bar & Grill\n\n`)}` + bodyText;
+    else window.location.href = `sms:${vendor.phone}?body=${encodeURIComponent(`Cheers Order:\n\n`)}` + bodyText;
+    for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
+    setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] }); addToast('Dispatched', `Order sent to ${vendor.name}.`);
+  };
+
   const groupedItems = inventoryItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
-
+  
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, type: null, items: [] })} title={`Review ${confirmModal.type} Order`}>
+    <div className="max-w-5xl mx-auto space-y-4 pb-24">
+      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`}>
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <button onClick={executeOrder} className={`w-full ${T.btn} flex items-center justify-center gap-2`}><Send size={20}/> Send Order Out</button>
          </div>
       </Modal>
-      <div className={`flex justify-between items-center border-b ${T.border} pb-3`}>
+
+      <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b ${T.border} pb-3`}>
         <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Package size={24} className={T.copper}/> Inventory</h2>
-        {appUser?.isAdmin && <div className={`bg-[#12161A] p-1 rounded-xl flex border ${T.border}`}>{['count', 'order', 'manage'].map(tab => (<button key={tab} onClick={() => setInvTab(tab)} className={`px-4 py-1.5 rounded-lg text-sm font-bold capitalize ${invTab === tab ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400'}`}>{tab}</button>))}</div>}
+        {appUser?.isAdmin && (
+          <div className={`bg-[#12161A] p-1 rounded-xl flex border ${T.border} overflow-x-auto w-full sm:w-auto no-scrollbar`}>
+            {['count', 'order', 'manage', 'vendors', 'waste'].map(tab => (
+              <button key={tab} onClick={() => setInvTab(tab)} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === tab ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>{tab === 'waste' ? 'Burn Log' : tab}</button>
+            ))}
+          </div>
+        )}
       </div>
+
       {invTab === 'count' && (
-        <div className="space-y-4">
-          <input type="text" placeholder="Search parameters..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={T.input} />
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <input type="text" placeholder="Search product or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={T.input} />
           {Object.entries(groupedItems).map(([category, items]) => (
             <div key={category} className="space-y-2">
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
-                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{item.supplier} • {item.packSize || '1 CS'}</div>{(item.pendingQty || 0) > 0 && <span className={`text-[8px] font-black bg-[#12161A] border ${T.border} ${T.copper} px-1.5 py-0.5 rounded-full mt-1 inline-block`}>(+{item.pendingQty} Inbound)</span>}</div>
+                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'} • {item.packSize || '1 CS'}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>
-                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, item.currentStock - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white`}>-</button><span className={`w-4 text-center font-black text-sm ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-white'}`}>{item.currentStock}</span><button onClick={() => updateStock(item.id, item.currentStock + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white`}>+</button></div></div>
+                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, item.currentStock - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>-</button><span className={`w-4 text-center font-black text-sm ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-white'}`}>{item.currentStock}</span><button onClick={() => updateStock(item.id, item.currentStock + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>+</button></div></div>
                     </div>
                   </div>
                 ))}</div>
@@ -835,36 +876,77 @@ const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
           ))}
         </div>
       )}
+
       {appUser?.isAdmin && invTab === 'order' && (
-        <div className="space-y-4">
-          <div className="flex justify-end gap-2 mb-2">{inventoryItems.some(i=>(i.pendingQty||0)>0&&i.supplier==='Badger') && <button onClick={()=>handleReceivePending('Badger')} className={T.btnAlt}>Receive Badger</button>}{inventoryItems.some(i=>(i.pendingQty||0)>0&&(!i.supplier||i.supplier==='PFG')) && <button onClick={()=>handleReceivePending('PFG')} className={T.btnAlt}>Receive PFG</button>}</div>
-          <div className={`${T.card} p-4`}><h4 className={`font-black ${T.copper} text-sm flex items-center gap-2 mb-1`}><TrendingUp size={16}/> Smart Order Context</h4><p className="text-xs font-bold text-slate-300">{getHistoricalContext()}</p></div>
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={`p-4 bg-[#12161A] border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-lg text-white">Smart Deficit Report</h3><span className={`bg-[#1A2126] border ${T.border} ${T.copper} px-3 py-1 rounded-full font-black text-[10px] uppercase`}>{itemsToOrder.length} Items</span></div>
-            <table className="w-full text-left">
-              <thead><tr className={T.th}><th className="p-3">Product</th><th className="p-3 text-center">Last Order</th><th className="p-3 text-right">Order Qty</th></tr></thead>
-              <tbody className={`divide-y ${T.border}`}>{itemsToOrder.map(item => {
-                const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
-                return (
-                  <tr key={item.id} className={T.row}>
-                    <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>{item.packSize||'1 CS'} • Par: {item.parLevel}</span></td>
-                    <td className={`p-3 text-center text-[10px] font-bold ${T.muted}`}>{item.lastOrderedQty ? `${item.lastOrderedQty} (${item.lastOrderedDate})` : '--'}</td>
-                    <td className="p-3">
-                      <div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white hover:bg-[#2A353D]`}>-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className={`w-12 h-8 text-center font-black bg-[#12161A] border ${T.border} ${T.copper} rounded-lg outline-none`}/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white hover:bg-[#2A353D]`}>+</button></div>
-                    </td>
-                  </tr>
-                )
-              })}</tbody>
-            </table>
-            <div className={`p-4 bg-[#12161A] border-t ${T.border} flex flex-col sm:flex-row justify-between items-center gap-4`}><div className="text-left w-full sm:w-auto"><span className={`block text-[10px] font-bold ${T.muted} uppercase tracking-widest mb-0.5`}>PFG Total</span><span className={`font-black text-xl ${T.copper}`}>${getFinalOrderList('PFG').reduce((s,i)=>s+(i.price*i.orderQty),0).toFixed(2)}</span></div><div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto"><button onClick={()=>handleReviewOrder('Badger')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><MessageSquare size={16}/> Text Badger</button><button onClick={()=>handleReviewOrder('PFG')} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Email PFG</button></div></div>
-          </div>
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          {vendorsWithDeficits.length === 0 ? <div className={`${T.card} p-8 text-center text-slate-400 font-bold`}>No deficit alerts.</div> : vendorsWithDeficits.map(vendor => {
+              const vendorItems = itemsToOrder.filter(i => i.supplierId === vendor.id);
+              return (
+                <div key={vendor.id} className={`${T.card} overflow-hidden`}>
+                  <div className={`p-4 bg-[#12161A] border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-lg text-white">{vendor.name} Order</h3><span className={`bg-[#1A2126] border ${T.border} ${T.copper} px-3 py-1 rounded-full font-black text-[10px] uppercase`}>{vendorItems.length} Items</span></div>
+                  <table className="w-full text-left">
+                    <tbody className={`divide-y ${T.border}`}>{vendorItems.map(item => {
+                      const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
+                      return (
+                        <tr key={item.id} className={T.row}>
+                          <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel}</span></td>
+                          <td className="p-3"><div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className={`w-12 h-8 text-center font-black bg-[#12161A] border ${T.border} ${T.copper} rounded-lg outline-none`}/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>+</button></div></td>
+                        </tr>
+                      )
+                    })}</tbody>
+                  </table>
+                  <div className={`p-4 bg-[#12161A] border-t ${T.border} text-right`}><button onClick={()=>handleReviewOrder(vendor.id)} className={`${T.btn} px-4 py-2 flex items-center justify-center gap-2 ml-auto`}><Send size={16}/> Dispatch</button></div>
+                </div>
+              )
+            })
+          }
         </div>
       )}
+
       {appUser?.isAdmin && invTab === 'manage' && (
-        <div className="max-w-2xl mx-auto space-y-6">
-          <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Inventory Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div><div><label className={T.label}>Supplier</label><select value={editItem.supplier || 'PFG'} onChange={e => setEditItem({...editItem, supplier: e.target.value})} className={T.input}><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Pack Size</label><input type="text" value={editItem.packSize || ''} onChange={e => setEditItem({...editItem, packSize: e.target.value})} className={T.input} /></div><div><label className={T.label}>Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div></div><div><label className={T.label}>Item Code</label><input type="text" value={editItem.pfgCode || ''} onChange={e => setEditItem({...editItem, pfgCode: e.target.value})} className={T.input} /></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
-          <div className={`${T.card} p-5`}><h3 className={`text-lg font-bold border-b ${T.border} pb-2 mb-3 text-white`}>Add Single Item</h3><form onSubmit={handleAddItem} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={newItemCat} onChange={e => setNewItemCat(e.target.value)} className={T.input}><option>Meat</option><option>Produce</option><option>Dairy</option><option>Seafood</option><option>Dry Goods</option><option>Liquor/Beer</option><option>Supplies</option><option>Frozen</option><option>Bakery</option></select></div><div><label className={T.label}>Supplier</label><select value={newItemSupplier} onChange={e => setNewItemSupplier(e.target.value)} className={T.input}><option value="PFG">PFG</option><option value="Badger">Badger</option></select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Pack Size</label><input type="text" value={newItemPackSize} onChange={e => setNewItemPackSize(e.target.value)} className={T.input} /></div><div><label className={T.label}>Price ($)</label><input type="number" step="0.01" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} className={T.input} /></div></div><div><label className={T.label}>Item Code</label><input type="text" value={newItemCode} onChange={e => setNewItemCode(e.target.value)} className={T.input} /></div><button type="submit" className={`w-full ${T.btn}`}>Add Item</button></form></div>
-          <div className={`${T.card} p-5`}><h3 className={`text-lg font-bold border-b ${T.border} pb-2 mb-3 text-white`}>Current Master Catalog</h3><div className="space-y-1.5 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">{inventoryItems.map(item => (<div key={item.id} className={T.row}><div><span className="font-bold text-white block text-sm leading-tight">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} bg-[#12161A] border ${T.border} px-1.5 py-0.5 rounded mt-0.5 inline-block uppercase`}>{item.category} • {item.packSize || '1 CS'}</span></div><div className="flex gap-1 items-center"><button onClick={() => toggleStar(item)} className={`p-1.5 rounded-md transition-colors ${item.isStarred ? 'text-[#D4A381]' : 'text-slate-500'}`}>{item.isStarred ? '⭐' : '☆'}</button><button onClick={() => setEditItem(item)} className="text-slate-400 hover:text-[#D4A381] p-1.5 rounded-md"><Edit size={16}/></button><button onClick={() => deleteDoc(doc(db, "inventoryItems", item.id))} className="text-slate-400 hover:text-red-500 p-1.5 rounded-md"><Trash2 size={16}/></button></div></div>))}</div></div>
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div><div><label className={T.label}>Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
+          
+          <form onSubmit={handleAddItem} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+            <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add New Item</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input type="text" placeholder="Item Name..." value={newItemName} onChange={e=>setNewItemName(e.target.value)} className={T.input} required/>
+              <select value={newItemSupplier} onChange={e=>setNewItemSupplier(e.target.value)} className={T.input} required><option value="">Select Vendor...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>
+              <input type="number" step="0.01" placeholder="Price ($)" value={newItemPrice} onChange={e=>setNewItemPrice(e.target.value)} className={T.input}/>
+            </div>
+            <button type="submit" className={`w-full ${T.btn} py-2`}><Plus size={18} className="inline mr-2"/> Add Item to Master List</button>
+          </form>
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="font-bold text-white text-sm">{item.name}</div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+        </div>
+      )}
+
+      {appUser?.isAdmin && invTab === 'vendors' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <form onSubmit={handleAddVendor} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+            <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add Vendor</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Company Name..." value={vName} onChange={e=>setVName(e.target.value)} className={T.input} required/><input type="text" placeholder="Rep Name..." value={vRep} onChange={e=>setVRep(e.target.value)} className={T.input}/><input type="tel" placeholder="Phone (For SMS Orders)" value={vPhone} onChange={e=>setVPhone(e.target.value)} className={T.input}/><input type="email" placeholder="Email (For PDF Orders)" value={vEmail} onChange={e=>setVEmail(e.target.value)} className={T.input}/></div>
+            <button type="submit" className={`w-full ${T.btn} py-2`}>Save Vendor</button>
+          </form>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><h4 className="font-black text-white text-lg">{v.name}</h4><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p></div><button onClick={()=>deleteDoc(doc(db,"vendors",v.id))} className="mt-3 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
+        </div>
+      )}
+
+      {appUser?.isAdmin && invTab === 'waste' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2"><Flame size={16}/> The Burn Log</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required><option value="">Select Item to Burn...</option>{inventoryItems.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
+              <input type="number" min="1" placeholder="Qty Wasted..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
+              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}><option>Dropped / Spilled</option><option>Expired / Bad Quality</option><option>Cooked Incorrectly</option><option>Comped</option></select>
+            </div>
+            <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors`}>Log Waste & Deduct Stock</button>
+          </form>
+          <div className={`${T.card} divide-y ${T.border}`}>
+            <div className={T.th}><span>Today's Burn</span></div>
+            {wasteLogs.filter(w=>w.date===getToday()).map(w => (<div key={w.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1"> <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.reason} • By {w.loggedBy}</span></div><div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div></div>))}
+            {wasteLogs.filter(w=>w.date===getToday()).length === 0 && <div className="p-4 text-center text-slate-400 font-bold text-sm">No waste logged today.</div>}
+          </div>
         </div>
       )}
     </div>
@@ -1107,6 +1189,8 @@ export default function App() {
   const recipes = useLiveCollection('recipes');
   const timeOffRequests = useLiveCollection('timeOffRequests');
   const tasks = useLiveCollection('tasks');
+  const vendors = useLiveCollection('vendors');
+  const wasteLogs = useLiveCollection('wasteLogs');
 
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const [activeTabState, setActiveTabState] = useState('published');
@@ -1197,7 +1281,7 @@ export default function App() {
         {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} tasks={tasks} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'audit' && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
