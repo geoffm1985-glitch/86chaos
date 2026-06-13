@@ -636,69 +636,152 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   );
 };
 
-// --- PREP LIST ---
-const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
-  const [text, setText] = useState(''); const [cat, setCat] = useState('General'); const [isMaster, setIsMaster] = useState(true); const [prepDate, setPrepDate] = useState(currentDate);
-  const items = prepItems.filter(p=>p.date===prepDate||p.isMaster);
+// --- PREP & TASKS COMMAND CENTER ---
+const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
+  const [subTab, setSubTab] = useState('prep');
+  const [prepDate, setPrepDate] = useState(currentDate);
 
-  const handleAdd = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), category: cat, isCompleted: false, completedDates: {}, isMaster, qty: 1, completedBy: null, isSelected: false }); setText(''); } };
-  const toggleStatus = async (item) => { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = dts[prepDate] ? null : appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null, isSelected: false }); } };
-  const updateQty = async (id, currentQty, change) => { await updateDoc(doc(db, "prepItems", id), { qty: Math.max(1, currentQty + change) }); };
-  const toggleSelect = async (i) => await updateDoc(doc(db, "prepItems", i.id), { isSelected: !i.isSelected });
+  // Prep Form State
+  const [text, setText] = useState(''); const [station, setStation] = useState('Grill'); const [isMaster, setIsMaster] = useState(true);
   
-  const handleBatchDone = async () => { const toComplete = items.filter(i => i.isSelected); if (toComplete.length === 0) return; for (const item of toComplete) { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: true, completedBy: appUser.name, isSelected: false }); } } };
-  const triggerBatchPrint = () => { const selected = items.filter(i => i.isSelected); if (selected.length === 0) return; const toPrint = []; selected.forEach(item => { for (let i = 0; i < (item.qty||1); i++) { toPrint.push({ ...item, printId: `${item.id}-${i}-${Date.now()}` }); } }); setLabelsToPrint({ items: toPrint, prepDate }); };
+  // Task Form State
+  const [taskText, setTaskText] = useState(''); const [taskCat, setTaskCat] = useState('Cleaning'); const [taskFreq, setTaskFreq] = useState('daily');
+  const [taskTargetDay, setTaskTargetDay] = useState('Monday'); const [taskTargetDate, setTaskTargetDate] = useState('1');
 
-  const globalSelectedCount = items.filter(i => i.isSelected).length;
-  const groupedItems = items.reduce((acc, i) => { const c = i.category || 'General'; if(!acc[c]) acc[c]=[]; acc[c].push(i); return acc; }, {});
+  // --- PREP LOGIC ---
+  const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
+  const handleAddPrep = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), station, isCompleted: false, completedDates: {}, isMaster, qty: 1, isSelected: false }); setText(''); } };
+  const togglePrepStatus = async (item) => { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = dts[prepDate] ? null : appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null, isSelected: false }); } };
+  const groupedPrep = activePrep.reduce((acc, i) => { const s = i.station || 'General'; if(!acc[s]) acc[s]=[]; acc[s].push(i); return acc; }, {});
+
+  // --- TASK LOGIC ---
+  const handleAddTask = async (e) => { e.preventDefault(); if(taskText.trim()) { await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {} }); setTaskText(''); } };
+  
+  const getTaskPeriodKey = (freq) => {
+    if (freq === 'daily') return currentDate;
+    if (freq === 'weekly') { const d = new Date(currentDate+'T12:00:00'); const day = d.getDay(); d.setDate(d.getDate() - day + (day === 0 ? -6 : 1)); return formatDate(d); }
+    if (freq === 'monthly') return currentDate.substring(0, 7);
+  };
+
+  const toggleTaskStatus = async (task) => {
+    const periodKey = getTaskPeriodKey(task.frequency);
+    const updatedCompletions = { ...(task.completions || {}) };
+    if (updatedCompletions[periodKey]) { delete updatedCompletions[periodKey]; } 
+    else { updatedCompletions[periodKey] = { by: appUser.name, at: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; }
+    await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
+  };
+
+  const renderTasks = (freqFilter) => {
+    const filteredTasks = tasks.filter(t => t.frequency === freqFilter);
+    const grouped = filteredTasks.reduce((acc, t) => { if(!acc[t.category]) acc[t.category]=[]; acc[t.category].push(t); return acc; }, { 'Cleaning': [], 'General': [] });
+    const periodKey = getTaskPeriodKey(freqFilter);
+
+    return (
+      <div className="space-y-4 mt-4">
+        {appUser?.isAdmin && (
+          <form onSubmit={handleAddTask} className={`${T.card} p-3 flex flex-col md:flex-row gap-2 items-center bg-[#1A2126]`}>
+            <input type="text" value={taskText} onChange={e=>setTaskText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-sm font-medium text-white" placeholder={`New ${freqFilter} task...`} required/>
+            <div className="flex w-full md:w-auto gap-2">
+              <select value={taskCat} onChange={e=>setTaskCat(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white"><option>Cleaning</option><option>General</option></select>
+              {freqFilter === 'weekly' && <select value={taskTargetDay} onChange={e=>setTaskTargetDay(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=><option key={d}>{d}</option>)}</select>}
+              {freqFilter === 'monthly' && <select value={taskTargetDate} onChange={e=>setTaskTargetDate(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{Array.from({length:31}).map((_,i)=><option key={i+1}>{i+1}</option>)}</select>}
+              <button type="submit" className={`${T.btn} px-4 py-2 flex items-center justify-center`}><Plus size={18}/></button>
+            </div>
+          </form>
+        )}
+
+        {['Cleaning', 'General'].map(cat => {
+          if (grouped[cat].length === 0) return null;
+          return (
+            <div key={cat} className={`${T.card} overflow-hidden`}>
+              <div className={T.th}><span>{cat} Tasks</span></div>
+              <div className={`divide-y ${T.border}`}>
+                {grouped[cat].map(t => {
+                  const completion = t.completions?.[periodKey];
+                  const isDone = !!completion;
+                  return (
+                    <div key={t.id} className={`${T.row} flex items-center justify-between gap-3`}>
+                      <div>
+                        <div className={`text-sm font-bold ${isDone ? 'line-through text-slate-500' : 'text-white'}`}>{t.title}</div>
+                        <div className={`text-[9px] font-black uppercase mt-1 flex gap-2`}>
+                          {freqFilter === 'weekly' && <span className="text-[#D4A381]">Due: {t.targetDay}s</span>}
+                          {freqFilter === 'monthly' && <span className="text-[#D4A381]">Due: {t.targetDate}{t.targetDate.endsWith('1') && t.targetDate !== '11' ? 'st' : t.targetDate.endsWith('2') && t.targetDate !== '12' ? 'nd' : t.targetDate.endsWith('3') && t.targetDate !== '13' ? 'rd' : 'th'}</span>}
+                          {isDone && <span className="text-emerald-500 tracking-wider">✓ {completion.by} @ {completion.at}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
+                        {appUser?.isAdmin && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    );
+  };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-3 relative pb-40">
-      <div className={`${T.card} p-3 flex justify-between items-center`}>
-         <h3 className={`font-bold flex items-center gap-2 text-sm ${T.copper}`}><ClipboardList size={18}/> Prep List For:</h3>
-         <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 bg-[#12161A] border border-[#2A353D] rounded-lg outline-none text-sm font-bold text-white"/>
-      </div>
-      <form onSubmit={handleAdd} className={`${T.card} p-2 pl-3 flex flex-col sm:flex-row gap-2 items-center`}>
-        <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-1.5 bg-transparent text-sm outline-none font-medium text-white" placeholder="Add prep task..." required/>
-        <select value={cat} onChange={e=>setCat(e.target.value)} className="w-full sm:w-28 p-1.5 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-lg outline-none text-white"><option>General</option><option>Meat</option><option>Produce</option><option>Dairy</option><option>Sauces</option><option>Line Prep</option></select>
-        <div className={`flex items-center gap-3 w-full sm:w-auto justify-between border-t sm:border-t-0 pt-2 sm:pt-0 ${T.border}`}>
-          <label className={`flex items-center gap-2 text-xs font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D]"/> Master</label>
-          <button className={`${T.btn} py-2 px-3`}><Plus size={18}/></button>
-        </div>
-      </form>
-      
-      <div className={`${T.card} overflow-hidden`}>
-        {Object.entries(groupedItems).map(([category, catItems]) => (
-          <div key={category}>
-            <div className={T.th}><span>{category}</span><span className="float-right text-slate-500">{catItems.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{catItems.length} Done</span></div>
-            <div className={`divide-y ${T.border}`}>
-              {catItems.map(i=>{
-                const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; const qty = i.qty||1;
-                return (
-                <div key={i.id} className={`${T.row} ${i.isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
-                  <input type="checkbox" checked={!!i.isSelected} onChange={()=>toggleSelect(i)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
-                  <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black ${T.copper} bg-[#12161A] border ${T.border} px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={()=>updateQty(i.id,qty,-1)} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-white">{qty}</span><button onClick={()=>updateQty(i.id,qty,1)} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
-                    <button onClick={()=>toggleStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
-                    <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); logAudit(appUser, 'DELETE_PREP', i.text, 'Deleted a master prep item.'); }} className="text-slate-400 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
-                  </div>
-                </div>
-              )})}
-            </div>
-          </div>
+    <div className="max-w-3xl mx-auto space-y-4 pb-40">
+      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-[#2A353D] mb-4">
+        {['prep', 'daily', 'weekly', 'monthly'].map((tab) => (
+          <button key={tab} onClick={() => { setSubTab(tab); setTaskFreq(tab); }} className={`px-5 py-2.5 text-xs font-black rounded-t-xl uppercase tracking-widest whitespace-nowrap transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{tab === 'prep' ? 'Food Prep' : `${tab} Tasks`}</button>
         ))}
       </div>
-      <div className={`fixed bottom-0 left-0 right-0 p-3 bg-[#161D22] border-t ${T.border} z-50`}>
-        <div className="max-w-2xl mx-auto flex gap-2">
-          <button onClick={triggerBatchPrint} disabled={globalSelectedCount===0} className={`flex-1 ${T.btn} disabled:opacity-50`}>🖨️ Print Labels ({globalSelectedCount})</button>
-          <button onClick={handleBatchDone} disabled={globalSelectedCount===0} className={`flex-1 ${T.btn} disabled:opacity-50`}>Mark Done</button>
+
+      {subTab === 'prep' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-3 flex justify-between items-center bg-[#1A2126]`}>
+            <h3 className={`font-black flex items-center gap-2 text-sm text-white uppercase tracking-wider`}><ClipboardList size={18} className={T.copper}/> Target Date:</h3>
+            <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 bg-[#12161A] border border-[#2A353D] rounded-lg outline-none text-sm font-bold text-[#D4A381] shadow-inner"/>
+          </div>
+          <form onSubmit={handleAddPrep} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
+            <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add prep item..." required/>
+            <div className="flex w-full sm:w-auto gap-3 items-center">
+              <select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white"><option>Grill</option><option>Fry</option><option>Salad/Cold</option><option>Expo</option><option>Prep Table</option></select>
+              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
+              <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
+            </div>
+          </form>
+          
+          <div className={`${T.card} overflow-hidden`}>
+            {Object.entries(groupedPrep).map(([stationName, items]) => (
+              <div key={stationName}>
+                <div className={T.th}><span>{stationName} Station</span><span className="float-right text-slate-500">{items.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{items.length} Done</span></div>
+                <div className={`divide-y ${T.border}`}>
+                  {items.map(i=>{
+                    const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; const qty = i.qty||1;
+                    return (
+                    <div key={i.id} className={`${T.row} ${i.isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
+                      <input type="checkbox" checked={!!i.isSelected} onChange={async ()=> await updateDoc(doc(db, "prepItems", i.id), { isSelected: !i.isSelected })} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
+                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(1, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
+                        <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
+                        <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                      </div>
+                    </div>
+                  )})}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className={`fixed bottom-0 left-0 right-0 p-4 bg-[#161D22] border-t ${T.border} z-50 backdrop-blur-md bg-opacity-95`}>
+            <div className="max-w-2xl mx-auto flex gap-3">
+              <button onClick={() => { const sel = activePrep.filter(i=>i.isSelected); if(sel.length===0)return; const toP=[]; sel.forEach(i=>{for(let j=0;j<(i.qty||1);j++)toP.push({...i, printId:`${i.id}-${j}`});}); setLabelsToPrint({items:toP, prepDate}); }} disabled={activePrep.filter(i=>i.isSelected).length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print Selected</button>
+              <button onClick={async () => { const sel = activePrep.filter(i=>i.isSelected); for(const item of sel){ if(item.isMaster){ const dts={...(item.completedDates||{})}; dts[prepDate]=appUser.name; await updateDoc(doc(db,"prepItems",item.id),{completedDates:dts, isSelected:false}); } else await updateDoc(doc(db,"prepItems",item.id),{isCompleted:true, completedBy:appUser.name, isSelected:false}); } }} disabled={activePrep.filter(i=>i.isSelected).length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {subTab !== 'prep' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
     </div>
   );
 };
-
 // --- INVENTORY TAB ---
 const TabInventory = ({ inventoryItems, sales, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); const [searchTerm, setSearchTerm] = useState(''); const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState('PFG'); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemPrice, setNewItemPrice] = useState(''); const [orderOverrides, setOrderOverrides] = useState({}); const [editItem, setEditItem] = useState(null); const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, items: [] });
@@ -1023,7 +1106,8 @@ export default function App() {
   const sales = useLiveCollection('sales');
   const recipes = useLiveCollection('recipes');
   const timeOffRequests = useLiveCollection('timeOffRequests');
-  
+  const tasks = useLiveCollection('tasks');
+
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const [activeTabState, setActiveTabState] = useState('published');
   const [labelsToPrint, setLabelsToPrint] = useState(null);
@@ -1111,7 +1195,7 @@ export default function App() {
         {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
         {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
         {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
+        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} tasks={tasks} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
