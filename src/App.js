@@ -782,8 +782,10 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     </div>
   );
 };
-// --- INVENTORY, VENDORS, & WASTE TRACKER (Step 2.1) ---
-const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
+
+
+// --- INVENTORY, VENDORS, & WASTE TRACKER (Safe Version) ---
+const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); 
   const [searchTerm, setSearchTerm] = useState(''); 
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -824,11 +826,11 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
     setWItemId(''); setWQty(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
   };
 
-  const itemsToOrder = inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : i.currentStock < i.parLevel; });
+  const itemsToOrder = inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : (i.currentStock || 0) < (i.parLevel || 0); });
   const vendorsWithDeficits = vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id));
   
   const handleReviewOrder = (vendorId) => {
-    const list = itemsToOrder.filter(i => i.supplierId === vendorId).map(item => { const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock); return { ...item, orderQty: qty }; }).filter(i => i.orderQty > 0);
+    const list = itemsToOrder.filter(i => i.supplierId === vendorId).map(item => { const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, (item.parLevel||0) - (item.currentStock||0)); return { ...item, orderQty: qty }; }).filter(i => i.orderQty > 0);
     if (list.length === 0) return addToast('Order Empty', `No deficits for this vendor.`);
     setConfirmModal({ isOpen: true, vendorId, items: list });
   };
@@ -871,14 +873,14 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
     addToast("System Reset", "PDF Data & Vendor injected successfully!");
   };
 
-  const groupedItems = inventoryItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { if (!acc[item.category]) acc[item.category] = []; acc[item.category].push(item); return acc; }, {});
+  const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { const cat = item.category || 'Uncategorized'; if (!acc[cat]) acc[cat] = []; acc[cat].push(item); return acc; }, {});
   
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
       <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`}>
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
-           <button onClick={executeOrder} className={`w-full ${T.btn} flex items-center justify-center gap-2`}><Send size={20}/> Send Order Out</button>
+           <button onClick={executeOrder} className={`w-full ${T.btn} flex items-center justify-center gap-2`}><Check size={20}/> Send Order Out</button>
          </div>
       </Modal>
 
@@ -901,13 +903,13 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
       </Modal>
 
       <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b ${T.border} pb-3`}>
-        <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Package size={24} className={T.copper}/> Inventory</h2>
+        <h2 className="text-2xl font-black flex items-center gap-2 text-white"><ClipboardList size={24} className={T.copper}/> Inventory</h2>
         <div className={`bg-[#12161A] p-1 rounded-xl flex border ${T.border} overflow-x-auto w-full sm:w-auto no-scrollbar`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
           {appUser?.isAdmin && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {appUser?.isAdmin && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {appUser?.isAdmin && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
-          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}><Flame size={12}/> Burn Log</button>
+          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🔥 Burn Log</button>
         </div>
       </div>
 
@@ -923,7 +925,7 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>
-                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, item.currentStock - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>-</button><span className={`w-4 text-center font-black text-sm ${item.currentStock < item.parLevel ? 'text-red-500' : 'text-white'}`}>{item.currentStock}</span><button onClick={() => updateStock(item.id, item.currentStock + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>+</button></div></div>
+                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, (item.currentStock||0) - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>-</button><span className={`w-4 text-center font-black text-sm ${(item.currentStock||0) < (item.parLevel||0) ? 'text-red-500' : 'text-white'}`}>{item.currentStock||0}</span><button onClick={() => updateStock(item.id, (item.currentStock||0) + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>+</button></div></div>
                     </div>
                   </div>
                 ))}</div>
@@ -941,16 +943,16 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
                   <div className={`p-4 bg-[#12161A] border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-lg text-white">{vendor.name} Order</h3><span className={`bg-[#1A2126] border ${T.border} ${T.copper} px-3 py-1 rounded-full font-black text-[10px] uppercase`}>{vendorItems.length} Items</span></div>
                   <table className="w-full text-left">
                     <tbody className={`divide-y ${T.border}`}>{vendorItems.map(item => {
-                      const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, item.parLevel - item.currentStock);
+                      const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.max(0, (item.parLevel||0) - (item.currentStock||0));
                       return (
                         <tr key={item.id} className={T.row}>
-                          <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel}</span></td>
+                          <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel||0}</span></td>
                           <td className="p-3"><div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className={`w-12 h-8 text-center font-black bg-[#12161A] border ${T.border} ${T.copper} rounded-lg outline-none`}/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>+</button></div></td>
                         </tr>
                       )
                     })}</tbody>
                   </table>
-                  <div className={`p-4 bg-[#12161A] border-t ${T.border} text-right`}><button onClick={()=>handleReviewOrder(vendor.id)} className={`${T.btn} px-4 py-2 flex items-center justify-center gap-2 ml-auto`}><Send size={16}/> Dispatch</button></div>
+                  <div className={`p-4 bg-[#12161A] border-t ${T.border} text-right`}><button onClick={()=>handleReviewOrder(vendor.id)} className={`${T.btn} px-4 py-2 flex items-center justify-center gap-2 ml-auto`}><Check size={16}/> Dispatch</button></div>
                 </div>
               )
             })
@@ -961,9 +963,9 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
       {appUser?.isAdmin && invTab === 'manage' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div><div><label className={T.label}>Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
-          
+
           <div className="flex gap-2">
-             <button onClick={handleInjectPDF} className={`w-full flex items-center justify-center gap-2 bg-red-900/40 hover:bg-red-900 border border-red-500/50 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all`}><Flame size={18}/> Nuke & Inject PDF Data</button>
+             <button onClick={handleInjectPDF} className={`w-full flex items-center justify-center gap-2 bg-red-900/40 hover:bg-red-900 border border-red-500/50 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all`}>🔥 Nuke & Inject PDF Data</button>
           </div>
 
           <form onSubmit={handleAddItem} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
@@ -997,7 +999,7 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
       {invTab === 'waste' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
-            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2"><Flame size={16}/> The Burn Log</h3>
+            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🔥 The Burn Log</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required><option value="">Select Item to Burn...</option>{inventoryItems.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
               <input type="number" min="1" placeholder="Qty Wasted..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
@@ -1012,96 +1014,6 @@ const TabInventory = ({ inventoryItems, vendors = [], wasteLogs = [], sales, add
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-// --- SETTINGS ---
-const TabSettings = ({ addToast, appUser }) => {
-  const toggleReminder = async () => await updateDoc(doc(db, "users", appUser.id), { shiftRemindersEnabled: !appUser.shiftRemindersEnabled });
-  const updateLeadTime = async (val) => await updateDoc(doc(db, "users", appUser.id), { reminderLeadTime: parseInt(val) || 24 });
-  const testPush = async () => { if (!appUser.fcmToken) return addToast('Error', 'Enable notifications first.'); addToast('Sending...', 'Triggering test notification.'); try { const registration = await navigator.serviceWorker.ready; registration.showNotification("Cheers OS", { body: "Loud and clear! Push notifications are locked and loaded.", icon: "/app-icon.png" }); } catch(e) { console.error(e); addToast('Error', 'Failed to trigger local push.'); } };
-  const handleEnablePush = async () => { if (!messaging) return addToast('Error', 'Push not supported.'); try { const p = await Notification.requestPermission(); if(p !== 'granted') return addToast('Denied', 'Notifications blocked.'); addToast('Connecting...', 'Activating secure worker...'); const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js'); let attempts = 0; while (!registration.active && attempts < 20) { await new Promise(r => setTimeout(r, 200)); attempts++; } const token = await getToken(messaging, { vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU', serviceWorkerRegistration: registration }); if(token) { await updateDoc(doc(db, "users", appUser.id), { fcmToken: token }); addToast('Success', 'Push enabled.'); } } catch(e) { addToast('Error', e.message); console.error(e); } };
-  const handlePhotoUpload = (e) => { const file = e.target.files[0]; if (!file) return; addToast('Uploading', 'Compressing and saving image...'); const reader = new FileReader(); reader.onload = (event) => { const img = new Image(); img.onload = async () => { const canvas = document.createElement('canvas'); const MAX = 200; let w = img.width; let h = img.height; if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } } canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, w, h); await updateDoc(doc(db, "users", appUser.id), { photoURL: canvas.toDataURL('image/jpeg', 0.8) }); addToast('Success', 'Profile picture updated.'); }; img.src = event.target.result; }; reader.readAsDataURL(file); };
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className={`${T.card} p-6 space-y-6`}>
-        <h3 className="text-xl font-black text-white mb-2">My Profile & Settings</h3>
-        <div className="space-y-3">
-          <div className={`bg-[#12161A] p-4 rounded-xl border ${T.border} flex justify-between items-center`}>
-             <div><h4 className="font-bold text-sm text-white">Profile Picture</h4><p className={`text-xs ${T.muted}`}>Upload a custom avatar</p></div>
-             <label className={T.btnAlt}>Upload Image<input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label>
-          </div>
-          <div className={`bg-[#12161A] p-4 rounded-xl border ${T.border} space-y-3`}>
-             <div className="flex justify-between items-center cursor-pointer" onClick={toggleReminder}>
-               <div><h4 className="font-bold text-sm text-white">Shift Reminders</h4><p className={`text-xs ${T.muted}`}>Alert me before my shifts</p></div>
-               <div className={`w-10 h-5 rounded-full flex items-center px-1 ${appUser.shiftRemindersEnabled?'bg-[#8F6040]':'bg-[#1A2126] border border-[#2A353D]'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${appUser.shiftRemindersEnabled?'translate-x-4':'translate-x-0'}`}></div></div>
-             </div>
-             {appUser.shiftRemindersEnabled && (
-               <div className={`flex items-center justify-between border-t ${T.border} pt-3`}>
-                  <span className={`text-xs font-bold ${T.muted}`}>Hours before shift:</span>
-                  <input type="number" min="1" max="72" value={appUser.reminderLeadTime || 24} onChange={(e) => updateLeadTime(e.target.value)} className="w-16 p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-lg text-center font-bold text-sm outline-none text-white shadow-sm" />
-               </div>
-             )}
-          </div>
-        </div>
-        <div className={`bg-[#1A2126] p-5 rounded-2xl border ${T.border}`}>
-           <h4 className={`font-black ${T.copper} mb-1`}>Device Push Notifications</h4>
-           <p className={`text-xs ${T.muted} mb-4 font-medium`}>Link this device to receive alerts.</p>
-           <div className="flex gap-2">
-             <button onClick={handleEnablePush} className={`${T.btn} flex-1`}>Enable Alerts</button>
-             {appUser.fcmToken && <button onClick={testPush} className={`${T.btnAlt} flex-1`}>Test Push</button>}
-           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- AUDIT LOGS ---
-const TabAuditLog = ({ appUser }) => {
-  const [logs, setLogs] = useState([]); const [crashes, setCrashes] = useState([]); const [view, setView] = useState('audit');
-  useEffect(() => { if (appUser?.email?.toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase()) return; const unsubLogs = onSnapshot(collection(db, "auditLogs"), snap => setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)))); const unsubCrashes = onSnapshot(collection(db, "crashReports"), snap => setCrashes(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time) - new Date(a.time)))); return () => { unsubLogs(); unsubCrashes(); }; }, [appUser]);
-  if (appUser?.email?.toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase()) return null;
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-4 pb-12">
-      <div className={`${T.card} p-5`}>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
-          <h2 className="text-lg font-black text-white flex items-center gap-2"><Shield className={view === 'crashes' ? 'text-orange-500' : 'text-red-500'}/> {view === 'crashes' ? 'System Crash Reports' : 'System Audit Logs'}
-            {view === 'audit' && (<button onClick={() => logAudit(appUser, 'TEST_FIRE', 'Connection', 'Manual test triggered.')} className={`ml-2 bg-[#12161A] border ${T.border} ${T.copper} px-3 py-1 rounded text-[10px] uppercase tracking-wider`}>Force Test</button>)}
-          </h2>
-          <div className={`flex gap-2 bg-[#12161A] p-1 rounded-xl border ${T.border}`}>
-            <button onClick={() => setView('audit')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-colors ${view === 'audit' ? `${T.grad} text-slate-900` : 'text-slate-400'}`}>Logs</button>
-            <button onClick={() => setView('crashes')} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-colors ${view === 'crashes' ? `${T.grad} text-slate-900` : 'text-slate-400'}`}>Crashes ({crashes.length})</button>
-          </div>
-        </div>
-        <div className={`bg-[#12161A] rounded-2xl overflow-hidden border ${T.border}`}>
-          <div className={`max-h-[600px] overflow-y-auto custom-scrollbar divide-y ${T.border}`}>
-            {view === 'audit' ? (
-              <>{logs.length === 0 && <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No events logged yet.</div>}
-                {logs.map(log => (
-                  <div key={log.id} className={T.row}>
-                    <div className="flex justify-between items-start mb-1"><div className="flex items-center gap-2"><span className="font-black text-sm text-white">{log.userName}</span><span className={`text-[9px] font-black uppercase tracking-wider bg-[#1A2126] border ${T.border} ${T.copper} px-2 py-0.5 rounded-md`}>{log.action}</span></div><span className={`text-[10px] font-bold ${T.muted}`}>{new Date(log.timestamp).toLocaleString()}</span></div>
-                    <div className={`text-xs font-medium ${T.muted}`}>Target: <span className="font-bold text-white">{log.target}</span> • {log.details}</div>
-                  </div>
-                ))}
-              </>
-            ) : (
-              <>{crashes.length === 0 && <div className={`p-8 text-center text-sm font-bold ${T.copper}`}>Zero system crashes detected. Clear skies!</div>}
-                {crashes.map(crash => (
-                  <div key={crash.id} className={T.row}>
-                    <div className="flex justify-between items-start mb-1"><span className="text-xs font-black text-orange-500 uppercase tracking-wide">{crash.type}</span><span className={`text-[10px] font-bold ${T.muted}`}>{new Date(crash.time).toLocaleString()}</span></div>
-                    <p className="text-xs font-mono font-bold text-slate-200 mb-1">{crash.message}</p>
-                    {crash.stack && <pre className="text-[10px] font-mono text-slate-400 bg-[#1A2126] border border-[#2A353D] p-2 rounded-lg overflow-x-auto whitespace-pre-wrap max-h-40">{crash.stack}</pre>}
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
