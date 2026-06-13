@@ -279,33 +279,95 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   );
 };
 
-// --- Tab: Sales & Trends ---
+// --- Tab: Sales & Trends (Upgraded with Weekly Graph) ---
 const TabSales = ({ sales, addToast }) => {
-  const [date, setDate] = useState(getToday()); const [amount, setAmount] = useState(''); const [tag, setTag] = useState('Standard Day');
-  const handleSave = async (e) => { e.preventDefault(); if (!amount) return; await addDoc(collection(db, "sales"), { date, amount: parseFloat(amount), tag, loggedAt: new Date().toISOString() }); setAmount(''); addToast('Saved', 'Daily sales logged.'); };
-  const sortedSales = [...sales].sort((a,b) => b.date.localeCompare(a.date)).slice(0, 14);
+  const [date, setDate] = useState(getToday());
+  const [amount, setAmount] = useState('');
+  const [tag, setTag] = useState('Standard Day');
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  // Logic to calculate Monday-Sunday grid
+  const getStartOfWeek = (offset) => {
+    const d = new Date();
+    const day = d.getDay() || 7; 
+    d.setDate(d.getDate() - day + 1 + (offset * 7));
+    return d;
+  };
+
+  const startOfWeek = getStartOfWeek(weekOffset);
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(endOfWeek.getDate() + 6);
+
+  // Filter and sum Firebase data for the selected week
+  const weekSales = sales.filter(s => {
+    const sd = new Date(s.date + 'T12:00:00');
+    return sd >= startOfWeek && sd <= endOfWeek;
+  });
+
+  const totalWeek = weekSales.reduce((sum, s) => sum + s.amount, 0);
+
+  // Map graph percentages
+  const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const graphData = daysOfWeek.map((dayName, idx) => {
+     const targetDate = new Date(startOfWeek);
+     targetDate.setDate(targetDate.getDate() + idx);
+     const dateStr = formatDate(targetDate);
+     const daySale = weekSales.find(s => s.date === dateStr);
+     const amt = daySale ? daySale.amount : 0;
+     // Caps bar height visually based on an estimated $12k perfect day
+     const heightPct = amt > 0 ? Math.min(100, Math.max(8, (amt / 12000) * 100)) + '%' : '0%';
+     return { day: dayName.charAt(0), amt, h: heightPct, dateStr };
+  });
+
+  const handleSave = async (e) => {
+    e.preventDefault(); if (!amount) return;
+    await addDoc(collection(db, "sales"), { date, amount: parseFloat(amount), tag, loggedAt: new Date().toISOString() });
+    setAmount(''); addToast('Saved', 'Daily sales logged.');
+  };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className={`${T.card} p-6`}>
-        <h2 className="text-xl font-black mb-4 flex items-center gap-2 text-white"><TrendingUp className={T.copper}/> Log Daily Sales</h2>
-        <form onSubmit={handleSave} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+      <div className={`${T.card} p-4 sm:p-6`}>
+        
+        {/* Header & Week Navigator */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <h2 className="text-xl font-black flex items-center gap-2 text-white"><TrendingUp className={T.copper}/> Operations Ledger</h2>
+          <div className="flex items-center justify-between w-full sm:w-auto gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-1 shadow-sm">
+            <button onClick={() => setWeekOffset(w => w - 1)} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><ChevronLeft size={16}/></button>
+            <span className="text-[10px] font-black uppercase tracking-widest text-white px-2">
+              {formatDisplayDate(formatDate(startOfWeek))} - {formatDisplayDate(formatDate(endOfWeek))}
+            </span>
+            <button onClick={() => setWeekOffset(w => w + 1)} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><ChevronRight size={16}/></button>
+          </div>
+        </div>
+
+        {/* The Copper Bar Graph */}
+        <div className="h-40 flex items-end justify-between gap-1 sm:gap-2 pt-6 px-2 sm:px-4 bg-[#12161A] rounded-xl border border-[#2A353D]/60 relative mb-6">
+          {graphData.map((bar, idx) => (
+            <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer">
+              <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-[#1A2126] border border-[#2A353D] px-2 py-1 rounded text-white text-[10px] font-bold shadow-xl z-10 pointer-events-none whitespace-nowrap">
+                ${bar.amt.toLocaleString(undefined, {minimumFractionDigits: 2})}
+              </div>
+              <div style={{ height: bar.h }} className={`w-full max-w-[40px] rounded-t ${bar.amt > 0 ? T.grad : 'bg-[#1A2126]'} opacity-80 hover:opacity-100 transition-all shadow-md`} />
+              <span className="text-[10px] text-slate-400 mt-2 font-mono font-bold mb-2">{bar.day}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Quick Stats Grid */}
+        <div className="grid grid-cols-2 gap-3 text-center mb-6">
+          <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D] shadow-sm"><p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Gross Period Sales</p><p className="text-xl sm:text-2xl font-black text-white">${totalWeek.toLocaleString(undefined, {minimumFractionDigits: 2})}</p></div>
+          <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D] shadow-sm"><p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Projected Target</p><p className={`text-xl sm:text-2xl font-black ${T.copper}`}>$45,000.00</p></div>
+        </div>
+
+        {/* Data Entry Form */}
+        <form onSubmit={handleSave} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end pt-4 border-t border-[#2A353D]">
           <div><label className={T.label}>Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className={T.input}/></div>
           <div><label className={T.label}>Revenue ($)</label><input type="number" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} className={T.input} required/></div>
           <div><label className={T.label}>Event Tag</label><select value={tag} onChange={e=>setTag(e.target.value)} className={T.input}>{EVENT_TAGS.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
           <button className={`${T.btn} h-[46px]`}>Save Log</button>
         </form>
-      </div>
-      <div className={`${T.card} p-4`}>
-        <h3 className="font-bold text-lg mb-3 text-white">Recent Trends</h3>
-        <div className={`divide-y ${T.border}`}>
-          {sortedSales.length === 0 && <div className={`py-4 text-center text-sm font-bold ${T.muted}`}>No sales data logged yet.</div>}
-          {sortedSales.map(s => (
-          <div key={s.id} className="py-3 flex justify-between items-center">
-            <div><span className="font-bold block text-white">{formatDisplayDate(s.date)}</span><span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded mt-1 inline-block bg-[#12161A] border ${T.border} ${s.tag === 'Standard Day' ? T.muted : T.copper}`}>{s.tag}</span></div>
-            <div className={`font-black text-lg ${T.copper}`}>${s.amount.toFixed(2)}</div>
-          </div>
-        ))}</div>
+        
       </div>
     </div>
   );
