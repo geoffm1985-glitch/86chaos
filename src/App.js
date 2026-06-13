@@ -918,3 +918,133 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
     </div>
   );
 };
+
+
+
+
+// ============================================================================
+// THE MASTER ENGINE (App Component)
+// ============================================================================
+export default function App() {
+  const users = useLiveCollection('users');
+  const shifts = useLiveCollection('shifts');
+  const prepItems = useLiveCollection('prepItems');
+  const inventoryItems = useLiveCollection('inventoryItems');
+  const shiftSwaps = useLiveCollection('shiftSwaps');
+  const events = useLiveCollection('events');
+  const sales = useLiveCollection('sales');
+  const recipes = useLiveCollection('recipes');
+  const timeOffRequests = useLiveCollection('timeOffRequests');
+  
+  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
+  const [activeTabState, setActiveTabState] = useState('published');
+  const [labelsToPrint, setLabelsToPrint] = useState(null);
+
+  useEffect(() => {
+    const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
+    window.addEventListener('popstate', handlePopState);
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab') || (appUser?.isAdmin ? 'schedule' : 'published');
+    setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [appUser]);
+
+  const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
+
+  useEffect(() => {
+    if (appUser) localStorage.setItem('cheersUser', JSON.stringify(appUser));
+    else localStorage.removeItem('cheersUser');
+  }, [appUser]);
+
+  useEffect(() => { signInAnonymously(auth).catch(err => console.error("Firebase Auth error:", err)); }, []);
+
+  const [currentDate, setCurrentDate] = useState(getToday());
+  const [toasts, setToasts] = useState([]);
+  const [isDateModalOpen, setIsDateModalOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
+
+  const addToast = (title, message) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, title, message }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
+  };
+
+  const prevDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setCurrentDate(formatDate(d)); };
+  const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
+  const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
+  const nextMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() + 1); setCurrentDate(formatDate(d)); };
+
+  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
+
+  if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
+
+  return (
+    <div className={`min-h-screen font-sans flex flex-col ${T.bg}`}>
+      <style>{`
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type="date"]::-webkit-calendar-picker-indicator, input[type="month"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
+
+      <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
+        <CheersLogo />
+        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white`}><Menu size={20} /></button>
+      </header>
+
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} />
+
+      {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+        <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
+          <button onClick={['schedule', 'prep'].includes(activeTabState) ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronLeft size={20} /></button>
+          <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381]">
+            {['schedule', 'prep'].includes(activeTabState) ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+          </h2>
+          <button onClick={['schedule', 'prep'].includes(activeTabState) ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>
+        </div>
+      )}
+
+      <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Date">
+        <div className="space-y-4">
+          <input type={activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? 'date' : 'month'} value={activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? currentDate : getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? e.target.value : e.target.value + '-01'); setIsDateModalOpen(false); } }} className={T.input} />
+          <button onClick={() => setIsDateModalOpen(false)} className={`w-full ${T.btn}`}>Close</button>
+        </div>
+      </Modal>
+
+      <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+        {activeTabState === 'schedule' && liveAppUser?.isAdmin && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
+        {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
+        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
+        {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
+        {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} sales={sales} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'audit' && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
+      </main>
+
+      <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
+            <div className="bg-[#12161A] p-1.5 rounded-full text-[#D4A381] mt-0.5 border border-[#2A353D]"><Bell size={16} /></div>
+            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p></div>
+            <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
+          </div>
+        ))}
+      </div>
+      
+      <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
+        <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 2.0</span>
+      </div>
+    </div>
+  );
+}
