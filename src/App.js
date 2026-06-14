@@ -156,21 +156,24 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 };
 
 // ============================================================================
-// THE 86 CHAOS BOOT SCREEN
+// THE 86 CHAOS BOOT SCREEN (EMAIL/PASSWORD RESTORED)
 // ============================================================================
 const LoginScreen = ({ users, setAppUser, addToast }) => {
-  const [pin, setPin] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   
   const handleLogin = (e) => {
     e.preventDefault();
-    const user = users.find(u => u.pin === pin);
+    // Restored Email/Password logic
+    const user = users.find(u => (u.email || '').toLowerCase() === email.toLowerCase() && u.password === password);
+    
     if (user) { 
       setAppUser(user); 
-    } else if (pin === '0000') { 
+    } else if (email === 'admin' && password === '0000') { 
       setAppUser({ id: 'dev-backdoor', name: 'Developer', isAdmin: true }); 
     } else { 
-      addToast('Error', 'Invalid PIN'); 
-      setPin(''); 
+      addToast('Error', 'Invalid Email or Password'); 
+      setPassword(''); 
     }
   };
 
@@ -185,20 +188,26 @@ const LoginScreen = ({ users, setAppUser, addToast }) => {
         <img src="/6240.jpg" alt="86 Chaos OS Icon" className="w-24 h-24 rounded-2xl shadow-xl border-2 border-[#2A353D] mb-6" />
         <img src="/6139.png" alt="86 Chaos Typography" className="h-8 w-auto mb-8 opacity-90" />
         
-        <form onSubmit={handleLogin} className="w-full space-y-5">
+        <form onSubmit={handleLogin} className="w-full space-y-4">
+          <div>
+            <input 
+              type="text" 
+              placeholder="Email Address" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" 
+            />
+          </div>
           <div>
             <input 
               type="password" 
-              inputMode="numeric" 
-              pattern="[0-9]*"
-              placeholder="ENTER PIN" 
-              value={pin} 
-              onChange={e => setPin(e.target.value)} 
-              className="w-full text-center text-3xl tracking-[0.5em] font-black bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" 
-              autoFocus 
+              placeholder="Password" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" 
             />
           </div>
-          <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all">
+          <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2">
             Unlock System
           </button>
         </form>
@@ -206,7 +215,6 @@ const LoginScreen = ({ users, setAppUser, addToast }) => {
     </div>
   );
 };
-
 
 // ============================================================================
 // SECTION 3: MASTER SCHEDULE HUB (Combined Schedule, TimeClock, Month, Requests)
