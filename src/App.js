@@ -208,58 +208,6 @@ const LoginScreen = ({ users, setAppUser, addToast }) => {
 };
 
 
-  const handleLogin = async (e) => {
-    e.preventDefault(); setLoading(true);
-    if (email.trim().toLowerCase() === 'admin' && password === 'Atticus7!') { setAppUser({ id: 'dev-backdoor', name: 'Ghost Admin', email: MASTER_ADMIN_EMAIL, role: 'Kitchen', isAdmin: true, isActive: true }); return; }
-    try {
-      if (isFirstUser) {
-        const newUser = { name: 'Admin', email: MASTER_ADMIN_EMAIL, phone: '', password, role: 'Kitchen', isAdmin: true, isActive: true, forcePasswordChange: false, photoURL: '' };
-        const docRef = await addDoc(collection(db, "users"), newUser);
-        setAppUser({ id: docRef.id, ...newUser });
-      } else {
-        const user = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
-        if (user) { if (user.forcePasswordChange) setResetUser(user); else setAppUser(user); } else addToast("Error", "Invalid credentials.");
-      }
-    } catch (err) { addToast("Error", "Connection error."); console.error(err); }
-    setLoading(false);
-  };
-
-  const handleRecover = async (e) => {
-    e.preventDefault(); setLoading(true);
-    const user = users.find(u => u.email === email.toLowerCase().trim());
-    if (user) { const tempPass = generateTempPass(); await updateDoc(doc(db, "users", user.id), { password: tempPass, forcePasswordChange: true }); addToast("Manager Notified", "A temporary password has been generated."); } else { addToast("Error", "Account not found."); }
-    setIsRecover(false); setLoading(false);
-  };
-
-  const handlePasswordSetup = async (e) => {
-    e.preventDefault(); setLoading(true);
-    if(password.length < 5) { addToast("Error", "Password too short."); setLoading(false); return; }
-    try { await updateDoc(doc(db, "users", resetUser.id), { password: password, forcePasswordChange: false }); setAppUser({ ...resetUser, password: password, forcePasswordChange: false }); } catch (err) { addToast("Error", "Failed to update."); }
-    setLoading(false);
-  };
-
-  if (resetUser) return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${T.bg}`}><div className={`${T.card} p-8 max-w-md w-full`}><h2 className="text-xl font-black text-center mb-2 tracking-tight text-white">Welcome, {resetUser.name}!</h2><p className="text-center text-sm text-slate-400 mb-6 font-medium">Please set your permanent password.</p><form onSubmit={handlePasswordSetup} className="space-y-4"><div><label className={T.label}>New Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className={T.input} required /></div><button type="submit" disabled={loading} className={`w-full ${T.btn}`}>{loading ? 'Processing...' : 'Save & Login'}</button></form></div></div>
-  );
-
-  return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${T.bg}`}>
-      <div className={`${T.card} p-8 max-w-md w-full`}>
-        <div className="flex justify-center mb-6"><CheersLogo /></div>
-        <h2 className="text-xl font-black text-center mb-6 tracking-tight text-white">{isRecover ? 'Recover Password' : (isFirstUser ? 'System Initialization' : 'Staff Secure Login')}</h2>
-        <form onSubmit={isRecover ? handleRecover : handleLogin} className="space-y-4">
-          <div><label className={T.label}>Email / ID</label><input type="text" value={email} onChange={e => setEmail(e.target.value)} className={T.input} required /></div>
-          {!isRecover && <div><label className={T.label}>Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className={T.input} required /></div>}
-          <button type="submit" disabled={loading} className={`w-full mt-2 ${T.btn}`}>
-            {loading ? 'Authenticating...' : (isRecover ? 'Reset Password' : (isFirstUser ? 'Initialize Admin' : 'Access Node'))}
-          </button>
-        </form>
-        {!isFirstUser && <button onClick={() => { setIsRecover(!isRecover); setEmail(''); setPassword(''); }} className={`w-full text-center mt-6 text-xs font-bold transition-colors text-slate-500 hover:text-[#D4A381]`}>{isRecover ? 'Back to Login' : 'Forgot Password?'}</button>}
-      </div>
-    </div>
-  );
-};
-
 // ============================================================================
 // SECTION 3: MASTER SCHEDULE HUB (Combined Schedule, TimeClock, Month, Requests)
 // ============================================================================
