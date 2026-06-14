@@ -156,9 +156,6 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 };
 
 // ============================================================================
-// SECTION 2: SLEEK LOGIN & ADMIN FIX (Fully Copper Mapped)
-// ============================================================================
-// ============================================================================
 // THE 86 CHAOS BOOT SCREEN
 // ============================================================================
 const LoginScreen = ({ users, setAppUser, addToast }) => {
@@ -182,15 +179,10 @@ const LoginScreen = ({ users, setAppUser, addToast }) => {
       className="min-h-screen flex flex-col items-center justify-center bg-[#0B0E11] bg-cover bg-center bg-no-repeat relative"
       style={{ backgroundImage: `url('/6136.jpg')` }}
     >
-      {/* Dark blur overlay so the login box pops against the Wisconsin map */}
       <div className="absolute inset-0 bg-[#0B0E11]/75 backdrop-blur-[3px]"></div>
       
       <div className="relative z-10 w-full max-w-sm p-8 bg-[#161D22]/95 border border-[#2A353D] rounded-3xl shadow-2xl flex flex-col items-center animate-[slideIn_0.3s_ease-out]">
-        
-        {/* Metal 86 App Logo */}
         <img src="/6240.jpg" alt="86 Chaos OS Icon" className="w-24 h-24 rounded-2xl shadow-xl border-2 border-[#2A353D] mb-6" />
-        
-        {/* 86 Chaos Text Logo */}
         <img src="/6139.png" alt="86 Chaos Typography" className="h-8 w-auto mb-8 opacity-90" />
         
         <form onSubmit={handleLogin} className="w-full space-y-5">
