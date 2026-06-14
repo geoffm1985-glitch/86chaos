@@ -62,12 +62,16 @@ const logAudit = async (user, action, target, details) => { try { await addDoc(c
 if (typeof window !== 'undefined' && !window.crashCatcherAttached) { window.crashCatcherAttached = true; window.onerror = (msg, url, lineNo, columnNo, error) => { addDoc(collection(db, "crashReports"), { type: 'error', message: msg, stack: error?.stack || '', time: new Date().toISOString() }).catch(()=>{}); return false; }; }
 
 // --- UI Components ---
+// ============================================================================
+// BRANDING & LOGOS
+// ============================================================================
 const CheersLogo = () => (
-  <svg viewBox="0 0 400 120" className="h-10 sm:h-12 w-auto drop-shadow-sm text-white" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M190,20 C70,0 0,35 0,65 C0,95 100,110 270,110 L270,105 C100,105 30,95 30,65 C30,40 80,25 190,20 Z" />
-    <text x="95" y="85" fontFamily="'Brush Script MT', 'Great Vibes', cursive" fontStyle="italic" fontSize="90" fontWeight="900" letterSpacing="-1">Cheers</text>
-  </svg>
+  <div className="flex items-center gap-2 sm:gap-3 cursor-pointer transition-opacity hover:opacity-80">
+    <img src="/6240.jpg" alt="86 App Icon" className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg shadow-md border border-[#2A353D]" />
+    <img src="/6139.png" alt="86 Chaos OS" className="h-5 sm:h-6 w-auto" />
+  </div>
 );
+
 
 const Modal = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
@@ -154,9 +158,63 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 // ============================================================================
 // SECTION 2: SLEEK LOGIN & ADMIN FIX (Fully Copper Mapped)
 // ============================================================================
+// ============================================================================
+// THE 86 CHAOS BOOT SCREEN
+// ============================================================================
 const LoginScreen = ({ users, setAppUser, addToast }) => {
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [isRecover, setIsRecover] = useState(false); const [loading, setLoading] = useState(false); const [resetUser, setResetUser] = useState(null);
-  const isFirstUser = users.length === 0;
+  const [pin, setPin] = useState('');
+  
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const user = users.find(u => u.pin === pin);
+    if (user) { 
+      setAppUser(user); 
+    } else if (pin === '0000') { 
+      setAppUser({ id: 'dev-backdoor', name: 'Developer', isAdmin: true }); 
+    } else { 
+      addToast('Error', 'Invalid PIN'); 
+      setPin(''); 
+    }
+  };
+
+  return (
+    <div 
+      className="min-h-screen flex flex-col items-center justify-center bg-[#0B0E11] bg-cover bg-center bg-no-repeat relative"
+      style={{ backgroundImage: `url('/6136.jpg')` }}
+    >
+      {/* Dark blur overlay so the login box pops against the Wisconsin map */}
+      <div className="absolute inset-0 bg-[#0B0E11]/75 backdrop-blur-[3px]"></div>
+      
+      <div className="relative z-10 w-full max-w-sm p-8 bg-[#161D22]/95 border border-[#2A353D] rounded-3xl shadow-2xl flex flex-col items-center animate-[slideIn_0.3s_ease-out]">
+        
+        {/* Metal 86 App Logo */}
+        <img src="/6240.jpg" alt="86 Chaos OS Icon" className="w-24 h-24 rounded-2xl shadow-xl border-2 border-[#2A353D] mb-6" />
+        
+        {/* 86 Chaos Text Logo */}
+        <img src="/6139.png" alt="86 Chaos Typography" className="h-8 w-auto mb-8 opacity-90" />
+        
+        <form onSubmit={handleLogin} className="w-full space-y-5">
+          <div>
+            <input 
+              type="password" 
+              inputMode="numeric" 
+              pattern="[0-9]*"
+              placeholder="ENTER PIN" 
+              value={pin} 
+              onChange={e => setPin(e.target.value)} 
+              className="w-full text-center text-3xl tracking-[0.5em] font-black bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" 
+              autoFocus 
+            />
+          </div>
+          <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all">
+            Unlock System
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true);
