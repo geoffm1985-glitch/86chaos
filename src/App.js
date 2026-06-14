@@ -784,7 +784,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
 };
 
 
-// --- INVENTORY, VENDORS, & WASTE TRACKER (The Master Drop + Fixes) ---
+// --- INVENTORY, VENDORS, & WASTE TRACKER (Direct Email & Price Output Fix) ---
 const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); 
   const [searchTerm, setSearchTerm] = useState(''); 
@@ -836,24 +836,21 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     setConfirmModal({ isOpen: true, vendorId, items: list });
   };
 
-  // THE CLIPBOARD BYPASS FIX
+  // DIRECT EMAIL ROUTING (NO CLIPBOARD)
   const executeOrder = async () => {
     const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
-    let bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}): ${i.orderQty}`).join('\n');
-    let fullText = `Order for Cheers Bar & Grill\n\n${bodyText}`;
+    
+    // Calculate total and inject prices into the actual email text
+    const orderTotal = items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
+    let bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}) -> Qty: ${i.orderQty} @ $${Number(i.price||0).toFixed(2)} = $${((i.price||0) * i.orderQty).toFixed(2)}`).join('\n');
+    let fullText = `Order for Cheers Bar & Grill\nEstimated Total: $${orderTotal.toFixed(2)}\n\n${bodyText}`;
 
-    try {
-      await navigator.clipboard.writeText(fullText);
-      addToast('📋 Copied to Clipboard!', 'Order was too large for a link. Hit PASTE in your message app!');
-    } catch (err) {
-      console.error('Clipboard failed', err);
-    }
-
-    if(vendor.email) window.location.href = `mailto:${vendor.email}?subject=Cheers Order (Paste From Clipboard)`;
-    else window.location.href = `sms:${vendor.phone}`;
+    // Force it to open directly in the email app with the body pre-loaded
+    if(vendor.email) window.location.href = `mailto:${vendor.email}?subject=Cheers Order&body=${encodeURIComponent(fullText)}`;
+    else window.location.href = `sms:${vendor.phone}?body=${encodeURIComponent(fullText)}`;
     
     for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
-    setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
+    setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] }); addToast('Dispatched', `Order sent to ${vendor.name}.`);
   };
 
   const handleInjectPDF = async () => {
@@ -1086,7 +1083,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
-           <button onClick={executeOrder} className={`w-full ${T.btn} flex items-center justify-center gap-2`}><Check size={20}/> Copy Order & Open App</button>
+           <button onClick={executeOrder} className={`w-full ${T.btn} flex items-center justify-center gap-2`}><Check size={20}/> Send Email Order</button>
          </div>
       </Modal>
 
