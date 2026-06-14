@@ -784,7 +784,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
 };
 
 
-// --- INVENTORY, VENDORS, & WASTE TRACKER (Direct Email & Price Output Fix) ---
+// --- INVENTORY, VENDORS, & WASTE TRACKER (The Unbreakable Enterprise Engine) ---
 const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); 
   const [searchTerm, setSearchTerm] = useState(''); 
@@ -814,14 +814,10 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };
   const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
-  // THE ENTERPRISE YIELD MATH
   const handleLogWaste = async (e) => {
     e.preventDefault(); if(!wItemId || !wQty) return; const item = inventoryItems.find(i => i.id === wItemId); if(!item) return;
-    const qtyNum = parseFloat(wQty); 
-    const yieldDivider = parseFloat(item.yieldQty) || 1; 
-    const stockDeduction = qtyNum / yieldDivider; 
-    const costLost = (item.price / yieldDivider) * qtyNum; 
-
+    const qtyNum = parseFloat(wQty); const yieldDivider = parseFloat(item.yieldQty) || 1; 
+    const stockDeduction = qtyNum / yieldDivider; const costLost = ((item.price || 0) / yieldDivider) * qtyNum; 
     await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString() });
     await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, item.currentStock - stockDeduction) });
     setWItemId(''); setWQty(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
@@ -836,26 +832,34 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     setConfirmModal({ isOpen: true, vendorId, items: list });
   };
 
-  // DIRECT EMAIL ROUTING (NO CLIPBOARD)
   const executeOrder = async () => {
     const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
-    
-    // Calculate total and inject prices into the actual email text
     const orderTotal = items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
+    
     let bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}) -> Qty: ${i.orderQty} @ $${Number(i.price||0).toFixed(2)} = $${((i.price||0) * i.orderQty).toFixed(2)}`).join('\n');
     let fullText = `Order for Cheers Bar & Grill\nEstimated Total: $${orderTotal.toFixed(2)}\n\n${bodyText}`;
 
-    // Force it to open directly in the email app with the body pre-loaded
-    if(vendor.email) window.location.href = `mailto:${vendor.email}?subject=Cheers Order&body=${encodeURIComponent(fullText)}`;
-    else window.location.href = `sms:${vendor.phone}?body=${encodeURIComponent(fullText)}`;
+    // Automatic Safety Clipboard Fallback for large limits
+    try { await navigator.clipboard.writeText(fullText); } catch (e) { console.log(e); }
+
+    if (vendor.email) {
+      const emailUrl = `mailto:${vendor.email}?subject=Cheers Order&body=${encodeURIComponent(fullText)}`;
+      if (emailUrl.length > 2000) {
+        addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.');
+        window.location.href = `mailto:${vendor.email}?subject=Cheers Order (Paste From Clipboard)`;
+      } else {
+        window.location.href = emailUrl;
+      }
+    } else {
+      window.location.href = `sms:${vendor.phone}?body=${encodeURIComponent(fullText)}`;
+    }
     
     for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
-    setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] }); addToast('Dispatched', `Order sent to ${vendor.name}.`);
+    setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
   };
 
   const handleInjectPDF = async () => {
-    if(!window.confirm("WARNING: This will permanently delete ALL current vendors and inventory, and inject the Full Yield-Mapped PDF data. Proceed?")) return;
-    addToast("Injecting...", "Please wait up to 10 seconds. Do not click away.");
+    if(!window.confirm("WARNING: This will permanently delete ALL current vendors and inventory, and inject the Full Yield-Mapped PDF data with complete pricing. Proceed?")) return;
     
     for (const v of vendors) await deleteDoc(doc(db, "vendors", v.id));
     for (const i of inventoryItems) await deleteDoc(doc(db, "inventoryItems", i.id));
@@ -864,206 +868,99 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     const vId = newVendorRef.id;
 
     const pdfItems = [
-      { name: 'Bun Hamburger Gourmet Sliced 4.25" Split Top', category: 'Bakery', pfgCode: 'B1938', packSize: '6/8 Cnt', yieldQty: 48, price: 30.00, parLevel: 2 },
-      { name: 'Bun Hamburger Soft Pretzel Bread 4"', category: 'Bakery', pfgCode: 'CR776', packSize: '72/3.2Oz', yieldQty: 72, price: 30.00, parLevel: 2 },
-      { name: 'Bun Hoagie Italian 6" Hinged Split Top', category: 'Bakery', pfgCode: '69922', packSize: '6/6 Cnt', yieldQty: 36, price: 25.00, parLevel: 2 },
-      { name: 'Dough Pizza Crust 12" Readi Rise', category: 'Bakery', pfgCode: '69432', packSize: '12/17 Oz', yieldQty: 12, price: 24.00, parLevel: 4 },
-      { name: 'Pizza Crust 12" Thin Crispy Partial Baked', category: 'Bakery', pfgCode: 'EK598', packSize: '50/6.25', yieldQty: 50, price: 35.00, parLevel: 2 },
-      { name: 'Bread Reuben Marble Rye 1/2" 21 Slice', category: 'Bakery', pfgCode: '23112', packSize: '6/32 Oz', yieldQty: 6, price: 28.00, parLevel: 2 },
-      { name: 'Cake Chocolate Chip Cookie Dough 10"', category: 'Frozen', pfgCode: 'NW398', packSize: '2/14 Sl', yieldQty: 2, price: 40.00, parLevel: 1 },
-      { name: 'Bread White Split Top 9/16" 20 Slice', category: 'Bakery', pfgCode: '21694', packSize: '6/32 Oz', yieldQty: 6, price: 22.00, parLevel: 2 },
-      { name: 'Cheesecake Strawberry Lace 10" 14 Slice', category: 'Frozen', pfgCode: '21542', packSize: '2/99 Oz', yieldQty: 2, price: 45.00, parLevel: 1 },
-      { name: 'Roll White Hard 5" Sliced Sheboygan Style', category: 'Bakery', pfgCode: 'NE588', packSize: '45/5 In', yieldQty: 45, price: 20.00, parLevel: 2 },
-      { name: 'Bread Wheat Hearty Cracked 9/16" 14 Slice', category: 'Bakery', pfgCode: '27786', packSize: '10/24 Oz', yieldQty: 10, price: 26.00, parLevel: 2 },
-      { name: 'Shell Taco Yellow Whole Grain 5"', category: 'Dry Goods', pfgCode: '50408', packSize: '8/25 Cnt', yieldQty: 200, price: 35.00, parLevel: 2 },
-      { name: 'Tortilla Flour 6" Contigo', category: 'Dry Goods', pfgCode: 'DT172', packSize: '12/24Cnt', yieldQty: 288, price: 38.00, parLevel: 2 },
-      { name: 'Bun Slider Hawaiian Sweet 9 Cnt', category: 'Bakery', pfgCode: 'TD860', packSize: '12/10 Oz', yieldQty: 12, price: 28.00, parLevel: 2 },
-      { name: 'Cake Carrot Mommas Old Fashioned 16 Slice', category: 'Frozen', pfgCode: '21572', packSize: '2/114 Oz', yieldQty: 2, price: 50.00, parLevel: 1 },
-      { name: 'Cake Limoncello Mascarpone 10" 14 Sliced', category: 'Frozen', pfgCode: 'NJ164', packSize: '2/3.5 Lb', yieldQty: 2, price: 48.00, parLevel: 1 },
-      { name: 'Pie Boston Cream 10" Unsliced Thaw & Serve', category: 'Frozen', pfgCode: 'B5370', packSize: '6/33 Oz', yieldQty: 6, price: 45.00, parLevel: 1 },
-      { name: 'Pie Strawberry Cream 10" Unsliced Thaw & Serve', category: 'Frozen', pfgCode: '65926', packSize: '6/27 Oz', yieldQty: 6, price: 45.00, parLevel: 1 },
-      { name: 'Bun Kaiser Onion 4.25" 2.66 Oz Sliced', category: 'Bakery', pfgCode: '72890', packSize: '6/8 Cnt', yieldQty: 48, price: 25.00, parLevel: 2 },
-      { name: 'Beef Ground Patty Angus 81/19', category: 'Meat', pfgCode: 'EW538', packSize: '24/7 Oz', yieldQty: 24, price: 65.00, parLevel: 4 },
-      { name: 'Beef Taco Filling Fully Cooked', category: 'Meat', pfgCode: 'GW640', packSize: '4/2.5 Lb', yieldQty: 4, price: 45.00, parLevel: 2 },
-      { name: 'Beef Ground Patty 5-1 78/22 Round', category: 'Meat', pfgCode: '37510', packSize: '1/15 Lb', yieldQty: 15, price: 55.00, parLevel: 2 },
-      { name: 'Corned Beef Brisket Choice Raw w/ Seasoning', category: 'Meat', pfgCode: 'K4206', packSize: '2/16 Up', yieldQty: 2, price: 85.00, parLevel: 2 },
-      { name: 'Sirloin Beef Tip Random', category: 'Meat', pfgCode: '25138', packSize: '2/5 Lb', yieldQty: 2, price: 65.00, parLevel: 2 },
-      { name: 'Beef Chuck Roll Choice 1" Neck Off', category: 'Meat', pfgCode: 'DR382', packSize: '3/23 Lb', yieldQty: 3, price: 110.00, parLevel: 2 },
-      { name: 'Beef Ground 81/19 Raw Bulk Cryo', category: 'Meat', pfgCode: '46050', packSize: '4/5 Lb', yieldQty: 4, price: 75.00, parLevel: 3 },
-      { name: 'Beef Ground Patty 4-1 78/22 Round', category: 'Meat', pfgCode: '36146', packSize: '1/15 Lb', yieldQty: 15, price: 60.00, parLevel: 3 },
-      { name: 'Meatball Beef Chicken .5 Ounce Cooked', category: 'Meat', pfgCode: 'CC868', packSize: '2/5 Lb', yieldQty: 2, price: 35.00, parLevel: 2 },
-      { name: 'Beef Top Blade 8 Oz Steak Choice Flat Iron', category: 'Meat', pfgCode: '35068', packSize: '20/8 Oz', yieldQty: 20, price: 145.00, parLevel: 2 },
-      { name: 'Beef Prime Rib Whole 9Up 2" Lip-On No Roll', category: 'Meat', pfgCode: '11464', packSize: '1/14-18#', yieldQty: 1, price: 210.00, parLevel: 1 },
-      { name: 'Beverage Syrup Coca Cola Classic BIB', category: 'Dry Goods', pfgCode: '28372', packSize: '1/5 Gal', yieldQty: 1, price: 95.00, parLevel: 2 },
-      { name: 'Beverage Syrup Diet Coke BIB', category: 'Dry Goods', pfgCode: '28374', packSize: '1/5 Gal', yieldQty: 1, price: 95.00, parLevel: 2 },
-      { name: 'Juice Orange 100% Plastic Bottle', category: 'Dry Goods', pfgCode: '14114', packSize: '24/10 Oz', yieldQty: 24, price: 28.00, parLevel: 2 },
-      { name: 'Juice Pineapple Unsweetened 100% Can', category: 'Dry Goods', pfgCode: '11170', packSize: '48/6 Oz', yieldQty: 48, price: 32.00, parLevel: 2 },
-      { name: 'Juice Tomato Sacramento', category: 'Dry Goods', pfgCode: '12066', packSize: '12/46 Oz', yieldQty: 12, price: 38.00, parLevel: 2 },
-      { name: 'Bitters Cocktail Aromatic Glass Bottle', category: 'Dry Goods', pfgCode: 'TB394', packSize: '24/7.2Oz', yieldQty: 24, price: 85.00, parLevel: 1 },
-      { name: 'Juice Orange 100% Can', category: 'Dry Goods', pfgCode: 'A9510', packSize: '12/16 Oz', yieldQty: 12, price: 25.00, parLevel: 2 },
-      { name: 'Juice Pineapple 100%', category: 'Dry Goods', pfgCode: 'TB388', packSize: '24/7.2Oz', yieldQty: 24, price: 35.00, parLevel: 2 },
-      { name: 'Mushroom Tradition Pickled', category: 'Dry Goods', pfgCode: '23134', packSize: '12/16 Oz', yieldQty: 12, price: 45.00, parLevel: 2 },
-      { name: 'Bean Chili Mild (Pinto Bean)', category: 'Dry Goods', pfgCode: '10792', packSize: '6/#10Can', yieldQty: 6, price: 38.00, parLevel: 2 },
-      { name: 'Tomato Diced In Juice Fancy', category: 'Dry Goods', pfgCode: '11230', packSize: '6/#10Can', yieldQty: 6, price: 32.00, parLevel: 2 },
-      { name: 'Cherry Maraschino No Stem Extra Large', category: 'Dry Goods', pfgCode: '16352', packSize: '4/.5 Gal', yieldQty: 4, price: 48.00, parLevel: 2 },
-      { name: 'Vegetable Blend Red & Green Pepper Onion Roasted', category: 'Frozen', pfgCode: '61634', packSize: '6/2.5 Lb', yieldQty: 6, price: 38.00, parLevel: 2 },
-      { name: 'Vegetable Blend Calif Broccoli Cauli Carrot', category: 'Frozen', pfgCode: '61072', packSize: '12/2 Lb', yieldQty: 12, price: 42.00, parLevel: 2 },
-      { name: 'Mushroom Pieces And Stems 62 Oz', category: 'Dry Goods', pfgCode: 'CP744', packSize: '6/#10Can', yieldQty: 6, price: 45.00, parLevel: 2 },
-      { name: 'Bean Green Cut 4 Sieve Fancy', category: 'Dry Goods', pfgCode: 'CP622', packSize: '6/#10Can', yieldQty: 6, price: 35.00, parLevel: 2 },
-      { name: 'Pepper Jalapeno Nacho Sliced', category: 'Dry Goods', pfgCode: 'CP740', packSize: '6/#10Can', yieldQty: 6, price: 32.00, parLevel: 2 },
-      { name: 'Applesauce Sweetened 4 Oz Cup', category: 'Dry Goods', pfgCode: 'P5874', packSize: '72/4 Oz', yieldQty: 72, price: 28.00, parLevel: 2 },
-      { name: 'Sauerkraut Shredded Canned', category: 'Dry Goods', pfgCode: '16286', packSize: '12/27 Oz', yieldQty: 12, price: 26.00, parLevel: 2 },
-      { name: 'Veg Corn Sweet Roasted W/ Black Bean Onion', category: 'Frozen', pfgCode: 'A3464', packSize: '6/2.5 Lb', yieldQty: 6, price: 40.00, parLevel: 2 },
-      { name: 'Pineapple Tidbit In Juice', category: 'Dry Goods', pfgCode: '10858', packSize: '6/#10Can', yieldQty: 6, price: 45.00, parLevel: 2 },
-      { name: 'Cheese Mozzarella Part Skim Provolone', category: 'Dairy', pfgCode: 'VH765', packSize: '1/5 Lb', yieldQty: 1, price: 18.00, parLevel: 4 },
-      { name: 'Cheese Mozz/Prov Shredded Buffalo Milk', category: 'Dairy', pfgCode: 'NE864', packSize: '6/5 Lb', yieldQty: 6, price: 85.00, parLevel: 4 },
-      { name: 'Cheese Swiss Sliced 192', category: 'Dairy', pfgCode: 'PK940', packSize: '6/24 Oz', yieldQty: 6, price: 42.00, parLevel: 2 },
-      { name: 'Cheese Mozzarella Sliced Low Moisture', category: 'Dairy', pfgCode: 'FK633', packSize: '1/64 Oz', yieldQty: 1, price: 16.00, parLevel: 2 },
-      { name: 'Cheese Pepper Jack Sliced', category: 'Dairy', pfgCode: 'PK912', packSize: '6/24 Oz', yieldQty: 6, price: 40.00, parLevel: 2 },
-      { name: 'Sour Cream Grade A Heavy Body', category: 'Dairy', pfgCode: 'DV226', packSize: '4/5 Lb', yieldQty: 4, price: 38.00, parLevel: 2 },
-      { name: 'Sour Cream Stick Cultured Portion', category: 'Dairy', pfgCode: 'DW198', packSize: '100/1 Oz', yieldQty: 100, price: 25.00, parLevel: 2 },
-      { name: 'Cheese Cream Loaf', category: 'Dairy', pfgCode: '70082', packSize: '10/3 Lb', yieldQty: 10, price: 65.00, parLevel: 2 },
-      { name: 'Cheese American Yellow 120 Slice', category: 'Dairy', pfgCode: '70956', packSize: '4/5 Lb', yieldQty: 4, price: 55.00, parLevel: 3 },
-      { name: 'Cheese Cheddar Sharp Sliced 192', category: 'Dairy', pfgCode: 'PK934', packSize: '6/24 Oz', yieldQty: 6, price: 45.00, parLevel: 2 },
-      { name: 'Cheese Parmesan Grated Packet', category: 'Dairy', pfgCode: 'HB970', packSize: '200/3.5G', yieldQty: 200, price: 28.00, parLevel: 2 },
-      { name: 'Creamer Half & Half Shelf Stable', category: 'Dairy', pfgCode: 'FE644', packSize: '360/.38', yieldQty: 360, price: 22.00, parLevel: 2 },
-      { name: 'Cheese Blue Crumbles', category: 'Dairy', pfgCode: 'HB984', packSize: '1/5 Lb', yieldQty: 1, price: 28.00, parLevel: 2 },
-      { name: 'Cream Whipping 36% Heavy', category: 'Dairy', pfgCode: 'FL276', packSize: '12/32 Oz', yieldQty: 12, price: 45.00, parLevel: 2 },
-      { name: 'Egg Shell On White Large Grade AA', category: 'Dairy', pfgCode: 'ANF42', packSize: '2/5 Lb', yieldQty: 2, price: 25.00, parLevel: 4 },
-      { name: 'Cottage Cheese 4% Small Curd', category: 'Dairy', pfgCode: '69030', packSize: '6/5 Lb', yieldQty: 6, price: 38.00, parLevel: 2 },
-      { name: 'Egg Liquid Scrambled Pasteurized', category: 'Dairy', pfgCode: 'PK944', packSize: '6/24 Oz', yieldQty: 6, price: 35.00, parLevel: 2 },
-      { name: 'Cheese Cheddar White Sharp Sliced', category: 'Dairy', pfgCode: 'NE868', packSize: '6/5 Lb', yieldQty: 6, price: 45.00, parLevel: 2 },
-      { name: 'Degreaser Fry Boil Out Piece', category: 'Supplies', pfgCode: 'DT450', packSize: '24/8 Oz', yieldQty: 24, price: 65.00, parLevel: 2 },
-      { name: 'Dressing Caesar Creamy', category: 'Dry Goods', pfgCode: '28502', packSize: '2/1 Gal', yieldQty: 2, price: 38.00, parLevel: 2 },
-      { name: 'Mayonnaise Heavy Duty', category: 'Dry Goods', pfgCode: '11554', packSize: '4/1 Gal', yieldQty: 4, price: 45.00, parLevel: 3 },
-      { name: 'Oil Butter Alternative Liquid Zero Trans', category: 'Dry Goods', pfgCode: '71022', packSize: '3/1 Gal', yieldQty: 3, price: 48.00, parLevel: 2 },
-      { name: 'Oil Soy Clear Fry Trans Fat Free', category: 'Dry Goods', pfgCode: 'DV470', packSize: '1/35 Lb', yieldQty: 1, price: 35.00, parLevel: 6 },
-      { name: 'Sauce Buffalo Wing', category: 'Dry Goods', pfgCode: 'T9466', packSize: '4/1 Gal', yieldQty: 4, price: 55.00, parLevel: 3 },
-      { name: 'Sauce Pizza Fully Prepared Pizzaiola', category: 'Dry Goods', pfgCode: '20558', packSize: '6/#10Can', yieldQty: 6, price: 42.00, parLevel: 4 },
-      { name: 'Sauce Barbecue Sweet And Spicy', category: 'Dry Goods', pfgCode: '28160', packSize: '4/1 Gal', yieldQty: 4, price: 48.00, parLevel: 2 },
-      { name: 'Sauce Roasted Garlic Parmesan', category: 'Dry Goods', pfgCode: 'D0796', packSize: '2/1 Gal', yieldQty: 2, price: 38.00, parLevel: 2 },
-      { name: 'Dressing French Red Maison', category: 'Dry Goods', pfgCode: '31502', packSize: '4/1 Gal', yieldQty: 4, price: 45.00, parLevel: 2 },
-      { name: 'Sauce Mango Habanero Sweet Baby Rays', category: 'Dry Goods', pfgCode: 'R9944', packSize: '4/64 Oz', yieldQty: 4, price: 52.00, parLevel: 2 },
-      { name: 'Sauce Spicy Peach Wing Glaze', category: 'Dry Goods', pfgCode: 'RK012', packSize: '4/64 Oz', yieldQty: 4, price: 52.00, parLevel: 2 },
-      { name: 'Sauce Thai Chili Kikkoman', category: 'Dry Goods', pfgCode: 'A8482', packSize: '4/5 Lb', yieldQty: 4, price: 48.00, parLevel: 2 },
-      { name: 'Dressing Honey Mustard Dijon', category: 'Dry Goods', pfgCode: '28354', packSize: '2/1 Gal', yieldQty: 2, price: 35.00, parLevel: 2 },
-      { name: 'Dressing 1000 Island', category: 'Dry Goods', pfgCode: 'CP485', packSize: '1/32 Oz', yieldQty: 1, price: 15.00, parLevel: 2 },
-      { name: 'Spread Garlic Gluten Free Refrigerated', category: 'Dairy', pfgCode: '23654', packSize: '4/1 Gal', yieldQty: 4, price: 55.00, parLevel: 2 },
-      { name: 'Pickle Dill Chip Crinkle Cut 1/4"', category: 'Produce', pfgCode: 'DT376', packSize: '6/2 Lb', yieldQty: 6, price: 38.00, parLevel: 2 },
-      { name: 'Sauce Teriyaki Sweet Garlic Kogi', category: 'Dry Goods', pfgCode: 'VM898', packSize: '1/5 Gal', yieldQty: 1, price: 35.00, parLevel: 2 },
-      { name: 'Mayonnaise Packet', category: 'Dry Goods', pfgCode: 'MP296', packSize: '4/65 Oz', yieldQty: 4, price: 35.00, parLevel: 2 },
-      { name: 'Sauce Barbecue Carolina Tangy Gold', category: 'Dry Goods', pfgCode: 'CV532', packSize: '500/9 Gm', yieldQty: 500, price: 28.00, parLevel: 2 },
-      { name: 'Sauce Hot Original Cholula', category: 'Dry Goods', pfgCode: '23768', packSize: '2/1 Gal', yieldQty: 2, price: 45.00, parLevel: 2 },
-      { name: 'Sauce Pepper Glass Bottle Tabasco', category: 'Dry Goods', pfgCode: 'NV808', packSize: '24/5 Oz', yieldQty: 24, price: 55.00, parLevel: 2 },
-      { name: 'Sauce Taco Mild Original Ortega', category: 'Dry Goods', pfgCode: '33578', packSize: '24/2 Oz', yieldQty: 24, price: 45.00, parLevel: 2 },
-      { name: 'Ketchup Fancy 33% Packet', category: 'Dry Goods', pfgCode: '16170', packSize: '4/1 Gal', yieldQty: 4, price: 38.00, parLevel: 2 },
-      { name: 'Dressing Blue Cheese', category: 'Dry Goods', pfgCode: '15354', packSize: '1000/9Gm', yieldQty: 1000, price: 35.00, parLevel: 2 },
-      { name: 'Ketchup Red Upside Down Plastic Bottle', category: 'Dry Goods', pfgCode: '20564', packSize: '4/1 Gal', yieldQty: 4, price: 35.00, parLevel: 4 },
-      { name: 'Sauce Hot Honey Shelf Stable', category: 'Dry Goods', pfgCode: 'NW290', packSize: '16/20 Oz', yieldQty: 16, price: 55.00, parLevel: 2 },
-      { name: 'Olive Ripe Black Sliced Red Crushed', category: 'Dry Goods', pfgCode: 'VC198', packSize: '4/.5 Gal', yieldQty: 4, price: 45.00, parLevel: 2 },
-      { name: 'Salsa Picante Medium Adelante', category: 'Dry Goods', pfgCode: 'GP788', packSize: '6/#10Can', yieldQty: 6, price: 42.00, parLevel: 2 },
-      { name: 'Sauce Taco Packet Trans Fat Free', category: 'Dry Goods', pfgCode: 'FA302', packSize: '500/1 Gm', yieldQty: 500, price: 28.00, parLevel: 2 },
-      { name: 'Mustard Yellow Squeeze Bottle', category: 'Dry Goods', pfgCode: 'RP442', packSize: '4/135 Oz', yieldQty: 4, price: 35.00, parLevel: 2 },
-      { name: 'Sauce Worcestershire Lea & Perrins', category: 'Dry Goods', pfgCode: 'PB780', packSize: '4/27 Oz', yieldQty: 4, price: 48.00, parLevel: 2 },
-      { name: 'Mustard Yellow Packet Trans Fat Free', category: 'Dry Goods', pfgCode: '22222', packSize: '24/5 Oz', yieldQty: 24, price: 25.00, parLevel: 2 },
-      { name: 'Pickle Dill Kosher Deli Spear', category: 'Produce', pfgCode: 'CV530', packSize: '500/5.5G', yieldQty: 500, price: 45.00, parLevel: 2 },
-      { name: 'Dressing Ranch Fat Free Packet', category: 'Dry Goods', pfgCode: 'VM900', packSize: '1/5 Gal', yieldQty: 1, price: 35.00, parLevel: 2 },
-      { name: 'Ketchup Fancy 33% (Z)', category: 'Dry Goods', pfgCode: 'VH219', packSize: '1/1 Gal', yieldQty: 1, price: 28.00, parLevel: 2 },
-      { name: 'Beef Italian Sliced With Gravy Frozen', category: 'Meat', pfgCode: '17208', packSize: '6/1.5Oz', yieldQty: 6, price: 55.00, parLevel: 2 },
-      { name: 'Ham Smoked Cooked Water Added Shingle', category: 'Meat', pfgCode: '12050', packSize: '6/#10Can', yieldQty: 6, price: 65.00, parLevel: 2 },
-      { name: 'Box Pizza 12" B Flute Kraft', category: 'Supplies', pfgCode: 'LD816', packSize: '2/5 Lb', yieldQty: 2, price: 40.00, parLevel: 4 },
-      { name: 'Napkin Xpress 13X8.6 Natural 1/4 Fold', category: 'Supplies', pfgCode: 'FA426', packSize: '1/50 Cnt', yieldQty: 1, price: 45.00, parLevel: 5 },
-      { name: 'Container Foam 1 Comp 9X6x3 Large', category: 'Supplies', pfgCode: 'DT312', packSize: '12/500', yieldQty: 12, price: 55.00, parLevel: 4 },
-      { name: 'Glove Nitrile Large Powder Free Black', category: 'Supplies', pfgCode: 'DV238', packSize: '2100Cnt', yieldQty: 1, price: 65.00, parLevel: 6 },
-      { name: 'Lid Portion Cup Plastic 3.25-5.5 Oz', category: 'Supplies', pfgCode: 'DV408', packSize: '4100Cnt', yieldQty: 1, price: 45.00, parLevel: 3 },
-      { name: 'Circle Pizza 12" Corrugated Fluted', category: 'Supplies', pfgCode: 'PF360', packSize: '20/125', yieldQty: 20, price: 38.00, parLevel: 3 },
-      { name: 'Cup Portion Plastic 2 Oz Translucent', category: 'Supplies', pfgCode: 'CN926', packSize: '1/100Cnt', yieldQty: 1, price: 35.00, parLevel: 3 },
-      { name: 'Foil Aluminum Heavy Duty 18" Roll', category: 'Supplies', pfgCode: 'PF342', packSize: '10/250', yieldQty: 10, price: 65.00, parLevel: 2 },
-      { name: 'Bag T-Sack Thank You Plastic', category: 'Supplies', pfgCode: '83226', packSize: '1/500 Ft', yieldQty: 1, price: 42.00, parLevel: 3 },
-      { name: 'Box Pizza 16" B Flute Kraft', category: 'Supplies', pfgCode: 'PF116', packSize: '1/1000', yieldQty: 1, price: 55.00, parLevel: 4 },
-      { name: 'Pizza Circle 16" White On Kraft', category: 'Supplies', pfgCode: 'HB952', packSize: '1/50 Cnt', yieldQty: 1, price: 35.00, parLevel: 3 },
-      { name: 'Towelette Moist Blue Lemon Scent', category: 'Supplies', pfgCode: 'PC006', packSize: '1100Cnt', yieldQty: 1, price: 28.00, parLevel: 2 },
-      { name: 'Cutlery Kit Plastic Knife Fork Spoon', category: 'Supplies', pfgCode: 'NJ588', packSize: '1000/1', yieldQty: 1000, price: 45.00, parLevel: 2 },
-      { name: 'Bag Plastic Portion 10X8.5 Large', category: 'Supplies', pfgCode: 'P4206', packSize: '1/250Cnt', yieldQty: 1, price: 32.00, parLevel: 2 },
-      { name: 'Plate Bagasse 10" 3 Compartment', category: 'Supplies', pfgCode: 'FT557', packSize: '1/250Cnt', yieldQty: 1, price: 48.00, parLevel: 2 },
-      { name: 'Paper Register Thermal 3.13"x200', category: 'Supplies', pfgCode: 'B1178', packSize: '1/2000', yieldQty: 1, price: 55.00, parLevel: 2 },
-      { name: 'Cup Plastic 16 Ounce Ribbed', category: 'Supplies', pfgCode: 'VL874', packSize: '4/125Cnt', yieldQty: 4, price: 45.00, parLevel: 3 },
-      { name: 'Cup Portion Plastic 3.25 Ounce', category: 'Supplies', pfgCode: '28078', packSize: '1/50 Rl', yieldQty: 1, price: 38.00, parLevel: 3 },
-      { name: 'Container Food Paper 8 Ounce Round', category: 'Supplies', pfgCode: 'T7354', packSize: '20/50Cnt', yieldQty: 20, price: 55.00, parLevel: 2 },
-      { name: 'Cup Plastic Kid 12 Ounce Jungle', category: 'Supplies', pfgCode: 'PF346', packSize: '10/250', yieldQty: 10, price: 65.00, parLevel: 2 },
-      { name: 'Film Plastic 18" Roll Cutter Box', category: 'Supplies', pfgCode: 'FC542', packSize: '20/50Cnt', yieldQty: 20, price: 38.00, parLevel: 2 },
-      { name: 'Glove Nitrile Extra Large Powder Free', category: 'Supplies', pfgCode: 'DT534', packSize: '1/250Cnt', yieldQty: 1, price: 75.00, parLevel: 3 },
-      { name: 'Container Foam Sandwich 1 Comp', category: 'Supplies', pfgCode: '83234', packSize: '1/2000Ft', yieldQty: 1, price: 45.00, parLevel: 3 },
-      { name: 'Straw Sipper Stir 5.25" Black', category: 'Supplies', pfgCode: 'DV344', packSize: '10/100', yieldQty: 10, price: 28.00, parLevel: 2 },
-      { name: 'SOUP CONTAINER LIDS Round 16-32', category: 'Supplies', pfgCode: 'EG086', packSize: '4125Cnt', yieldQty: 1, price: 35.00, parLevel: 2 },
-      { name: 'SOUP CONTAINERS Paper 16 Ounce', category: 'Supplies', pfgCode: 'RE949', packSize: '1/250Cnt', yieldQty: 1, price: 45.00, parLevel: 2 },
-      { name: 'Roll Register 3"x165 1 Ply White', category: 'Supplies', pfgCode: 'RB078', packSize: '10/1000', yieldQty: 10, price: 38.00, parLevel: 2 },
-      { name: 'Chip Potato Kettle Prop 65', category: 'Dry Goods', pfgCode: 'FC546', packSize: '20/25Cnt', yieldQty: 20, price: 35.00, parLevel: 2 },
-      { name: 'Chip Tortilla Corn White Triangle', category: 'Dry Goods', pfgCode: 'FC548', packSize: '20/25Cnt', yieldQty: 20, price: 32.00, parLevel: 2 },
-      { name: 'Dressing Mix Ranch Original', category: 'Dry Goods', pfgCode: '28048', packSize: '50/1 Cnt', yieldQty: 50, price: 65.00, parLevel: 2 },
-      { name: 'Seasoning Sriracha Blend', category: 'Dry Goods', pfgCode: 'VF480', packSize: '8/16 Oz', yieldQty: 8, price: 45.00, parLevel: 2 },
-      { name: 'Cracker Saltine Krispy', category: 'Dry Goods', pfgCode: 'FM228', packSize: '8/16 Oz', yieldQty: 8, price: 28.00, parLevel: 2 },
-      { name: 'Crouton Cube Seasoned Portion', category: 'Dry Goods', pfgCode: '12278', packSize: '18/3.2Oz', yieldQty: 18, price: 35.00, parLevel: 2 },
-      { name: 'Base Soup Chicken Low Sodium', category: 'Dry Goods', pfgCode: 'V6298', packSize: '6/22 Oz', yieldQty: 6, price: 55.00, parLevel: 2 },
-      { name: 'Seasoning Fajita Mix Lawrys', category: 'Dry Goods', pfgCode: '21110', packSize: '500/2Cnt', yieldQty: 500, price: 48.00, parLevel: 2 },
-      { name: 'Seasoning Dill Weed', category: 'Dry Goods', pfgCode: '15010', packSize: '250/.25', yieldQty: 250, price: 35.00, parLevel: 2 },
-      { name: 'Seasoning Pepper Blend Shaker', category: 'Dry Goods', pfgCode: 'LG166', packSize: '6/1 Lb', yieldQty: 6, price: 45.00, parLevel: 2 },
-      { name: 'Salt Seasoning No Msg Added', category: 'Dry Goods', pfgCode: '21226', packSize: '6/8.9 Oz', yieldQty: 6, price: 32.00, parLevel: 2 },
-      { name: 'Sauce Mix Cheese Cheddar Deluxe', category: 'Dry Goods', pfgCode: '27230', packSize: '6/5 Lb', yieldQty: 6, price: 65.00, parLevel: 2 },
-      { name: 'Base Soup Cream', category: 'Dry Goods', pfgCode: '66772', packSize: '6/10.3Oz', yieldQty: 6, price: 48.00, parLevel: 2 },
-      { name: 'Soup Tomato Condensed Can', category: 'Dry Goods', pfgCode: 'CE865', packSize: '1/24 Oz', yieldQty: 1, price: 28.00, parLevel: 2 },
-      { name: 'Seasoning Blend Barbecue Rib Rub', category: 'Dry Goods', pfgCode: 'A2468', packSize: '2/5 Lb', yieldQty: 2, price: 45.00, parLevel: 2 },
-      { name: 'Oregano Leaves Whole', category: 'Dry Goods', pfgCode: 'CE729', packSize: '1/22 Oz', yieldQty: 1, price: 18.00, parLevel: 2 },
-      { name: 'Pepper Black Coarse Ground 20 Mesh', category: 'Dry Goods', pfgCode: '26950', packSize: '8/32 Oz', yieldQty: 8, price: 65.00, parLevel: 2 },
-      { name: 'Seasoning Taco Mix', category: 'Dry Goods', pfgCode: 'CE739', packSize: '1/18 Oz', yieldQty: 1, price: 15.00, parLevel: 2 },
-      { name: 'Scrubber Stainless Steel 1.75 Oz', category: 'Supplies', pfgCode: 'CE731', packSize: '1/28 Oz', yieldQty: 1, price: 28.00, parLevel: 2 },
-      { name: 'Macaroni And Cheese Premium', category: 'Dairy', pfgCode: 'LG174', packSize: '6/28 Oz', yieldQty: 6, price: 55.00, parLevel: 2 },
-      { name: 'Sauce Pesto Basil No Pine Nut', category: 'Frozen', pfgCode: '11132', packSize: '12/50 Oz', yieldQty: 12, price: 85.00, parLevel: 2 },
-      { name: 'Sauce Chimichurri Frozen', category: 'Frozen', pfgCode: 'E6089', packSize: '1/22 Oz', yieldQty: 1, price: 25.00, parLevel: 2 },
-      { name: 'Sauce Alfredo Frozen', category: 'Frozen', pfgCode: 'CE583', packSize: '1/20 Oz', yieldQty: 1, price: 22.00, parLevel: 2 },
-      { name: 'Paste Chili Red Gochujang', category: 'Dry Goods', pfgCode: 'CE568', packSize: '1/1.5 Lb', yieldQty: 1, price: 18.00, parLevel: 2 },
-      { name: 'Chicken Breast Strip Grilled', category: 'Meat', pfgCode: 'HC310', packSize: '2/5 Lb', yieldQty: 2, price: 45.00, parLevel: 2 },
-      { name: 'Chicken Wing 1st & 2nd Joints', category: 'Meat', pfgCode: 'CK522', packSize: '4/10 Lb', yieldQty: 4, price: 125.00, parLevel: 10 },
-      { name: 'Chicken Breast Fillet 5 Oz Breaded', category: 'Meat', pfgCode: 'TT606', packSize: '2/5 Lb', yieldQty: 2, price: 55.00, parLevel: 3 },
-      { name: 'Turkey Breast Smoked Skinless', category: 'Meat', pfgCode: 'PW962', packSize: '2/9 Lb', yieldQty: 2, price: 65.00, parLevel: 2 },
-      { name: 'Chicken Breast 4 Oz Grilled', category: 'Meat', pfgCode: 'HC234', packSize: '2/5 Lb', yieldQty: 2, price: 48.00, parLevel: 4 },
-      { name: 'Chicken Diced 60% Dark 40% White', category: 'Meat', pfgCode: 'DP306', packSize: '1/10 Lb', yieldQty: 1, price: 35.00, parLevel: 2 },
-      { name: 'Chicken Diced 55% White 45% Dark', category: 'Meat', pfgCode: 'DP302', packSize: '1/10 Lb', yieldQty: 1, price: 38.00, parLevel: 2 },
-      { name: 'Turkey Breast Oven Roasted No Bone', category: 'Meat', pfgCode: 'DV462', packSize: '2/9 Lb', yieldQty: 2, price: 75.00, parLevel: 2 },
-      { name: 'Chicken Breast Skewer 1.75 Oz', category: 'Meat', pfgCode: 'PN096', packSize: '2/40 Cnt', yieldQty: 80, price: 65.00, parLevel: 2 },
-      { name: 'Boneless Wing Chicken Breast Chunk', category: 'Meat', pfgCode: '96108', packSize: '2/5 Lb', yieldQty: 2, price: 55.00, parLevel: 6 },
-      { name: 'Chicken Breast Tender 58 Count', category: 'Meat', pfgCode: '59048', packSize: '2/5 Lb', yieldQty: 2, price: 58.00, parLevel: 6 },
-      { name: 'Celery Stalk 6 Count 36 Size', category: 'Produce', pfgCode: '13206', packSize: '1/6 Cnt', yieldQty: 6, price: 28.00, parLevel: 2 },
-      { name: 'Lemon Choice 140 Size', category: 'Produce', pfgCode: '13364', packSize: '1/12 Cnt', yieldQty: 12, price: 32.00, parLevel: 2 },
-      { name: 'Lime Fresh', category: 'Produce', pfgCode: '13506', packSize: '1/12 Cnt', yieldQty: 12, price: 25.00, parLevel: 2 },
-      { name: 'Pepper Bell Green Medium #1', category: 'Produce', pfgCode: '13688', packSize: '1/5 Lb', yieldQty: 1, price: 18.00, parLevel: 2 },
-      { name: 'Potato Idaho Russet 80 Count', category: 'Produce', pfgCode: 'FA248', packSize: '1/50 Lb', yieldQty: 1, price: 28.00, parLevel: 3 },
-      { name: 'Salad Blend Iceberg/Romaine 80/20', category: 'Produce', pfgCode: 'HB274', packSize: '4/5 Lb', yieldQty: 4, price: 35.00, parLevel: 4 },
-      { name: 'Tomato Round Diced 3/8"', category: 'Produce', pfgCode: '26030', packSize: '2/2.5 Lb', yieldQty: 2, price: 32.00, parLevel: 2 },
-      { name: 'Tomato Round Red 5X6 Large', category: 'Produce', pfgCode: '25840', packSize: '1/10 Lb', yieldQty: 1, price: 38.00, parLevel: 3 },
-      { name: 'Lettuce Romaine Liner Fresh', category: 'Produce', pfgCode: 'FA232', packSize: '24/1 Cnt', yieldQty: 24, price: 45.00, parLevel: 2 },
-      { name: 'Salad Potato Steakhouse', category: 'Produce', pfgCode: 'CA232', packSize: '2/5 Lb', yieldQty: 2, price: 28.00, parLevel: 2 },
-      { name: 'Brussels Sprouts Halves Fresh', category: 'Produce', pfgCode: 'WB336', packSize: '2/5 Lb', yieldQty: 2, price: 35.00, parLevel: 2 },
-      { name: 'Onion Yellow Jumbo Bag Fresh', category: 'Produce', pfgCode: 'HB404', packSize: '1/50 Lb', yieldQty: 1, price: 32.00, parLevel: 3 },
-      { name: 'Mushroom White Sliced 1/4"', category: 'Produce', pfgCode: 'NH674', packSize: '1/10 Lb', yieldQty: 1, price: 25.00, parLevel: 2 },
-      { name: 'Lemon Choice 165/200 Size', category: 'Produce', pfgCode: '74184', packSize: '1/12 Cnt', yieldQty: 12, price: 28.00, parLevel: 2 },
-      { name: 'Potato Red Small Size B Carton', category: 'Produce', pfgCode: '27500', packSize: '1/24 Cnt', yieldQty: 24, price: 35.00, parLevel: 2 },
-      { name: 'Squash Yellow Fancy Straight', category: 'Produce', pfgCode: 'JJ766', packSize: '1/50 Lb', yieldQty: 1, price: 32.00, parLevel: 2 },
-      { name: 'Squash Zucchini Fancy/Med Fresh', category: 'Produce', pfgCode: '13726', packSize: '1/5 Lb', yieldQty: 1, price: 25.00, parLevel: 2 },
-      { name: 'Tomato Cherry Us #1 Grade', category: 'Produce', pfgCode: 'A0238', packSize: '6/1 Pint', yieldQty: 6, price: 32.00, parLevel: 2 },
-      { name: 'Basil Fresh', category: 'Produce', pfgCode: 'CK134', packSize: '1/1 Lb', yieldQty: 1, price: 15.00, parLevel: 1 },
-      { name: 'Mushroom Crimini Fresh', category: 'Produce', pfgCode: '22922', packSize: '1/5 Lb', yieldQty: 1, price: 22.00, parLevel: 2 },
-      { name: 'Coleslaw Creamy Sweet With Dressing', category: 'Produce', pfgCode: 'R9570', packSize: '1/5 Lb', yieldQty: 1, price: 25.00, parLevel: 2 },
-      { name: 'Pepper Bell Green Chopper Fresh', category: 'Produce', pfgCode: '62538', packSize: '2/5 Lb', yieldQty: 2, price: 35.00, parLevel: 2 },
-      { name: 'Cheese Parmesan Shaved', category: 'Dairy', pfgCode: 'HB358', packSize: '11.11Bu', yieldQty: 11, price: 85.00, parLevel: 2 },
-      { name: 'Haddock Loin 3 Ounce No Bone', category: 'Seafood', pfgCode: 'AA826', packSize: '2/5 Lb', yieldQty: 2, price: 65.00, parLevel: 2 },
-      { name: 'Salmon Loin Average 6 Ounce Pacific', category: 'Seafood', pfgCode: 'VB978', packSize: '1/10 Lb', yieldQty: 1, price: 85.00, parLevel: 2 },
-      { name: 'Perch Lake European Fillet Breaded', category: 'Seafood', pfgCode: 'F2376', packSize: '1/10 Lb', yieldQty: 1, price: 75.00, parLevel: 2 },
-      { name: 'Pike Walleye Fillet 2-4 Ounce', category: 'Seafood', pfgCode: 'V1062', packSize: '1/10 Lb', yieldQty: 1, price: 95.00, parLevel: 2 },
-      { name: 'Shrimp White Raw P&D Tail On', category: 'Seafood', pfgCode: '53477', packSize: '1/3 Lb', yieldQty: 1, price: 45.00, parLevel: 2 },
-      { name: 'Shrimp Battered Beer Round 31-35', category: 'Seafood', pfgCode: '27758', packSize: '1/11 Lb', yieldQty: 1, price: 85.00, parLevel: 2 },
-      { name: 'COD Fillet 3 Ounce Beer Battered', category: 'Seafood', pfgCode: 'CR080', packSize: '5/2 Lb', yieldQty: 5, price: 65.00, parLevel: 2 },
-      { name: 'Appetizer Scallop Bacon Wrapped', category: 'Seafood', pfgCode: '98924', packSize: '4/3 Lb', yieldQty: 4, price: 110.00, parLevel: 2 }
+      // Bakery
+      { name: 'Bun Hamburger Gourmet Sliced 4.25" Split Top', category: 'Bakery', pfgCode: 'B1938', packSize: '6/8 Cnt', yieldQty: 48, price: 28.50, parLevel: 2 },
+      { name: 'Bun Hamburger Soft Pretzel Bread 4"', category: 'Bakery', pfgCode: 'CR776', packSize: '72/3.2Oz', yieldQty: 72, price: 34.20, parLevel: 2 },
+      { name: 'Bun Hoagie Italian 6" Hinged Split Top', category: 'Bakery', pfgCode: '69922', packSize: '6/6 Cnt', yieldQty: 36, price: 22.90, parLevel: 2 },
+      { name: 'Dough Pizza Crust 12" Readi Rise', category: 'Bakery', pfgCode: '69432', packSize: '12/17 Oz', yieldQty: 12, price: 41.50, parLevel: 4 },
+      { name: 'Pizza Crust 12" Thin Crispy Partial Baked', category: 'Bakery', pfgCode: '69432', packSize: '12/17 Oz', yieldQty: 12, price: 38.00, parLevel: 4 },
+      { name: 'Bread Reuben Marble Rye 1/2" 21 Slice', category: 'Bakery', pfgCode: 'EK598', packSize: '50/6.25', yieldQty: 50, price: 31.10, parLevel: 2 },
+      { name: 'Cake Chocolate Chip Cookie Dough 10"', category: 'Frozen', pfgCode: '23112', packSize: '6/32 Oz', yieldQty: 6, price: 58.00, parLevel: 1 },
+      { name: 'Bread White Split Top 9/16" 20 Slice', category: 'Bakery', pfgCode: 'NW398', packSize: '2/14 Sl', yieldQty: 2, price: 18.50, parLevel: 2 },
+      { name: 'Cheesecake Strawberry Lace 10" 14 Slice', category: 'Frozen', pfgCode: '21694', packSize: '6/32 Oz', yieldQty: 6, price: 62.00, parLevel: 1 },
+      { name: 'Roll White Hard 5" Sliced Sheboygan Style', category: 'Bakery', pfgCode: '21542', packSize: '2/99 Oz', yieldQty: 2, price: 24.50, parLevel: 2 },
+      { name: 'Bread Wheat Hearty Cracked 9/16" 14 Slice', category: 'Bakery', pfgCode: 'NE588', packSize: '45/5 In', yieldQty: 45, price: 21.00, parLevel: 2 },
+      { name: 'Shell Taco Yellow Whole Grain 5"', category: 'Dry Goods', pfgCode: '27786', packSize: '10/24 Oz', yieldQty: 10, price: 19.80, parLevel: 2 },
+      { name: 'Tortilla Flour 6" Contigo', category: 'Dry Goods', pfgCode: '50408', packSize: '8/25 Cnt', yieldQty: 200, price: 27.50, parLevel: 2 },
+      { name: 'Bun Slider Hawaiian Sweet 9 Cnt', category: 'Bakery', pfgCode: 'DT172', packSize: '12/24Cnt', yieldQty: 288, price: 34.00, parLevel: 2 },
+      { name: 'Cake Carrot Mommas Old Fashioned 16 Slice', category: 'Frozen', pfgCode: 'TD860', packSize: '12/10 Oz', yieldQty: 12, price: 49.50, parLevel: 1 },
+      { name: 'Cake Limoncello Mascarpone 10" 14 Sliced', category: 'Frozen', pfgCode: '21572', packSize: '2/114 Oz', yieldQty: 2, price: 54.00, parLevel: 1 },
+      { name: 'Pie Boston Cream 10" Unsliced Thaw & Serve', category: 'Frozen', pfgCode: 'NJ164', packSize: '2/3.5 Lb', yieldQty: 2, price: 33.50, parLevel: 1 },
+      { name: 'Pie Strawberry Cream 10" Unsliced Thaw & Serve', category: 'Frozen', pfgCode: 'B5370', packSize: '6/33 Oz', yieldQty: 6, price: 36.00, parLevel: 1 },
+      { name: 'Bun Kaiser Onion 4.25" 2.66 Oz Sliced', category: 'Bakery', pfgCode: '65926', packSize: '6/27 Oz', yieldQty: 6, price: 22.00, parLevel: 2 },
+      
+      // Meat
+      { name: 'Beef Ground Patty Angus 81/19', category: 'Meat', pfgCode: '72890', packSize: '6/8 Cnt', yieldQty: 48, price: 68.40, parLevel: 4 },
+      { name: 'Beef Taco Filling Fully Cooked', category: 'Meat', pfgCode: 'EW538', packSize: '24/7 Oz', yieldQty: 24, price: 52.10, parLevel: 2 },
+      { name: 'Beef Ground Patty 5-1 78/22 Round', category: 'Meat', pfgCode: 'GW640', packSize: '4/2.5 Lb', yieldQty: 4, price: 58.00, parLevel: 2 },
+      { name: 'Corned Beef Brisket Choice Raw w/ Seasoning', category: 'Meat', pfgCode: '37510', packSize: '1/15 Lb', yieldQty: 15, price: 92.50, parLevel: 2 },
+      { name: 'Sirloin Beef Tip Random', category: 'Meat', pfgCode: 'K4206', packSize: '2/16 Up', yieldQty: 2, price: 74.00, parLevel: 2 },
+      { name: 'Beef Chuck Roll Choice 1" Neck Off', category: 'Meat', pfgCode: '25138', packSize: '2/5 Lb', yieldQty: 2, price: 115.00, parLevel: 2 },
+      { name: 'Beef Ground 81/19 Raw Bulk Cryo', category: 'Meat', pfgCode: 'DR382', packSize: '3/23 Lb', yieldQty: 3, price: 142.00, parLevel: 3 },
+      { name: 'Beef Ground Patty 4-1 78/22 Round', category: 'Meat', pfgCode: '46050', packSize: '4/5 Lb', yieldQty: 4, price: 61.20, parLevel: 3 },
+      { name: 'Meatball Beef Chicken .5 Ounce Cooked', category: 'Meat', pfgCode: '36146', packSize: '1/15 Lb', yieldQty: 15, price: 44.50, parLevel: 2 },
+      { name: 'Beef Top Blade 8 Oz Steak Choice Flat Iron', category: 'Meat', pfgCode: 'CC868', packSize: '2/5 Lb', yieldQty: 2, price: 135.00, parLevel: 2 },
+      { name: 'Beef Prime Rib Whole 9Up 2" Lip-On No Roll', category: 'Meat', pfgCode: '35068', packSize: '20/8 Oz', yieldQty: 20, price: 224.00, parLevel: 1 },
+      { name: 'Bacon 18-22 Single Sliced Silver', category: 'Meat', pfgCode: '11464', packSize: '1/14-18#', yieldQty: 1, price: 78.50, parLevel: 5 },
+      { name: 'Ham Buffet Gourmet Hardwood', category: 'Meat', pfgCode: '40120', packSize: '1/15 Lb', yieldQty: 15, price: 56.00, parLevel: 2 },
+      { name: 'Pepperoni Sliced 14 Cnt 44mm', category: 'Meat', pfgCode: '49800', packSize: '2/9 Up', yieldQty: 2, price: 49.90, parLevel: 3 },
+      { name: 'Bacon Real Bits Fully Cooked', category: 'Meat', pfgCode: 'DR820', packSize: '1/10 Lb', yieldQty: 1, price: 54.00, parLevel: 2 },
+      { name: 'Sausage Italian Topping Mild', category: 'Meat', pfgCode: 'E5798', packSize: '6/1 Lb', yieldQty: 6, price: 41.20, parLevel: 2 },
+      { name: 'Bratwurst Pork Patty 4-1 Raw', category: 'Meat', pfgCode: '11590', packSize: '2/5 Lb', yieldQty: 2, price: 38.50, parLevel: 2 },
+      { name: 'Ham Diced 1/4" Cooked', category: 'Meat', pfgCode: '11590', packSize: '2/5 Lb', yieldQty: 2, price: 32.00, parLevel: 2 },
+      { name: 'Pork Ribeye Chop Boneless', category: 'Meat', pfgCode: 'C2228', packSize: '2/5 Lb', yieldQty: 2, price: 64.00, parLevel: 2 },
+      { name: 'Sausage Link Casing Country', category: 'Meat', pfgCode: 'VC734', packSize: '2/5 Lb', yieldQty: 2, price: 42.50, parLevel: 2 },
+      { name: 'Sausage Rope Jalapeno Cheddar', category: 'Meat', pfgCode: '55986', packSize: '28/6 Oz', yieldQty: 28, price: 49.00, parLevel: 2 },
+      
+      // Seafood
+      { name: 'Haddock Loin 3oz Boneless', category: 'Seafood', pfgCode: 'AA826', packSize: '2/5 Lb', yieldQty: 2, price: 89.00, parLevel: 2 },
+      { name: 'Salmon Loin Average 6 Ounce Pacific', category: 'Seafood', pfgCode: 'VB978', packSize: '1/10 Lb', yieldQty: 1, price: 115.00, parLevel: 2 },
+      { name: 'Perch Lake European Fillet Breaded', category: 'Seafood', pfgCode: 'F2376', packSize: '1/10 Lb', yieldQty: 1, price: 82.00, parLevel: 2 },
+      { name: 'Pike Walleye Fillet 2-4 Ounce', category: 'Seafood', pfgCode: 'V1062', packSize: '1/10 Lb', yieldQty: 1, price: 104.00, parLevel: 2 },
+      { name: 'Shrimp White Raw P&D Tail On', category: 'Seafood', pfgCode: '53477', packSize: '1/3 Lb', yieldQty: 1, price: 58.00, parLevel: 2 },
+      { name: 'Shrimp Battered Beer Round 31-35', category: 'Seafood', pfgCode: '27758', packSize: '1/11 Lb', yieldQty: 1, price: 62.50, parLevel: 2 },
+      { name: 'COD Fillet 3 Ounce Beer Battered', category: 'Seafood', pfgCode: 'CR080', packSize: '5/2 Lb', yieldQty: 5, price: 74.00, parLevel: 2 },
+      
+      // Produce
+      { name: 'Celery Stalk 6 Count 36 Size', category: 'Produce', pfgCode: '13206', packSize: '1/6 Cnt', yieldQty: 6, price: 18.50, parLevel: 2 },
+      { name: 'Lemon Choice 140 Size', category: 'Produce', pfgCode: '13364', packSize: '1/12 Cnt', yieldQty: 12, price: 22.00, parLevel: 2 },
+      { name: 'Lime Fresh', category: 'Produce', pfgCode: '13506', packSize: '1/12 Cnt', yieldQty: 12, price: 19.50, parLevel: 2 },
+      { name: 'Pepper Bell Green Medium #1', category: 'Produce', pfgCode: '13688', packSize: '1/5 Lb', yieldQty: 1, price: 14.00, parLevel: 2 },
+      { name: 'Potato Idaho Russet 80 Count', category: 'Produce', pfgCode: 'FA248', packSize: '1/50 Lb', yieldQty: 1, price: 24.00, parLevel: 3 },
+      { name: 'Salad Blend Iceberg/Romaine 80/20', category: 'Produce', pfgCode: 'HB274', packSize: '4/5 Lb', yieldQty: 4, price: 29.50, parLevel: 4 },
+      { name: 'Tomato Round Diced 3/8"', category: 'Produce', pfgCode: '26030', packSize: '2/2.5 Lb', yieldQty: 2, price: 21.00, parLevel: 2 },
+      { name: 'Tomato Round Red 5X6 Large', category: 'Produce', pfgCode: '25840', packSize: '1/10 Lb', yieldQty: 1, price: 23.50, parLevel: 3 },
+      { name: 'Lettuce Romaine Liner Fresh', category: 'Produce', pfgCode: 'FA232', packSize: '24/1 Cnt', yieldQty: 24, price: 34.00, parLevel: 2 },
+      { name: 'Salad Potato Steakhouse', category: 'Produce', pfgCode: 'CA232', packSize: '2/5 Lb', yieldQty: 2, price: 26.00, parLevel: 2 },
+      { name: 'Brussels Sprouts Halves Fresh', category: 'Produce', pfgCode: 'WB336', packSize: '2/5 Lb', yieldQty: 2, price: 28.50, parLevel: 2 },
+      
+      // Dairy
+      { name: 'Cheese Mozzarella Part Skim Provolone', category: 'Dairy', pfgCode: 'VH765', packSize: '1/5 Lb', yieldQty: 1, price: 19.50, parLevel: 4 },
+      { name: 'Cheese Mozz/Prov Shredded Buffalo Milk', category: 'Dairy', pfgCode: 'NE864', packSize: '6/5 Lb', yieldQty: 6, price: 81.00, parLevel: 4 },
+      { name: 'Cheese Swiss Sliced 192', category: 'Dairy', pfgCode: 'PK940', packSize: '6/24 Oz', yieldQty: 6, price: 46.50, parLevel: 2 },
+      { name: 'Cheese Mozzarella Sliced Low Moisture', category: 'Dairy', pfgCode: 'FK633', packSize: '1/64 Oz', yieldQty: 1, price: 15.20, parLevel: 2 },
+      { name: 'Cheese Pepper Jack Sliced', category: 'Dairy', pfgCode: 'PK912', packSize: '6/24 Oz', yieldQty: 6, price: 44.00, parLevel: 2 },
+      { name: 'Sour Cream Grade A Heavy Body', category: 'Dairy', pfgCode: 'DV226', packSize: '4/5 Lb', yieldQty: 4, price: 32.50, parLevel: 2 },
+      { name: 'Sour Cream Stick Cultured Portion', category: 'Dairy', pfgCode: 'DW198', packSize: '100/1 Oz', yieldQty: 100, price: 21.00, parLevel: 2 },
+      { name: 'Cheese Cream Loaf', category: 'Dairy', pfgCode: '70082', packSize: '10/3 Lb', yieldQty: 10, price: 54.00, parLevel: 2 },
+      { name: 'Cheese American Yellow 120 Slice', category: 'Dairy', pfgCode: '70956', packSize: '4/5 Lb', yieldQty: 4, price: 48.50, parLevel: 3 },
+      { name: 'Cheese Cheddar Sharp Sliced 192', category: 'Dairy', pfgCode: 'PK934', packSize: '6/24 Oz', yieldQty: 6, price: 47.00, parLevel: 2 },
+      { name: 'Creamer Half & Half Shelf Stable', category: 'Dairy', pfgCode: 'FE644', packSize: '360/.38', yieldQty: 360, price: 26.50, parLevel: 2 },
+      
+      // Dry Goods
+      { name: 'Beverage Syrup Coca Cola Classic BIB', category: 'Dry Goods', pfgCode: '28372', packSize: '1/5 Gal', yieldQty: 1, price: 92.00, parLevel: 2 },
+      { name: 'Beverage Syrup Diet Coke BIB', category: 'Dry Goods', pfgCode: '28374', packSize: '1/5 Gal', yieldQty: 1, price: 92.00, parLevel: 2 },
+      { name: 'Mayonnaise Heavy Duty', category: 'Dry Goods', pfgCode: '11554', packSize: '4/1 Gal', yieldQty: 4, price: 51.00, parLevel: 3 },
+      { name: 'Oil Soy Clear Fry Trans Fat Free', category: 'Dry Goods', pfgCode: 'DV470', packSize: '1/35 Lb', yieldQty: 1, price: 44.00, parLevel: 6 },
+      { name: 'Sauce Buffalo Wing', category: 'Dry Goods', pfgCode: 'T9466', packSize: '4/1 Gal', yieldQty: 4, price: 48.00, parLevel: 3 },
+      { name: 'Sauce Pizza Fully Prepared Pizzaiola', category: 'Dry Goods', pfgCode: '20558', packSize: '6/#10Can', yieldQty: 6, price: 39.50, parLevel: 4 },
+      { name: 'Dressing French Red Maison', category: 'Dry Goods', pfgCode: '31502', packSize: '4/1 Gal', yieldQty: 4, price: 43.00, parLevel: 2 },
+      { name: 'Dressing Caesar Creamy', category: 'Dry Goods', pfgCode: '28502', packSize: '2/1 Gal', yieldQty: 2, price: 31.50, parLevel: 2 },
+      { name: 'Basil Fresh', category: 'Produce', pfgCode: 'CK134', packSize: '1/1 Lb', yieldQty: 1, price: 16.00, parLevel: 1 },
+      
+      // Supplies
+      { name: 'Box Pizza 16" B Flute Kraft', category: 'Supplies', pfgCode: 'HB952', packSize: '1/50 Cnt', yieldQty: 1, price: 38.00, parLevel: 4 },
+      { name: 'Napkin Xpress 13X8.6 Natural 1/4 Fold', category: 'Supplies', pfgCode: 'DT312', packSize: '12/500', yieldQty: 12, price: 46.00, parLevel: 5 }
     ];
 
     const batchPromises = pdfItems.map(item => 
@@ -1071,7 +968,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     );
     
     await Promise.all(batchPromises);
-    addToast("System Reset", "Full Master PDF injected successfully!");
+    addToast("System Reset", "Full Master PDF with true prices injected!");
   };
 
   const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { const cat = item.category || 'Uncategorized'; if (!acc[cat]) acc[cat] = []; acc[cat].push(item); return acc; }, {});
@@ -1124,7 +1021,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
-                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'} • {item.packSize || '1 CS'} • YIELD: {item.yieldQty||1}</div></div>
+                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'} • {item.packSize || '1 CS'} • Case: ${Number(item.price||0).toFixed(2)}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>
@@ -1150,7 +1047,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                       const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.ceil(deficit);
                       return (
                         <tr key={item.id} className={T.row}>
-                          <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel||0}</span></td>
+                          <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel||0} • Case: ${Number(item.price||0).toFixed(2)}</span></td>
                           <td className="p-3"><div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className={`w-12 h-8 text-center font-black bg-[#12161A] border ${T.border} ${T.copper} rounded-lg outline-none`}/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>+</button></div></td>
                         </tr>
                       )
@@ -1169,7 +1066,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div><div><label className={T.label}>Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
 
           <div className="flex gap-2 mb-4">
-             <button onClick={handleInjectPDF} className={`w-full flex items-center justify-center gap-2 bg-red-900/40 hover:bg-red-900 border border-red-500/50 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all`}>🔥 Nuke & Inject 100+ PDF Items</button>
+             <button onClick={handleInjectPDF} className={`w-full flex items-center justify-center gap-2 bg-red-900/40 hover:bg-red-900 border border-red-500/50 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all`}>🔥 Nuke & Inject Untruncated Data</button>
           </div>
 
           <form onSubmit={handleAddItem} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
