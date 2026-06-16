@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
@@ -42,7 +42,16 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- Helpers ---
-const useLiveCollection = (coll) => { const [data, setData] = useState([]); useEffect(() => onSnapshot(collection(db, coll), snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() })))), [coll]); return data; };
+const useLiveCollection = (coll, restId) => {
+  const [data, setData] = useState([]);
+  useEffect(() => {
+    if (!restId) { setData([]); return; }
+    const q = query(collection(db, coll), where("restaurantId", "==", restId));
+    const unsubscribe = onSnapshot(q, snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return () => unsubscribe();
+  }, [coll, restId]);
+  return data;
+};
 const formatDate = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 const getToday = () => formatDate(new Date());
 const getMonthStr = (d) => (d || getToday()).substring(0, 7);
@@ -158,22 +167,26 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 // ============================================================================
 // THE 86 CHAOS BOOT SCREEN (EMAIL/PASSWORD RESTORED)
 // ============================================================================
-const LoginScreen = ({ users, setAppUser, addToast }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  
-  const handleLogin = (e) => {
+const handleLogin = async (e) => {
     e.preventDefault();
-    // Restored Email/Password logic
-    const user = users.find(u => (u.email || '').toLowerCase() === email.toLowerCase() && u.password === password);
-    
-    if (user) { 
-      setAppUser(user); 
-    } else if (email === 'admin' && password === '0000') { 
-      setAppUser({ id: 'dev-backdoor', name: 'Developer', isAdmin: true }); 
-    } else { 
-      addToast('Error', 'Invalid Email or Password'); 
-      setPassword(''); 
+    try {
+      // 1. Actually log into Firebase Secure Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
+      // 2. Go to the database and grab their sticky note (restaurantId)
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      
+      if (userDocSnap.exists()) {
+        // 3. Let them into the app with their official data
+        setAppUser({ id: firebaseUser.uid, ...userDocSnap.data() });
+      } else {
+        addToast('Error', 'User profile missing in database.');
+      }
+    } catch (error) {
+      addToast('Error', 'Invalid Email or Password');
+      setPassword('');
     }
   };
 
@@ -1413,18 +1426,21 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
 // THE MASTER ENGINE (App Component)
 // ============================================================================
 export default function App() {
-  const users = useLiveCollection('users');
-  const shifts = useLiveCollection('shifts');
-  const prepItems = useLiveCollection('prepItems');
-  const inventoryItems = useLiveCollection('inventoryItems');
-  const shiftSwaps = useLiveCollection('shiftSwaps');
-  const events = useLiveCollection('events');
-  const sales = useLiveCollection('sales');
-  const recipes = useLiveCollection('recipes');
-  const timeOffRequests = useLiveCollection('timeOffRequests');
-  const tasks = useLiveCollection('tasks');
-  const vendors = useLiveCollection('vendors');
-  const wasteLogs = useLiveCollection('wasteLogs');
+  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
+  const rId = appUser?.restaurantId;
+
+  const users = useLiveCollection('users', rId);
+  const shifts = useLiveCollection('shifts', rId);
+  const prepItems = useLiveCollection('prepItems', rId);
+  const inventoryItems = useLiveCollection('inventoryItems', rId);
+  const shiftSwaps = useLiveCollection('shiftSwaps', rId);
+  const events = useLiveCollection('events', rId);
+  const sales = useLiveCollection('sales', rId);
+  const recipes = useLiveCollection('recipes', rId);
+  const timeOffRequests = useLiveCollection('timeOffRequests', rId);
+  const tasks = useLiveCollection('tasks', rId);
+  const vendors = useLiveCollection('vendors', rId);
+  const wasteLogs = useLiveCollection('wasteLogs', rId);
 
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const [activeTabState, setActiveTabState] = useState('published');
@@ -1446,7 +1462,7 @@ export default function App() {
     else localStorage.removeItem('cheersUser');
   }, [appUser]);
 
-  useEffect(() => { signInAnonymously(auth).catch(err => console.error("Firebase Auth error:", err)); }, []);
+  
 
   const [currentDate, setCurrentDate] = useState(getToday());
   const [toasts, setToasts] = useState([]);
