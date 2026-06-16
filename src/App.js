@@ -76,7 +76,7 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) { window.cras
 // ============================================================================
 const CheersLogo = () => (
   <div className="flex items-center gap-2 sm:gap-3 cursor-pointer transition-opacity hover:opacity-80">
-    <img src="/wisco.png" alt="86 App Icon" className="h-8 w-8 sm:h-9 w-auto" />
+    <img src="/6139.png" alt="86 App Icon" className="h-8 w-8 sm:h-9 w-auto" />
     <img src="/6139.png" alt="86 Chaos OS" className="h-5 sm:h-6 w-auto" />
   </div>
 );
@@ -218,7 +218,7 @@ const LoginScreen = ({ setAppUser }) => {
   return (
     <div 
       className="min-h-screen flex flex-col items-center justify-center bg-[#0B0E11] bg-cover bg-center bg-no-repeat relative"
-      style={{ backgroundImage: `url('/6139.png')` }}
+      style={{ backgroundImage: `url('/6136.jpg')` }}
     >
       <div className="absolute inset-0 bg-[#0B0E11]/75 backdrop-blur-[3px]"></div>
       
