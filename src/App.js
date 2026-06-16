@@ -106,8 +106,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   tabs.push({ id: 'published', label: 'Schedule & Time Off', icon: <Clock size={18}/> });
   tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
   
-  // Restricted tabs
-  if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> }); 
+ // Restricted tabs
+  if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
   if (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep) { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> }); }
   if (appUser?.isAdmin || perms.inventory) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
   if (appUser?.isAdmin || perms.team) tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
