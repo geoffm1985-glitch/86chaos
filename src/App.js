@@ -167,12 +167,15 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 // ============================================================================
 // THE 86 CHAOS BOOT SCREEN (EMAIL/PASSWORD RESTORED)
 // ============================================================================
-const LoginScreen = ({ setAppUser, addToast }) => {
+const LoginScreen = ({ setAppUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
+  const [loginError, setLoginError] = useState('');
+
   const handleLogin = async (e) => {
     e.preventDefault();
+    setLoginError(''); // Clear old errors when you try again
+    
     try {
       // 1. Actually log into Firebase Secure Auth
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -186,11 +189,11 @@ const LoginScreen = ({ setAppUser, addToast }) => {
         // 3. Let them into the app with their official data
         setAppUser({ id: firebaseUser.uid, ...userDocSnap.data() });
       } else {
-        addToast('Error', 'User profile missing in database.');
+        setLoginError('Login successful, but user profile is missing in the Firestore database.');
       }
     } catch (error) {
-      addToast('Error', 'Invalid Email or Password');
-      setPassword('');
+      // Show the EXACT error Firebase is throwing
+      setLoginError(error.message);
     }
   };
 
@@ -206,6 +209,14 @@ const LoginScreen = ({ setAppUser, addToast }) => {
         <img src="/6136.jpg" alt="86 Chaos Typography" className="h-8 w-auto mb-8 opacity-90" />
         
         <form onSubmit={handleLogin} className="w-full space-y-4">
+          
+          {/* THE NEW ERROR BOX */}
+          {loginError && (
+            <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">
+              {loginError}
+            </div>
+          )}
+
           <div>
             <input 
               type="text" 
