@@ -1514,42 +1514,170 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
 };
 
 
-// --- SETTINGS TAB ---
+// --- THE EXPANDED SETTINGS COMMAND CENTER ---
 const TabSettings = ({ appUser, addToast }) => {
+  const [subTab, setSubTab] = useState('profile');
+
+  // Profile State
   const [name, setName] = useState(appUser?.name || '');
   const [phone, setPhone] = useState(appUser?.phone || '');
+  const [photoURL, setPhotoURL] = useState(appUser?.photoURL || '');
 
-  const handleSave = async (e) => {
+  // Notification State
+  const prefs = appUser?.preferences || {};
+  const [notifSchedule, setNotifSchedule] = useState(prefs.notifSchedule ?? true);
+  const [notifMessages, setNotifMessages] = useState(prefs.notifMessages ?? true);
+  const [notifTrades, setNotifTrades] = useState(prefs.notifTrades ?? true);
+  const [notifReminders, setNotifReminders] = useState(prefs.notifReminders ?? false);
+
+  // System Config State (Admin Only - Hooks to appUser doc for now)
+  const sys = appUser?.systemSettings || {};
+  const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
+  const [sysTips, setSysTips] = useState(sys.tips ?? true);
+  const [sysTrades, setSysTrades] = useState(sys.trades ?? true);
+  const [sysAutoApprove, setSysAutoApprove] = useState(sys.autoApprove ?? false);
+
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
     try {
-      await updateDoc(doc(db, "users", appUser.id), { name: name.trim(), phone: phone.trim() });
-      addToast('Profile Saved', 'Your settings have been updated.');
+      await updateDoc(doc(db, "users", appUser.id), { name: name.trim(), phone: phone.trim(), photoURL: photoURL.trim() });
+      addToast('Profile Saved', 'Your information has been updated.');
     } catch (err) {
-      console.error(err);
       addToast('Error', 'Failed to save profile.');
     }
   };
 
-  return (
-    <div className="max-w-md mx-auto space-y-4 pb-24">
-      <div className={`${T.card} p-6`}>
-        <h2 className="text-xl font-black text-white mb-6 flex items-center gap-2"><Settings className={T.copper}/> My Profile</h2>
-        <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label className={T.label}>Full Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} className={T.input} required />
-          </div>
-          <div>
-            <label className={T.label}>Phone Number</label>
-            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={T.input} />
-          </div>
-          <div>
-            <label className={T.label}>Email Address (Cannot change)</label>
-            <input type="email" value={appUser?.email} disabled className={`${T.input} opacity-50 cursor-not-allowed`} />
-          </div>
-          <button type="submit" className={`w-full mt-4 ${T.btn} py-3`}>Save Changes</button>
-        </form>
+  const handleSaveNotifs = async (e) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, "users", appUser.id), {
+        preferences: { notifSchedule, notifMessages, notifTrades, notifReminders }
+      });
+      addToast('Notifications Saved', 'Your alert preferences are locked in.');
+    } catch (err) {
+      addToast('Error', 'Failed to save preferences.');
+    }
+  };
+
+  const handleSaveSystem = async (e) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, "users", appUser.id), {
+        systemSettings: { geofence: sysGeofence, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove }
+      });
+      addToast('System Saved', 'Global workspace configurations updated.');
+      logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
+    } catch (err) {
+      addToast('Error', 'Failed to save system settings.');
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    try {
+      await sendPasswordResetEmail(auth, appUser.email);
+      addToast('Email Sent', 'Check your inbox for the password reset link.');
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  // Custom Toggle Switch Component
+  const Toggle = ({ label, desc, checked, onChange }) => (
+    <label className={`flex items-center justify-between p-4 bg-[#12161A] border ${T.border} rounded-xl cursor-pointer hover:bg-[#1A2126] transition-colors`}>
+      <div className="pr-4">
+        <div className="text-sm font-bold text-white">{label}</div>
+        <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>{desc}</div>
       </div>
+      <div className="relative flex-shrink-0">
+        <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
+        <div className={`block w-12 h-7 rounded-full transition-colors ${checked ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
+        <div className={`absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform ${checked ? 'transform translate-x-5' : ''}`}></div>
+      </div>
+    </label>
+  );
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+      
+      {/* Settings Navigation */}
+      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-[#2A353D] mb-4">
+        {['profile', 'notifications'].concat(appUser?.isAdmin ? ['workspace'] : []).map((tab) => (
+          <button key={tab} onClick={() => setSubTab(tab)} className={`px-5 py-2.5 text-xs font-black rounded-t-xl uppercase tracking-widest whitespace-nowrap transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {tab === 'workspace' ? 'Workspace (Admin)' : tab}
+          </button>
+        ))}
+      </div>
+
+      {/* --- SUB-TAB: MY PROFILE --- */}
+      {subTab === 'profile' && (
+        <div className="space-y-4">
+          <div className={`${T.card} p-4 sm:p-6`}>
+            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-[#2A353D]">
+              <img src={getAvatar(name, photoURL)} alt="Profile" className={`w-16 h-16 rounded-full border-2 border-[#D4A381] object-cover shadow-lg`} />
+              <div>
+                <h2 className="text-xl font-black text-white">{name || 'Staff Member'}</h2>
+                <div className={`text-[10px] font-black uppercase tracking-widest ${T.copper} mt-1`}>{appUser.role} {appUser.isAdmin && '| Admin'}</div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div><label className={T.label}>Full Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className={T.input} required /></div>
+                <div><label className={T.label}>Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={T.input} /></div>
+              </div>
+              <div><label className={T.label}>Profile Picture URL (Optional)</label><input type="url" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className={T.input} placeholder="https://..." /></div>
+              <div><label className={T.label}>Email Address (Cannot change)</label><input type="email" value={appUser?.email} disabled className={`${T.input} opacity-50 cursor-not-allowed`} /></div>
+              <button type="submit" className={`w-full ${T.btn} py-3`}>Save Profile Data</button>
+            </form>
+          </div>
+
+          <div className={`${T.card} p-4 sm:p-6 bg-red-900/10 border-red-900/50`}>
+             <h3 className="text-sm font-black text-red-500 uppercase tracking-widest mb-2">Security</h3>
+             <p className="text-xs text-slate-400 font-medium mb-4">Need to change your password? We will email you a secure reset link.</p>
+             <button onClick={handlePasswordReset} className="w-full sm:w-auto bg-[#12161A] text-red-400 border border-red-900/50 hover:bg-red-900/30 font-bold px-6 py-2.5 rounded-xl transition-colors text-sm">Send Password Reset Email</button>
+          </div>
+        </div>
+      )}
+
+      {/* --- SUB-TAB: NOTIFICATIONS --- */}
+      {subTab === 'notifications' && (
+        <form onSubmit={handleSaveNotifs} className={`${T.card} p-4 sm:p-6 space-y-6`}>
+          <div>
+            <h2 className="text-xl font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={20}/> Alerts & Routing</h2>
+            <p className="text-xs text-slate-400 font-medium mb-4">Control how 86 Chaos pings your device.</p>
+            
+            <div className="space-y-3">
+              <Toggle label="Schedule Publications" desc="Get alerted the exact second a new schedule goes live." checked={notifSchedule} onChange={e => setNotifSchedule(e.target.checked)} />
+              <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
+              <Toggle label="Urgent Message Board" desc="Receive push alerts for announcements marked 'Critical' by managers." checked={notifMessages} onChange={e => setNotifMessages(e.target.checked)} />
+              <Toggle label="Pre-Shift Reminders" desc="Automated ping 2 hours before your scheduled clock-in time." checked={notifReminders} onChange={e => setNotifReminders(e.target.checked)} />
+            </div>
+          </div>
+          <button type="submit" className={`w-full ${T.btn} py-3`}>Save Alert Preferences</button>
+        </form>
+      )}
+
+      {/* --- SUB-TAB: GLOBAL WORKSPACE (ADMIN ONLY) --- */}
+      {subTab === 'workspace' && appUser?.isAdmin && (
+        <form onSubmit={handleSaveSystem} className={`${T.card} p-4 sm:p-6 space-y-6 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
+          <div>
+             <div className="flex items-center justify-between mb-1">
+               <h2 className="text-xl font-black text-white"><Shield className={`inline mr-2 ${T.copper}`} size={20}/> Global Config</h2>
+               <span className="bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-widest">Master Controls</span>
+             </div>
+             <p className="text-xs text-slate-400 font-medium mb-4">Changes made here apply to the entire restaurant staff globally.</p>
+             
+             <div className="space-y-3">
+               <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
+               <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees (Bartenders/Servers) to declare cash & credit tips before the system allows them to clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
+               <Toggle label="Enable Peer-to-Peer Trades" desc="Allow staff to post their shifts to the Trade Board for others to claim." checked={sysTrades} onChange={e => setSysTrades(e.target.checked)} />
+               <Toggle label="Auto-Approve Shift Swaps" desc="If enabled, shift claims are approved instantly. If disabled, a Manager must approve the trade before the roster updates." checked={sysAutoApprove} onChange={e => setSysAutoApprove(e.target.checked)} />
+             </div>
+          </div>
+          <button type="submit" className={`w-full ${T.btn} py-3`}>Save Global Workspace</button>
+        </form>
+      )}
+
     </div>
   );
 };
