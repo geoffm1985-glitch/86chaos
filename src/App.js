@@ -1514,6 +1514,85 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
 };
 
 
+// --- SETTINGS TAB ---
+const TabSettings = ({ appUser, addToast }) => {
+  const [name, setName] = useState(appUser?.name || '');
+  const [phone, setPhone] = useState(appUser?.phone || '');
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, "users", appUser.id), { name: name.trim(), phone: phone.trim() });
+      addToast('Profile Saved', 'Your settings have been updated.');
+    } catch (err) {
+      console.error(err);
+      addToast('Error', 'Failed to save profile.');
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto space-y-4 pb-24">
+      <div className={`${T.card} p-6`}>
+        <h2 className="text-xl font-black text-white mb-6 flex items-center gap-2"><Settings className={T.copper}/> My Profile</h2>
+        <form onSubmit={handleSave} className="space-y-4">
+          <div>
+            <label className={T.label}>Full Name</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} className={T.input} required />
+          </div>
+          <div>
+            <label className={T.label}>Phone Number</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={T.input} />
+          </div>
+          <div>
+            <label className={T.label}>Email Address (Cannot change)</label>
+            <input type="email" value={appUser?.email} disabled className={`${T.input} opacity-50 cursor-not-allowed`} />
+          </div>
+          <button type="submit" className={`w-full mt-4 ${T.btn} py-3`}>Save Changes</button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// --- AUDIT LOGS TAB (Master Admin Only) ---
+const TabAuditLog = ({ appUser }) => {
+  const logs = useLiveCollection('auditLogs', appUser?.restaurantId);
+  const sortedLogs = [...logs].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className={`${T.card} overflow-hidden`}>
+        <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+          <h2 className="text-lg font-black text-white flex items-center gap-2"><Shield className="text-red-500"/> System Audit Logs</h2>
+          <span className={`bg-red-900/20 border border-red-500/50 text-red-500 px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-widest`}>Master Admin View</span>
+        </div>
+        
+        <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+          {sortedLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No security events logged yet.</div>}
+          
+          {sortedLogs.map(log => (
+            <div key={log.id} className={`${T.row} flex flex-col sm:flex-row gap-2 sm:justify-between sm:items-center`}>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-bold text-white text-sm">{log.userName}</span>
+                  <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-red-400 px-2 py-0.5 rounded`}>{log.action}</span>
+                </div>
+                <div className="text-xs text-slate-300 font-medium">
+                  {log.details} <span className="text-slate-500 ml-1">Target: [{log.target}]</span>
+                </div>
+              </div>
+              <div className={`text-[10px] font-bold ${T.muted} whitespace-nowrap`}>
+                {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 
 
 // ============================================================================
