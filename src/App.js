@@ -1446,7 +1446,7 @@ export default function App() {
   const vendors = useLiveCollection('vendors', rId);
   const wasteLogs = useLiveCollection('wasteLogs', rId);
 
-  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
+ 
   const [activeTabState, setActiveTabState] = useState('published');
   const [labelsToPrint, setLabelsToPrint] = useState(null);
 
