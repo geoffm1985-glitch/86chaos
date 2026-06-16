@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
 
@@ -1443,6 +1443,25 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
 export default function App() {
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
   const rId = appUser?.restaurantId;
+  // --- TEMPORARY RESCUE ENGINE ---
+  const rescueOldData = async () => {
+    if(!window.confirm("Ready to rescue your old data?")) return;
+    const collectionsToFix = ['users', 'shifts', 'prepItems', 'inventoryItems', 'shiftSwaps', 'events', 'sales', 'recipes', 'timeOffRequests', 'tasks', 'vendors', 'wasteLogs'];
+    let count = 0;
+    
+    for (const collName of collectionsToFix) {
+      const snap = await getDocs(collection(db, collName));
+      for (const item of snap.docs) {
+        if (!item.data().restaurantId) {
+          await updateDoc(doc(db, collName, item.id), { restaurantId: 'cheers_chilton_01' });
+          count++;
+        }
+      }
+    }
+    alert(`Success! 🚀 Rescued ${count} missing items. You can now delete this button from the code.`);
+    window.location.reload(); // Instantly refreshes the page to show your data
+  };
+  // -------------------------------
 
   const users = useLiveCollection('users', rId);
   const shifts = useLiveCollection('shifts', rId);
@@ -1515,8 +1534,14 @@ export default function App() {
         .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
-      <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
+     <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo />
+        
+        {/* TEMPORARY RESCUE BUTTON */}
+        <button onClick={rescueOldData} className="bg-red-600 animate-pulse text-white font-black px-4 py-2 rounded-xl shadow-2xl">
+          🆘 RESCUE DATA
+        </button>
+
         <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white`}><Menu size={20} /></button>
       </header>
 
