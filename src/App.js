@@ -167,7 +167,11 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 // ============================================================================
 // THE 86 CHAOS BOOT SCREEN (EMAIL/PASSWORD RESTORED)
 // ============================================================================
-const handleLogin = async (e) => {
+const LoginScreen = ({ setAppUser, addToast }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  
+  const handleLogin = async (e) => {
     e.preventDefault();
     try {
       // 1. Actually log into Firebase Secure Auth
