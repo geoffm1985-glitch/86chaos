@@ -186,7 +186,7 @@ const LoginScreen = ({ users, setAppUser, addToast }) => {
       
       <div className="relative z-10 w-full max-w-sm p-8 bg-[#161D22]/95 border border-[#2A353D] rounded-3xl shadow-2xl flex flex-col items-center animate-[slideIn_0.3s_ease-out]">
         <img src="/6240.jpg" alt="86 Chaos OS Icon" className="w-24 h-24 rounded-2xl shadow-xl border-2 border-[#2A353D] mb-6" />
-        <img src="/6139.png" alt="86 Chaos Typography" className="h-8 w-auto mb-8 opacity-90" />
+        <img src="/6136.jpg" alt="86 Chaos Typography" className="h-8 w-auto mb-8 opacity-90" />
         
         <form onSubmit={handleLogin} className="w-full space-y-4">
           <div>
