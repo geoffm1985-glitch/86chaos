@@ -100,13 +100,22 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser }) => {
   if (!isOpen) return null;
   const tabs = [];
-  if (appUser?.isAdmin) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> }); 
+  const perms = appUser?.permissions || {};
+
+  // Standard tabs everyone gets
   tabs.push({ id: 'published', label: 'Schedule & Time Off', icon: <Clock size={18}/> });
   tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
-  if (appUser?.isAdmin || appUser?.role === 'Kitchen') { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> }); }
-  tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
-  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
-  if (appUser?.isAdmin) { tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> }); if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> }); }
+  
+  // Restricted tabs
+  if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> }); 
+  if (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep) { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> }); }
+  if (appUser?.isAdmin || perms.inventory) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
+  if (appUser?.isAdmin || perms.team) tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
+  if (appUser?.isAdmin || perms.sales) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
+  
+  // Master Admin only
+  if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
+  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   return (
@@ -456,13 +465,39 @@ const TabSales = ({ sales, addToast }) => {
 
 // --- Tab: Team ---
 const TabTeam = ({ appUser, users, addToast }) => {
-  const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [role, setRole] = useState('Bartender'); const [photoURL, setPhotoURL] = useState(''); const [isAdmin, setIsAdmin] = useState(false);
+  const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [role, setRole] = useState('Bartender'); const [photoURL, setPhotoURL] = useState(''); 
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
   const [editModalUser, setEditModalUser] = useState(null);
+  
   const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role === 'Bartender' ? -1 : 1));
 
-  const handleAdd = async (e) => { e.preventDefault(); if (!name.trim() || !email.trim()) return; const tPass = generateTempPass(); try { await addDoc(collection(db, "users"), { name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: tPass, role, isAdmin, isActive: true, forcePasswordChange: true, photoURL: photoURL.trim() }); addToast('Staff Added', `Auto-generated password: ${tPass}`); setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setIsAdmin(false); } catch (err) { console.error(err); } };
-  const handleUpdateUser = async (e) => { e.preventDefault(); if (!editModalUser.name.trim() || !editModalUser.email.trim()) return; try { const updates = { name: editModalUser.name.trim(), email: editModalUser.email.toLowerCase().trim(), phone: editModalUser.phone || '', role: editModalUser.role, photoURL: editModalUser.photoURL || '' }; if (editModalUser.newPassword) { updates.password = editModalUser.newPassword; updates.forcePasswordChange = true; } await updateDoc(doc(db, "users", editModalUser.id), updates); addToast('Profile Updated', `${editModalUser.name}'s info has been saved.`); setEditModalUser(null); } catch (err) { console.error(err); addToast('Update Failed', 'Could not save profile changes.'); } };
-  const handleToggleAdmin = async (id, currentStatus) => { await updateDoc(doc(db, "users", id), { isAdmin: !currentStatus }); };
+  const handleAdd = async (e) => { 
+    e.preventDefault(); if (!name.trim() || !email.trim()) return; 
+    const tPass = generateTempPass(); 
+    try { 
+      await addDoc(collection(db, "users"), { 
+        name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
+        password: tPass, role, isAdmin, permissions: perms, isActive: true, 
+        forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
+      }); 
+      addToast('Staff Added', `Auto-generated password: ${tPass}`); 
+      setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setIsAdmin(false); 
+      setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false });
+    } catch (err) { console.error(err); } 
+  };
+
+  const handleUpdateUser = async (e) => { 
+    e.preventDefault(); if (!editModalUser.name.trim() || !editModalUser.email.trim()) return; 
+    try { 
+      const updates = { name: editModalUser.name.trim(), email: editModalUser.email.toLowerCase().trim(), phone: editModalUser.phone || '', role: editModalUser.role, photoURL: editModalUser.photoURL || '', isAdmin: editModalUser.isAdmin, permissions: editModalUser.permissions || {} }; 
+      if (editModalUser.newPassword) { updates.password = editModalUser.newPassword; updates.forcePasswordChange = true; } 
+      await updateDoc(doc(db, "users", editModalUser.id), updates); 
+      addToast('Profile Updated', `${editModalUser.name}'s info has been saved.`); 
+      setEditModalUser(null); 
+    } catch (err) { console.error(err); addToast('Update Failed', 'Could not save profile changes.'); } 
+  };
+
   const handleDelete = async (id) => { if (window.confirm("Remove this staff member? This cannot be undone.")) { await deleteDoc(doc(db, "users", id)); addToast('Staff Removed', 'Account permanently deleted.'); logAudit(appUser, 'DELETE_STAFF', 'Team Roster', 'Permanently removed a staff member.'); } };
 
   return (
@@ -473,8 +508,19 @@ const TabTeam = ({ appUser, users, addToast }) => {
             <div><label className={T.label}>Name</label><input type="text" value={editModalUser.name} onChange={e => setEditModalUser({...editModalUser, name: e.target.value})} className={T.input} required /></div>
             <div><label className={T.label}>Email</label><input type="email" value={editModalUser.email} onChange={e => setEditModalUser({...editModalUser, email: e.target.value})} className={T.input} required /></div>
             <div><label className={T.label}>Phone</label><input type="tel" value={editModalUser.phone || ''} onChange={e => setEditModalUser({...editModalUser, phone: e.target.value})} className={T.input} /></div>
-            <div><label className={T.label}>Avatar URL</label><input type="url" value={editModalUser.photoURL || ''} onChange={e => setEditModalUser({...editModalUser, photoURL: e.target.value})} className={T.input} /></div>
             <div><label className={T.label}>Role</label><select value={editModalUser.role} onChange={e => setEditModalUser({...editModalUser, role: e.target.value})} className={T.input}><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
+            
+            <label className="flex items-center gap-1.5 text-xs font-bold text-red-400 mt-3 cursor-pointer"><input type="checkbox" checked={editModalUser.isAdmin} onChange={e => setEditModalUser({...editModalUser, isAdmin: e.target.checked})} className="w-4 h-4 rounded border-[#2A353D] bg-[#12161A] accent-red-500" /> Full Admin (God Mode)</label>
+            
+            {!editModalUser.isAdmin && (
+              <div className="mt-2 p-3 bg-[#12161A] border border-[#2A353D] rounded-xl flex flex-wrap gap-4">
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={editModalUser.permissions?.schedule} onChange={e => setEditModalUser({...editModalUser, permissions: {...editModalUser.permissions, schedule: e.target.checked}})} className="accent-[#8F6040]"/> Schedule</label>
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={editModalUser.permissions?.inventory} onChange={e => setEditModalUser({...editModalUser, permissions: {...editModalUser.permissions, inventory: e.target.checked}})} className="accent-[#8F6040]"/> Inventory</label>
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={editModalUser.permissions?.prep} onChange={e => setEditModalUser({...editModalUser, permissions: {...editModalUser.permissions, prep: e.target.checked}})} className="accent-[#8F6040]"/> Recipe/Prep</label>
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={editModalUser.permissions?.sales} onChange={e => setEditModalUser({...editModalUser, permissions: {...editModalUser.permissions, sales: e.target.checked}})} className="accent-[#8F6040]"/> Sales</label>
+              </div>
+            )}
+
             <div className={`pt-3 border-t ${T.border}`}><label className={`block text-[10px] uppercase tracking-widest font-bold text-red-500 mb-1`}>Force Password Reset</label><input type="text" placeholder="Enter temporary password..." value={editModalUser.newPassword || ''} onChange={e => setEditModalUser({...editModalUser, newPassword: e.target.value})} className={T.input} /></div>
             <button type="submit" className={`w-full mt-2 ${T.btn}`}>Save Profile</button>
           </form>
@@ -489,13 +535,24 @@ const TabTeam = ({ appUser, users, addToast }) => {
               <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className={T.input} required /></div>
               <div><label className={T.label}>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={T.input} required /></div>
               <div><label className={T.label}>Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={T.input} /></div>
-              <div><label className={T.label}>Avatar URL</label><input type="url" placeholder="Optional" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className={T.input} /></div>
+              <div><label className={T.label}>Role</label><select value={role} onChange={e => setRole(e.target.value)} className={T.input}><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
             </div>
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="w-full sm:w-40"><label className={T.label}>Role</label><select value={role} onChange={e => setRole(e.target.value)} className={T.input}><option value="Bartender">Bartender</option><option value="Kitchen">Kitchen</option></select></div>
-              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-300 mt-3 cursor-pointer flex-1"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="w-4 h-4 rounded border-[#2A353D] bg-[#12161A] accent-[#8F6040]" /> Admin</label>
-              <button type="submit" className={`w-full sm:w-auto mt-3 sm:mt-0 ${T.btn}`}>Add Staff</button>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-3 justify-between">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-red-400 cursor-pointer"><input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} className="w-4 h-4 rounded border-[#2A353D] bg-[#12161A] accent-red-500" /> Full Admin (God Mode)</label>
+              <button type="submit" className={`w-full sm:w-auto ${T.btn}`}>Add Staff</button>
             </div>
+
+            {!isAdmin && (
+              <div className="mt-3 p-3 bg-[#12161A] border border-[#2A353D] rounded-xl flex flex-wrap gap-4">
+                <span className="text-[10px] uppercase font-bold text-slate-500 w-full mb-1">Custom Permissions:</span>
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={perms.schedule} onChange={e => setPerms({...perms, schedule: e.target.checked})} className="accent-[#8F6040]"/> Schedule</label>
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={perms.inventory} onChange={e => setPerms({...perms, inventory: e.target.checked})} className="accent-[#8F6040]"/> Inventory</label>
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={perms.prep} onChange={e => setPerms({...perms, prep: e.target.checked})} className="accent-[#8F6040]"/> Recipe/Prep</label>
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={perms.sales} onChange={e => setPerms({...perms, sales: e.target.checked})} className="accent-[#8F6040]"/> Sales</label>
+                <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-300"><input type="checkbox" checked={perms.team} onChange={e => setPerms({...perms, team: e.target.checked})} className="accent-[#8F6040]"/> Team Mgmt</label>
+              </div>
+            )}
           </form>
         </div>
       )}
@@ -518,8 +575,9 @@ const TabTeam = ({ appUser, users, addToast }) => {
                 </td>
                 <td>
                   <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded-full inline-block bg-[#12161A] border ${T.border} ${u.role === 'Bartender' ? 'text-blue-400' : 'text-orange-400'}`}>{u.role}</span>
-                  {appUser?.isAdmin && !isMaster && (<label className="flex items-center gap-1 mt-1 cursor-pointer w-max"><input type="checkbox" checked={u.isAdmin} onChange={() => handleToggleAdmin(u.id, u.isAdmin)} className="w-3 h-3 rounded bg-[#12161A] border-[#2A353D] accent-[#8F6040]" /><span className={`text-[9px] font-bold uppercase ${T.muted}`}>Admin</span></label>)}
-                  {isMaster && <span className={`block mt-1 text-[9px] font-black bg-[#12161A] border ${T.border} ${T.copper} px-1.5 py-0.5 rounded w-max`}>Master Admin</span>}
+                  {isMaster && <span className={`block mt-1 text-[9px] font-black bg-[#12161A] border ${T.border} text-red-400 px-1.5 py-0.5 rounded w-max`}>Master Admin</span>}
+                  {!isMaster && u.isAdmin && <span className={`block mt-1 text-[9px] font-black bg-[#12161A] border ${T.border} text-emerald-400 px-1.5 py-0.5 rounded w-max`}>Admin</span>}
+                  {!isMaster && !u.isAdmin && (Object.values(u.permissions||{}).some(Boolean)) && <span className={`block mt-1 text-[9px] font-black bg-[#12161A] border ${T.border} text-[#D4A381] px-1.5 py-0.5 rounded w-max`}>Custom Access</span>}
                 </td>
                 <td className="text-right">
                   <div className="flex justify-end gap-1">
