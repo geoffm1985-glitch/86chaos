@@ -218,7 +218,7 @@ const LoginScreen = ({ setAppUser }) => {
   return (
     <div 
       className="min-h-screen flex flex-col items-center justify-center bg-[#0B0E11] bg-cover bg-center bg-no-repeat relative"
-      style={{ backgroundImage: `url('/6136.jpg')` }}
+      style={{ backgroundImage: `url('/6139.png')` }}
     >
       <div className="absolute inset-0 bg-[#0B0E11]/75 backdrop-blur-[3px]"></div>
       
