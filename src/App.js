@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
@@ -174,25 +174,34 @@ const LoginScreen = ({ setAppUser }) => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setLoginError(''); // Clear old errors when you try again
+    setLoginError('');
     
     try {
-      // 1. Actually log into Firebase Secure Auth
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
-      // 2. Go to the database and grab their sticky note (restaurantId)
       const userDocRef = doc(db, 'users', firebaseUser.uid);
       const userDocSnap = await getDoc(userDocRef);
       
       if (userDocSnap.exists()) {
-        // 3. Let them into the app with their official data
         setAppUser({ id: firebaseUser.uid, ...userDocSnap.data() });
       } else {
-        setLoginError('Login successful, but user profile is missing in the Firestore database.');
+        setLoginError('Login successful, but user profile is missing in the database.');
       }
     } catch (error) {
-      // Show the EXACT error Firebase is throwing
+      setLoginError(error.message);
+    }
+  };
+
+  const handleForgotCredentials = async () => {
+    if (!email) {
+      setLoginError("Please type your email address into the top box first, then click Forgot Password.");
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setLoginError("Reset link sent! Check your email inbox.");
+    } catch (error) {
       setLoginError(error.message);
     }
   };
@@ -205,12 +214,12 @@ const LoginScreen = ({ setAppUser }) => {
       <div className="absolute inset-0 bg-[#0B0E11]/75 backdrop-blur-[3px]"></div>
       
       <div className="relative z-10 w-full max-w-sm p-8 bg-[#161D22]/95 border border-[#2A353D] rounded-3xl shadow-2xl flex flex-col items-center animate-[slideIn_0.3s_ease-out]">
-        <img src="/6139.png" alt="86 Chaos OS Icon" className="w-24 h-24 rounded-2xl shadow-xl border-2 border-[#2A353D] mb-6" />
-        <img src="/6136.jpg" alt="86 Chaos Typography" className="h-8 w-auto mb-8 opacity-90" />
+        
+        {/* FIXED LOGO: Auto-scales cleanly without squishing, phantom image deleted below */}
+        <img src="/6136.jpg" alt="86 Chaos OS Logo" className="h-24 w-auto rounded-xl shadow-lg border border-[#2A353D] mb-8 object-contain bg-[#12161A] p-2" />
         
         <form onSubmit={handleLogin} className="w-full space-y-4">
           
-          {/* THE NEW ERROR BOX */}
           {loginError && (
             <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">
               {loginError}
@@ -238,6 +247,18 @@ const LoginScreen = ({ setAppUser }) => {
           <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2">
             Unlock System
           </button>
+
+          {/* NEW FORGOT CREDENTIALS BUTTON */}
+          <div className="pt-3 text-center">
+            <button 
+              type="button" 
+              onClick={handleForgotCredentials}
+              className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors"
+            >
+              Forgot Password or Username?
+            </button>
+          </div>
+
         </form>
       </div>
     </div>
