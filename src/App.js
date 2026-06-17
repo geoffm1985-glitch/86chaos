@@ -429,15 +429,13 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 // --- TEAM MANAGEMENT ---
 const TabTeam = ({ users, appUser, addToast }) => {
   const canManageTeam = appUser.isAdmin || appUser.permissions?.team;
-  const [name, setName] = useState('');
+  const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
   const [role, setRole] = useState('Bartender'); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
   const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
-  
-  // New state to track if we are editing an existing user
   const [editingUserId, setEditingUserId] = useState(null);
 
   const roles = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
@@ -456,7 +454,6 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const handleSave = async (e) => { 
     e.preventDefault(); if (!name.trim() || !email.trim() || !phone.trim()) return; 
     
-    // IF EDITING EXISTING USER: Update Database only
     if (editingUserId) {
         try {
             await updateDoc(doc(db, "users", editingUserId), {
@@ -468,7 +465,6 @@ const TabTeam = ({ users, appUser, addToast }) => {
         return;
     }
 
-    // IF ADDING NEW USER: Create Auth & Database records
     const tPass = generateTempPass(); 
     try { 
       const secondaryApp = initializeApp(firebaseConfig, "TeamBuilderApp_" + Date.now());
@@ -516,49 +512,51 @@ const TabTeam = ({ users, appUser, addToast }) => {
     } catch(err) { addToast('Error', err.message); }
   };
 
-  // Filter out terminated users from the active roster UI
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
 
- return (
+  return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
+      
       {canManageTeam && (
         <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-4`}>
-        {editingUserId && (
-          <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
-            <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
-            <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit ✕</button>
-          </div>
-        )}
-        
-        <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className={T.input} required placeholder="e.g. Gordon Ramsay" /></div>
-        
-        <div>
-          <label className={T.label}>Email {editingUserId && <span className="text-slate-500 lowercase normal-case ml-1">(Cannot be changed after creation)</span>}</label>
-          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
-        </div>
-        
-       <div><label className={T.label}>Phone</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className={T.input} required /></div>
-        <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-        
-        <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
-          <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
-          <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
-        </label>
-        
-        {!isAdmin && (
-          <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions:</p>
-            <div className="flex flex-wrap gap-4">
-              {Object.keys(perms).map(k => (
-                <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
-                  <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
-                  {k.replace('team', 'team mgmt').replace('prep', 'recipe/prep')}
-                </label>
-              ))}
+          {editingUserId && (
+            <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
+              <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
+              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit ✕</button>
             </div>
+          )}
+          
+          <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className={T.input} required placeholder="e.g. Gordon Ramsay" /></div>
+          
+          <div>
+            <label className={T.label}>Email {editingUserId && <span className="text-slate-500 lowercase normal-case ml-1">(Cannot be changed after creation)</span>}</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
           </div>
-        )}
-        <button type="submit" className={`w-full ${T.btn}`}>{editingUserId ? 'UPDATE STAFF PROFILE' : 'ADD STAFF'}</button>
+          
+          <div><label className={T.label}>Phone</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className={T.input} required /></div>
+          
+          <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+          
+          <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
+            <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
+            <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
+          </label>
+          
+          {!isAdmin && (
+            <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions:</p>
+              <div className="flex flex-wrap gap-4">
+                {Object.keys(perms).map(k => (
+                  <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
+                    <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
+                    {k.replace('team', 'team mgmt').replace('prep', 'recipe/prep')}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <button type="submit" className={`w-full ${T.btn}`}>{editingUserId ? 'UPDATE STAFF PROFILE' : 'ADD STAFF'}</button>
         </form>
       )}
       
@@ -566,7 +564,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
         <div className="divide-y divide-[#2A353D]">
           {activeUsers.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No active staff found.</div>}
           
-         {activeUsers.map(u => (
+          {activeUsers.map(u => (
             <div key={u.id} className="p-2.5 border-b border-[#2A353D] hover:bg-[#12161A] transition-colors flex items-center justify-between gap-2">
               <div className="flex items-center gap-3 overflow-hidden">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs flex-shrink-0 ${u.isAdmin ? 'bg-red-900/50 border border-red-500/50' : 'bg-[#1A2126] border border-[#2A353D]'}`}>
@@ -581,15 +579,18 @@ const TabTeam = ({ users, appUser, addToast }) => {
                 </div>
               </div>
               
-            {canManageTeam && (
+              {canManageTeam && (
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button onClick={() => handlePasswordReset(u)} className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded border border-[#2A353D]">Reset</button>
                   <button onClick={() => handleEditClick(u)} className="p-1 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Edit size={12}/></button>
                   <button onClick={() => handleDeactivate(u)} className="p-1 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Trash2 size={12}/></button>
                 </div>
               )}
+            </div>
+          ))}
         </div>
       </div>
+
     </div>
   );
 };
