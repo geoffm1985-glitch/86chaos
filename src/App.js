@@ -535,7 +535,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   )
 };
 
-// --- SCHEDULE MAKER (Monthly View, Single Page, Tall Boxes) ---
+// --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
 const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addToast, appUser }) => {
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -613,58 +613,61 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
       </div>
 
       <div className={`${T.card} w-full overflow-hidden`}>
-        <table className="w-full text-left text-[10px] border-collapse table-fixed">
-          <thead>
-            <tr className="bg-[#12161A] border-b border-[#2A353D]">
-              <th className={`p-1 sm:p-2 font-bold bg-[#12161A] z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
-              {monthDays.map(d => {
-                const holiday = getHoliday(d);
-                const dayEvents = monthEvents.filter(e => e.date === d);
-                const hasAlert = holiday || dayEvents.length > 0;
-                
-                return (
-                <th key={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
-                  <div className={`font-bold uppercase text-[8px] sm:text-[9px] ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'narrow'})}</div>
-                  <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
-                    {parseInt(d.split('-')[2])}
-                  </div>
-                  
-                  {/* Desktop Hover Tooltip for Holidays/Events */}
-                  {hasAlert && (
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
-                      {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
-                      {dayEvents.map(ev => (
-                        <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
-                          {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </th>
-              )})}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#2A353D]">
-            {displayUsers.map(u => (
-              <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-                <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+        {/* ADDED: Scroll container and min-w to protect Mobile View while keeping Desktop single-page */}
+        <div className="overflow-x-auto w-full no-scrollbar">
+          <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
+            <thead>
+              <tr className="bg-[#12161A] border-b border-[#2A353D]">
+                <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
                 {monthDays.map(d => {
-                  const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                  const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
-                  const sel = assignDates.includes(d) && selectedEmp===u.id;
+                  const holiday = getHoliday(d);
+                  const dayEvents = monthEvents.filter(e => e.date === d);
+                  const hasAlert = holiday || dayEvents.length > 0;
+                  
                   return (
-                  <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-12 sm:h-16 lg:h-20 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-30 relative':'hover:bg-[#12161A]'}`}>
-                    <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
-                      {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                      {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}</div>}
-                      {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${shift.isPublished?(u.role==='Bartender'?'bg-[#D4A381] text-slate-900':'bg-[#C59373] text-slate-900'):'bg-slate-400 text-slate-900'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime).replace(/[ap]/g, '')}-{formatShortTime(shift.endTime).replace(/[ap]/g, '')}</div>}
+                  <th key={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
+                    <div className={`font-bold uppercase text-[8px] sm:text-[9px] ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'narrow'})}</div>
+                    <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
+                      {parseInt(d.split('-')[2])}
                     </div>
-                  </td>)
-                })}
+                    
+                    {/* Desktop Hover Tooltip for Holidays/Events */}
+                    {hasAlert && (
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
+                        {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
+                        {dayEvents.map(ev => (
+                          <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
+                            {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </th>
+                )})}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[#2A353D]">
+              {displayUsers.map(u => (
+                <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
+                  <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                  {monthDays.map(d => {
+                    const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                    const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                    const sel = assignDates.includes(d) && selectedEmp===u.id;
+                    return (
+                    <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-12 sm:h-16 lg:h-20 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                      <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
+                        {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
+                        {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}</div>}
+                        {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${shift.isPublished?(u.role==='Bartender'?'bg-[#D4A381] text-slate-900':'bg-[#C59373] text-slate-900'):'bg-slate-400 text-slate-900'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime).replace(/[ap]/g, '')}-{formatShortTime(shift.endTime).replace(/[ap]/g, '')}</div>}
+                      </div>
+                    </td>)
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
       
       {/* Event Ledger underneath for clear visibility */}
