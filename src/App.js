@@ -1778,11 +1778,10 @@ const TabSettings = ({ appUser, addToast }) => {
               </div>
 
             </div>
-          </div>
+        </div>
           <button type="submit" className={`w-full ${T.btn} py-3`}>Save Alert Preferences</button>
         </form>
       )}
-
       {/* --- SUB-TAB: GLOBAL WORKSPACE (ADMIN ONLY) --- */}
       {subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-4 sm:p-6 space-y-6 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
