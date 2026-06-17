@@ -694,6 +694,30 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   );
 };
 
+// --- COMPACT MONTH VIEW ---
+const TabMonth = ({ currentDate, users, shifts }) => {
+  const monthStr = getMonthStr(currentDate); const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); const days = getDaysInMonth(monthStr);
+  return (
+    <div className={`${T.card} overflow-hidden print-container`}>
+      <style>{`@media print { .no-print{display:none;} .print-container{position:absolute;top:0;left:0;width:100%;background:white;} .cell{border:1px solid #ccc!important;} }`}</style>
+      <div className="flex justify-end p-2 no-print border-b border-[#2A353D] bg-[#12161A]"><button onClick={()=>window.print()} className={T.btnAlt}>Print Calendar</button></div>
+      <div className={`grid grid-cols-7 border-t border-l ${T.border}`}>
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`p-1 bg-[#12161A] text-center font-black text-[10px] ${T.copper} border-b border-r ${T.border} uppercase cell`}>{d}</div>)}
+        {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className={`bg-[#12161A]/50 border-b border-r ${T.border} min-h-[50px] cell`}/>)}
+        {Array.from({length:days}).map((_,i)=>{
+          const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
+          return (
+            <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell overflow-hidden`}>
+              <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5`}>{i+1}</span>
+              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-orange-400'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}</div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  );
+};
+
 // --- PREP & TASKS COMMAND CENTER ---
 const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
   const [subTab, setSubTab] = useState('prep');
@@ -2038,11 +2062,11 @@ export default function App() {
             </div>
           ) : (
             <>
-              <button onClick={['schedule', 'prep'].includes(activeTabState) ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronLeft size={20} /></button>
+              <button onClick={activeTabState === 'prep' ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronLeft size={20} /></button>
               <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381]">
-                {['schedule', 'prep'].includes(activeTabState) ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+                {activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
               </h2>
-              <button onClick={['schedule', 'prep'].includes(activeTabState) ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>
+              <button onClick={activeTabState === 'prep' ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>
             </>
           )}
         </div>
@@ -2050,7 +2074,17 @@ export default function App() {
 
       <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Date">
         <div className="space-y-4">
-          <input type={activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? 'date' : 'month'} value={activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? currentDate : getMonthStr(currentDate)} onChange={e => { if (e.target.value) { setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' || activeTabState === 'schedule' ? e.target.value : e.target.value + '-01'); setIsDateModalOpen(false); } }} className={T.input} />
+          <input 
+            type={activeTabState === 'prep' || activeTabState === 'sales' ? 'date' : 'month'} 
+            value={activeTabState === 'prep' || activeTabState === 'sales' ? currentDate : getMonthStr(currentDate)} 
+            onChange={e => { 
+              if (e.target.value) { 
+                setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' ? e.target.value : e.target.value + '-01'); 
+                setIsDateModalOpen(false); 
+              } 
+            }} 
+            className={T.input} 
+          />
           <button onClick={() => setIsDateModalOpen(false)} className={`w-full ${T.btn}`}>Close</button>
         </div>
       </Modal>
