@@ -696,20 +696,118 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
-  const monthStr = getMonthStr(currentDate); const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); const days = getDaysInMonth(monthStr);
+  const monthStr = getMonthStr(currentDate); 
+  const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); 
+  const days = getDaysInMonth(monthStr);
+  
+  // Calculate how many weeks this month spans to perfectly stretch the grid rows on paper
+  const totalCells = firstDay + days;
+  const weeks = Math.ceil(totalCells / 7);
+
   return (
     <div className={`${T.card} overflow-hidden print-container`}>
-      <style>{`@media print { .no-print{display:none;} .print-container{position:absolute;top:0;left:0;width:100%;background:white;} .cell{border:1px solid #ccc!important;} }`}</style>
-      <div className="flex justify-end p-2 no-print border-b border-[#2A353D] bg-[#12161A]"><button onClick={()=>window.print()} className={T.btnAlt}>Print Calendar</button></div>
-      <div className={`grid grid-cols-7 border-t border-l ${T.border}`}>
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`p-1 bg-[#12161A] text-center font-black text-[10px] ${T.copper} border-b border-r ${T.border} uppercase cell`}>{d}</div>)}
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 0.25in; }
+          body * { visibility: hidden; }
+          
+          /* Hijack the entire printed page */
+          .print-container, .print-container * { visibility: visible; }
+          .print-container {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+            background: white !important;
+            z-index: 999999 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          
+          .no-print { display: none !important; }
+          
+          /* The Header */
+          .print-header { 
+            display: block !important; 
+            text-align: center !important; 
+            font-size: 28px !important; 
+            font-weight: 900 !important; 
+            color: black !important; 
+            margin-bottom: 15px !important; 
+            text-transform: uppercase !important; 
+          }
+          
+          /* The Grid - Stretches to fill exact remaining space on the paper */
+          .print-grid {
+            flex-grow: 1 !important;
+            display: grid !important;
+            grid-template-rows: 30px repeat(${weeks}, 1fr) !important;
+            border-top: 2px solid black !important;
+            border-left: 2px solid black !important;
+          }
+          
+          /* The Cells */
+          .cell {
+            border-right: 2px solid black !important;
+            border-bottom: 2px solid black !important;
+            background: white !important;
+            color: black !important;
+            min-height: 0 !important;
+            padding: 4px !important;
+            display: flex !important;
+            flex-direction: column !important;
+          }
+          
+          .cell-header-text { color: black !important; font-size: 14px !important; font-weight: 900 !important; }
+          .cell-date { font-size: 16px !important; font-weight: 900 !important; color: black !important; margin-bottom: 4px !important; }
+          
+          /* The Shifts */
+          .print-shift {
+            background: #f8fafc !important;
+            color: black !important;
+            border: 1px solid #94a3b8 !important;
+            border-radius: 4px !important;
+            padding: 3px 4px !important;
+            font-size: 11px !important;
+            font-weight: 900 !important;
+            margin-bottom: 3px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+          }
+        }
+      `}</style>
+      
+      <div className="flex justify-end p-2 no-print border-b border-[#2A353D] bg-[#12161A]">
+        <button onClick={()=>window.print()} className={T.btnAlt}>🖨️ Print Calendar</button>
+      </div>
+      
+      <div className="hidden print:block print-header">
+        Cheers Schedule • {formatDisplayMonth(monthStr)}
+      </div>
+
+      <div className={`grid grid-cols-7 border-t border-l ${T.border} print-grid`}>
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`p-1 bg-[#12161A] text-center font-black text-[10px] ${T.copper} border-b border-r ${T.border} uppercase cell`}><span className="print-text-dark cell-header-text">{d}</span></div>)}
+        
         {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className={`bg-[#12161A]/50 border-b border-r ${T.border} min-h-[50px] cell`}/>)}
+        
         {Array.from({length:days}).map((_,i)=>{
-          const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
+          const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
+          const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
           return (
             <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell overflow-hidden`}>
-              <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5`}>{i+1}</span>
-              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-orange-400'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}</div>
+              <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
+              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
+                {dayShifts.map(s=>(
+                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-orange-400'} print-shift`}>
+                    {users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}
+                  </div>
+                ))}
+              </div>
             </div>
           )
         })}
