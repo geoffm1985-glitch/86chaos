@@ -1546,7 +1546,7 @@ const TabSettings = ({ appUser, addToast }) => {
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
   const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
 
-  // --- Image Upload Engine (Kept as an option, but manual URL field is restored) ---
+  // --- Image Upload Engine ---
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1626,7 +1626,7 @@ const TabSettings = ({ appUser, addToast }) => {
       {/* Settings Navigation */}
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-[#2A353D] mb-4">
         {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace'] : []).map((tab) => (
-          <button key={tab} onClick={() => setSubTab(tab)} className={`px-5 py-2.5 text-xs font-black rounded-t-xl uppercase tracking-widest whitespace-nowrap transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-5 py-2.5 text-xs font-black rounded-t-xl uppercase tracking-widest whitespace-nowrap transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {tab === 'workspace' ? 'Workspace (Admin)' : tab}
           </button>
         ))}
@@ -1660,7 +1660,6 @@ const TabSettings = ({ appUser, addToast }) => {
                 <div><label className={T.label}>Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={T.input} /></div>
               </div>
               
-              {/* RESTORED: Raw text input for Profile Picture URL */}
               <div>
                 <label className={T.label}>Profile Picture URL</label>
                 <input type="text" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className={T.input} placeholder="Paste image link here or use the upload button above..." />
@@ -1674,7 +1673,7 @@ const TabSettings = ({ appUser, addToast }) => {
           <div className={`${T.card} p-4 sm:p-6 bg-red-900/10 border-red-900/50`}>
              <h3 className="text-sm font-black text-red-500 uppercase tracking-widest mb-2">Security</h3>
              <p className="text-xs text-slate-400 font-medium mb-4">Need to change your password? We will email you a secure reset link.</p>
-             <button onClick={handlePasswordReset} className="w-full sm:w-auto bg-[#12161A] text-red-400 border border-red-900/50 hover:bg-red-900/30 font-bold px-6 py-2.5 rounded-xl transition-colors text-sm">Send Password Reset Email</button>
+             <button type="button" onClick={handlePasswordReset} className="w-full sm:w-auto bg-[#12161A] text-red-400 border border-red-900/50 hover:bg-red-900/30 font-bold px-6 py-2.5 rounded-xl transition-colors text-sm">Send Password Reset Email</button>
           </div>
         </div>
       )}
@@ -1720,9 +1719,7 @@ const TabSettings = ({ appUser, addToast }) => {
               <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
               <Toggle label="Urgent Message Board" desc="Receive push alerts for announcements marked 'Critical' by managers." checked={notifMessages} onChange={e => setNotifMessages(e.target.checked)} />
               
-<div className={`p-4 bg-[#12161A] border ${T.border} rounded-xl`}>
-                
-                {/* CHANGED THIS TO A LABEL SO IT IS ACTUALLY CLICKABLE! */}
+              <div className={`p-4 bg-[#12161A] border ${T.border} rounded-xl`}>
                 <label className="flex items-center justify-between mb-3 cursor-pointer group">
                   <div>
                     <div className="text-sm font-bold text-white group-hover:text-[#D4A381] transition-colors">Pre-Shift Reminders</div>
@@ -1735,7 +1732,6 @@ const TabSettings = ({ appUser, addToast }) => {
                   </div>
                 </label>
 
-                {/* The Adjustable Drop-down */}
                 {notifReminders && (
                   <div className="flex items-center gap-3 pt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
@@ -1750,38 +1746,12 @@ const TabSettings = ({ appUser, addToast }) => {
                   </div>
                 )}
               </div>
-                  <div>
-                    <div className="text-sm font-bold text-white">Pre-Shift Reminders</div>
-                    <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>Automated ping before your scheduled clock-in time.</div>
-                  </div>
-                  <div className="relative flex-shrink-0">
-                    <input type="checkbox" checked={notifReminders} onChange={e => setNotifReminders(e.target.checked)} className="sr-only" />
-                    <div className={`block w-12 h-7 rounded-full transition-colors ${notifReminders ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
-                    <div className={`absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform ${notifReminders ? 'transform translate-x-5' : ''}`}></div>
-                  </div>
-                </div>
-                {notifReminders && (
-                  <div className="flex items-center gap-3 pt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
-                    
-                    {/* RESTORED: Fully adjustable manual number input */}
-                    <input 
-                      type="number" 
-                      min="1" 
-                      value={reminderTime} 
-                      onChange={e => setReminderTime(e.target.value)} 
-                      className={`${T.input} w-24 text-center font-black`} 
-                      placeholder="120"
-                    />
-                  </div>
-                )}
-              </div>
-
             </div>
-        </div>
+          </div>
           <button type="submit" className={`w-full ${T.btn} py-3`}>Save Alert Preferences</button>
         </form>
       )}
+
       {/* --- SUB-TAB: GLOBAL WORKSPACE (ADMIN ONLY) --- */}
       {subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-4 sm:p-6 space-y-6 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
@@ -1792,7 +1762,6 @@ const TabSettings = ({ appUser, addToast }) => {
                <span className="bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-widest">Master Controls</span>
              </div>
              
-             {/* Section 1: Time Clock Rules */}
              <div className="mt-6 mb-2 text-[10px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-3">
                <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
@@ -1807,7 +1776,6 @@ const TabSettings = ({ appUser, addToast }) => {
                </div>
              </div>
 
-             {/* Section 2: Shift Trade Rules */}
              <div className="mt-8 mb-2 text-[10px] font-black uppercase text-[#D4A381] tracking-widest">Shift Board Rules</div>
              <div className="space-y-3">
                <Toggle label="Enable Peer-to-Peer Trades" desc="Allow staff to post their shifts to the Trade Board for others to claim." checked={sysTrades} onChange={e => setSysTrades(e.target.checked)} />
@@ -1815,7 +1783,6 @@ const TabSettings = ({ appUser, addToast }) => {
                <Toggle label="Role-Restricted Trades" desc="Staff can only claim shifts that match their assigned role (e.g., Bartenders can't claim Kitchen shifts)." checked={sysSameRoleTrades} disabled={!sysTrades} onChange={e => setSysSameRoleTrades(e.target.checked)} />
              </div>
 
-             {/* Section 3: Payroll & Labor Rules */}
              <div className="mt-8 mb-2 text-[10px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-3">
                <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
