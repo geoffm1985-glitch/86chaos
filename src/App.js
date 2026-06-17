@@ -754,33 +754,92 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   const [subTab, setSubTab] = useState('prep');
   const [prepDate, setPrepDate] = useState(currentDate);
 
+  // Sync internal prepDate with global currentDate if user uses the top header arrows
+  useEffect(() => { setPrepDate(currentDate); }, [currentDate]);
+
+  // Local selection state (Fixes checkboxes staying checked across days)
+  const [selectedPreps, setSelectedPreps] = useState([]);
+
   // Prep Form State
-  const [text, setText] = useState(''); const [station, setStation] = useState('Grill'); const [isMaster, setIsMaster] = useState(true);
+  const [text, setText] = useState(''); 
+  const [station, setStation] = useState('Grill'); 
+  const [isMaster, setIsMaster] = useState(true);
   
   // Task Form State
-  const [taskText, setTaskText] = useState(''); const [taskCat, setTaskCat] = useState('Cleaning'); const [taskFreq, setTaskFreq] = useState('daily');
-  const [taskTargetDay, setTaskTargetDay] = useState('Monday'); const [taskTargetDate, setTaskTargetDate] = useState('1');
+  const [taskText, setTaskText] = useState(''); 
+  const [taskCat, setTaskCat] = useState('Cleaning'); 
+  const [taskFreq, setTaskFreq] = useState('daily');
+  const [taskTargetDay, setTaskTargetDay] = useState('Monday'); 
+  const [taskTargetDate, setTaskTargetDate] = useState('1');
 
   // --- PREP LOGIC ---
   const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
-  const handleAddPrep = async (e) => { e.preventDefault(); if(text.trim()) { await addDoc(collection(db, "prepItems"), { date: isMaster?'MASTER':prepDate, text: text.trim(), station, isCompleted: false, completedDates: {}, isMaster, qty: 1, isSelected: false }); setText(''); } };
-  const togglePrepStatus = async (item) => { if (item.isMaster) { const dts = {...(item.completedDates||{})}; dts[prepDate] = dts[prepDate] ? null : appUser.name; await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts, isSelected: false }); } else { await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null, isSelected: false }); } };
+  
+  const handleAddPrep = async (e) => { 
+    e.preventDefault(); 
+    if(text.trim()) { 
+      await addDoc(collection(db, "prepItems"), { 
+        date: isMaster ? 'MASTER' : prepDate, 
+        text: text.trim(), 
+        station, 
+        isCompleted: false, 
+        completedDates: {}, 
+        isMaster, 
+        qty: 1
+      }); 
+      setText(''); 
+    } 
+  };
+  
+  const toggleSelection = (id) => {
+    setSelectedPreps(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const togglePrepStatus = async (item) => { 
+    if (item.isMaster) { 
+      const dts = {...(item.completedDates||{})}; 
+      if (dts[prepDate]) {
+        delete dts[prepDate]; // Cleanly removes completion for this specific date
+      } else {
+        dts[prepDate] = appUser.name;
+      }
+      await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts }); 
+    } else { 
+      await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null }); 
+    } 
+  };
+  
   const groupedPrep = activePrep.reduce((acc, i) => { const s = i.station || 'General'; if(!acc[s]) acc[s]=[]; acc[s].push(i); return acc; }, {});
 
   // --- TASK LOGIC ---
-  const handleAddTask = async (e) => { e.preventDefault(); if(taskText.trim()) { await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {} }); setTaskText(''); } };
+  const handleAddTask = async (e) => { 
+    e.preventDefault(); 
+    if(taskText.trim()) { 
+      await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {} }); 
+      setTaskText(''); 
+    } 
+  };
   
+  // FIX: Anchor Tasks to prepDate, not global currentDate
   const getTaskPeriodKey = (freq) => {
-    if (freq === 'daily') return currentDate;
-    if (freq === 'weekly') { const d = new Date(currentDate+'T12:00:00'); const day = d.getDay(); d.setDate(d.getDate() - day + (day === 0 ? -6 : 1)); return formatDate(d); }
-    if (freq === 'monthly') return currentDate.substring(0, 7);
+    if (freq === 'daily') return prepDate;
+    if (freq === 'weekly') { 
+      const d = new Date(prepDate+'T12:00:00'); 
+      const day = d.getDay(); 
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1)); 
+      return formatDate(d); 
+    }
+    if (freq === 'monthly') return prepDate.substring(0, 7);
   };
 
   const toggleTaskStatus = async (task) => {
     const periodKey = getTaskPeriodKey(task.frequency);
     const updatedCompletions = { ...(task.completions || {}) };
-    if (updatedCompletions[periodKey]) { delete updatedCompletions[periodKey]; } 
-    else { updatedCompletions[periodKey] = { by: appUser.name, at: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; }
+    if (updatedCompletions[periodKey]) { 
+      delete updatedCompletions[periodKey]; 
+    } else { 
+      updatedCompletions[periodKey] = { by: appUser.name, at: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; 
+    }
     await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
   };
 
@@ -866,10 +925,14 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                 <div className={T.th}><span>{stationName} Station</span><span className="float-right text-slate-500">{items.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{items.length} Done</span></div>
                 <div className={`divide-y ${T.border}`}>
                   {items.map(i=>{
-                    const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; const qty = i.qty||1;
+                    const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; 
+                    const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; 
+                    const qty = i.qty||1;
+                    const isSelected = selectedPreps.includes(i.id);
+                    
                     return (
-                    <div key={i.id} className={`${T.row} ${i.isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
-                      <input type="checkbox" checked={!!i.isSelected} onChange={async ()=> await updateDoc(doc(db, "prepItems", i.id), { isSelected: !i.isSelected })} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
+                    <div key={i.id} className={`${T.row} ${isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
                       <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(1, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
@@ -884,8 +947,27 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
           </div>
           <div className={`fixed bottom-0 left-0 right-0 p-4 bg-[#161D22] border-t ${T.border} z-50 backdrop-blur-md bg-opacity-95`}>
             <div className="max-w-2xl mx-auto flex gap-3">
-              <button onClick={() => { const sel = activePrep.filter(i=>i.isSelected); if(sel.length===0)return; const toP=[]; sel.forEach(i=>{for(let j=0;j<(i.qty||1);j++)toP.push({...i, printId:`${i.id}-${j}`});}); setLabelsToPrint({items:toP, prepDate}); }} disabled={activePrep.filter(i=>i.isSelected).length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print Selected</button>
-              <button onClick={async () => { const sel = activePrep.filter(i=>i.isSelected); for(const item of sel){ if(item.isMaster){ const dts={...(item.completedDates||{})}; dts[prepDate]=appUser.name; await updateDoc(doc(db,"prepItems",item.id),{completedDates:dts, isSelected:false}); } else await updateDoc(doc(db,"prepItems",item.id),{isCompleted:true, completedBy:appUser.name, isSelected:false}); } }} disabled={activePrep.filter(i=>i.isSelected).length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
+              <button onClick={() => { 
+                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
+                  if(sel.length===0)return; 
+                  const toP=[]; 
+                  sel.forEach(i=>{for(let j=0;j<(i.qty||1);j++)toP.push({...i, printId:`${i.id}-${j}`});}); 
+                  setLabelsToPrint({items:toP, prepDate}); 
+              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print Selected</button>
+              
+              <button onClick={async () => { 
+                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
+                  for(const item of sel){ 
+                      if(item.isMaster){ 
+                          const dts={...(item.completedDates||{})}; 
+                          dts[prepDate]=appUser.name; 
+                          await updateDoc(doc(db,"prepItems",item.id),{completedDates:dts}); 
+                      } else {
+                          await updateDoc(doc(db,"prepItems",item.id),{isCompleted:true, completedBy:appUser.name}); 
+                      }
+                  } 
+                  setSelectedPreps([]);
+              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
             </div>
           </div>
         </div>
