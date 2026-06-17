@@ -708,17 +708,17 @@ const TabMonth = ({ currentDate, users, shifts }) => {
     <div className={`${T.card} overflow-hidden print-container`}>
       <style>{`
         @media print {
-          @page { size: landscape; margin: 0.25in; }
+          @page { size: landscape; margin: 0.3in; }
           body * { visibility: hidden; }
           
           /* Hijack the entire printed page */
           .print-container, .print-container * { visibility: visible; }
           .print-container {
-            position: fixed !important;
+            position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
+            width: 100% !important;
+            height: 100% !important;
             display: flex !important;
             flex-direction: column !important;
             background: white !important;
@@ -727,6 +727,9 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             margin: 0 !important;
             border: none !important;
             box-shadow: none !important;
+            
+            /* THE MAGIC BULLET: Override the Tailwind overflow-hidden guillotine */
+            overflow: visible !important; 
           }
           
           .no-print { display: none !important; }
@@ -735,10 +738,10 @@ const TabMonth = ({ currentDate, users, shifts }) => {
           .print-header { 
             display: block !important; 
             text-align: center !important; 
-            font-size: 28px !important; 
+            font-size: 24px !important; 
             font-weight: 900 !important; 
             color: black !important; 
-            margin-bottom: 15px !important; 
+            margin-bottom: 10px !important; 
             text-transform: uppercase !important; 
           }
           
@@ -746,9 +749,11 @@ const TabMonth = ({ currentDate, users, shifts }) => {
           .print-grid {
             flex-grow: 1 !important;
             display: grid !important;
-            grid-template-rows: 30px repeat(${weeks}, 1fr) !important;
+            grid-template-rows: 25px repeat(${weeks}, 1fr) !important;
             border-top: 2px solid black !important;
             border-left: 2px solid black !important;
+            height: 100% !important;
+            box-sizing: border-box !important;
           }
           
           /* The Cells */
@@ -761,10 +766,11 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             padding: 4px !important;
             display: flex !important;
             flex-direction: column !important;
+            overflow: hidden !important;
           }
           
-          .cell-header-text { color: black !important; font-size: 14px !important; font-weight: 900 !important; }
-          .cell-date { font-size: 16px !important; font-weight: 900 !important; color: black !important; margin-bottom: 4px !important; }
+          .cell-header-text { color: black !important; font-size: 12px !important; font-weight: 900 !important; }
+          .cell-date { font-size: 14px !important; font-weight: 900 !important; color: black !important; margin-bottom: 2px !important; }
           
           /* The Shifts */
           .print-shift {
@@ -772,10 +778,10 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             color: black !important;
             border: 1px solid #94a3b8 !important;
             border-radius: 4px !important;
-            padding: 3px 4px !important;
-            font-size: 11px !important;
+            padding: 2px 4px !important;
+            font-size: 10px !important;
             font-weight: 900 !important;
-            margin-bottom: 3px !important;
+            margin-bottom: 2px !important;
             white-space: nowrap !important;
             overflow: hidden !important;
           }
@@ -799,7 +805,7 @@ const TabMonth = ({ currentDate, users, shifts }) => {
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
           const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
           return (
-            <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell overflow-hidden`}>
+            <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell`}>
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
               <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
                 {dayShifts.map(s=>(
