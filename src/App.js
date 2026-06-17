@@ -564,24 +564,24 @@ const TabTeam = ({ users, appUser, addToast }) => {
         <div className="divide-y divide-[#2A353D]">
           {activeUsers.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No active staff found.</div>}
           
-          {activeUsers.map(u => (
-            <div key={u.id} className={`${T.row} hover:bg-[#12161A] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4`}>
-              <div className="flex items-center gap-4">
+         {activeUsers.map(u => (
+            <div key={u.id} className={`${T.row} hover:bg-[#12161A] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5`}>
+              <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-white shadow-inner flex-shrink-0 ${u.isAdmin ? 'bg-red-900/50 border border-red-500/50' : 'bg-[#1A2126] border border-[#2A353D]'}`}>
                   {u.name.charAt(0)}
                 </div>
                 <div>
                   <h4 className="font-bold text-white leading-tight">{u.name} {u.isAdmin && <span className="ml-2 text-[8px] uppercase tracking-widest bg-red-500 text-white px-1.5 py-0.5 rounded-sm">Admin</span>}</h4>
-                  <div className={`text-[10px] font-bold ${T.muted} mt-1`}>{u.phone}</div>
+                  {u.phone && <div className={`text-[10px] font-bold ${T.muted} mt-0.5`}>{u.phone}</div>}
                 </div>
               </div>
               
-              <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+              <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
                 <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-md border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                 <div className="flex gap-1">
                   <button onClick={() => handlePasswordReset(u)} title="Send Password Reset Email" className="px-2 py-1.5 text-xs font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]">Reset Pass</button>
-                  <button onClick={() => handleEditClick(u)} title="Edit Staff" className="p-2 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Edit size={14}/></button>
-                  <button onClick={() => handleDeactivate(u)} title="Terminate Staff" className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
+                  <button onClick={() => handleEditClick(u)} title="Edit Staff" className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Edit size={14}/></button>
+                  <button onClick={() => handleDeactivate(u)} title="Terminate Staff" className="p-1.5 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
                 </div>
               </div>
             </div>
