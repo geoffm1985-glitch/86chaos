@@ -1533,7 +1533,7 @@ const TabSettings = ({ appUser, addToast }) => {
   const [notifMessages, setNotifMessages] = useState(prefs.notifMessages ?? true);
   const [notifTrades, setNotifTrades] = useState(prefs.notifTrades ?? true);
   const [notifReminders, setNotifReminders] = useState(prefs.notifReminders ?? false);
-  const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); // Minutes
+  const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); // Fully adjustable minutes
 
   // --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
@@ -1546,12 +1546,10 @@ const TabSettings = ({ appUser, addToast }) => {
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
   const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
 
-  // --- Image Upload & Compression Engine ---
+  // --- Image Upload Engine (Kept as an option, but manual URL field is restored) ---
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
-    // Check file size (limit to 5MB before compression)
     if (file.size > 5 * 1024 * 1024) return addToast('File Too Large', 'Please select an image under 5MB.');
 
     const reader = new FileReader();
@@ -1560,7 +1558,6 @@ const TabSettings = ({ appUser, addToast }) => {
       const img = new Image();
       img.src = event.target.result;
       img.onload = () => {
-        // Compress image to 250px max width to save database space
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 250;
         const scaleSize = MAX_WIDTH / img.width;
@@ -1568,10 +1565,7 @@ const TabSettings = ({ appUser, addToast }) => {
         canvas.height = img.height * scaleSize;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        // Convert to Base64
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setPhotoURL(compressedDataUrl);
+        setPhotoURL(canvas.toDataURL('image/jpeg', 0.8));
       };
     };
   };
@@ -1579,7 +1573,7 @@ const TabSettings = ({ appUser, addToast }) => {
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     try {
-      await updateDoc(doc(db, "users", appUser.id), { name: name.trim(), phone: phone.trim(), photoURL });
+      await updateDoc(doc(db, "users", appUser.id), { name: name.trim(), phone: phone.trim(), photoURL: photoURL.trim() });
       addToast('Profile Saved', 'Your information has been updated.');
     } catch (err) { addToast('Error', 'Failed to save profile.'); }
   };
@@ -1643,7 +1637,6 @@ const TabSettings = ({ appUser, addToast }) => {
         <div className="space-y-4">
           <div className={`${T.card} p-4 sm:p-6`}>
             
-            {/* Interactive Avatar Upload */}
             <div className="flex items-center gap-6 mb-6 pb-6 border-b border-[#2A353D]">
               <div className="relative group cursor-pointer">
                 <img src={getAvatar(name, photoURL)} alt="Profile" className={`w-20 h-20 rounded-full border-2 border-[#D4A381] object-cover shadow-lg bg-[#12161A]`} />
@@ -1666,6 +1659,13 @@ const TabSettings = ({ appUser, addToast }) => {
                 <div><label className={T.label}>Full Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className={T.input} required /></div>
                 <div><label className={T.label}>Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={T.input} /></div>
               </div>
+              
+              {/* RESTORED: Raw text input for Profile Picture URL */}
+              <div>
+                <label className={T.label}>Profile Picture URL</label>
+                <input type="text" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className={T.input} placeholder="Paste image link here or use the upload button above..." />
+              </div>
+
               <div><label className={T.label}>Email Address (Cannot change)</label><input type="email" value={appUser?.email} disabled className={`${T.input} opacity-50 cursor-not-allowed`} /></div>
               <button type="submit" className={`w-full ${T.btn} py-3`}>Save Profile Data</button>
             </form>
@@ -1679,7 +1679,7 @@ const TabSettings = ({ appUser, addToast }) => {
         </div>
       )}
 
-      {/* --- SUB-TAB: PREFERENCES & ALERTS --- */}
+      {/* --- SUB-TAB: PREFERENCES --- */}
       {subTab === 'preferences' && (
         <form onSubmit={handleSavePrefs} className={`${T.card} p-4 sm:p-6 space-y-6`}>
           <div>
@@ -1708,6 +1708,7 @@ const TabSettings = ({ appUser, addToast }) => {
         </form>
       )}
 
+      {/* --- SUB-TAB: ALERTS --- */}
       {subTab === 'alerts' && (
         <form onSubmit={handleSavePrefs} className={`${T.card} p-4 sm:p-6 space-y-6`}>
           <div>
@@ -1719,7 +1720,6 @@ const TabSettings = ({ appUser, addToast }) => {
               <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
               <Toggle label="Urgent Message Board" desc="Receive push alerts for announcements marked 'Critical' by managers." checked={notifMessages} onChange={e => setNotifMessages(e.target.checked)} />
               
-              {/* Dynamic Reminder Timing */}
               <div className={`p-4 bg-[#12161A] border ${T.border} rounded-xl`}>
                 <div className="flex items-center justify-between mb-3">
                   <div>
@@ -1734,13 +1734,17 @@ const TabSettings = ({ appUser, addToast }) => {
                 </div>
                 {notifReminders && (
                   <div className="flex items-center gap-3 pt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Alert me:</span>
-                    <select value={reminderTime} onChange={e => setReminderTime(e.target.value)} className={`${T.input} w-auto py-2`}>
-                      <option value="30">30 Minutes Before</option>
-                      <option value="60">1 Hour Before</option>
-                      <option value="120">2 Hours Before</option>
-                      <option value="240">4 Hours Before</option>
-                    </select>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
+                    
+                    {/* RESTORED: Fully adjustable manual number input */}
+                    <input 
+                      type="number" 
+                      min="1" 
+                      value={reminderTime} 
+                      onChange={e => setReminderTime(e.target.value)} 
+                      className={`${T.input} w-24 text-center font-black`} 
+                      placeholder="120"
+                    />
                   </div>
                 )}
               </div>
@@ -1772,12 +1776,7 @@ const TabSettings = ({ appUser, addToast }) => {
                    <div className="text-sm font-bold text-white">Clock-In Grace Period</div>
                    <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>How many minutes early staff can clock in.</div>
                  </div>
-                 <select value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-24 py-2`}>
-                    <option value="0">Strict (0)</option>
-                    <option value="5">5 Mins</option>
-                    <option value="15">15 Mins</option>
-                    <option value="30">30 Mins</option>
-                 </select>
+                 <input type="number" min="0" value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-20 text-center font-black py-2`} />
                </div>
              </div>
 
@@ -1798,11 +1797,7 @@ const TabSettings = ({ appUser, addToast }) => {
                    <div className="text-sm font-bold text-white">Overtime Alert Threshold</div>
                    <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
                  </div>
-                 <select value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-24 py-2`}>
-                    <option value="35">35 Hrs</option>
-                    <option value="40">40 Hrs</option>
-                    <option value="45">45 Hrs</option>
-                 </select>
+                 <input type="number" min="1" value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-20 text-center font-black py-2`} />
                </div>
              </div>
 
@@ -1814,6 +1809,8 @@ const TabSettings = ({ appUser, addToast }) => {
     </div>
   );
 };
+
+
 // --- AUDIT LOGS TAB (Master Admin Only) ---
 const TabAuditLog = ({ appUser }) => {
   const logs = useLiveCollection('auditLogs', appUser?.restaurantId);
