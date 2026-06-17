@@ -572,7 +572,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
                 </div>
                 <div>
                   <h4 className="font-bold text-white leading-tight">{u.name} {u.isAdmin && <span className="ml-2 text-[8px] uppercase tracking-widest bg-red-500 text-white px-1.5 py-0.5 rounded-sm">Admin</span>}</h4>
-                  <div className={`text-[10px] font-bold ${T.muted} mt-1`}>{u.email} • {u.phone || 'No phone'}</div>
+                  <div className={`text-[10px] font-bold ${T.muted} mt-1`}>{u.phone}</div>
                 </div>
               </div>
               
