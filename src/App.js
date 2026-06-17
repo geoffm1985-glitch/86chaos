@@ -428,7 +428,8 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
 // --- TEAM MANAGEMENT ---
 const TabTeam = ({ users, appUser, addToast }) => {
-  const [name, setName] = useState(''); 
+  const canManageTeam = appUser.isAdmin || appUser.permissions?.team;
+  const [name, setName] = useState('');
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
   const [role, setRole] = useState('Bartender'); 
@@ -518,9 +519,10 @@ const TabTeam = ({ users, appUser, addToast }) => {
   // Filter out terminated users from the active roster UI
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
 
-  return (
+ return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
-      <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-4`}>
+      {canManageTeam && (
+        <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-4`}>
         {editingUserId && (
           <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
             <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
@@ -556,9 +558,9 @@ const TabTeam = ({ users, appUser, addToast }) => {
             </div>
           </div>
         )}
-        
         <button type="submit" className={`w-full ${T.btn}`}>{editingUserId ? 'UPDATE STAFF PROFILE' : 'ADD STAFF'}</button>
-      </form>
+        </form>
+      )}
       
       <div className={`${T.card} overflow-hidden`}>
         <div className="divide-y divide-[#2A353D]">
@@ -579,13 +581,13 @@ const TabTeam = ({ users, appUser, addToast }) => {
                 </div>
               </div>
               
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <button onClick={() => handlePasswordReset(u)} className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded border border-[#2A353D]">Reset</button>
-                <button onClick={() => handleEditClick(u)} className="p-1 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Edit size={12}/></button>
-                <button onClick={() => handleDeactivate(u)} className="p-1 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Trash2 size={12}/></button>
-              </div>
-            </div>
-          ))}
+            {canManageTeam && (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => handlePasswordReset(u)} className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded border border-[#2A353D]">Reset</button>
+                  <button onClick={() => handleEditClick(u)} className="p-1 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Edit size={12}/></button>
+                  <button onClick={() => handleDeactivate(u)} className="p-1 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Trash2 size={12}/></button>
+                </div>
+              )}
         </div>
       </div>
     </div>
