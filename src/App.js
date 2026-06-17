@@ -711,7 +711,7 @@ const TabMonth = ({ currentDate, users, shifts }) => {
     <div className={`${T.card} overflow-hidden print-container`}>
       <style>{`
         @media print {
-          @page { size: landscape; margin: 0.3in; }
+          @page { size: landscape; margin: 0.25in; }
           body * { visibility: hidden; }
           
           /* Hijack the entire printed page */
@@ -720,8 +720,9 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
             display: flex !important;
             flex-direction: column !important;
             background: white !important;
@@ -730,9 +731,8 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             margin: 0 !important;
             border: none !important;
             box-shadow: none !important;
-            
-            /* THE MAGIC BULLET: Override the Tailwind overflow-hidden guillotine */
-            overflow: visible !important; 
+            overflow: hidden !important; 
+            page-break-inside: avoid !important;
           }
           
           .no-print { display: none !important; }
@@ -741,11 +741,13 @@ const TabMonth = ({ currentDate, users, shifts }) => {
           .print-header { 
             display: block !important; 
             text-align: center !important; 
-            font-size: 24px !important; 
+            font-size: 22px !important; 
             font-weight: 900 !important; 
             color: black !important; 
-            margin-bottom: 10px !important; 
+            margin-top: 0 !important;
+            margin-bottom: 8px !important; 
             text-transform: uppercase !important; 
+            height: 30px !important;
           }
           
           /* The Grid - Stretches to fill exact remaining space on the paper */
@@ -755,8 +757,10 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             grid-template-rows: 25px repeat(${weeks}, 1fr) !important;
             border-top: 2px solid black !important;
             border-left: 2px solid black !important;
-            height: 100% !important;
+            height: calc(100vh - 45px) !important; /* Math: 100% minus the header height to prevent page 2 bleed */
+            max-height: calc(100vh - 45px) !important;
             box-sizing: border-box !important;
+            page-break-inside: avoid !important;
           }
           
           /* The Cells */
@@ -766,14 +770,14 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             background: white !important;
             color: black !important;
             min-height: 0 !important;
-            padding: 4px !important;
+            padding: 3px !important;
             display: flex !important;
             flex-direction: column !important;
             overflow: hidden !important;
           }
           
-          .cell-header-text { color: black !important; font-size: 12px !important; font-weight: 900 !important; }
-          .cell-date { font-size: 14px !important; font-weight: 900 !important; color: black !important; margin-bottom: 2px !important; }
+          .cell-header-text { color: black !important; font-size: 11px !important; font-weight: 900 !important; }
+          .cell-date { font-size: 13px !important; font-weight: 900 !important; color: black !important; margin-bottom: 2px !important; }
           
           /* The Shifts */
           .print-shift {
@@ -781,8 +785,8 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             color: black !important;
             border: 1px solid #94a3b8 !important;
             border-radius: 4px !important;
-            padding: 2px 4px !important;
-            font-size: 10px !important;
+            padding: 1px 4px !important;
+            font-size: 9px !important;
             font-weight: 900 !important;
             margin-bottom: 2px !important;
             white-space: nowrap !important;
