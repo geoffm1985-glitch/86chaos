@@ -1472,21 +1472,76 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
 // --- RECIPE BOOK ---
 const TabRecipes = ({ recipes, appUser, addToast }) => {
-  const [searchTerm, setSearchTerm] = useState(''); const [filterCat, setFilterCat] = useState('All'); const [isFormOpen, setIsFormOpen] = useState(false); const [activeRecipe, setActiveRecipe] = useState(null); const [yieldMult, setYieldMult] = useState(1);
+  const [searchTerm, setSearchTerm] = useState(''); 
+  const [filterCat, setFilterCat] = useState('All'); 
+  const [isFormOpen, setIsFormOpen] = useState(false); 
+  const [activeRecipe, setActiveRecipe] = useState(null); 
+  const [yieldMult, setYieldMult] = useState(1);
+  const [editingRecipeId, setEditingRecipeId] = useState(null);
+
   const parseAndMultiply = (text, mult) => { if (mult === 1) return text; const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/); if (!match) return text; let numStr = match[1], rest = match[2], val = 0; if (numStr.includes('/')) { const parts = numStr.split(' '); if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); } else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); } } else { val = parseFloat(numStr); } let finalVal = val * mult; let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2); if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim(); else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim(); else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim(); else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim(); else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim(); if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); return `${cleanVal} ${rest}`; };
-  const [title, setTitle] = useState(''); const [category, setCategory] = useState('Sauce/Dressing'); const [prepTime, setPrepTime] = useState(''); const [yieldAmt, setYieldAmt] = useState(''); const [ingredients, setIngredients] = useState(''); const [instructions, setInstructions] = useState('');
+  
+  const [title, setTitle] = useState(''); 
+  const [category, setCategory] = useState('Sauce/Dressing'); 
+  const [prepTime, setPrepTime] = useState(''); 
+  const [yieldAmt, setYieldAmt] = useState(''); 
+  const [ingredients, setIngredients] = useState(''); 
+  const [instructions, setInstructions] = useState('');
   const categories = ['All', 'Sauce/Dressing', 'Meat Prep', 'Appetizer', 'Entree', 'Side', 'Dessert', 'Cocktail'];
 
-  const handleSave = async (e) => { e.preventDefault(); if (!title.trim() || !ingredients.trim() || !instructions.trim()) return addToast('Error', 'Missing fields.'); try { await addDoc(collection(db, "recipes"), { title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString() }); addToast('Recipe Saved', `${title} added.`); setIsFormOpen(false); setTitle(''); setPrepTime(''); setYieldAmt(''); setIngredients(''); setInstructions(''); } catch (err) { addToast('Error', 'Could not save.'); } };
+  const resetForm = () => {
+    setTitle(''); setCategory('Sauce/Dressing'); setPrepTime(''); setYieldAmt(''); setIngredients(''); setInstructions(''); setEditingRecipeId(null);
+  };
+
+  const handleEdit = () => {
+    setTitle(activeRecipe.title);
+    setCategory(activeRecipe.category || 'Sauce/Dressing');
+    setPrepTime(activeRecipe.prepTime === '--' ? '' : activeRecipe.prepTime);
+    setYieldAmt(activeRecipe.yieldAmt === '--' ? '' : activeRecipe.yieldAmt);
+    setIngredients(activeRecipe.ingredients);
+    setInstructions(activeRecipe.instructions);
+    setEditingRecipeId(activeRecipe.id);
+    setActiveRecipe(null);
+    setIsFormOpen(true);
+  };
+
+  const handleSave = async (e) => { 
+    e.preventDefault(); 
+    if (!title.trim() || !ingredients.trim() || !instructions.trim()) return addToast('Error', 'Missing fields.'); 
+    try { 
+      if (editingRecipeId) {
+        await updateDoc(doc(db, "recipes", editingRecipeId), { 
+          title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), lastUpdated: new Date().toISOString() 
+        }); 
+        addToast('Recipe Updated', `${title} updated successfully.`); 
+      } else {
+        await addDoc(collection(db, "recipes"), { 
+          title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString() 
+        }); 
+        addToast('Recipe Saved', `${title} added to the book.`); 
+      }
+      setIsFormOpen(false); 
+      resetForm();
+    } catch (err) { addToast('Error', 'Could not save.'); } 
+  };
+  
   const handleDelete = async (id) => { if (!window.confirm("Delete recipe?")) return; await deleteDoc(doc(db, "recipes", id)); setActiveRecipe(null); addToast('Deleted', 'Recipe removed.'); };
+  
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
+
+  // Determine if the current user has permission to edit/delete the viewed recipe
+  const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' || appUser?.id === activeRecipe.authorId);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       <div className={`${T.card} p-4 sm:p-5 flex flex-col md:flex-row gap-4 items-center justify-between`}>
         <div className="flex-1 w-full relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/><input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/></div>
-        <div className="flex w-full md:w-auto gap-3"><select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className={`${T.input} md:w-48`}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select><button onClick={() => setIsFormOpen(true)} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button></div>
+        <div className="flex w-full md:w-auto gap-3">
+          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className={`${T.input} md:w-48`}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+          <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
+        </div>
       </div>
+      
       {filteredRecipes.length === 0 ? (
         <div className={`text-center py-20 px-4 border-2 border-dashed ${T.border} rounded-3xl`}><ChefHat className={`mx-auto ${T.copper} mb-4`} size={48}/><h3 className={`text-lg font-black ${T.muted}`}>No recipes found.</h3></div>
       ) : (
@@ -1500,6 +1555,7 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
           ))}
         </div>
       )}
+      
       <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
         {activeRecipe && (
           <div className="space-y-6">
@@ -1509,17 +1565,31 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
               <div className="md:col-span-2 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Ingredients <span className={`lowercase ml-1 ${yieldMult !== 1 ? T.copper : ''}`}>({yieldMult}x)</span></h4><ul className="space-y-2 text-sm font-bold text-slate-300">{activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${yieldMult !== 1 ? 'bg-[#D4A381]' : 'bg-slate-500'}`}/><span>{parseAndMultiply(ing, yieldMult)}</span></li>)}</ul></div>
               <div className="md:col-span-3 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Method</h4><div className="space-y-3 text-sm font-medium text-slate-300">{activeRecipe.instructions.split('\n').map((step, i) => step.trim() && <p key={i} className="leading-relaxed"><strong className="text-white mr-1">{i+1}.</strong>{step}</p>)}</div></div>
             </div>
-            <div className={`flex justify-between items-center pt-6 border-t ${T.border} mt-6`}><div className={`text-[10px] font-bold ${T.muted}`}>Added by {activeRecipe.authorName}</div>{(appUser?.isAdmin || appUser?.id === activeRecipe.authorId) && (<button onClick={() => handleDelete(activeRecipe.id)} className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-400 bg-[#12161A] border border-[#2A353D] px-3 py-1.5 rounded-lg transition-colors"><Trash2 size={14}/> Delete Recipe</button>)}</div>
+            
+            <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-6 border-t ${T.border} mt-6`}>
+              <div className={`text-[10px] font-bold ${T.muted}`}>
+                Added by {activeRecipe.authorName} <br/> 
+                {activeRecipe.lastUpdated && <span className="opacity-70">Updated: {new Date(activeRecipe.lastUpdated).toLocaleDateString()}</span>}
+              </div>
+              
+              {canModifyRecipe && (
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button onClick={handleEdit} className="flex-1 sm:flex-none flex justify-center items-center gap-1 text-xs font-bold text-blue-400 hover:text-blue-300 bg-[#12161A] border border-[#2A353D] px-4 py-2 rounded-lg transition-colors"><Edit size={14}/> Edit</button>
+                  <button onClick={() => handleDelete(activeRecipe.id)} className="flex-1 sm:flex-none flex justify-center items-center gap-1 text-xs font-bold text-red-500 hover:text-red-400 bg-[#12161A] border border-[#2A353D] px-4 py-2 rounded-lg transition-colors"><Trash2 size={14}/> Delete</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Modal>
-      <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title="Add New Spec">
+      
+      <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={editingRecipeId ? "Edit Spec" : "Add New Spec"}>
         <form onSubmit={handleSave} className="space-y-4">
           <div><label className={T.label}>Recipe Title</label><input type="text" value={title} onChange={(e)=>setTitle(e.target.value)} className={T.input} required placeholder="e.g. House Ranch"/></div>
           <div className="grid grid-cols-3 gap-3"><div><label className={T.label}>Category</label><select value={category} onChange={(e)=>setCategory(e.target.value)} className={T.input}>{categories.slice(1).map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Prep Time</label><input type="text" value={prepTime} onChange={(e)=>setPrepTime(e.target.value)} className={T.input} placeholder="e.g. 15 mins"/></div><div><label className={T.label}>Yield</label><input type="text" value={yieldAmt} onChange={(e)=>setYieldAmt(e.target.value)} className={T.input} placeholder="e.g. 4 Quarts"/></div></div>
           <div><label className={T.label}>Ingredients (One per line)</label><textarea value={ingredients} onChange={(e)=>setIngredients(e.target.value)} rows="5" className={T.input} required placeholder="1 Cup Mayo&#10;1/2 Cup Buttermilk&#10;1 Tbsp Dill"/></div>
           <div><label className={T.label}>Method / Instructions (One step per line)</label><textarea value={instructions} onChange={(e)=>setInstructions(e.target.value)} rows="5" className={T.input} required placeholder="Combine mayo and buttermilk in cambro.&#10;Whisk in dry seasoning.&#10;Label and date."/></div>
-          <button type="submit" className={`w-full ${T.btn}`}>Save Recipe</button>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingRecipeId ? "Update Recipe" : "Save Recipe"}</button>
         </form>
       </Modal>
     </div>
