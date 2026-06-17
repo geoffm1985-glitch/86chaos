@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
@@ -393,11 +393,21 @@ const TabTeam = ({ appUser, users, addToast }) => {
   
   const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role === 'Bartender' ? -1 : 1));
 
-  const handleAdd = async (e) => { 
+const handleAdd = async (e) => { 
     e.preventDefault(); if (!name.trim() || !email.trim()) return; 
     const tPass = generateTempPass(); 
     try { 
-      await addDoc(collection(db, "users"), { 
+      // 1. Create the Firebase Auth account using a 'Ghost' app so the Admin doesn't get logged out
+      const secondaryApp = initializeApp(firebaseConfig, "TeamBuilderApp_" + Date.now());
+      const secondaryAuth = getAuth(secondaryApp);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), tPass);
+      const newAuthUid = userCredential.user.uid;
+      
+      // 2. Sign out of the ghost app to keep things clean
+      await secondaryAuth.signOut();
+
+      // 3. Save the database profile using setDoc so the Document ID perfectly matches the secure Auth UID
+      await setDoc(doc(db, "users", newAuthUid), { 
         name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
         password: tPass, role, isAdmin, permissions: perms, isActive: true, 
         forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
@@ -409,18 +419,19 @@ const TabTeam = ({ appUser, users, addToast }) => {
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       
       if (isMobile && phone.trim()) {
-        // iOS requires '&body=' while Android uses '?body='
         const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?';
         window.location.href = `sms:${phone.trim()}${smsChar}body=${encodeURIComponent(welcomeMsg)}`;
       } else {
-        // Desktop (or Mobile without a phone number) falls back to Email
         window.location.href = `mailto:${email.toLowerCase().trim()}?subject=${encodeURIComponent("Your Cheers 86 Chaos Account")}&body=${encodeURIComponent(welcomeMsg)}`;
       }
 
-      addToast('Staff Added', `Auto-generated password: ${tPass}`); 
+      addToast('Staff Added', `Account created successfully.`); 
       setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setIsAdmin(false); 
       setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false });
-    } catch (err) { console.error(err); } 
+    } catch (err) { 
+      console.error(err); 
+      addToast('Error', err.message || 'Failed to create user account.');
+    } 
   };
 
   const handleUpdateUser = async (e) => { 
