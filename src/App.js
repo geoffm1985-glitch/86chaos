@@ -369,22 +369,21 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   );
 };
 
-// --- Tab: Sales & Trends (Upgraded with Weekly Graph) ---
+// --- Tab: Sales & Trends (Synchronized Week Engine) ---
 const TabSales = ({ sales, addToast }) => {
   const [date, setDate] = useState(getToday());
   const [amount, setAmount] = useState('');
   const [tag, setTag] = useState('Standard Day');
-  const [weekOffset, setWeekOffset] = useState(0);
 
-  // Logic to calculate Monday-Sunday grid
-  const getStartOfWeek = (offset) => {
-    const d = new Date();
+  // Logic to calculate Monday-Sunday grid based strictly on the selected 'date'
+  const getStartOfWeek = (baseDateStr) => {
+    const d = new Date(baseDateStr + 'T12:00:00');
     const day = d.getDay() || 7; 
-    d.setDate(d.getDate() - day + 1 + (offset * 7));
+    d.setDate(d.getDate() - day + 1);
     return d;
   };
 
-  const startOfWeek = getStartOfWeek(weekOffset);
+  const startOfWeek = getStartOfWeek(date);
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(endOfWeek.getDate() + 6);
 
@@ -404,7 +403,6 @@ const TabSales = ({ sales, addToast }) => {
      const dateStr = formatDate(targetDate);
      const daySale = weekSales.find(s => s.date === dateStr);
      const amt = daySale ? daySale.amount : 0;
-     // Caps bar height visually based on an estimated $12k perfect day
      const heightPct = amt > 0 ? Math.min(100, Math.max(8, (amt / 12000) * 100)) + '%' : '0%';
      return { day: dayName.charAt(0), amt, h: heightPct, dateStr };
   });
@@ -415,31 +413,38 @@ const TabSales = ({ sales, addToast }) => {
     setAmount(''); addToast('Saved', 'Daily sales logged.');
   };
 
+  // Shift the date by 7 days, forcing the graph AND the input box to move together
+  const shiftWeek = (direction) => {
+    const d = new Date(date + 'T12:00:00');
+    d.setDate(d.getDate() + (direction * 7));
+    setDate(formatDate(d));
+  };
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className={`${T.card} p-4 sm:p-6`}>
         
-        {/* Header & Week Navigator */}
+        {/* Header & Synchronized Week Navigator */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <h2 className="text-xl font-black flex items-center gap-2 text-white"><TrendingUp className={T.copper}/> Operations Ledger</h2>
           <div className="flex items-center justify-between w-full sm:w-auto gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-1 shadow-sm">
-            <button onClick={() => setWeekOffset(w => w - 1)} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><ChevronLeft size={16}/></button>
+            <button onClick={() => shiftWeek(-1)} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><ChevronLeft size={16}/></button>
             <span className="text-[10px] font-black uppercase tracking-widest text-white px-2">
               {formatDisplayDate(formatDate(startOfWeek))} - {formatDisplayDate(formatDate(endOfWeek))}
             </span>
-            <button onClick={() => setWeekOffset(w => w + 1)} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><ChevronRight size={16}/></button>
+            <button onClick={() => shiftWeek(1)} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><ChevronRight size={16}/></button>
           </div>
         </div>
 
         {/* The Copper Bar Graph */}
         <div className="h-40 flex items-end justify-between gap-1 sm:gap-2 pt-6 px-2 sm:px-4 bg-[#12161A] rounded-xl border border-[#2A353D]/60 relative mb-6">
           {graphData.map((bar, idx) => (
-            <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer">
+            <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer" onClick={() => setDate(bar.dateStr)}>
               <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-[#1A2126] border border-[#2A353D] px-2 py-1 rounded text-white text-[10px] font-bold shadow-xl z-10 pointer-events-none whitespace-nowrap">
                 ${bar.amt.toLocaleString(undefined, {minimumFractionDigits: 2})}
               </div>
               <div style={{ height: bar.h }} className={`w-full max-w-[40px] rounded-t ${bar.amt > 0 ? T.grad : 'bg-[#1A2126]'} opacity-80 hover:opacity-100 transition-all shadow-md`} />
-              <span className="text-[10px] text-slate-400 mt-2 font-mono font-bold mb-2">{bar.day}</span>
+              <span className={`text-[10px] mt-2 font-mono font-bold mb-2 ${date === bar.dateStr ? 'text-[#D4A381]' : 'text-slate-400'}`}>{bar.day}</span>
             </div>
           ))}
         </div>
@@ -462,7 +467,6 @@ const TabSales = ({ sales, addToast }) => {
     </div>
   );
 };
-
 // --- Tab: Team ---
 const TabTeam = ({ appUser, users, addToast }) => {
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [phone, setPhone] = useState(''); const [role, setRole] = useState('Bartender'); const [photoURL, setPhotoURL] = useState(''); 
