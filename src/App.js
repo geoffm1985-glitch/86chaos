@@ -59,7 +59,7 @@ const formatDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('e
 const formatDisplayFullDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 const formatDisplayMonth = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getDate();
-const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; };
+const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; try { let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; } catch(e){ return t; } };
 const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
@@ -69,6 +69,20 @@ const logAudit = async (user, action, target, details) => { try { await addDoc(c
 
 // --- Global Crash Reporter ---
 if (typeof window !== 'undefined' && !window.crashCatcherAttached) { window.crashCatcherAttached = true; window.onerror = (msg, url, lineNo, columnNo, error) => { addDoc(collection(db, "crashReports"), { type: 'error', message: msg, stack: error?.stack || '', time: new Date().toISOString() }).catch(()=>{}); return false; }; }
+
+// --- HOLIDAY & TIME ENGINE ---
+const HOLIDAYS = {
+  "01-01": "New Year's Day", "02-14": "Valentine's Day", "03-17": "St. Patrick's Day", 
+  "05-05": "Cinco de Mayo", "07-04": "Independence Day", "10-31": "Halloween", 
+  "11-11": "Veterans Day", "12-24": "Christmas Eve", "12-25": "Christmas Day", "12-31": "NYE",
+  "2026-02-08": "Super Bowl", "2026-03-31": "Opening Day", "2026-04-05": "Easter", "2026-05-10": "Mother's Day", 
+  "2026-05-25": "Memorial Day", "2026-06-21": "Father's Day", "2026-09-07": "Labor Day", "2026-11-26": "Thanksgiving"
+};
+const getHoliday = (dateStr) => {
+  if (!dateStr) return null;
+  const mmdd = dateStr.substring(5);
+  return HOLIDAYS[dateStr] || HOLIDAYS[mmdd] || null;
+};
 
 // --- UI Components ---
 // ============================================================================
@@ -273,7 +287,6 @@ const LoginScreen = ({ setAppUser }) => {
     </div>
   );
 };
-
 // ============================================================================
 // SECTION 3: MASTER SCHEDULE HUB (Combined Schedule, TimeClock, Month, Requests)
 // ============================================================================
@@ -281,7 +294,6 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
   
-  // FIXED: Chronologically sorted to ensure the "Next Shift" is actually the next shift
   const myNextShift = shifts
     .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date))[0];
@@ -293,16 +305,15 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     addToast('Posted', 'Shift sent to trade board.');
   };
 
-  // FIXED: Scopes shifts to the selected month and sorts them chronologically
   const activeMonthShifts = shifts
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date));
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24">
-      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-[#2A353D] mb-4">
         {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
-          <button key={tab} onClick={() => setSubTab(tab)} className={`px-4 py-2 text-xs font-bold rounded-xl capitalize whitespace-nowrap transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>{tab.replace('-', ' ')}</button>
+          <button key={tab} onClick={() => setSubTab(tab)} className={`px-4 py-2.5 text-xs font-black rounded-t-xl uppercase tracking-widest whitespace-nowrap transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{tab.replace('-', ' ')}</button>
         ))}
       </div>
 
@@ -328,7 +339,6 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         </div>
       )}
 
-      {/* FIXED: Full Schedule now groups by date with sticky headers */}
       {subTab === 'full-schedule' && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex justify-between items-center">
@@ -338,15 +348,19 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
           <div className="divide-y divide-[#2A353D]">
             {activeMonthShifts.map((shift, index) => {
                const emp = users.find(u => u.id === shift.employeeId);
-               
-               // Logic to detect when the date changes so we can draw a header
                const showDivider = index === 0 || shift.date !== activeMonthShifts[index - 1].date;
                
                return (
                  <React.Fragment key={shift.id}>
                    {showDivider && (
-                     <div className="bg-[#1A2126] px-3 py-1.5 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm">
-                       {formatDisplayDate(shift.date)}
+                     <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
+                       <span>{formatDisplayDate(shift.date)}</span>
+                       {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
+                       {events.filter(e => e.type === 'special_event' && e.date === shift.date).map(ev => (
+                         <span key={ev.id} className="bg-red-900/40 text-red-400 px-1.5 py-0.5 rounded border border-red-500/30">
+                           {ev.title} {ev.time && `@ ${formatShortTime(ev.time)}`}
+                         </span>
+                       ))}
                      </div>
                    )}
                    <div className={`${T.row} hover:bg-[#12161A]`}>
@@ -369,6 +383,29 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   );
 };
 
+// --- COMPACT MONTH VIEW ---
+const TabMonth = ({ currentDate, users, shifts }) => {
+  const monthStr = getMonthStr(currentDate); const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); const days = getDaysInMonth(monthStr);
+  return (
+    <div className={`${T.card} overflow-hidden print-container`}>
+      <style>{`@media print { .no-print{display:none;} .print-container{position:absolute;top:0;left:0;width:100%;background:white;} .cell{border:1px solid #ccc!important;} }`}</style>
+      <div className="flex justify-end p-2 no-print border-b border-[#2A353D] bg-[#12161A]"><button onClick={()=>window.print()} className={T.btnAlt}>Print Calendar</button></div>
+      <div className={`grid grid-cols-7 border-t border-l ${T.border}`}>
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`p-1 bg-[#12161A] text-center font-black text-[10px] ${T.copper} border-b border-r ${T.border} uppercase cell`}>{d}</div>)}
+        {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className={`bg-[#12161A]/50 border-b border-r ${T.border} min-h-[50px] cell`}/>)}
+        {Array.from({length:days}).map((_,i)=>{
+          const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
+          return (
+            <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell overflow-hidden`}>
+              <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5`}>{i+1}</span>
+              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">{dayShifts.map(s=><div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-orange-400'}`}>{users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}</div>)}</div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  );
+};
 // --- Tab: Sales & Trends (Synchronized Week Engine) ---
 const TabSales = ({ sales, addToast }) => {
   const [date, setDate] = useState(getToday());
@@ -642,13 +679,22 @@ const TabMonth = ({ currentDate, users, shifts }) => {
   );
 };
 
-// --- SCHEDULE MAKER ---
+// ---// --- SCHEDULE MAKER ---
 const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addToast, appUser }) => {
-  const [selectedEmp, setSelectedEmp] = useState(''); const [assignDates, setAssignDates] = useState([]); const [presetShift, setPresetShift] = useState('Custom'); const [startTime, setStartTime] = useState('16:00'); const [endTime, setEndTime] = useState('21:00');
-  const [isEventModalOpen, setIsEventModalOpen] = useState(false); const [eventDate, setEventDate] = useState(getToday()); const [eventTitle, setEventTitle] = useState('');
+  const [selectedEmp, setSelectedEmp] = useState(''); 
+  const [assignDates, setAssignDates] = useState([]); 
+  const [presetShift, setPresetShift] = useState('Custom'); 
+  const [startTime, setStartTime] = useState('16:00'); 
+  const [endTime, setEndTime] = useState('21:00');
+  
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false); 
+  const [eventDate, setEventDate] = useState(getToday()); 
+  const [eventTime, setEventTime] = useState('');
+  const [eventTitle, setEventTitle] = useState('');
   
   const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
-  const monthStr = getMonthStr(currentDate); const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
+  const monthStr = getMonthStr(currentDate); 
+  const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => a.date.localeCompare(b.date));
 
@@ -679,14 +725,17 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   };
 
   const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
-  const handleAddEvent = async (e) => { e.preventDefault(); if(!eventTitle.trim()) return; await addDoc(collection(db, "events"), { type: 'special_event', date: eventDate, title: eventTitle.trim(), addedBy: appUser.name }); setEventTitle(''); setIsEventModalOpen(false); addToast('Event Added', 'Calendar updated.'); };
+  const handleAddEvent = async (e) => { e.preventDefault(); if(!eventTitle.trim()) return; await addDoc(collection(db, "events"), { type: 'special_event', date: eventDate, time: eventTime, title: eventTitle.trim(), addedBy: appUser.name }); setEventTitle(''); setEventTime(''); setIsEventModalOpen(false); addToast('Event Added', 'Calendar updated.'); };
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-12 w-full">
       <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title="Add Special Event">
         <form onSubmit={handleAddEvent} className="space-y-4">
-          <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
-          <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} required/></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
+            <div><label className={T.label}>Time (Optional)</label><input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/></div>
+          </div>
+          <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
           <button type="submit" className={`w-full ${T.btn}`}>Save Event</button>
         </form>
       </Modal>
@@ -701,38 +750,71 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
           </div>
           <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full md:w-auto ${T.btn} disabled:opacity-50`}>Assign ({assignDates.length})</button>
         </div>
-        <button onClick={handlePublish} className={`w-full lg:w-auto ${T.btnAlt}`}>Publish All</button>
+        <div className="flex w-full lg:w-auto gap-2">
+          <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt}`}>Publish</button>
+          <button onClick={() => {setEventDate(currentDate); setIsEventModalOpen(true);}} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381]`}>+ Event</button>
+        </div>
       </div>
 
-      <div className={`${T.card} overflow-x-auto no-scrollbar`}>
-        <table className="w-full text-left text-[10px] border-collapse">
-          <thead><tr className="bg-[#12161A] border-b border-[#2A353D]"><th className={`p-2 font-bold sticky left-0 bg-[#12161A] z-20 w-24 border-r border-[#2A353D] ${T.copper}`}>Staff</th>{monthDays.map(d=>{
-            const hasEvent = monthEvents.some(e => e.date === d);
-            return (<th key={d} className={`p-1 text-center border-r border-[#2A353D] min-w-[38px] ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}><div className={`font-bold uppercase ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'short'})}</div><div className="text-sm font-black text-white relative">{parseInt(d.split('-')[2])} {hasEvent && <Star size={8} className="absolute top-0 right-1 text-[#D4A381] fill-[#D4A381]"/>}</div></th>)
-          })}</tr></thead>
-          <tbody className="divide-y divide-[#2A353D]">{displayUsers.map(u => (
-            <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-              <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+      <div className={`${T.card} w-full overflow-hidden`}>
+        <table className="w-full text-left text-[10px] border-collapse table-fixed">
+          <thead>
+            <tr className="bg-[#12161A] border-b border-[#2A353D]">
+              <th className={`p-1 sm:p-2 font-bold bg-[#12161A] z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
               {monthDays.map(d => {
-                const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); const sel = assignDates.includes(d) && selectedEmp===u.id;
-                return (<td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all ${sel?'bg-[#8F6040] outline outline-4 outline-[#8F6040] shadow-xl z-50 relative':'hover:bg-[#12161A]'}`}>
-                  <div className="flex flex-col gap-[1px]">
-                    {req && !req.isPartial && <div className="w-full rounded font-black text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Unavail</div>}
-                    {req && req.isPartial && <div className="w-full rounded font-black text-[8px] py-1 px-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>Off: {formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                    {shift && <div className={`w-full rounded font-bold text-[9px] py-1 text-center text-slate-900 ${shift.isPublished?(u.role==='Bartender'?'bg-[#D4A381]':'bg-[#C59373]'):'bg-slate-400'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
-                    {!req && !shift && <div className="h-5 rounded"></div>}
+                const holiday = getHoliday(d);
+                const dayEvents = monthEvents.filter(e => e.date === d);
+                const hasAlert = holiday || dayEvents.length > 0;
+                
+                return (
+                <th key={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
+                  <div className={`font-bold uppercase text-[8px] sm:text-[9px] ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'narrow'})}</div>
+                  <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
+                    {parseInt(d.split('-')[2])}
                   </div>
-                </td>)
-              })}
+                  
+                  {/* Desktop Hover Tooltip for Holidays/Events */}
+                  {hasAlert && (
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
+                      {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
+                      {dayEvents.map(ev => (
+                        <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
+                          {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </th>
+              )})}
             </tr>
-          ))}</tbody>
+          </thead>
+          <tbody className="divide-y divide-[#2A353D]">
+            {displayUsers.map(u => (
+              <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
+                <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                {monthDays.map(d => {
+                  const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                  const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                  const sel = assignDates.includes(d) && selectedEmp===u.id;
+                  return (
+                  <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-12 sm:h-16 lg:h-20 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-30 relative':'hover:bg-[#12161A]'}`}>
+                    <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
+                      {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
+                      {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}</div>}
+                      {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${shift.isPublished?(u.role==='Bartender'?'bg-[#D4A381] text-slate-900':'bg-[#C59373] text-slate-900'):'bg-slate-400 text-slate-900'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime).replace(/[ap]/g, '')}-{formatShortTime(shift.endTime).replace(/[ap]/g, '')}</div>}
+                    </div>
+                  </td>)
+                })}
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
-
+      
+      {/* Event Ledger underneath for clear visibility */}
       <div className={`${T.card} overflow-hidden`}>
         <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-          <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Special Events</h3>
-          <button onClick={() => {setEventDate(currentDate); setIsEventModalOpen(true);}} className={T.btnAlt}>Add Event</button>
+          <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
         </div>
         <div className={`divide-y ${T.border}`}>
           {monthEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
@@ -742,7 +824,10 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
                 <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
                   <div className="text-[10px] uppercase">{new Date(ev.date+'T12:00').toLocaleDateString('en-US',{month:'short'})}</div><div className="text-lg leading-tight">{parseInt(ev.date.split('-')[2])}</div>
                 </div>
-                <div><h4 className="font-bold text-white">{ev.title}</h4><span className={`text-[10px] font-bold ${T.muted}`}>Added by {ev.addedBy}</span></div>
+                <div>
+                  <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
+                  <span className={`text-[10px] font-bold ${T.muted}`}>Added by {ev.addedBy}</span>
+                </div>
               </div>
               <button onClick={() => { if(window.confirm("Delete event?")) deleteDoc(doc(db,"events",ev.id)); }} className="text-slate-400 hover:text-red-500 p-2"><Trash2 size={18}/></button>
             </div>
@@ -751,6 +836,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
       </div>
     </div>
   );
+};
 };
 
 // --- PREP & TASKS COMMAND CENTER ---
@@ -1635,11 +1721,13 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
             {Array.from({length: firstDayOffset}).map((_,i) => <div key={`empty-${i}`} className={`p-1 border-b border-r ${T.border} bg-[#1A2126] min-h-[45px]`} />)}
             {monthDays.map(d => {
               const isSelected = selectedDates.includes(d); const existingReq = myRequests.find(r => r.date === d); const isPast = d < getToday();
+              const holiday = getHoliday(d);
               return (
-                <div key={d} onClick={() => !isPast && !existingReq && handleToggleDate(d)} className={`p-1.5 border-b border-r ${T.border} min-h-[45px] flex flex-col items-center justify-center transition-colors ${(isPast || existingReq) ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}>
+                <div key={d} onClick={() => !isPast && !existingReq && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${(isPast || existingReq) ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}>
                   <span className={`text-xs font-black ${isSelected ? T.copper : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
-                  {existingReq && <span className="text-[7px] font-black uppercase text-red-500 mt-0.5">Off</span>}
-                  {isSelected && <Check size={10} className={T.copper}/>}
+                  {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
+                  {existingReq && <span className="text-[7px] font-black uppercase text-red-500 mt-auto mb-1">Off</span>}
+                  {isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}
                 </div>
               )
             })}
