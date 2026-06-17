@@ -453,7 +453,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
   };
 
   const handleSave = async (e) => { 
-    e.preventDefault(); if (!name.trim() || !email.trim()) return; 
+    e.preventDefault(); if (!name.trim() || !email.trim() || !phone.trim()) return; 
     
     // IF EDITING EXISTING USER: Update Database only
     if (editingUserId) {
@@ -535,7 +535,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
           <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
         </div>
         
-        <div><label className={T.label}>Phone (Optional, for SMS setup)</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className={T.input} /></div>
+       <div><label className={T.label}>Phone</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className={T.input} required /></div>
         <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
         
         <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
