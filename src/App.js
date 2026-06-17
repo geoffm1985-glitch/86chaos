@@ -402,6 +402,21 @@ const TabTeam = ({ appUser, users, addToast }) => {
         password: tPass, role, isAdmin, permissions: perms, isActive: true, 
         forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
       }); 
+      
+      // --- AUTOMATED ONBOARDING COMMS ENGINE ---
+      const welcomeMsg = `Welcome to Cheers!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
+      
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isMobile && phone.trim()) {
+        // iOS requires '&body=' while Android uses '?body='
+        const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?';
+        window.location.href = `sms:${phone.trim()}${smsChar}body=${encodeURIComponent(welcomeMsg)}`;
+      } else {
+        // Desktop (or Mobile without a phone number) falls back to Email
+        window.location.href = `mailto:${email.toLowerCase().trim()}?subject=${encodeURIComponent("Your Cheers 86 Chaos Account")}&body=${encodeURIComponent(welcomeMsg)}`;
+      }
+
       addToast('Staff Added', `Auto-generated password: ${tPass}`); 
       setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setIsAdmin(false); 
       setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false });
