@@ -124,7 +124,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
   if (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep) { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> }); }
   if (appUser?.isAdmin || perms.inventory) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
-  if (appUser?.isAdmin || perms.team) tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
+tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (appUser?.isAdmin || perms.sales) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
   // Master Admin only
