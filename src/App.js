@@ -2017,13 +2017,21 @@ export default function App() {
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} />
 
-      {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+    {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
-          <button onClick={['schedule', 'prep'].includes(activeTabState) ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronLeft size={20} /></button>
-          <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381]">
-            {['schedule', 'prep'].includes(activeTabState) ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
-          </h2>
-          <button onClick={['schedule', 'prep'].includes(activeTabState) ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>
+          {activeTabState === 'sales' ? (
+            <div className="w-full text-center">
+              <h2 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase">Sales & Trends</h2>
+            </div>
+          ) : (
+            <>
+              <button onClick={['schedule', 'prep'].includes(activeTabState) ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronLeft size={20} /></button>
+              <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381]">
+                {['schedule', 'prep'].includes(activeTabState) ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+              </h2>
+              <button onClick={['schedule', 'prep'].includes(activeTabState) ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>
+            </>
+          )}
         </div>
       )}
 
