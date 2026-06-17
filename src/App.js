@@ -1720,10 +1720,12 @@ const TabSettings = ({ appUser, addToast }) => {
               <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
               <Toggle label="Urgent Message Board" desc="Receive push alerts for announcements marked 'Critical' by managers." checked={notifMessages} onChange={e => setNotifMessages(e.target.checked)} />
               
-              <div className={`p-4 bg-[#12161A] border ${T.border} rounded-xl`}>
-                <div className="flex items-center justify-between mb-3">
+             <div className={`p-4 bg-[#12161A] border ${T.border} rounded-xl`}>
+                
+                {/* CHANGED THIS TO A LABEL SO IT IS ACTUALLY CLICKABLE! */}
+                <label className="flex items-center justify-between mb-3 cursor-pointer group">
                   <div>
-                    <div className="text-sm font-bold text-white">Pre-Shift Reminders</div>
+                    <div className="text-sm font-bold text-white group-hover:text-[#D4A381] transition-colors">Pre-Shift Reminders</div>
                     <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>Automated ping before your scheduled clock-in time.</div>
                   </div>
                   <div className="relative flex-shrink-0">
@@ -1731,7 +1733,24 @@ const TabSettings = ({ appUser, addToast }) => {
                     <div className={`block w-12 h-7 rounded-full transition-colors ${notifReminders ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
                     <div className={`absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform ${notifReminders ? 'transform translate-x-5' : ''}`}></div>
                   </div>
-                </div>
+                </label>
+
+                {/* The Adjustable Drop-down */}
+                {notifReminders && (
+                  <div className="flex items-center gap-3 pt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      value={reminderTime} 
+                      onChange={e => setReminderTime(e.target.value)} 
+                      className={`${T.input} w-24 text-center font-black`} 
+                      placeholder="120"
+                    />
+                  </div>
+                )}
+              </div>
+               
                 {notifReminders && (
                   <div className="flex items-center gap-3 pt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
