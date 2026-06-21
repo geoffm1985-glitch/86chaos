@@ -970,6 +970,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   const [taskFreq, setTaskFreq] = useState('daily');
   const [taskTargetDay, setTaskTargetDay] = useState('Monday'); 
   const [taskTargetDate, setTaskTargetDate] = useState('1');
+  const [editingTaskId, setEditingTaskId] = useState(null);
 
   // --- PREP LOGIC ---
   const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
@@ -1015,9 +1016,29 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   const handleAddTask = async (e) => { 
     e.preventDefault(); 
     if(taskText.trim()) { 
-      await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {}, restaurantId: appUser.restaurantId }); 
+      if (editingTaskId) {
+        await updateDoc(doc(db, "tasks", editingTaskId), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null });
+        setEditingTaskId(null);
+      } else {
+        await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {}, restaurantId: appUser.restaurantId }); 
+      }
       setTaskText(''); 
     } 
+  };
+
+  const editTask = (t) => {
+    setTaskText(t.title);
+    setTaskCat(t.category || 'Cleaning');
+    setTaskFreq(t.frequency || 'daily');
+    if (t.frequency === 'weekly') setTaskTargetDay(t.targetDay || 'Monday');
+    if (t.frequency === 'monthly') setTaskTargetDate(t.targetDate || '1');
+    setEditingTaskId(t.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelTaskEdit = () => {
+    setTaskText('');
+    setEditingTaskId(null);
   };
   
   // FIX: Anchor Tasks to prepDate, not global currentDate
@@ -1052,12 +1073,14 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
       <div className="space-y-4 mt-4">
         {appUser?.isAdmin && (
           <form onSubmit={handleAddTask} className={`${T.card} p-3 flex flex-col md:flex-row gap-2 items-center bg-[#1A2126]`}>
+            {editingTaskId && <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest px-2 whitespace-nowrap">Editing Task</div>}
             <input type="text" value={taskText} onChange={e=>setTaskText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-sm font-medium text-white" placeholder={`New ${freqFilter} task...`} required/>
             <div className="flex w-full md:w-auto gap-2">
               <select value={taskCat} onChange={e=>setTaskCat(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white"><option>Cleaning</option><option>General</option></select>
               {freqFilter === 'weekly' && <select value={taskTargetDay} onChange={e=>setTaskTargetDay(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=><option key={d}>{d}</option>)}</select>}
               {freqFilter === 'monthly' && <select value={taskTargetDate} onChange={e=>setTaskTargetDate(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{Array.from({length:31}).map((_,i)=><option key={i+1}>{i+1}</option>)}</select>}
-              <button type="submit" className={`${T.btn} px-4 py-2 flex items-center justify-center`}><Plus size={18}/></button>
+              <button type="submit" className={`${T.btn} px-4 py-2 flex items-center justify-center`}>{editingTaskId ? <Check size={18}/> : <Plus size={18}/>}</button>
+              {editingTaskId && <button type="button" onClick={cancelTaskEdit} className={`${T.btnAlt} px-4 py-2 flex items-center justify-center border-red-900/50 text-red-400 hover:text-red-300`}><X size={18}/></button>}
             </div>
           </form>
         )}
@@ -1083,6 +1106,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
+                        {appUser?.isAdmin && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
                         {appUser?.isAdmin && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                       </div>
                     </div>
@@ -1098,9 +1122,9 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
 
   return (
     <div className="max-w-3xl mx-auto space-y-4 pb-40">
-      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-[#2A353D] mb-4">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['prep', 'daily', 'weekly', 'monthly'].map((tab) => (
-          <button key={tab} onClick={() => { setSubTab(tab); setTaskFreq(tab); }} className={`px-5 py-2.5 text-xs font-black rounded-t-xl uppercase tracking-widest whitespace-nowrap transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{tab === 'prep' ? 'Food Prep' : `${tab} Tasks`}</button>
+          <button key={tab} onClick={() => { setSubTab(tab); setTaskFreq(tab); }} className={`px-2 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{tab === 'prep' ? 'Food Prep' : `${tab} Tasks`}</button>
         ))}
       </div>
 
@@ -1135,7 +1159,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
                       <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(1, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
+                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
                         <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
                       </div>
@@ -1177,7 +1201,6 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     </div>
   );
 };
-
 
 // --- INVENTORY, VENDORS, & WASTE TRACKER (Accept Deliveries & Comm Fixes) ---
 const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
