@@ -824,23 +824,24 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
         </form>
       </Modal>
 
-      <div className={`${T.card} p-3 flex flex-col lg:flex-row gap-3 items-center justify-between`}>
-        <div className="flex flex-wrap md:flex-nowrap gap-2 w-full lg:w-auto items-center">
-          <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={T.input}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name || 'Unknown'}</option>)}</select>
-          <select value={presetShift} onChange={handlePresetChange} className={T.input}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
-          <div className="flex gap-2 w-full md:w-auto">
-            <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={T.input}/>
-            <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} disabled:opacity-50`}/>
+   <div className={`${T.card} p-2 sm:p-3 flex flex-col lg:flex-row gap-2 items-center justify-between`}>
+        <div className="grid grid-cols-2 lg:flex lg:flex-nowrap gap-2 w-full lg:w-auto items-center">
+          <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
+          <select value={presetShift} onChange={handlePresetChange} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
+          <div className="flex gap-2 w-full col-span-2 lg:col-span-1 lg:w-auto">
+            <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9`}/>
+            <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9 disabled:opacity-50`}/>
           </div>
-          <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full md:w-auto ${T.btn} disabled:opacity-50`}>Assign ({assignDates.length})</button>
+          <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full col-span-2 lg:col-span-1 lg:w-auto ${T.btn} py-1.5 px-3 text-xs h-9 disabled:opacity-50 flex items-center justify-center`}>Assign ({assignDates.length})</button>
         </div>
         <div className="flex w-full lg:w-auto gap-2">
-          <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt}`}>Publish</button>
-          <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381]`}>+ Event</button>
+          <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-1.5 text-xs h-9 flex items-center justify-center`}>Publish</button>
+          <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 text-xs h-9 flex items-center justify-center`}>+ Event</button>
         </div>
       </div>
 
       <div className={`${T.card} w-full overflow-hidden`}>
+        {/* ADDED: Scroll container and min-w to protect Mobile View while keeping Desktop single-page */}
         <div className="overflow-x-auto w-full no-scrollbar">
           <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
             <thead>
@@ -858,6 +859,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
                       {parseInt(d.split('-')[2])}
                     </div>
                     
+                    {/* Desktop Hover Tooltip for Holidays/Events */}
                     {hasAlert && (
                       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
                         {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
@@ -874,37 +876,24 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2A353D]">
-              {sortedRoles.map(roleName => {
-                // Safe sort to handle missing names inside a specific role group
-                const roleUsers = groupedUsers[roleName].sort((a,b) => (a.name || 'Unknown').localeCompare(b.name || 'Unknown'));
-                return (
-                  <React.Fragment key={roleName}>
-                    <tr>
-                      <td colSpan={monthDays.length + 1} className="bg-[#0B0E11] p-1.5 pl-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381] border-y border-[#2A353D] sticky left-0 z-20 shadow-md">
-                        {roleName}s
-                      </td>
-                    </tr>
-                    {roleUsers.map(u => (
-                      <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-                        <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name ? u.name.split(' ')[0] : 'Unknown'}</td>
-                        {monthDays.map(d => {
-                          const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                          const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
-                          const sel = assignDates.includes(d) && selectedEmp===u.id;
-                          return (
-                          <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-12 sm:h-16 lg:h-20 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
-                          <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
-                            {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                            {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                            {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
-                          </div>
-                        </td>)
-                        })}
-                      </tr>
-                    ))}
-                  </React.Fragment>
-                )
-              })}
+              {displayUsers.map(u => (
+                <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
+                  <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                  {monthDays.map(d => {
+                    const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                    const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                    const sel = assignDates.includes(d) && selectedEmp===u.id;
+                    return (
+                    <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top min-h-[40px] h-10 sm:h-12 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                    <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
+                      {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
+                      {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
+                      {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${shift.isPublished?(u.role==='Bartender'?'bg-[#D4A381] text-slate-900':'bg-[#C59373] text-slate-900'):'bg-slate-400 text-slate-900'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
+                    </div>
+                  </td>)
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
