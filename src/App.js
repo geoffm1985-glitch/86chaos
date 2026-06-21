@@ -597,8 +597,47 @@ const TabTeam = ({ users, appUser, addToast }) => {
 
 // --- MESSAGE BOARD ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
-  const [message, setMessage] = useState(''); const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
-  const handleBroadcast = async (e) => { e.preventDefault(); if(!message.trim()) return; await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, restaurantId: appUser.restaurantId }); setMessage(''); addToast('Posted', 'Message sent.'); };
+  const [message, setMessage] = useState(''); 
+  const [replyTexts, setReplyTexts] = useState({});
+  
+  const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
+  
+  const handleBroadcast = async (e) => { 
+    e.preventDefault(); 
+    if(!message.trim()) return; 
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, restaurantId: appUser.restaurantId, replies: [] }); 
+    setMessage(''); 
+    addToast('Posted', 'Message sent.'); 
+  };
+
+  const handleReplyChange = (id, text) => {
+    setReplyTexts(prev => ({ ...prev, [id]: text }));
+  };
+
+  const handleSendReply = async (e, eventId) => {
+    e.preventDefault();
+    const text = replyTexts[eventId];
+    if (!text || !text.trim()) return;
+
+    const targetEvent = events.find(ev => ev.id === eventId);
+    const currentReplies = targetEvent.replies || [];
+    const newReply = {
+        id: Date.now().toString(),
+        author: appUser.name,
+        text: text.trim(),
+        timestamp: new Date().toISOString()
+    };
+
+    try {
+        await updateDoc(doc(db, "events", eventId), {
+            replies: [...currentReplies, newReply]
+        });
+        setReplyTexts(prev => ({ ...prev, [eventId]: '' }));
+    } catch (err) {
+        addToast('Error', 'Could not post reply.');
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto space-y-4">
       <div className={`${T.card} p-4`}><form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3"><textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea><button className={`${T.btn} px-8`}>Post</button></form></div>
@@ -607,8 +646,40 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
         return (
         <div key={n.id} className={`p-4 flex gap-3 ${n.isImportant ? `bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 rounded-2xl shadow-sm` : T.card}`}>
           {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 rounded-full border ${T.border} flex-shrink-0`} alt="pic"/>}
-          <div className="flex-1"><div className="flex justify-between items-start mb-1"><span className={`font-black text-sm ${n.isImportant ? 'text-red-500' : T.copper}`}>{n.author}</span><span className="text-[10px] font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span></div><p className="font-medium leading-snug text-slate-200">{n.title}</p></div>
-          {appUser?.isAdmin && <button onClick={() => deleteDoc(doc(db, "events", n.id))} className="text-slate-400 hover:text-red-500 self-start"><Trash2 size={16}/></button>}
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-start mb-1">
+              <span className={`font-black text-sm ${n.isImportant ? 'text-red-500' : T.copper}`}>{n.author}</span>
+              <span className="text-[10px] font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span>
+            </div>
+            <p className="font-medium leading-snug text-slate-200 break-words">{n.title}</p>
+            
+            {/* Replies Section */}
+            {(n.replies && n.replies.length > 0) && (
+              <div className="space-y-2 mt-3 mb-3 pl-3 border-l-2 border-[#2A353D]">
+                {n.replies.map(r => (
+                  <div key={r.id} className="text-sm break-words">
+                    <span className={`font-black text-[9px] uppercase tracking-widest mr-2 ${T.copper}`}>{r.author}</span>
+                    <span className="text-slate-300 font-medium text-xs">{r.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Reply Input */}
+            {n.author !== 'System Alert' && (
+              <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-2 mt-3">
+                <input 
+                  type="text" 
+                  placeholder="Reply..." 
+                  value={replyTexts[n.id] || ''} 
+                  onChange={(e) => handleReplyChange(n.id, e.target.value)} 
+                  className="flex-1 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg px-3 py-2 outline-none focus:border-[#D4A381] transition-colors"
+                />
+                <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="bg-[#1A2126] text-[#D4A381] px-3 py-2 rounded-lg flex items-center justify-center border border-[#2A353D] disabled:opacity-50 hover:bg-[#2A353D] transition-colors"><Send size={14}/></button>
+              </form>
+            )}
+          </div>
+          {appUser?.isAdmin && <button onClick={() => deleteDoc(doc(db, "events", n.id))} className="text-slate-400 hover:text-red-500 self-start p-1"><Trash2 size={16}/></button>}
         </div>
       )})}</div>
     </div>
