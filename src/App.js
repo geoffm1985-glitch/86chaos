@@ -65,7 +65,7 @@ const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase(
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
 // --- Audit Log Helper ---
-const logAudit = async (user, action, target, details) => { try { await addDoc(collection(db, "auditLogs"), { userName: user?.name || user?.email || "Unknown User", action, target, details, timestamp: new Date().toISOString() }); } catch (error) { console.error("Audit failed", error); } };
+const logAudit = async (user, action, target, details) => { try { await addDoc(collection(db, "auditLogs"), { userName: user?.name || user?.email || "Unknown User", action, target, details, timestamp: new Date().toISOString(), restaurantId: user?.restaurantId }); } catch (error) { console.error("Audit failed", error); } };
 
 // --- Global Crash Reporter ---
 if (typeof window !== 'undefined' && !window.crashCatcherAttached) { window.crashCatcherAttached = true; window.onerror = (msg, url, lineNo, columnNo, error) => { addDoc(collection(db, "crashReports"), { type: 'error', message: msg, stack: error?.stack || '', time: new Date().toISOString() }).catch(()=>{}); return false; }; }
@@ -124,7 +124,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
   if (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep) { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> }); }
   if (appUser?.isAdmin || perms.inventory) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
-tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
+  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (appUser?.isAdmin || perms.sales) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
   // Master Admin only
@@ -342,8 +342,8 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
   const handleOfferSwap = async (shift) => {
     if (!window.confirm("Offer shift to Trade Board?")) return;
-    await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available' });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Schedule!`, type: 'note', author: 'System Alert', isImportant: true });
+    await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Schedule!`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
     addToast('Posted', 'Shift sent to trade board.');
   };
 
@@ -598,7 +598,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
 // --- MESSAGE BOARD ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState(''); const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
-  const handleBroadcast = async (e) => { e.preventDefault(); if(!message.trim()) return; await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false }); setMessage(''); addToast('Posted', 'Message sent.'); };
+  const handleBroadcast = async (e) => { e.preventDefault(); if(!message.trim()) return; await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, restaurantId: appUser.restaurantId }); setMessage(''); addToast('Posted', 'Message sent.'); };
   return (
     <div className="max-w-3xl mx-auto space-y-4">
       <div className={`${T.card} p-4`}><form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3"><textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea><button className={`${T.btn} px-8`}>Post</button></form></div>
@@ -658,13 +658,13 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
       }
       validDates.push(d);
     }
-    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false }); }
+    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
   const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
   
- const handleAddEvent = async (e) => { 
+  const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
     
@@ -677,7 +677,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
     }
     setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(false); 
   };
-  
+
   const openEditEventModal = (ev) => {
     setEventDate(ev.date);
     setEventTime(ev.time || '');
@@ -984,7 +984,8 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
         isCompleted: false, 
         completedDates: {}, 
         isMaster, 
-        qty: 1
+        qty: 1,
+        restaurantId: appUser.restaurantId
       }); 
       setText(''); 
     } 
@@ -1014,7 +1015,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   const handleAddTask = async (e) => { 
     e.preventDefault(); 
     if(taskText.trim()) { 
-      await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {} }); 
+      await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {}, restaurantId: appUser.restaurantId }); 
       setTaskText(''); 
     } 
   };
@@ -1198,13 +1199,13 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
 
   // --- LOGIC ---
-  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
+  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
   const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category, pfgCode: editItem.pfgCode.trim(), supplierId: editItem.supplierId, packSize: editItem.packSize, yieldQty: parseInt(editItem.yieldQty) || 1, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
   const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseFloat(newStock) || 0) });
   const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseFloat(newPar) || 0) });
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
   
-  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
+  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
   const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };
   const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
@@ -1212,7 +1213,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     e.preventDefault(); if(!wItemId || !wQty) return; const item = inventoryItems.find(i => i.id === wItemId); if(!item) return;
     const qtyNum = parseFloat(wQty); const yieldDivider = parseFloat(item.yieldQty) || 1; 
     const stockDeduction = qtyNum / yieldDivider; const costLost = ((item.price || 0) / yieldDivider) * qtyNum; 
-    await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString() });
+    await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString(), restaurantId: appUser.restaurantId });
     await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, item.currentStock - stockDeduction) });
     setWItemId(''); setWQty(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
   };
@@ -1264,7 +1265,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     for (const v of vendors) await deleteDoc(doc(db, "vendors", v.id));
     for (const i of inventoryItems) await deleteDoc(doc(db, "inventoryItems", i.id));
     
-    const newVendorRef = await addDoc(collection(db, "vendors"), { name: "Performance Food", rep: "Larry Ward", email: "lawrence.ward@pgfc.com", phone: "9204183353", cutOffDays: ["Sunday", "Wednesday"], cutOffTime: "15:30" });
+    const newVendorRef = await addDoc(collection(db, "vendors"), { name: "Performance Food", rep: "Larry Ward", email: "lawrence.ward@pgfc.com", phone: "9204183353", cutOffDays: ["Sunday", "Wednesday"], cutOffTime: "15:30", restaurantId: appUser.restaurantId });
     const vId = newVendorRef.id;
 
     const pdfItems = [
@@ -1471,7 +1472,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     ];
 
     const batchPromises = pdfItems.map(item => 
-      addDoc(collection(db, "inventoryItems"), { ...item, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null })
+      addDoc(collection(db, "inventoryItems"), { ...item, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId })
     );
     
     await Promise.all(batchPromises);
@@ -1711,7 +1712,7 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
         addToast('Recipe Updated', `${title} updated successfully.`); 
       } else {
         await addDoc(collection(db, "recipes"), { 
-          title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString() 
+          title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId 
         }); 
         addToast('Recipe Saved', `${title} added to the book.`); 
       }
@@ -1799,7 +1800,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
 
   const changeMonth = (offset) => { const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); };
   const handleToggleDate = (d) => { if (d < getToday()) return addToast('Locked', 'Cannot request past dates.'); if (myRequests.some(r => r.date === d)) return addToast('Exists', 'Already requested this date.'); setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]); };
-  const handleSubmit = async (e) => { e.preventDefault(); if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.'); if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); for (const d of selectedDates) { await addDoc(collection(db, "timeOffRequests"), { userId: appUser.id, userName: appUser.name, date: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, submittedAt: new Date().toISOString() }); } addToast('Recorded', `Logged ${selectedDates.length} days off.`); setSelectedDates([]); setIsPartial(false); };
+  const handleSubmit = async (e) => { e.preventDefault(); if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.'); if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); for (const d of selectedDates) { await addDoc(collection(db, "timeOffRequests"), { userId: appUser.id, userName: appUser.name, date: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, submittedAt: new Date().toISOString(), restaurantId: appUser.restaurantId }); } addToast('Recorded', `Logged ${selectedDates.length} days off.`); setSelectedDates([]); setIsPartial(false); };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
