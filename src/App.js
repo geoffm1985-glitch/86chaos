@@ -627,6 +627,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   const [eventDate, setEventDate] = useState(getToday()); 
   const [eventTime, setEventTime] = useState('');
   const [eventTitle, setEventTitle] = useState('');
+  const [eventNotes, setEventNotes] = useState('');
+  const [editingEventId, setEditingEventId] = useState(null);
   
   const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
   const monthStr = getMonthStr(currentDate); 
@@ -661,18 +663,50 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   };
 
   const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
-  const handleAddEvent = async (e) => { e.preventDefault(); if(!eventTitle.trim()) return; await addDoc(collection(db, "events"), { type: 'special_event', date: eventDate, time: eventTime, title: eventTitle.trim(), addedBy: appUser.name }); setEventTitle(''); setEventTime(''); setIsEventModalOpen(false); addToast('Event Added', 'Calendar updated.'); };
+  
+  const handleAddEvent = async (e) => { 
+    e.preventDefault(); 
+    if(!eventTitle.trim()) return; 
+    
+    if (editingEventId) {
+      await updateDoc(doc(db, "events", editingEventId), { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() });
+      addToast('Updated', 'Event modified successfully.');
+    } else {
+      await addDoc(collection(db, "events"), { type: 'special_event', date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name }); 
+      addToast('Event Added', 'Calendar updated.');
+    }
+    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(false); 
+  };
+
+  const openEditEventModal = (ev) => {
+    setEventDate(ev.date);
+    setEventTime(ev.time || '');
+    setEventTitle(ev.title || '');
+    setEventNotes(ev.notes || '');
+    setEditingEventId(ev.id);
+    setIsEventModalOpen(true);
+  };
+
+  const openNewEventModal = () => {
+    setEventDate(currentDate);
+    setEventTime('');
+    setEventTitle('');
+    setEventNotes('');
+    setEditingEventId(null);
+    setIsEventModalOpen(true);
+  };
 
   return (
     <div className="space-y-6 pb-12 w-full">
-      <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title="Add Special Event">
+      <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title={editingEventId ? "Edit Special Event" : "Add Special Event"}>
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
             <div><label className={T.label}>Time (Optional)</label><input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/></div>
           </div>
           <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
-          <button type="submit" className={`w-full ${T.btn}`}>Save Event</button>
+          <div><label className={T.label}>Notes (Optional)</label><textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={T.input} placeholder="Extra details..."/></div>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingEventId ? 'Update Event' : 'Save Event'}</button>
         </form>
       </Modal>
 
@@ -688,7 +722,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
         </div>
         <div className="flex w-full lg:w-auto gap-2">
           <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt}`}>Publish</button>
-          <button onClick={() => {setEventDate(currentDate); setIsEventModalOpen(true);}} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381]`}>+ Event</button>
+          <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381]`}>+ Event</button>
         </div>
       </div>
 
@@ -718,6 +752,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
                         {dayEvents.map(ev => (
                           <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
                             {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
+                            {ev.notes && <span className="block text-slate-300 font-normal mt-0.5">{ev.notes}</span>}
                           </div>
                         ))}
                       </div>
@@ -758,17 +793,21 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
         <div className={`divide-y ${T.border}`}>
           {monthEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
           {monthEvents.map(ev => (
-            <div key={ev.id} className={T.row}>
-              <div className="flex items-center gap-4">
+            <div key={ev.id} className={`${T.row} flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
+              <div className="flex items-start sm:items-center gap-4">
                 <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
                   <div className="text-[10px] uppercase">{new Date(ev.date+'T12:00').toLocaleDateString('en-US',{month:'short'})}</div><div className="text-lg leading-tight">{parseInt(ev.date.split('-')[2])}</div>
                 </div>
                 <div>
                   <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
-                  <span className={`text-[10px] font-bold ${T.muted}`}>Added by {ev.addedBy}</span>
+                  {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">{ev.notes}</p>}
+                  <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
                 </div>
               </div>
-              <button onClick={() => { if(window.confirm("Delete event?")) deleteDoc(doc(db,"events",ev.id)); }} className="text-slate-400 hover:text-red-500 p-2"><Trash2 size={18}/></button>
+              <div className="flex items-center gap-1 sm:self-end self-start">
+                <button onClick={() => openEditEventModal(ev)} className="p-2 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Edit size={14}/></button>
+                <button onClick={() => { if(window.confirm("Delete event?")) deleteDoc(doc(db,"events",ev.id)); }} className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
+              </div>
             </div>
           ))}
         </div>
