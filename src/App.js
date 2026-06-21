@@ -437,177 +437,6 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 };
 
 
-// --- TEAM MANAGEMENT ---
-const TabTeam = ({ users, appUser, addToast }) => {
-  const canManageTeam = appUser.isAdmin || appUser.permissions?.team;
-  const [name, setName] = useState(''); 
-  const [email, setEmail] = useState(''); 
-  const [phone, setPhone] = useState(''); 
-  const [role, setRole] = useState('Bartender'); 
-  const [photoURL, setPhotoURL] = useState(''); 
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
-  const [editingUserId, setEditingUserId] = useState(null);
-
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
-  const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
-  const roles = dbRoles.length > 0 ? dbRoles.map(r => r.name).sort() : DEFAULT_ROLES;
-  
-  const generateTempPass = () => Math.random().toString(36).slice(-6);
-
-  const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
-  };
-
-  const handleEditClick = (u) => {
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleSave = async (e) => { 
-    e.preventDefault(); if (!name.trim() || !email.trim() || !phone.trim()) return; 
-    
-    if (editingUserId) {
-        try {
-            await updateDoc(doc(db, "users", editingUserId), {
-                name: name.trim(), phone: phone.trim(), role, isAdmin, permissions: perms, photoURL: photoURL.trim()
-            });
-            addToast('Updated', `${name}'s profile has been updated.`);
-            resetForm();
-        } catch(err) { addToast('Error', err.message); }
-        return;
-    }
-
-    const tPass = generateTempPass(); 
-    try { 
-      const secondaryApp = initializeApp(firebaseConfig, "TeamBuilderApp_" + Date.now());
-      const secondaryAuth = getAuth(secondaryApp);
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), tPass);
-      const newAuthUid = userCredential.user.uid;
-      
-      await secondaryAuth.signOut();
-
-      await setDoc(doc(db, "users", newAuthUid), { 
-        name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        password: tPass, role, isAdmin, permissions: perms, isActive: true, 
-        forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
-      }); 
-      
-      const welcomeMsg = `Welcome to Cheers!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
-      
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile && phone.trim()) {
-        const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?';
-        window.location.href = `sms:${phone.trim()}${smsChar}body=${encodeURIComponent(welcomeMsg)}`;
-      } else {
-        window.location.href = `mailto:${email.toLowerCase().trim()}?subject=${encodeURIComponent("Your Cheers 86 Chaos Account")}&body=${encodeURIComponent(welcomeMsg)}`;
-      }
-
-      addToast('Staff Added', `Account created successfully.`); 
-      resetForm();
-    } catch (err) { 
-      console.error(err); 
-      addToast('Error', err.message || 'Failed to create user account.');
-    } 
-  };
-
-  const handleDeactivate = async (u) => { 
-    if (!window.confirm(`Terminate ${u.name}? They will be removed from the active roster but their historical schedule data will be preserved.`)) return; 
-    await updateDoc(doc(db, "users", u.id), { isActive: false }); 
-    addToast('Terminated', `${u.name} deactivated.`); 
-  };
-
-  const handlePasswordReset = async (u) => {
-    if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
-    try {
-      await sendPasswordResetEmail(auth, u.email);
-      addToast('Sent', `Reset email sent to ${u.email}`);
-    } catch(err) { addToast('Error', err.message); }
-  };
-
-  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-24">
-      
-      {canManageTeam && (
-        <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-4`}>
-          {editingUserId && (
-            <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
-              <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
-              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit ✕</button>
-            </div>
-          )}
-          
-          <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className={T.input} required placeholder="e.g. Gordon Ramsay" /></div>
-          
-          <div>
-            <label className={T.label}>Email {editingUserId && <span className="text-slate-500 lowercase normal-case ml-1">(Cannot be changed after creation)</span>}</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
-          </div>
-          
-          <div><label className={T.label}>Phone</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className={T.input} required /></div>
-          
-          <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-          
-          <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
-            <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
-            <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
-          </label>
-          
-          {!isAdmin && (
-            <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions:</p>
-              <div className="flex flex-wrap gap-4">
-                {Object.keys(perms).map(k => (
-                  <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
-                    <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
-                    {k.replace('team', 'team mgmt').replace('prep', 'recipe/prep')}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          <button type="submit" className={`w-full ${T.btn}`}>{editingUserId ? 'UPDATE STAFF PROFILE' : 'ADD STAFF'}</button>
-        </form>
-      )}
-      
-      <div className={`${T.card} overflow-hidden`}>
-        <div className="divide-y divide-[#2A353D]">
-          {activeUsers.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No active staff found.</div>}
-          
-          {activeUsers.map(u => (
-            <div key={u.id} className="p-2.5 border-b border-[#2A353D] hover:bg-[#12161A] transition-colors flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3 overflow-hidden">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs flex-shrink-0 ${u.isAdmin ? 'bg-red-900/50 border border-red-500/50' : 'bg-[#1A2126] border border-[#2A353D]'}`}>
-                  {u.name.charAt(0)}
-                </div>
-                <div className="min-w-0">
-                  <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
-                    {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
-                  </div>
-                </div>
-              </div>
-              
-              {canManageTeam && (
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button onClick={() => handlePasswordReset(u)} className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded border border-[#2A353D]">Reset</button>
-                  <button onClick={() => handleEditClick(u)} className="p-1 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Edit size={12}/></button>
-                  <button onClick={() => handleDeactivate(u)} className="p-1 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Trash2 size={12}/></button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-    </div>
-  );
-};
-
 // --- MESSAGE BOARD ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState(''); 
@@ -841,7 +670,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
       </div>
 
       <div className={`${T.card} w-full overflow-hidden`}>
-        {/* ADDED: Scroll container and min-w to protect Mobile View while keeping Desktop single-page */}
         <div className="overflow-x-auto w-full no-scrollbar">
           <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
             <thead>
@@ -859,7 +687,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
                       {parseInt(d.split('-')[2])}
                     </div>
                     
-                    {/* Desktop Hover Tooltip for Holidays/Events */}
                     {hasAlert && (
                       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
                         {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
@@ -876,29 +703,39 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2A353D]">
-              {displayUsers.map(u => (
-                <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-                  <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
-                  {monthDays.map(d => {
-                    const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                    const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
-                    const sel = assignDates.includes(d) && selectedEmp===u.id;
-                    return (
-                    <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top min-h-[40px] h-10 sm:h-12 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
-                    <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
-                      {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                      {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                      {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${shift.isPublished?(u.role==='Bartender'?'bg-[#D4A381] text-slate-900':'bg-[#C59373] text-slate-900'):'bg-slate-400 text-slate-900'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
-                    </div>
-                  </td>)
-                  })}
-                </tr>
+              {sortedRoles.map(role => (
+                <React.Fragment key={`role-group-${role}`}>
+                  <tr className="bg-[#1A2126]">
+                    <td colSpan={monthDays.length + 1} className={`p-1 sm:p-2 text-[10px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
+                      {role}s
+                    </td>
+                  </tr>
+                  {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
+                    <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
+                      <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                      {monthDays.map(d => {
+                        const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                        const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                        const sel = assignDates.includes(d) && selectedEmp===u.id;
+                        return (
+                        <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top min-h-[40px] h-10 sm:h-12 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                        <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
+                          {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
+                          {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
+                          {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
+                        </div>
+                      </td>)
+                      })}
+                    </tr>
+                  ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
         </div>
       </div>
       
+      {/* Event Ledger underneath for clear visibility */}
       <div className={`${T.card} overflow-hidden`}>
         <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
           <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
@@ -1274,7 +1111,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
-                        {isManagement && <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>}
+                        <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
                       </div>
                     </div>
                   )})}
@@ -1314,6 +1151,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     </div>
   );
 };
+
 
 // --- INVENTORY, VENDORS, & WASTE TRACKER (Accept Deliveries & Comm Fixes) ---
 const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
