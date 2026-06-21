@@ -714,11 +714,35 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   const [eventNotes, setEventNotes] = useState('');
   const [editingEventId, setEditingEventId] = useState(null);
   
-  const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => a.date.localeCompare(b.date));
+
+  // Sort display users for the dropdown
+  const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : a.role.localeCompare(b.role));
+  
+  // Group users by role for the categorized table
+  const groupedUsers = users.reduce((acc, user) => {
+    const role = user.role || 'Unassigned';
+    if (!acc[role]) acc[role] = [];
+    acc[role].push(user);
+    return acc;
+  }, {});
+  const sortedRoles = Object.keys(groupedUsers).sort();
+
+  // Dynamic color coding for roles
+  const getRoleColors = (role, isPublished) => {
+    if (!isPublished) return 'bg-slate-400 text-slate-900';
+    const r = (role || '').toLowerCase();
+    if (r.includes('bartender')) return 'bg-blue-400 text-blue-950';
+    if (r.includes('cook') || r.includes('chef') || r.includes('kitchen')) return 'bg-orange-400 text-orange-950';
+    if (r.includes('server') || r.includes('wait')) return 'bg-pink-400 text-pink-950';
+    if (r.includes('host')) return 'bg-emerald-400 text-emerald-950';
+    if (r.includes('manager')) return 'bg-purple-400 text-purple-950';
+    if (r.includes('dish')) return 'bg-cyan-400 text-cyan-950';
+    return 'bg-[#D4A381] text-slate-900'; // Default Copper
+  };
 
   const SHIFT_PRESETS = [ { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" }, { label: "Custom", start: "", end: "" } ];
   const handlePresetChange = (e) => { const val = e.target.value; setPresetShift(val); const p = SHIFT_PRESETS.find(x => x.label === val); if (p && val !== 'Custom') { setStartTime(p.start); if (p.end !== 'CLOSE') setEndTime(p.end); } };
@@ -811,7 +835,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
       </div>
 
       <div className={`${T.card} w-full overflow-hidden`}>
-        {/* ADDED: Scroll container and min-w to protect Mobile View while keeping Desktop single-page */}
         <div className="overflow-x-auto w-full no-scrollbar">
           <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
             <thead>
@@ -829,7 +852,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
                       {parseInt(d.split('-')[2])}
                     </div>
                     
-                    {/* Desktop Hover Tooltip for Holidays/Events */}
                     {hasAlert && (
                       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
                         {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
@@ -846,30 +868,41 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2A353D]">
-              {displayUsers.map(u => (
-                <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-                  <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
-                  {monthDays.map(d => {
-                    const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                    const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
-                    const sel = assignDates.includes(d) && selectedEmp===u.id;
-                    return (
-                    <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-12 sm:h-16 lg:h-20 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
-                    <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
-                      {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                      {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                      {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${shift.isPublished?(u.role==='Bartender'?'bg-[#D4A381] text-slate-900':'bg-[#C59373] text-slate-900'):'bg-slate-400 text-slate-900'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
-                    </div>
-                  </td>)
-                  })}
-                </tr>
-              ))}
+              {sortedRoles.map(roleName => {
+                const roleUsers = groupedUsers[roleName].sort((a,b) => a.name.localeCompare(b.name));
+                return (
+                  <React.Fragment key={roleName}>
+                    <tr>
+                      <td colSpan={monthDays.length + 1} className="bg-[#0B0E11] p-1.5 pl-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381] border-y border-[#2A353D] sticky left-0 z-20 shadow-md">
+                        {roleName}s
+                      </td>
+                    </tr>
+                    {roleUsers.map(u => (
+                      <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
+                        <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                        {monthDays.map(d => {
+                          const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                          const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                          const sel = assignDates.includes(d) && selectedEmp===u.id;
+                          return (
+                          <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-12 sm:h-16 lg:h-20 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                          <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
+                            {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
+                            {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
+                            {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
+                          </div>
+                        </td>)
+                        })}
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
       </div>
       
-      {/* Event Ledger underneath for clear visibility */}
       <div className={`${T.card} overflow-hidden`}>
         <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
           <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
