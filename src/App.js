@@ -2429,7 +2429,115 @@ const TabAuditLog = ({ appUser }) => {
   );
 };
 
+// --- SALES & TRENDS TAB ---
+const TabSales = ({ sales, addToast, appUser }) => {
+  const [date, setDate] = useState(getToday());
+  const [grossSales, setGrossSales] = useState('');
+  const [laborCost, setLaborCost] = useState('');
+  const [foodCost, setFoodCost] = useState('');
 
+  const handleAddSales = async (e) => {
+    e.preventDefault();
+    if (!grossSales || !appUser) return;
+    try {
+      await addDoc(collection(db, "sales"), {
+        date,
+        grossSales: parseFloat(grossSales) || 0,
+        laborCost: parseFloat(laborCost) || 0,
+        foodCost: parseFloat(foodCost) || 0,
+        restaurantId: appUser.restaurantId,
+        loggedBy: appUser.name,
+        timestamp: new Date().toISOString()
+      });
+      addToast('Sales Logged', `Data for ${formatDisplayDate(date)} saved.`);
+      setGrossSales(''); setLaborCost(''); setFoodCost('');
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  const sortedSales = [...sales].sort((a,b) => b.date.localeCompare(a.date));
+  const recentSales = sortedSales.slice(0, 30);
+
+  const totalSales = recentSales.reduce((sum, s) => sum + (s.grossSales || 0), 0);
+  const totalLabor = recentSales.reduce((sum, s) => sum + (s.laborCost || 0), 0);
+  const totalFood = recentSales.reduce((sum, s) => sum + (s.foodCost || 0), 0);
+  const avgLaborPct = totalSales > 0 ? ((totalLabor / totalSales) * 100).toFixed(1) : '0.0';
+  const avgFoodPct = totalSales > 0 ? ((totalFood / totalSales) * 100).toFixed(1) : '0.0';
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className={`${T.card} p-4 flex flex-col items-center justify-center`}>
+          <span className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mb-1`}>30-Day Gross</span>
+          <span className={`text-3xl font-black ${T.copper}`}>${totalSales.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+        </div>
+        <div className={`${T.card} p-4 flex flex-col items-center justify-center`}>
+          <span className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mb-1`}>Avg Labor Cost</span>
+          <span className={`text-3xl font-black ${avgLaborPct > 30 ? 'text-red-500' : 'text-emerald-500'}`}>{avgLaborPct}%</span>
+        </div>
+        <div className={`${T.card} p-4 flex flex-col items-center justify-center`}>
+          <span className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mb-1`}>Avg Food Cost</span>
+          <span className={`text-3xl font-black ${avgFoodPct > 33 ? 'text-red-500' : 'text-emerald-500'}`}>{avgFoodPct}%</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <form onSubmit={handleAddSales} className={`${T.card} p-5 space-y-4 sticky top-20`}>
+            <h3 className="font-black text-white text-lg border-b border-[#2A353D] pb-2 mb-4">Log Daily Sales</h3>
+            <div><label className={T.label}>Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className={T.input} required/></div>
+            <div><label className={T.label}>Gross Sales ($)</label><input type="number" step="0.01" value={grossSales} onChange={e=>setGrossSales(e.target.value)} className={T.input} placeholder="0.00" required/></div>
+            <div><label className={T.label}>Labor Cost ($)</label><input type="number" step="0.01" value={laborCost} onChange={e=>setLaborCost(e.target.value)} className={T.input} placeholder="0.00" required/></div>
+            <div><label className={T.label}>Food Cost ($)</label><input type="number" step="0.01" value={foodCost} onChange={e=>setFoodCost(e.target.value)} className={T.input} placeholder="0.00" required/></div>
+            <button type="submit" className={`w-full ${T.btn} py-3`}>Save Record</button>
+          </form>
+        </div>
+
+        <div className="lg:col-span-2">
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><TrendingUp className={T.copper}/> Sales Ledger</h3>
+            </div>
+            <div className={`divide-y ${T.border}`}>
+              {sortedSales.length === 0 && <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No sales data logged yet.</div>}
+              {sortedSales.map(s => {
+                const lPct = s.grossSales > 0 ? ((s.laborCost / s.grossSales) * 100).toFixed(1) : 0;
+                const fPct = s.grossSales > 0 ? ((s.foodCost / s.grossSales) * 100).toFixed(1) : 0;
+                return (
+                  <div key={s.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4`}>
+                    <div>
+                      <div className="font-black text-white text-lg">{formatDisplayDate(s.date)}</div>
+                      <div className={`text-[10px] font-bold ${T.muted} uppercase tracking-widest mt-0.5`}>Logged by {s.loggedBy || 'Unknown'}</div>
+                    </div>
+                    <div className="flex gap-4 sm:gap-6 text-right">
+                      <div className="flex flex-col">
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>Gross</span>
+                        <span className="font-bold text-white">${(s.grossSales||0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>Labor</span>
+                        <span className={`font-bold ${lPct > 30 ? 'text-red-400' : 'text-emerald-400'}`}>{lPct}%</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>Food</span>
+                        <span className={`font-bold ${fPct > 33 ? 'text-red-400' : 'text-emerald-400'}`}>{fPct}%</span>
+                      </div>
+                      <div className="flex items-center ml-2 border-l border-[#2A353D] pl-4">
+                         <button onClick={() => { if(window.confirm("Delete this record?")) deleteDoc(doc(db,"sales",s.id)); }} className="text-slate-500 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 
 // ============================================================================
@@ -2556,8 +2664,7 @@ export default function App() {
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
         {activeTabState === 'schedule' && liveAppUser?.isAdmin && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
-        {activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} />}
-        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
+{activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} tasks={tasks} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
