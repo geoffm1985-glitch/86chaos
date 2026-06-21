@@ -1142,7 +1142,6 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
               <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
             </div>
           </form>
-          
           <div className={`${T.card} overflow-hidden`}>
             {Object.entries(groupedPrep).map(([stationName, items]) => (
               <div key={stationName}>
@@ -1151,7 +1150,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                   {items.map(i=>{
                     const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; 
                     const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; 
-                    const qty = i.qty||1;
+                    const qty = i.qty ?? 1;
                     const isSelected = selectedPreps.includes(i.id);
                     
                     return (
@@ -1164,6 +1163,36 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                         <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
                       </div>
                     </div>
+                  )})}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className={`fixed bottom-0 left-0 right-0 p-4 bg-[#161D22] border-t ${T.border} z-50 backdrop-blur-md bg-opacity-95`}>
+            <div className="max-w-2xl mx-auto flex gap-3">
+              <button onClick={() => { 
+                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
+                  if(sel.length===0)return; 
+                  const toP=[]; 
+                  sel.forEach(i=>{for(let j=0;j<(i.qty ?? 1);j++)toP.push({...i, printId:`${i.id}-${j}`});}); 
+                  setLabelsToPrint({items:toP, prepDate}); 
+              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print Selected</button>
+              
+              <button onClick={async () => { 
+                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
+                  for(const item of sel){ 
+                      if(item.isMaster){ 
+                          const dts={...(item.completedDates||{})}; 
+                          dts[prepDate]=appUser.name; 
+                          await updateDoc(doc(db,"prepItems",item.id),{completedDates:dts}); 
+                      } else {
+                          await updateDoc(doc(db,"prepItems",item.id),{isCompleted:true, completedBy:appUser.name}); 
+                      }
+                  } 
+                  setSelectedPreps([]);
+              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
+            </div>
+          </div>
                   )})}
                 </div>
               </div>
