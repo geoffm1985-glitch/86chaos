@@ -1142,8 +1142,8 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
               <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
             </div>
           </form>
-        
-         <div className={`${T.card} overflow-hidden`}>
+          
+          <div className={`${T.card} overflow-hidden`}>
             {Object.entries(groupedPrep).map(([stationName, items]) => (
               <div key={stationName}>
                 <div className={T.th}><span>{stationName} Station</span><span className="float-right text-slate-500">{items.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{items.length} Done</span></div>
@@ -1194,6 +1194,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
               }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
             </div>
           </div>
+        </div>
       )}
 
       {subTab !== 'prep' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
