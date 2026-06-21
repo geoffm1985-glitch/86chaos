@@ -717,12 +717,18 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
-  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => a.date.localeCompare(b.date));
+  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
-  // Sort display users for the dropdown
-  const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : a.role.localeCompare(b.role));
+  // Sort display users for the dropdown (Safe against missing roles/names)
+  const displayUsers = [...users].sort((a,b) => {
+    const roleA = a.role || 'Unassigned';
+    const roleB = b.role || 'Unassigned';
+    const nameA = a.name || 'Unknown';
+    const nameB = b.name || 'Unknown';
+    return roleA === roleB ? nameA.localeCompare(nameB) : roleA.localeCompare(roleB);
+  });
   
-  // Group users by role for the categorized table
+  // Group users by role for the categorized table (Safe against missing roles)
   const groupedUsers = users.reduce((acc, user) => {
     const role = user.role || 'Unassigned';
     if (!acc[role]) acc[role] = [];
@@ -761,12 +767,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
     for (const d of assignDates) { 
       const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id);
       if (req) {
-        if (!req.isPartial) { addToast('Blocked', `${emp.name.split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
-        else { const reqEnd = req.endTime || '23:59'; if ((sTime < reqEnd) && (eTime > req.startTime)) { addToast('Blocked', `${emp.name.split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
+        if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
+        else { const reqEnd = req.endTime || '23:59'; if ((sTime < reqEnd) && (eTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
       }
       validDates.push(d);
     }
-    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
+    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role || 'Unassigned', startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
@@ -820,7 +826,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
 
       <div className={`${T.card} p-3 flex flex-col lg:flex-row gap-3 items-center justify-between`}>
         <div className="flex flex-wrap md:flex-nowrap gap-2 w-full lg:w-auto items-center">
-          <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={T.input}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
+          <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={T.input}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name || 'Unknown'}</option>)}</select>
           <select value={presetShift} onChange={handlePresetChange} className={T.input}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
           <div className="flex gap-2 w-full md:w-auto">
             <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={T.input}/>
@@ -869,7 +875,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
             </thead>
             <tbody className="divide-y divide-[#2A353D]">
               {sortedRoles.map(roleName => {
-                const roleUsers = groupedUsers[roleName].sort((a,b) => a.name.localeCompare(b.name));
+                // Safe sort to handle missing names inside a specific role group
+                const roleUsers = groupedUsers[roleName].sort((a,b) => (a.name || 'Unknown').localeCompare(b.name || 'Unknown'));
                 return (
                   <React.Fragment key={roleName}>
                     <tr>
@@ -879,7 +886,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
                     </tr>
                     {roleUsers.map(u => (
                       <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-                        <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                        <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name ? u.name.split(' ')[0] : 'Unknown'}</td>
                         {monthDays.map(d => {
                           const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
                           const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
