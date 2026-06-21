@@ -664,7 +664,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
 
   const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
   
-  const handleAddEvent = async (e) => { 
+ const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
     
@@ -672,12 +672,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
       await updateDoc(doc(db, "events", editingEventId), { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() });
       addToast('Updated', 'Event modified successfully.');
     } else {
-      await addDoc(collection(db, "events"), { type: 'special_event', date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name }); 
+      await addDoc(collection(db, "events"), { type: 'special_event', date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name, restaurantId: appUser.restaurantId }); 
       addToast('Event Added', 'Calendar updated.');
     }
     setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(false); 
   };
-
+  
   const openEditEventModal = (ev) => {
     setEventDate(ev.date);
     setEventTime(ev.time || '');
