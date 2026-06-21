@@ -72,11 +72,22 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) { window.cras
 
 // --- HOLIDAY & TIME ENGINE ---
 const HOLIDAYS = {
+  // Fixed Date Holidays (Work every year)
   "01-01": "New Year's Day", "02-14": "Valentine's Day", "03-17": "St. Patrick's Day", 
   "05-05": "Cinco de Mayo", "07-04": "Independence Day", "10-31": "Halloween", 
   "11-11": "Veterans Day", "12-24": "Christmas Eve", "12-25": "Christmas Day", "12-31": "NYE",
+  
+  // 2026 Floating Holidays
   "2026-02-08": "Super Bowl", "2026-03-31": "Opening Day", "2026-04-05": "Easter", "2026-05-10": "Mother's Day", 
-  "2026-05-25": "Memorial Day", "2026-06-21": "Father's Day", "2026-09-07": "Labor Day", "2026-11-26": "Thanksgiving"
+  "2026-05-25": "Memorial Day", "2026-06-21": "Father's Day", "2026-09-07": "Labor Day", "2026-11-26": "Thanksgiving",
+
+  // 2027 Floating Holidays
+  "2027-02-14": "Super Bowl", "2027-03-25": "Opening Day", "2027-03-28": "Easter", "2027-05-09": "Mother's Day", 
+  "2027-05-31": "Memorial Day", "2027-06-20": "Father's Day", "2027-09-06": "Labor Day", "2027-11-25": "Thanksgiving",
+
+  // 2028 Floating Holidays
+  "2028-02-13": "Super Bowl", "2028-03-30": "Opening Day", "2028-04-16": "Easter", "2028-05-14": "Mother's Day", 
+  "2028-05-29": "Memorial Day", "2028-06-18": "Father's Day", "2028-09-04": "Labor Day", "2028-11-23": "Thanksgiving"
 };
 const getHoliday = (dateStr) => {
   if (!dateStr) return null;
