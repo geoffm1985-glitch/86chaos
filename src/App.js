@@ -449,7 +449,9 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
   const [editingUserId, setEditingUserId] = useState(null);
 
-  const roles = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
+  const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
+  const roles = dbRoles.length > 0 ? dbRoles.map(r => r.name).sort() : DEFAULT_ROLES;
   
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
@@ -2005,6 +2007,15 @@ const TabSettings = ({ appUser, addToast }) => {
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
   const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
 
+  // --- Role Management State (Admin Only) ---
+  const [newRoleName, setNewRoleName] = useState('');
+  const [editingRoleId, setEditingRoleId] = useState(null);
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
+  const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
+  const displayRoles = dbRoles.length > 0 
+    ? dbRoles.sort((a,b) => a.name.localeCompare(b.name)) 
+    : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
+
   // --- Image Upload Engine ---
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -2063,6 +2074,50 @@ const TabSettings = ({ appUser, addToast }) => {
       await sendPasswordResetEmail(auth, appUser.email);
       addToast('Email Sent', 'Check your inbox for the password reset link.');
     } catch (err) { addToast('Error', err.message); }
+  };
+
+  // --- Role Handlers ---
+  const handleAddRole = async (e) => {
+    e.preventDefault();
+    if(!newRoleName.trim()) return;
+    if (dbRoles.length === 0) {
+      for (const r of DEFAULT_ROLES) await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
+    }
+    await addDoc(collection(db, "roles"), { name: newRoleName.trim(), restaurantId: appUser.restaurantId });
+    setNewRoleName('');
+    addToast('Role Added', 'New role is now available.');
+  };
+
+  const handleSaveRoleEdit = async (role, newName) => {
+    if (!newName.trim() || newName.trim() === role.name) {
+      setEditingRoleId(null);
+      return;
+    }
+    setEditingRoleId(null); // Optimistic visual lock
+    if (role.isDefault) {
+       for (const r of DEFAULT_ROLES) {
+         if (r === role.name) {
+           await addDoc(collection(db, "roles"), { name: newName.trim(), restaurantId: appUser.restaurantId });
+         } else {
+           await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
+         }
+       }
+    } else {
+       await updateDoc(doc(db, "roles", role.id), { name: newName.trim() });
+    }
+    addToast('Role Updated', 'Role name changed.');
+  };
+
+  const handleDeleteRole = async (role) => {
+    if (!window.confirm(`Delete role: ${role.name}?`)) return;
+    if (role.isDefault) {
+      for (const r of DEFAULT_ROLES) {
+        if (r !== role.name) await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
+      }
+    } else {
+      await deleteDoc(doc(db, "roles", role.id));
+    }
+    addToast('Role Deleted', 'Role removed from roster options.');
   };
 
   const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
@@ -2139,31 +2194,63 @@ const TabSettings = ({ appUser, addToast }) => {
 
       {/* --- SUB-TAB: PREFERENCES --- */}
       {subTab === 'preferences' && (
-        <form onSubmit={handleSavePrefs} className={`${T.card} p-4 sm:p-6 space-y-6`}>
-          <div>
-            <h2 className="text-lg font-black text-white mb-4 border-b border-[#2A353D] pb-2">App Experience</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={T.label}>Default Startup Tab</label>
-                <select value={defaultTab} onChange={e => setDefaultTab(e.target.value)} className={T.input}>
-                  <option value="published">My Schedule</option>
-                  <option value="messages">Message Board</option>
-                  {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
-                  {appUser?.isAdmin && <option value="schedule">Master Schedule</option>}
-                  {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
-                </select>
-              </div>
-              <div>
-                <label className={T.label}>Time Format</label>
-                <select value={timeFormat} onChange={e => setTimeFormat(e.target.value)} className={T.input}>
-                  <option value="12h">12-Hour (AM/PM)</option>
-                  <option value="24h">24-Hour (Military)</option>
-                </select>
+        <div className="space-y-6">
+          <form onSubmit={handleSavePrefs} className={`${T.card} p-4 sm:p-6 space-y-6`}>
+            <div>
+              <h2 className="text-lg font-black text-white mb-4 border-b border-[#2A353D] pb-2">App Experience</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={T.label}>Default Startup Tab</label>
+                  <select value={defaultTab} onChange={e => setDefaultTab(e.target.value)} className={T.input}>
+                    <option value="published">My Schedule</option>
+                    <option value="messages">Message Board</option>
+                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
+                    {appUser?.isAdmin && <option value="schedule">Master Schedule</option>}
+                    {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Time Format</label>
+                  <select value={timeFormat} onChange={e => setTimeFormat(e.target.value)} className={T.input}>
+                    <option value="12h">12-Hour (AM/PM)</option>
+                    <option value="24h">24-Hour (Military)</option>
+                  </select>
+                </div>
               </div>
             </div>
-          </div>
-          <button type="submit" className={`w-full ${T.btn} py-3`}>Save Preferences</button>
-        </form>
+            <button type="submit" className={`w-full ${T.btn} py-3`}>Save Preferences</button>
+          </form>
+
+          {appUser?.isAdmin && (
+            <div className={`${T.card} p-4 sm:p-6 space-y-4 animate-[slideIn_0.2s_ease-out]`}>
+              <div>
+                <h2 className="text-lg font-black text-white mb-1">Roster Roles</h2>
+                <p className="text-xs text-slate-400 font-medium mb-4">Add, edit, or remove job titles for your staff.</p>
+                
+                <form onSubmit={handleAddRole} className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <input type="text" value={newRoleName} onChange={e=>setNewRoleName(e.target.value)} placeholder="New Role Name..." className={T.input} required />
+                  <button type="submit" className={`${T.btn} whitespace-nowrap`}><Plus size={18} className="inline mr-1"/> Add Role</button>
+                </form>
+                
+                <div className="flex flex-wrap gap-2">
+                  {displayRoles.map(role => (
+                    <div key={role.id} className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-3 py-1.5 rounded-lg shadow-sm">
+                      {editingRoleId === role.id ? (
+                        <input type="text" autoFocus defaultValue={role.name} onBlur={(e) => handleSaveRoleEdit(role, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveRoleEdit(role, e.target.value)} className="bg-transparent text-white text-xs font-bold outline-none border-b border-[#D4A381] w-24" />
+                      ) : (
+                        <span className="text-xs font-bold text-slate-300">{role.name}</span>
+                      )}
+                      <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
+                        <button type="button" onClick={() => setEditingRoleId(role.id)} className="text-slate-500 hover:text-[#D4A381]"><Edit size={12}/></button>
+                        <button type="button" onClick={() => handleDeleteRole(role)} className="text-slate-500 hover:text-red-500"><Trash2 size={12}/></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* --- SUB-TAB: ALERTS --- */}
