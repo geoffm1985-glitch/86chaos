@@ -714,11 +714,44 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   const [eventNotes, setEventNotes] = useState('');
   const [editingEventId, setEditingEventId] = useState(null);
   
-  const displayUsers = [...users].sort((a,b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
-  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => a.date.localeCompare(b.date));
+  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
+
+  // FIX: Filter out deactivated employees so they don't cause ghost duplicates
+  const activeRoster = users.filter(u => u.isActive !== false);
+
+  // Sort display users for the dropdown
+  const displayUsers = [...activeRoster].sort((a,b) => {
+    const roleA = a.role || 'Unassigned';
+    const roleB = b.role || 'Unassigned';
+    const nameA = a.name || 'Unknown';
+    const nameB = b.name || 'Unknown';
+    return roleA === roleB ? nameA.localeCompare(nameB) : roleA.localeCompare(roleB);
+  });
+  
+  // RESTORED: Group users by role for the categorized table
+  const groupedUsers = activeRoster.reduce((acc, user) => {
+    const role = user.role || 'Unassigned';
+    if (!acc[role]) acc[role] = [];
+    acc[role].push(user);
+    return acc;
+  }, {});
+  const sortedRoles = Object.keys(groupedUsers).sort();
+
+  // RESTORED: Dynamic color coding for roles
+  const getRoleColors = (role, isPublished) => {
+    if (!isPublished) return 'bg-slate-400 text-slate-900';
+    const r = (role || '').toLowerCase();
+    if (r.includes('bartender')) return 'bg-blue-400 text-blue-950';
+    if (r.includes('cook') || r.includes('chef') || r.includes('kitchen')) return 'bg-orange-400 text-orange-950';
+    if (r.includes('server') || r.includes('wait')) return 'bg-pink-400 text-pink-950';
+    if (r.includes('host')) return 'bg-emerald-400 text-emerald-950';
+    if (r.includes('manager')) return 'bg-purple-400 text-purple-950';
+    if (r.includes('dish')) return 'bg-cyan-400 text-cyan-950';
+    return 'bg-[#D4A381] text-slate-900'; // Default Copper
+  };
 
   const SHIFT_PRESETS = [ { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" }, { label: "Custom", start: "", end: "" } ];
   const handlePresetChange = (e) => { const val = e.target.value; setPresetShift(val); const p = SHIFT_PRESETS.find(x => x.label === val); if (p && val !== 'Custom') { setStartTime(p.start); if (p.end !== 'CLOSE') setEndTime(p.end); } };
@@ -737,12 +770,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
     for (const d of assignDates) { 
       const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id);
       if (req) {
-        if (!req.isPartial) { addToast('Blocked', `${emp.name.split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
-        else { const reqEnd = req.endTime || '23:59'; if ((sTime < reqEnd) && (eTime > req.startTime)) { addToast('Blocked', `${emp.name.split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
+        if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
+        else { const reqEnd = req.endTime || '23:59'; if ((sTime < reqEnd) && (eTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
       }
       validDates.push(d);
     }
-    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role, startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
+    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role || 'Unassigned', startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
@@ -794,24 +827,23 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
         </form>
       </Modal>
 
-      <div className={`${T.card} p-3 flex flex-col lg:flex-row gap-3 items-center justify-between`}>
-        <div className="flex flex-wrap md:flex-nowrap gap-2 w-full lg:w-auto items-center">
-          <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={T.input}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
-          <select value={presetShift} onChange={handlePresetChange} className={T.input}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
-          <div className="flex gap-2 w-full md:w-auto">
-            <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={T.input}/>
-            <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} disabled:opacity-50`}/>
+      <div className={`${T.card} p-2 sm:p-3 flex flex-col lg:flex-row gap-2 items-center justify-between`}>
+        <div className="grid grid-cols-2 lg:flex lg:flex-nowrap gap-2 w-full lg:w-auto items-center">
+          <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
+          <select value={presetShift} onChange={handlePresetChange} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
+          <div className="flex gap-2 w-full col-span-2 lg:col-span-1 lg:w-auto">
+            <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9`}/>
+            <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9 disabled:opacity-50`}/>
           </div>
-          <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full md:w-auto ${T.btn} disabled:opacity-50`}>Assign ({assignDates.length})</button>
+          <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full col-span-2 lg:col-span-1 lg:w-auto ${T.btn} py-1.5 px-3 text-xs h-9 disabled:opacity-50 flex items-center justify-center`}>Assign ({assignDates.length})</button>
         </div>
         <div className="flex w-full lg:w-auto gap-2">
-          <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt}`}>Publish</button>
-          <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381]`}>+ Event</button>
+          <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-1.5 text-xs h-9 flex items-center justify-center`}>Publish</button>
+          <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 text-xs h-9 flex items-center justify-center`}>+ Event</button>
         </div>
       </div>
 
       <div className={`${T.card} w-full overflow-hidden`}>
-        {/* ADDED: Scroll container and min-w to protect Mobile View while keeping Desktop single-page */}
         <div className="overflow-x-auto w-full no-scrollbar">
           <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
             <thead>
@@ -846,23 +878,32 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2A353D]">
-              {displayUsers.map(u => (
-                <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-                  <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
-                  {monthDays.map(d => {
-                    const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                    const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
-                    const sel = assignDates.includes(d) && selectedEmp===u.id;
-                    return (
-                    <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-12 sm:h-16 lg:h-20 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
-                    <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
-                      {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                      {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                      {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${shift.isPublished?(u.role==='Bartender'?'bg-[#D4A381] text-slate-900':'bg-[#C59373] text-slate-900'):'bg-slate-400 text-slate-900'}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
-                    </div>
-                  </td>)
-                  })}
-                </tr>
+              {sortedRoles.map(role => (
+                <React.Fragment key={`role-group-${role}`}>
+                  <tr className="bg-[#1A2126]">
+                    <td colSpan={monthDays.length + 1} className={`p-1 sm:p-2 text-[10px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
+                      {role}s
+                    </td>
+                  </tr>
+                  {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
+                    <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
+                      <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`p-1 sm:p-2 font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                      {monthDays.map(d => {
+                        const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                        const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                        const sel = assignDates.includes(d) && selectedEmp===u.id;
+                        return (
+                        <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top min-h-[40px] h-10 sm:h-12 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                        <div className="flex flex-col gap-[1px] w-full h-full justify-start overflow-hidden">
+                          {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
+                          {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-1 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
+                          {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-1 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
+                        </div>
+                      </td>)
+                      })}
+                    </tr>
+                  ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -1034,7 +1075,6 @@ const TabMonth = ({ currentDate, users, shifts }) => {
 
 // --- PREP & TASKS COMMAND CENTER ---
 const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
-  const isManagement = appUser?.isAdmin || ['General Manager', 'Manager', 'Chef', 'Sous Chef'].includes(appUser?.role);
   const [subTab, setSubTab] = useState('prep');
   const [prepDate, setPrepDate] = useState(currentDate);
 
@@ -1156,18 +1196,19 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
 
     return (
       <div className="space-y-4 mt-4">
-        {/* ADD TASK FORM UNLOCKED FOR ALL USERS */}
-        <form onSubmit={handleAddTask} className={`${T.card} p-3 flex flex-col md:flex-row gap-2 items-center bg-[#1A2126]`}>
-          {editingTaskId && <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest px-2 whitespace-nowrap">Editing Task</div>}
-          <input type="text" value={taskText} onChange={e=>setTaskText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-sm font-medium text-white" placeholder={`New ${freqFilter} task...`} required/>
-          <div className="flex w-full md:w-auto gap-2">
-            <select value={taskCat} onChange={e=>setTaskCat(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white"><option>Cleaning</option><option>General</option></select>
-            {freqFilter === 'weekly' && <select value={taskTargetDay} onChange={e=>setTaskTargetDay(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=><option key={d}>{d}</option>)}</select>}
-            {freqFilter === 'monthly' && <select value={taskTargetDate} onChange={e=>setTaskTargetDate(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{Array.from({length:31}).map((_,i)=><option key={i+1}>{i+1}</option>)}</select>}
-            <button type="submit" className={`${T.btn} px-4 py-2 flex items-center justify-center`}>{editingTaskId ? <Check size={18}/> : <Plus size={18}/>}</button>
-            {editingTaskId && <button type="button" onClick={cancelTaskEdit} className={`${T.btnAlt} px-4 py-2 flex items-center justify-center border-red-900/50 text-red-400 hover:text-red-300`}><X size={18}/></button>}
-          </div>
-        </form>
+        {appUser?.isAdmin && (
+          <form onSubmit={handleAddTask} className={`${T.card} p-3 flex flex-col md:flex-row gap-2 items-center bg-[#1A2126]`}>
+            {editingTaskId && <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest px-2 whitespace-nowrap">Editing Task</div>}
+            <input type="text" value={taskText} onChange={e=>setTaskText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-sm font-medium text-white" placeholder={`New ${freqFilter} task...`} required/>
+            <div className="flex w-full md:w-auto gap-2">
+              <select value={taskCat} onChange={e=>setTaskCat(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white"><option>Cleaning</option><option>General</option></select>
+              {freqFilter === 'weekly' && <select value={taskTargetDay} onChange={e=>setTaskTargetDay(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=><option key={d}>{d}</option>)}</select>}
+              {freqFilter === 'monthly' && <select value={taskTargetDate} onChange={e=>setTaskTargetDate(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{Array.from({length:31}).map((_,i)=><option key={i+1}>{i+1}</option>)}</select>}
+              <button type="submit" className={`${T.btn} px-4 py-2 flex items-center justify-center`}>{editingTaskId ? <Check size={18}/> : <Plus size={18}/>}</button>
+              {editingTaskId && <button type="button" onClick={cancelTaskEdit} className={`${T.btnAlt} px-4 py-2 flex items-center justify-center border-red-900/50 text-red-400 hover:text-red-300`}><X size={18}/></button>}
+            </div>
+          </form>
+        )}
 
         {['Cleaning', 'General'].map(cat => {
           if (grouped[cat].length === 0) return null;
@@ -1190,8 +1231,8 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
-                        {isManagement && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
-                        {isManagement && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
+                        {appUser?.isAdmin && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
+                        {appUser?.isAdmin && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                       </div>
                     </div>
                   )
@@ -1245,7 +1286,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
-                        {isManagement && <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>}
+                        <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
                       </div>
                     </div>
                   )})}
