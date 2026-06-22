@@ -366,7 +366,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date));
 
-  return (
+return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24">
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
