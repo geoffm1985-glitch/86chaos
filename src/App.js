@@ -2035,7 +2035,7 @@ const TabSettings = ({ appUser, addToast }) => {
   const [notifMessages, setNotifMessages] = useState(prefs.notifMessages ?? true);
   const [notifTrades, setNotifTrades] = useState(prefs.notifTrades ?? true);
   const [notifReminders, setNotifReminders] = useState(prefs.notifReminders ?? false);
-  const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); // Fully adjustable minutes
+  const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); 
 
   // --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
@@ -2134,7 +2134,7 @@ const TabSettings = ({ appUser, addToast }) => {
       setEditingRoleId(null);
       return;
     }
-    setEditingRoleId(null); // Optimistic visual lock
+    setEditingRoleId(null);
     if (role.isDefault) {
        for (const r of DEFAULT_ROLES) {
          if (r === role.name) {
@@ -2162,87 +2162,89 @@ const TabSettings = ({ appUser, addToast }) => {
   };
 
   const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
-    <label className={`flex items-center justify-between p-4 bg-[#12161A] border ${T.border} rounded-xl ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-[#1A2126]'} transition-colors`}>
-      <div className="pr-4">
-        <div className="text-sm font-bold text-white">{label}</div>
-        <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>{desc}</div>
+    <label className={`flex items-center justify-between p-3 bg-[#12161A] border ${T.border} rounded-xl ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-[#1A2126]'} transition-colors`}>
+      <div className="pr-3">
+        <div className="text-xs font-bold text-white">{label}</div>
+        <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>{desc}</div>
       </div>
       <div className="relative flex-shrink-0">
         <input type="checkbox" checked={checked} onChange={onChange} disabled={disabled} className="sr-only" />
-        <div className={`block w-12 h-7 rounded-full transition-colors ${checked ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
-        <div className={`absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform ${checked ? 'transform translate-x-5' : ''}`}></div>
+        <div className={`block w-10 h-6 rounded-full transition-colors ${checked ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
+        <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'transform translate-x-4' : ''}`}></div>
       </div>
     </label>
   );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       
-      {/* Settings Navigation */}
-      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-[#2A353D] mb-4">
+      {/* Settings Navigation (Compact Mobile Grid) */}
+      <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
         {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace'] : []).map((tab) => (
-          <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-5 py-2.5 text-xs font-black rounded-t-xl uppercase tracking-widest whitespace-nowrap transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab === 'workspace' ? 'Workspace (Admin)' : tab}
+          <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {tab}
           </button>
         ))}
       </div>
 
       {/* --- SUB-TAB: MY PROFILE --- */}
       {subTab === 'profile' && (
-        <div className="space-y-4">
-          <div className={`${T.card} p-4 sm:p-6`}>
+        <div className="space-y-3">
+          <div className={`${T.card} p-3 sm:p-5`}>
             
-            <div className="flex items-center gap-6 mb-6 pb-6 border-b border-[#2A353D]">
+            <div className="flex items-center gap-4 mb-4 pb-4 border-b border-[#2A353D]">
               <div className="relative group cursor-pointer">
-                <img src={getAvatar(name, photoURL)} alt="Profile" className={`w-20 h-20 rounded-full border-2 border-[#D4A381] object-cover shadow-lg bg-[#12161A]`} />
+                <img src={getAvatar(name, photoURL)} alt="Profile" className={`w-14 h-14 rounded-full border-2 border-[#D4A381] object-cover shadow-lg bg-[#12161A]`} />
                 <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                  <Edit size={24} className="text-white" />
+                  <Edit size={16} className="text-white" />
                   <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                 </label>
               </div>
               <div>
-                <h2 className="text-xl font-black text-white leading-tight">{name || 'Staff Member'}</h2>
-                <div className={`text-[10px] font-black uppercase tracking-widest ${T.copper} mt-1`}>{appUser.role} {appUser.isAdmin && '| Admin'}</div>
-                <label className="text-[10px] uppercase font-bold text-slate-400 mt-2 block cursor-pointer hover:text-white transition-colors">
+                <h2 className="text-lg font-black text-white leading-tight">{name || 'Staff Member'}</h2>
+                <div className={`text-[9px] font-black uppercase tracking-widest ${T.copper} mt-0.5`}>{appUser.role} {appUser.isAdmin && '| Admin'}</div>
+                <label className="text-[9px] uppercase font-bold text-slate-400 mt-1 block cursor-pointer hover:text-white transition-colors">
                   Tap photo to upload <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                 </label>
               </div>
             </div>
 
-            <form onSubmit={handleSaveProfile} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><label className={T.label}>Full Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className={T.input} required /></div>
-                <div><label className={T.label}>Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={T.input} /></div>
+            <form onSubmit={handleSaveProfile} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className={T.label}>Full Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className={`${T.input} py-2 text-sm`} required /></div>
+                <div><label className={T.label}>Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={`${T.input} py-2 text-sm`} /></div>
               </div>
               
               <div>
                 <label className={T.label}>Profile Picture URL</label>
-                <input type="text" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className={T.input} placeholder="Paste image link here or use the upload button above..." />
+                <input type="text" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Paste image link here or use the upload button above..." />
               </div>
 
-              <div><label className={T.label}>Email Address (Cannot change)</label><input type="email" value={appUser?.email} disabled className={`${T.input} opacity-50 cursor-not-allowed`} /></div>
-              <button type="submit" className={`w-full ${T.btn} py-3`}>Save Profile Data</button>
+              <div><label className={T.label}>Email Address (Cannot change)</label><input type="email" value={appUser?.email} disabled className={`${T.input} py-2 text-sm opacity-50 cursor-not-allowed`} /></div>
+              <button type="submit" className={`w-full ${T.btn} py-2`}>Save Profile</button>
             </form>
           </div>
 
-          <div className={`${T.card} p-4 sm:p-6 bg-red-900/10 border-red-900/50`}>
-             <h3 className="text-sm font-black text-red-500 uppercase tracking-widest mb-2">Security</h3>
-             <p className="text-xs text-slate-400 font-medium mb-4">Need to change your password? We will email you a secure reset link.</p>
-             <button type="button" onClick={handlePasswordReset} className="w-full sm:w-auto bg-[#12161A] text-red-400 border border-red-900/50 hover:bg-red-900/30 font-bold px-6 py-2.5 rounded-xl transition-colors text-sm">Send Password Reset Email</button>
+          <div className={`${T.card} p-3 sm:p-5 bg-red-900/10 border-red-900/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
+             <div>
+               <h3 className="text-xs font-black text-red-500 uppercase tracking-widest mb-1">Security</h3>
+               <p className="text-[10px] text-slate-400 font-medium">Get a secure password reset link.</p>
+             </div>
+             <button type="button" onClick={handlePasswordReset} className="w-full sm:w-auto bg-[#12161A] text-red-400 border border-red-900/50 hover:bg-red-900/30 font-bold px-4 py-2 rounded-xl transition-colors text-xs whitespace-nowrap">Reset Password</button>
           </div>
         </div>
       )}
 
       {/* --- SUB-TAB: PREFERENCES --- */}
       {subTab === 'preferences' && (
-        <div className="space-y-6">
-          <form onSubmit={handleSavePrefs} className={`${T.card} p-4 sm:p-6 space-y-6`}>
+        <div className="space-y-4">
+          <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
             <div>
-              <h2 className="text-lg font-black text-white mb-4 border-b border-[#2A353D] pb-2">App Experience</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <h2 className="text-base font-black text-white mb-3 border-b border-[#2A353D] pb-2">App Experience</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={T.label}>Default Startup Tab</label>
-                  <select value={defaultTab} onChange={e => setDefaultTab(e.target.value)} className={T.input}>
+                  <select value={defaultTab} onChange={e => setDefaultTab(e.target.value)} className={`${T.input} py-2 text-sm`}>
                     <option value="published">My Schedule</option>
                     <option value="messages">Message Board</option>
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
@@ -2252,38 +2254,38 @@ const TabSettings = ({ appUser, addToast }) => {
                 </div>
                 <div>
                   <label className={T.label}>Time Format</label>
-                  <select value={timeFormat} onChange={e => setTimeFormat(e.target.value)} className={T.input}>
+                  <select value={timeFormat} onChange={e => setTimeFormat(e.target.value)} className={`${T.input} py-2 text-sm`}>
                     <option value="12h">12-Hour (AM/PM)</option>
                     <option value="24h">24-Hour (Military)</option>
                   </select>
                 </div>
               </div>
             </div>
-            <button type="submit" className={`w-full ${T.btn} py-3`}>Save Preferences</button>
+            <button type="submit" className={`w-full ${T.btn} py-2`}>Save Preferences</button>
           </form>
 
           {appUser?.isAdmin && (
-            <div className={`${T.card} p-4 sm:p-6 space-y-4 animate-[slideIn_0.2s_ease-out]`}>
+            <div className={`${T.card} p-3 sm:p-5 space-y-3 animate-[slideIn_0.2s_ease-out]`}>
               <div>
-                <h2 className="text-lg font-black text-white mb-1">Roster Roles</h2>
-                <p className="text-xs text-slate-400 font-medium mb-4">Add, edit, or remove job titles for your staff.</p>
+                <h2 className="text-base font-black text-white mb-1">Roster Roles</h2>
+                <p className="text-[10px] text-slate-400 font-medium mb-3">Add, edit, or remove job titles.</p>
                 
-                <form onSubmit={handleAddRole} className="flex flex-col sm:flex-row gap-2 mb-4">
-                  <input type="text" value={newRoleName} onChange={e=>setNewRoleName(e.target.value)} placeholder="New Role Name..." className={T.input} required />
-                  <button type="submit" className={`${T.btn} whitespace-nowrap`}><Plus size={18} className="inline mr-1"/> Add Role</button>
+                <form onSubmit={handleAddRole} className="flex flex-col sm:flex-row gap-2 mb-3">
+                  <input type="text" value={newRoleName} onChange={e=>setNewRoleName(e.target.value)} placeholder="New Role Name..." className={`${T.input} py-2 text-sm`} required />
+                  <button type="submit" className={`${T.btn} py-2 whitespace-nowrap`}><Plus size={16} className="inline mr-1"/> Add Role</button>
                 </form>
                 
                 <div className="flex flex-wrap gap-2">
                   {displayRoles.map(role => (
-                    <div key={role.id} className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-3 py-1.5 rounded-lg shadow-sm">
+                    <div key={role.id} className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-lg shadow-sm">
                       {editingRoleId === role.id ? (
-                        <input type="text" autoFocus defaultValue={role.name} onBlur={(e) => handleSaveRoleEdit(role, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveRoleEdit(role, e.target.value)} className="bg-transparent text-white text-xs font-bold outline-none border-b border-[#D4A381] w-24" />
+                        <input type="text" autoFocus defaultValue={role.name} onBlur={(e) => handleSaveRoleEdit(role, e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveRoleEdit(role, e.target.value)} className="bg-transparent text-white text-[10px] font-bold outline-none border-b border-[#D4A381] w-20" />
                       ) : (
-                        <span className="text-xs font-bold text-slate-300">{role.name}</span>
+                        <span className="text-[10px] font-bold text-slate-300">{role.name}</span>
                       )}
-                      <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
-                        <button type="button" onClick={() => setEditingRoleId(role.id)} className="text-slate-500 hover:text-[#D4A381]"><Edit size={12}/></button>
-                        <button type="button" onClick={() => handleDeleteRole(role)} className="text-slate-500 hover:text-red-500"><Trash2 size={12}/></button>
+                      <div className="flex gap-1 border-l border-[#2A353D] pl-1.5 ml-0.5">
+                        <button type="button" onClick={() => setEditingRoleId(role.id)} className="text-slate-500 hover:text-[#D4A381]"><Edit size={10}/></button>
+                        <button type="button" onClick={() => handleDeleteRole(role)} className="text-slate-500 hover:text-red-500"><Trash2 size={10}/></button>
                       </div>
                     </div>
                   ))}
@@ -2296,38 +2298,38 @@ const TabSettings = ({ appUser, addToast }) => {
 
       {/* --- SUB-TAB: ALERTS --- */}
       {subTab === 'alerts' && (
-        <form onSubmit={handleSavePrefs} className={`${T.card} p-4 sm:p-6 space-y-6`}>
+        <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
           <div>
-            <h2 className="text-xl font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={20}/> Alerts & Routing</h2>
-            <p className="text-xs text-slate-400 font-medium mb-4">Control how 86 Chaos pings your device.</p>
+            <h2 className="text-base font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={16}/> Alerts & Routing</h2>
+            <p className="text-[10px] text-slate-400 font-medium mb-3">Control how 86 Chaos pings your device.</p>
             
-            <div className="space-y-3">
+            <div className="space-y-2">
               <Toggle label="Schedule Publications" desc="Get alerted the exact second a new schedule goes live." checked={notifSchedule} onChange={e => setNotifSchedule(e.target.checked)} />
               <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
               <Toggle label="Urgent Message Board" desc="Receive push alerts for announcements marked 'Critical' by managers." checked={notifMessages} onChange={e => setNotifMessages(e.target.checked)} />
               
-              <div className={`p-4 bg-[#12161A] border ${T.border} rounded-xl`}>
-                <label className="flex items-center justify-between mb-3 cursor-pointer group">
+              <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl`}>
+                <label className="flex items-center justify-between cursor-pointer group">
                   <div>
-                    <div className="text-sm font-bold text-white group-hover:text-[#D4A381] transition-colors">Pre-Shift Reminders</div>
-                    <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>Automated ping before your scheduled clock-in time.</div>
+                    <div className="text-xs font-bold text-white group-hover:text-[#D4A381] transition-colors">Pre-Shift Reminders</div>
+                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Automated ping before your scheduled clock-in time.</div>
                   </div>
                   <div className="relative flex-shrink-0">
                     <input type="checkbox" checked={notifReminders} onChange={e => setNotifReminders(e.target.checked)} className="sr-only" />
-                    <div className={`block w-12 h-7 rounded-full transition-colors ${notifReminders ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
-                    <div className={`absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform ${notifReminders ? 'transform translate-x-5' : ''}`}></div>
+                    <div className={`block w-10 h-6 rounded-full transition-colors ${notifReminders ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
+                    <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${notifReminders ? 'transform translate-x-4' : ''}`}></div>
                   </div>
                 </label>
 
                 {notifReminders && (
-                  <div className="flex items-center gap-3 pt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
+                  <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
                     <input 
                       type="number" 
                       min="1" 
                       value={reminderTime} 
                       onChange={e => setReminderTime(e.target.value)} 
-                      className={`${T.input} w-24 text-center font-black`} 
+                      className={`${T.input} w-20 py-1 text-center text-xs font-black`} 
                       placeholder="120"
                     />
                   </div>
@@ -2335,55 +2337,55 @@ const TabSettings = ({ appUser, addToast }) => {
               </div>
             </div>
           </div>
-          <button type="submit" className={`w-full ${T.btn} py-3`}>Save Alert Preferences</button>
+          <button type="submit" className={`w-full ${T.btn} py-2`}>Save Alerts</button>
         </form>
       )}
 
       {/* --- SUB-TAB: GLOBAL WORKSPACE (ADMIN ONLY) --- */}
       {subTab === 'workspace' && appUser?.isAdmin && (
-        <form onSubmit={handleSaveSystem} className={`${T.card} p-4 sm:p-6 space-y-6 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
+        <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           
           <div>
-             <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-3">
-               <h2 className="text-xl font-black text-white"><Shield className={`inline mr-2 ${T.copper}`} size={20}/> Global Config</h2>
-               <span className="bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-widest">Master Controls</span>
+             <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
+               <h2 className="text-base font-black text-white"><Shield className={`inline mr-2 ${T.copper}`} size={16}/> Global Config</h2>
+               <span className="bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded text-[8px] uppercase font-black tracking-widest">Master Controls</span>
              </div>
              
-             <div className="mt-6 mb-2 text-[10px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
-             <div className="space-y-3">
+             <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
+             <div className="space-y-2">
                <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
                <Toggle label="Block Early Clock-Ins" desc="Prevent staff from punching in before their grace period begins." checked={sysBlockEarly} onChange={e => setSysBlockEarly(e.target.checked)} />
                
-               <div className={`p-4 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-4`}>
+               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
                  <div>
-                   <div className="text-sm font-bold text-white">Clock-In Grace Period</div>
-                   <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>How many minutes early staff can clock in.</div>
+                   <div className="text-xs font-bold text-white">Clock-In Grace Period</div>
+                   <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>How many minutes early staff can clock in.</div>
                  </div>
-                 <input type="number" min="0" value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-20 text-center font-black py-2`} />
+                 <input type="number" min="0" value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
                </div>
              </div>
 
-             <div className="mt-8 mb-2 text-[10px] font-black uppercase text-[#D4A381] tracking-widest">Shift Board Rules</div>
-             <div className="space-y-3">
+             <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Shift Board Rules</div>
+             <div className="space-y-2">
                <Toggle label="Enable Peer-to-Peer Trades" desc="Allow staff to post their shifts to the Trade Board for others to claim." checked={sysTrades} onChange={e => setSysTrades(e.target.checked)} />
                <Toggle label="Auto-Approve Shift Swaps" desc="If enabled, shift claims are approved instantly without manager intervention." checked={sysAutoApprove} disabled={!sysTrades} onChange={e => setSysAutoApprove(e.target.checked)} />
                <Toggle label="Role-Restricted Trades" desc="Staff can only claim shifts that match their assigned role (e.g., Bartenders can't claim Kitchen shifts)." checked={sysSameRoleTrades} disabled={!sysTrades} onChange={e => setSysSameRoleTrades(e.target.checked)} />
              </div>
 
-             <div className="mt-8 mb-2 text-[10px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
-             <div className="space-y-3">
+             <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
+             <div className="space-y-2">
                <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
-               <div className={`p-4 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-4`}>
+               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
                  <div>
-                   <div className="text-sm font-bold text-white">Overtime Alert Threshold</div>
-                   <div className={`text-[10px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
+                   <div className="text-xs font-bold text-white">Overtime Alert Threshold</div>
+                   <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
                  </div>
-                 <input type="number" min="1" value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-20 text-center font-black py-2`} />
+                 <input type="number" min="1" value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
                </div>
              </div>
 
           </div>
-          <button type="submit" className={`w-full ${T.btn} py-4 mt-6 text-lg`}>Save Global Workspace</button>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
         </form>
       )}
 
