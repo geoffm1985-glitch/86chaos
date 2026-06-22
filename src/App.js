@@ -2431,108 +2431,151 @@ const TabAuditLog = ({ appUser }) => {
 
 // --- SALES & TRENDS TAB ---
 const TabSales = ({ sales, addToast, appUser }) => {
-  const [date, setDate] = useState(getToday());
-  const [grossSales, setGrossSales] = useState('');
-  const [laborCost, setLaborCost] = useState('');
-  const [foodCost, setFoodCost] = useState('');
+  // Helper to snap any date to the Monday of that week
+  const getMonday = (dStr) => {
+    const d = new Date(dStr + 'T12:00:00');
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
+  };
 
-  const handleAddSales = async (e) => {
-    e.preventDefault();
-    if (!grossSales || !appUser) return;
+  const [weekStart, setWeekStart] = useState(getMonday(getToday()));
+  const [editData, setEditData] = useState({});
+
+  // Generate the 7 days for the currently selected week
+  const weekDays = Array.from({length: 7}).map((_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
+
+  // Pull existing sales data into the inputs when the week changes
+  useEffect(() => {
+    const newEditData = {};
+    weekDays.forEach(date => {
+      const daySale = sales.find(s => s.date === date);
+      newEditData[date] = {
+        grossSales: daySale?.grossSales || '',
+        laborCost: daySale?.laborCost || '',
+        foodCost: daySale?.foodCost || '',
+        notes: daySale?.notes || ''
+      };
+    });
+    setEditData(newEditData);
+  }, [weekStart, sales]);
+
+  const changeWeek = (offset) => {
+    const newDate = new Date(weekStart);
+    newDate.setDate(newDate.getDate() + (offset * 7));
+    setWeekStart(newDate);
+  };
+
+  const handleSave = async (date) => {
+    const data = editData[date];
+    const existing = sales.find(s => s.date === date);
+    const payload = {
+      date,
+      grossSales: parseFloat(data.grossSales) || 0,
+      laborCost: parseFloat(data.laborCost) || 0,
+      foodCost: parseFloat(data.foodCost) || 0,
+      notes: data.notes || '',
+      restaurantId: appUser.restaurantId,
+      loggedBy: appUser.name,
+      timestamp: new Date().toISOString()
+    };
+
     try {
-      await addDoc(collection(db, "sales"), {
-        date,
-        grossSales: parseFloat(grossSales) || 0,
-        laborCost: parseFloat(laborCost) || 0,
-        foodCost: parseFloat(foodCost) || 0,
-        restaurantId: appUser.restaurantId,
-        loggedBy: appUser.name,
-        timestamp: new Date().toISOString()
-      });
-      addToast('Sales Logged', `Data for ${formatDisplayDate(date)} saved.`);
-      setGrossSales(''); setLaborCost(''); setFoodCost('');
+      if (existing) {
+        await updateDoc(doc(db, "sales", existing.id), payload);
+      } else {
+        await addDoc(collection(db, "sales"), payload);
+      }
+      addToast('Saved', `Data for ${new Date(date+'T12:00').toLocaleDateString()} locked in.`);
     } catch (err) {
       addToast('Error', err.message);
     }
   };
 
-  const sortedSales = [...sales].sort((a,b) => b.date.localeCompare(a.date));
-  const recentSales = sortedSales.slice(0, 30);
+  const handleInputChange = (date, field, value) => {
+    setEditData(prev => ({ ...prev, [date]: { ...prev[date], [field]: value } }));
+  };
 
-  const totalSales = recentSales.reduce((sum, s) => sum + (s.grossSales || 0), 0);
-  const totalLabor = recentSales.reduce((sum, s) => sum + (s.laborCost || 0), 0);
-  const totalFood = recentSales.reduce((sum, s) => sum + (s.foodCost || 0), 0);
-  const avgLaborPct = totalSales > 0 ? ((totalLabor / totalSales) * 100).toFixed(1) : '0.0';
-  const avgFoodPct = totalSales > 0 ? ((totalFood / totalSales) * 100).toFixed(1) : '0.0';
+  // Calculate math strictly for the 7 days visible on screen
+  let wtdGross = 0; let wtdLabor = 0; let wtdFood = 0;
+  weekDays.forEach(d => {
+    const s = sales.find(x => x.date === d);
+    if (s) { wtdGross += (s.grossSales||0); wtdLabor += (s.laborCost||0); wtdFood += (s.foodCost||0); }
+  });
+  const wtdLaborPct = wtdGross > 0 ? ((wtdLabor / wtdGross) * 100).toFixed(1) : 0;
+  const wtdFoodPct = wtdGross > 0 ? ((wtdFood / wtdGross) * 100).toFixed(1) : 0;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className={`${T.card} p-4 flex flex-col items-center justify-center`}>
-          <span className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mb-1`}>30-Day Gross</span>
-          <span className={`text-3xl font-black ${T.copper}`}>${totalSales.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-        </div>
-        <div className={`${T.card} p-4 flex flex-col items-center justify-center`}>
-          <span className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mb-1`}>Avg Labor Cost</span>
-          <span className={`text-3xl font-black ${avgLaborPct > 30 ? 'text-red-500' : 'text-emerald-500'}`}>{avgLaborPct}%</span>
-        </div>
-        <div className={`${T.card} p-4 flex flex-col items-center justify-center`}>
-          <span className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mb-1`}>Avg Food Cost</span>
-          <span className={`text-3xl font-black ${avgFoodPct > 33 ? 'text-red-500' : 'text-emerald-500'}`}>{avgFoodPct}%</span>
-        </div>
+      {/* Self-contained Weekly Controls */}
+      <div className="flex justify-between items-center bg-[#1A2126] border border-[#2A353D] rounded-2xl p-4 shadow-xl">
+         <button onClick={() => changeWeek(-1)} className={T.btnAlt}><ChevronLeft size={20} /></button>
+         <div className="text-center">
+           <h2 className="text-xl font-black text-white">Week of {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</h2>
+           <span className="text-[10px] uppercase tracking-widest text-[#D4A381] font-bold">Sales Ledger</span>
+         </div>
+         <button onClick={() => changeWeek(1)} className={T.btnAlt}><ChevronRight size={20} /></button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1">
-          <form onSubmit={handleAddSales} className={`${T.card} p-5 space-y-4 sticky top-20`}>
-            <h3 className="font-black text-white text-lg border-b border-[#2A353D] pb-2 mb-4">Log Daily Sales</h3>
-            <div><label className={T.label}>Date</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} className={T.input} required/></div>
-            <div><label className={T.label}>Gross Sales ($)</label><input type="number" step="0.01" value={grossSales} onChange={e=>setGrossSales(e.target.value)} className={T.input} placeholder="0.00" required/></div>
-            <div><label className={T.label}>Labor Cost ($)</label><input type="number" step="0.01" value={laborCost} onChange={e=>setLaborCost(e.target.value)} className={T.input} placeholder="0.00" required/></div>
-            <div><label className={T.label}>Food Cost ($)</label><input type="number" step="0.01" value={foodCost} onChange={e=>setFoodCost(e.target.value)} className={T.input} placeholder="0.00" required/></div>
-            <button type="submit" className={`w-full ${T.btn} py-3`}>Save Record</button>
-          </form>
-        </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className={`${T.card} p-4 text-center`}><div className={`text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Gross</div><div className="text-xl sm:text-2xl font-black text-[#D4A381]">${wtdGross.toLocaleString(undefined, {minimumFractionDigits: 2})}</div></div>
+        <div className={`${T.card} p-4 text-center`}><div className={`text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Labor %</div><div className={`text-xl sm:text-2xl font-black ${wtdLaborPct > 30 ? 'text-red-400' : 'text-emerald-400'}`}>{wtdLaborPct}%</div></div>
+        <div className={`${T.card} p-4 text-center`}><div className={`text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Food %</div><div className={`text-xl sm:text-2xl font-black ${wtdFoodPct > 33 ? 'text-red-400' : 'text-emerald-400'}`}>{wtdFoodPct}%</div></div>
+      </div>
 
-        <div className="lg:col-span-2">
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><TrendingUp className={T.copper}/> Sales Ledger</h3>
-            </div>
-            <div className={`divide-y ${T.border}`}>
-              {sortedSales.length === 0 && <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No sales data logged yet.</div>}
-              {sortedSales.map(s => {
-                const lPct = s.grossSales > 0 ? ((s.laborCost / s.grossSales) * 100).toFixed(1) : 0;
-                const fPct = s.grossSales > 0 ? ((s.foodCost / s.grossSales) * 100).toFixed(1) : 0;
+      <div className={`${T.card} overflow-hidden`}>
+        <div className="overflow-x-auto w-full no-scrollbar">
+          <table className="w-full text-left border-collapse min-w-[900px]">
+            <thead>
+              <tr className={T.th}>
+                <th className="p-3 w-32">Date</th>
+                <th className="p-3 w-40">Gross Sales</th>
+                <th className="p-3 w-40">Labor Cost</th>
+                <th className="p-3 w-40">Food Cost</th>
+                <th className="p-3">Variables / Notes</th>
+                <th className="p-3 w-24 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className={`divide-y ${T.border}`}>
+              {weekDays.map(date => {
+                const data = editData[date] || { grossSales: '', laborCost: '', foodCost: '', notes: '' };
+                const isToday = date === getToday();
+                const laborPct = data.grossSales > 0 ? ((data.laborCost / data.grossSales) * 100).toFixed(1) : 0;
+                const foodPct = data.grossSales > 0 ? ((data.foodCost / data.grossSales) * 100).toFixed(1) : 0;
+                
                 return (
-                  <div key={s.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4`}>
-                    <div>
-                      <div className="font-black text-white text-lg">{formatDisplayDate(s.date)}</div>
-                      <div className={`text-[10px] font-bold ${T.muted} uppercase tracking-widest mt-0.5`}>Logged by {s.loggedBy || 'Unknown'}</div>
-                    </div>
-                    <div className="flex gap-4 sm:gap-6 text-right">
-                      <div className="flex flex-col">
-                        <span className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>Gross</span>
-                        <span className="font-bold text-white">${(s.grossSales||0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>Labor</span>
-                        <span className={`font-bold ${lPct > 30 ? 'text-red-400' : 'text-emerald-400'}`}>{lPct}%</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>Food</span>
-                        <span className={`font-bold ${fPct > 33 ? 'text-red-400' : 'text-emerald-400'}`}>{fPct}%</span>
-                      </div>
-                      <div className="flex items-center ml-2 border-l border-[#2A353D] pl-4">
-                         <button onClick={() => { if(window.confirm("Delete this record?")) deleteDoc(doc(db,"sales",s.id)); }} className="text-slate-500 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
-                      </div>
-                    </div>
-                  </div>
-                )
+                  <tr key={date} className={`${T.row} ${isToday ? 'bg-[#12161A]' : ''}`}>
+                    <td className="p-3">
+                      <div className={`font-bold text-sm ${isToday ? 'text-[#D4A381]' : 'text-white'}`}>{new Date(date+'T12:00').toLocaleDateString('en-US',{weekday:'short'})}</div>
+                      <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted}`}>{new Date(date+'T12:00').toLocaleDateString('en-US',{month:'numeric', day:'numeric'})}</div>
+                    </td>
+                    <td className="p-3">
+                      <div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span><input type="number" step="0.01" value={data.grossSales} onChange={e => handleInputChange(date, 'grossSales', e.target.value)} className={`${T.input} pl-6 py-2 text-sm`} placeholder="0.00" /></div>
+                    </td>
+                    <td className="p-3">
+                      <div className="relative mb-1"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span><input type="number" step="0.01" value={data.laborCost} onChange={e => handleInputChange(date, 'laborCost', e.target.value)} className={`${T.input} pl-6 py-2 text-sm`} placeholder="0.00" /></div>
+                      <div className={`text-[9px] font-black uppercase tracking-widest text-right ${laborPct > 30 ? 'text-red-400' : 'text-emerald-400'}`}>{laborPct}% Labor</div>
+                    </td>
+                    <td className="p-3">
+                      <div className="relative mb-1"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span><input type="number" step="0.01" value={data.foodCost} onChange={e => handleInputChange(date, 'foodCost', e.target.value)} className={`${T.input} pl-6 py-2 text-sm`} placeholder="0.00" /></div>
+                      <div className={`text-[9px] font-black uppercase tracking-widest text-right ${foodPct > 33 ? 'text-red-400' : 'text-emerald-400'}`}>{foodPct}% Food</div>
+                    </td>
+                    <td className="p-3">
+                      <input type="text" value={data.notes} onChange={e => handleInputChange(date, 'notes', e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Weather, events..." />
+                    </td>
+                    <td className="p-3 text-center">
+                      <button onClick={() => handleSave(date)} className={`${T.btn} py-2 px-4 w-full`}><Check size={16} className="mx-auto"/></button>
+                    </td>
+                  </tr>
+                );
               })}
-            </div>
-          </div>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
