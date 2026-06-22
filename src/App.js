@@ -347,6 +347,10 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
   
+  const myMonthShifts = shifts
+    .filter(s => s.employeeId === appUser.id && s.date.startsWith(monthStr) && s.isPublished)
+    .sort((a,b) => a.date.localeCompare(b.date));
+
   const myNextShift = shifts
     .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date))[0];
@@ -362,7 +366,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date));
 
-return (
+  return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24">
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
@@ -390,6 +394,27 @@ return (
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => { if(myNextShift) { handleOfferSwap(myNextShift); } else { addToast("Error", "No upcoming shift to offer."); } }} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🔄</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Offer Shift</span></button>
             <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🏖️</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span></button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden mt-4`}>
+            <div className={T.th}>My Month Shifts</div>
+            <div className={`divide-y ${T.border}`}>
+              {myMonthShifts.length === 0 ? (
+                <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No shifts scheduled for you this month.</div>
+              ) : (
+                myMonthShifts.map(s => (
+                  <div key={s.id} className={`${T.row} flex justify-between items-center`}>
+                    <div>
+                      <div className="font-bold text-white text-sm">{formatDisplayDate(s.date)}</div>
+                      <div className={`text-[9px] font-black uppercase tracking-widest ${T.copper} mt-0.5`}>{s.role}</div>
+                    </div>
+                    <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>
+                      {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -420,7 +445,7 @@ return (
                    )}
                    <div className={`${T.row} hover:bg-[#12161A]`}>
                      <div className="flex items-center justify-between">
-                       <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name?.split(' ')[0]}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div></div></div>
+                       <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div></div></div>
                        <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
                      </div>
                    </div>
@@ -437,7 +462,6 @@ return (
     </div>
   );
 };
-
 
 // --- TEAM MANAGEMENT ---
 const TabTeam = ({ users, appUser, addToast }) => {
