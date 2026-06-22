@@ -2589,7 +2589,7 @@ const TabSales = ({ sales, addToast, appUser }) => {
 // THE MASTER ENGINE (App Component)
 // ============================================================================
 export default function App() {
-  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem(''86chaosUser'); return saved ? JSON.parse(saved) : null; });
+  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('86chaosUser'); return saved ? JSON.parse(saved) : null; });
   const rId = appUser?.restaurantId;
  
 
