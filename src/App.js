@@ -529,11 +529,11 @@ const TabTeam = ({ users, appUser, addToast }) => {
 
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
 
-  return (
+return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
       
       {canManageTeam && (
-        <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-4`}>
+        <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-2`}>
           {editingUserId && (
             <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
               <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
