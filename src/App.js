@@ -2293,7 +2293,7 @@ const TabSettings = ({ appUser, addToast }) => {
             <button type="submit" className={`w-full ${T.btn} py-2`}>Save Preferences</button>
           </form>
 
-          {appUser?.isAdmin && (
+         {appUser?.isAdmin && (
             <div className={`${T.card} p-3 sm:p-5 space-y-3 animate-[slideIn_0.2s_ease-out]`}>
               <div>
                 <h2 className="text-base font-black text-white mb-1">Roster Roles</h2>
@@ -2320,22 +2320,24 @@ const TabSettings = ({ appUser, addToast }) => {
                   ))}
                 </div>
               </div>
+
+              <div className="pt-4 mt-4 border-t border-[#2A353D]">
+                <h2 className="text-base font-black text-white mb-2">Prep Stations</h2>
+                <div className="flex gap-2 mb-3">
+                  <input type="text" value={newPrepCat} onChange={e=>setNewPrepCat(e.target.value)} placeholder="New Station..." className={`${T.input} py-2 text-sm`} />
+                  <button type="button" onClick={async () => { if(newPrepCat) { await addDoc(collection(db, "prepCategories"), { name: newPrepCat, restaurantId: appUser.restaurantId }); setNewPrepCat(''); } }} className={`${T.btn} py-2 whitespace-nowrap`}>Add Station</button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {dbPrepCats.map(cat => (
+                    <div key={cat.id} className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-lg shadow-sm">
+                      <span className="text-[10px] font-bold text-slate-300">{cat.name}</span>
+                      <button type="button" onClick={() => { if(window.confirm(`Delete ${cat.name}?`)) deleteDoc(doc(db, "prepCategories", cat.id)); }} className="text-slate-500 hover:text-red-500 pl-1 border-l border-[#2A353D] ml-1"><Trash2 size={10}/></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          <div className="pt-4 mt-4 border-t border-[#2A353D]">
-                  <h2 className="text-base font-black text-white mb-2">Prep Stations</h2>
-                  <div className="flex gap-2 mb-3">
-                    <input type="text" value={newPrepCat} onChange={e=>setNewPrepCat(e.target.value)} placeholder="New Station..." className={`${T.input} py-2 text-sm`} />
-                    <button type="button" onClick={async () => { if(newPrepCat) { await addDoc(collection(db, "prepCategories"), { name: newPrepCat, restaurantId: appUser.restaurantId }); setNewPrepCat(''); } }} className={`${T.btn} py-2 whitespace-nowrap`}>Add Station</button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {dbPrepCats.map(cat => (
-                      <div key={cat.id} className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-lg shadow-sm"><span className="text-[10px] font-bold text-slate-300">{cat.name}</span><button type="button" onClick={() => { if(window.confirm(`Delete ${cat.name}?`)) deleteDoc(doc(db, "prepCategories", cat.id)); }} className="text-slate-500 hover:text-red-500 pl-1 border-l border-[#2A353D] ml-1"><Trash2 size={10}/></button></div>
-                    ))}
-                  </div>
-                </div>  
           )}
-        </div>
-      )}
 
       {/* --- SUB-TAB: ALERTS --- */}
       {subTab === 'alerts' && (
