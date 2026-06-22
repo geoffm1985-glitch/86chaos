@@ -2264,7 +2264,7 @@ const TabSettings = ({ appUser, addToast }) => {
         </div>
       )}
 
-      {/* --- SUB-TAB: PREFERENCES --- */}
+     {/* --- SUB-TAB: PREFERENCES --- */}
       {subTab === 'preferences' && (
         <div className="space-y-4">
           <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
@@ -2293,7 +2293,7 @@ const TabSettings = ({ appUser, addToast }) => {
             <button type="submit" className={`w-full ${T.btn} py-2`}>Save Preferences</button>
           </form>
 
-         {appUser?.isAdmin && (
+          {appUser?.isAdmin && (
             <div className={`${T.card} p-3 sm:p-5 space-y-3 animate-[slideIn_0.2s_ease-out]`}>
               <div>
                 <h2 className="text-base font-black text-white mb-1">Roster Roles</h2>
@@ -2338,6 +2338,8 @@ const TabSettings = ({ appUser, addToast }) => {
               </div>
             </div>
           )}
+        </div>
+      )}
 
       {/* --- SUB-TAB: ALERTS --- */}
       {subTab === 'alerts' && (
