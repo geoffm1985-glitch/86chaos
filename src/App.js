@@ -1113,6 +1113,8 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   // Prep Form State
   const [text, setText] = useState(''); 
   const [station, setStation] = useState('Grill'); 
+  const dbPrepCats = useLiveCollection('prepCategories', appUser?.restaurantId); 
+  const displayStations = dbPrepCats.length > 0 ? dbPrepCats.map(c => c.name).sort() : ['Grill', 'Fry', 'Salad/Cold', 'Expo', 'Prep Table'];
   const [isMaster, setIsMaster] = useState(true);
   
   // Task Form State
@@ -1288,8 +1290,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
           <form onSubmit={handleAddPrep} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
             <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add prep item..." required/>
             <div className="flex w-full sm:w-auto gap-3 items-center">
-              <select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white"><option>Grill</option><option>Fry</option><option>Salad/Cold</option><option>Expo</option><option>Prep Table</option></select>
-              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
+<select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select>              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
               <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
             </div>
           </form>
@@ -2076,6 +2077,8 @@ const TabSettings = ({ appUser, addToast }) => {
 
   // --- Role Management State (Admin Only) ---
   const [newRoleName, setNewRoleName] = useState('');
+  const [newPrepCat, setNewPrepCat] = useState('');
+  const dbPrepCats = useLiveCollection('prepCategories', appUser?.restaurantId);
   const [editingRoleId, setEditingRoleId] = useState(null);
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
@@ -2318,6 +2321,18 @@ const TabSettings = ({ appUser, addToast }) => {
                 </div>
               </div>
             </div>
+          <div className="pt-4 mt-4 border-t border-[#2A353D]">
+                  <h2 className="text-base font-black text-white mb-2">Prep Stations</h2>
+                  <div className="flex gap-2 mb-3">
+                    <input type="text" value={newPrepCat} onChange={e=>setNewPrepCat(e.target.value)} placeholder="New Station..." className={`${T.input} py-2 text-sm`} />
+                    <button type="button" onClick={async () => { if(newPrepCat) { await addDoc(collection(db, "prepCategories"), { name: newPrepCat, restaurantId: appUser.restaurantId }); setNewPrepCat(''); } }} className={`${T.btn} py-2 whitespace-nowrap`}>Add Station</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {dbPrepCats.map(cat => (
+                      <div key={cat.id} className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-lg shadow-sm"><span className="text-[10px] font-bold text-slate-300">{cat.name}</span><button type="button" onClick={() => { if(window.confirm(`Delete ${cat.name}?`)) deleteDoc(doc(db, "prepCategories", cat.id)); }} className="text-slate-500 hover:text-red-500 pl-1 border-l border-[#2A353D] ml-1"><Trash2 size={10}/></button></div>
+                    ))}
+                  </div>
+                </div>  
           )}
         </div>
       )}
