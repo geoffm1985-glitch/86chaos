@@ -166,7 +166,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
              ))}
           </div>
           <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
-            <button onClick={() => { localStorage.removeItem('cheersUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
+            <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
           </div>
        </div>
      </div>
@@ -519,14 +519,14 @@ const TabTeam = ({ users, appUser, addToast }) => {
         forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
       }); 
       
-      const welcomeMsg = `Welcome to Cheers!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
+      const welcomeMsg = `Welcome to 86chaos!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
       
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile && phone.trim()) {
         const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?';
         window.location.href = `sms:${phone.trim()}${smsChar}body=${encodeURIComponent(welcomeMsg)}`;
       } else {
-        window.location.href = `mailto:${email.toLowerCase().trim()}?subject=${encodeURIComponent("Your Cheers 86 Chaos Account")}&body=${encodeURIComponent(welcomeMsg)}`;
+        window.location.href = `mailto:${email.toLowerCase().trim()}?subject=${encodeURIComponent("Your 86 Chaos Account")}&body=${encodeURIComponent(welcomeMsg)}`;
       }
 
       addToast('Staff Added', `Account created successfully.`); 
@@ -1070,7 +1070,7 @@ const TabMonth = ({ currentDate, users, shifts }) => {
       </div>
       
       <div className="hidden print:block print-header">
-        Cheers Schedule • {formatDisplayMonth(monthStr)}
+        86chaos Schedule • {formatDisplayMonth(monthStr)}
       </div>
 
       <div className={`grid grid-cols-7 border-t border-l ${T.border} print-grid`}>
@@ -1407,7 +1407,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     
     // Clean text format for reps (No Prices)
     let bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}) -> Qty: ${i.orderQty}`).join('\n');
-    let fullText = `Order for Cheers Bar & Grill\n\n${bodyText}`;
+    let fullText = `Order via 86chaos\n\n${bodyText}`;
 
     try { await navigator.clipboard.writeText(fullText); } catch (e) { console.log(e); }
 
@@ -2589,7 +2589,7 @@ const TabSales = ({ sales, addToast, appUser }) => {
 // THE MASTER ENGINE (App Component)
 // ============================================================================
 export default function App() {
-  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('cheersUser'); return saved ? JSON.parse(saved) : null; });
+  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem(''86chaosUser'); return saved ? JSON.parse(saved) : null; });
   const rId = appUser?.restaurantId;
  
 
@@ -2622,8 +2622,8 @@ export default function App() {
   const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
 
   useEffect(() => {
-    if (appUser) localStorage.setItem('cheersUser', JSON.stringify(appUser));
-    else localStorage.removeItem('cheersUser');
+    if (appUser) localStorage.setItem('86chaosUser', JSON.stringify(appUser));
+    else localStorage.removeItem('86chaosUser');
   }, [appUser]);
 
   
