@@ -903,12 +903,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
                 )})}
               </tr>
             </thead>
-           <tbody className="divide-y divide-[#2A353D]">
+         <tbody className="divide-y divide-[#2A353D]">
               {sortedRoles.map(role => (
                 <React.Fragment key={`role-group-${role}`}>
                   <tr className="bg-[#1A2126]">
                     <td colSpan={monthDays.length + 1} className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
-                      {role}s
+                      {role}
                     </td>
                   </tr>
                   {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
