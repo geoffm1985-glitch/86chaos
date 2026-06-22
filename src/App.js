@@ -1663,7 +1663,32 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       ['Appetizer Scallop Bacon Wrapped', 'Seafood', '98924', '4/3 Lb', 4, 110, 2, 1, '2026-04-09']
     ];
 
-const batchPromises = rawData.map(item => 
+const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger", rep: "Tom", email: "", phone: "", cutOffDays: [], cutOffTime: "", restaurantId: appUser.restaurantId });
+    const badgerId = badgerVendorRef.id;
+
+    const badgerData = [
+      ['Chipotle honey', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Tenderloin', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Queso', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Guac packets', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Boneless', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Chicken strips', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Waffle fries', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Cheese Nuggets', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Chicken Breasts', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Onion petals', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Pretzel Bites', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Mini Taco', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Jalapeno popper', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Breaded mushroom', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Breaded Cauliflower', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Teasers', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Sour cream fries', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Ghost pepper', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
+      ['Motz Sticks', 'Frozen', '', '1 CS', 1, 0, 0, 0, '']
+    ];
+
+    const batchPromises = rawData.map(item => 
       addDoc(collection(db, "inventoryItems"), {
         name: item[0],
         category: item[1],
@@ -1681,8 +1706,28 @@ const batchPromises = rawData.map(item =>
         restaurantId: appUser.restaurantId
       })
     );
-    await Promise.all(batchPromises);
-    addToast("System Reset", "Full Master List injected successfully!");
+
+    const batchPromisesBadger = badgerData.map(item => 
+      addDoc(collection(db, "inventoryItems"), {
+        name: item[0],
+        category: item[1],
+        pfgCode: item[2],
+        packSize: item[3],
+        yieldQty: item[4],
+        price: item[5],
+        parLevel: 0,
+        lastOrderedQty: item[7],
+        lastOrderedDate: item[8],
+        supplierId: badgerId,
+        currentStock: 0,
+        pendingQty: 0,
+        isStarred: false,
+        restaurantId: appUser.restaurantId
+      })
+    );
+    
+    await Promise.all([...batchPromises, ...batchPromisesBadger]);
+    addToast("System Reset", "PFG & Badger Lists injected successfully!");
   };
 
   const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { const cat = item.category || 'Uncategorized'; if (!acc[cat]) acc[cat] = []; acc[cat].push(item); return acc; }, {});
