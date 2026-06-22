@@ -1937,8 +1937,22 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
         </div>
       )}
 
-      {invTab === 'waste' && (
+    {invTab === 'waste' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          
+          <Modal isOpen={!!editWaste} onClose={() => setEditWaste(null)} title="Edit Burn Log">
+            {editWaste && (
+              <form onSubmit={handleSaveWasteEdit} className="space-y-3">
+                <div><label className={T.label}>Item</label><input type="text" value={editWaste.itemName} disabled className={`${T.input} opacity-50 cursor-not-allowed`} /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={T.label}>Qty Wasted</label><input type="number" min="1" value={editWaste.qty} onChange={e=>setEditWaste({...editWaste, qty: e.target.value})} className={T.input} required/></div>
+                  <div><label className={T.label}>Reason</label><select value={editWaste.reason} onChange={e=>setEditWaste({...editWaste, reason: e.target.value})} className={T.input}><option>Dropped / Spilled</option><option>Expired / Bad Quality</option><option>Cooked Incorrectly</option><option>Comped</option></select></div>
+                </div>
+                <button type="submit" className={`w-full ${T.btn} mt-2`}>Update & Adjust Stock</button>
+              </form>
+            )}
+          </Modal>
+
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🔥 The Burn Log</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1948,9 +1962,24 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
             </div>
             <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors`}>Log Waste & Deduct Stock</button>
           </form>
+          
           <div className={`${T.card} divide-y ${T.border}`}>
             <div className={T.th}><span>Today's Burn</span></div>
-            {wasteLogs.filter(w=>w.date===getToday()).map(w => (<div key={w.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1"> <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.reason} • By {w.loggedBy}</span></div><div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div></div>))}
+            {wasteLogs.filter(w=>w.date===getToday()).map(w => (
+              <div key={w.id} className={`${T.row} flex justify-between items-center`}>
+                <div className="flex-1"> 
+                  <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.reason} • By {w.loggedBy}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div>
+                  <div className="flex gap-1 border-l border-[#2A353D] pl-3 ml-1">
+                    <button onClick={() => setEditWaste({...w})} className="p-1.5 text-slate-400 hover:text-white transition-colors"><Edit size={14}/></button>
+                    <button onClick={() => handleDeleteWaste(w)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              </div>
+            ))}
             {wasteLogs.filter(w=>w.date===getToday()).length === 0 && <div className="p-4 text-center text-slate-400 font-bold text-sm">No waste logged today.</div>}
           </div>
         </div>
