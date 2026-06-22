@@ -1663,7 +1663,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       ['Appetizer Scallop Bacon Wrapped', 'Seafood', '98924', '4/3 Lb', 4, 110, 2, 1, '2026-04-09']
     ];
 
-    const batchPromises = rawData.map(item => 
+const batchPromises = rawData.map(item => 
       addDoc(collection(db, "inventoryItems"), {
         name: item[0],
         category: item[1],
@@ -1671,7 +1671,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         packSize: item[3],
         yieldQty: item[4],
         price: item[5],
-        parLevel: item[6],
+        parLevel: 0,
         lastOrderedQty: item[7],
         lastOrderedDate: item[8],
         supplierId: vId,
@@ -1681,7 +1681,6 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         restaurantId: appUser.restaurantId
       })
     );
-    
     await Promise.all(batchPromises);
     addToast("System Reset", "Full Master List injected successfully!");
   };
