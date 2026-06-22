@@ -1403,23 +1403,30 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     setConfirmModal({ isOpen: true, vendorId, items: list });
   };
 
-  const executeOrder = async (method) => {
+const executeOrder = async (method) => {
     const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
     
-    // Clean text format for reps (No Prices)
-    let bodyText = items.map(i => `${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize}) -> Qty: ${i.orderQty}`).join('\n');
-    let fullText = `Order via 86chaos\n\n${bodyText}`;
+    // Clean text format for reps (No Prices, Quantity First)
+    let bodyText = items.map(i => `${i.orderQty}x ${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize})`).join('%0D%0A');
+    let fullText = `Order via 86chaos%0D%0A%0D%0A${bodyText}`;
 
-    try { await navigator.clipboard.writeText(fullText); } catch (e) { console.log(e); }
+    try { await navigator.clipboard.writeText(decodeURIComponent(fullText)); } catch (e) { console.log(e); }
 
-    if (method === 'email') {
-      const emailUrl = `mailto:${vendor.email}?subject=Cheers Order&body=${encodeURIComponent(fullText)}`;
-      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor.email}?subject=Cheers Order (Paste From Clipboard)`; } 
+    if (method === 'csv') {
+      let csvContent = "data:text/csv;charset=utf-8,Qty,Code,Name,Pack Size\n" + items.map(i => `${i.orderQty},"${i.pfgCode||''}","${i.name}","${i.packSize||''}"`).join("\n");
+      const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", `Order_${(vendor?.name||'Vendor').replace(/\s+/g,'_')}_${getToday()}.csv`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      addToast('Exported', 'Order downloaded as Spreadsheet.');
+    } else if (method === 'email') {
+      const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
+      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
       else { window.location.href = emailUrl; }
-    } else {
-      const smsUrl = `sms:${vendor.phone}?body=${encodeURIComponent(fullText)}`;
-      if (smsUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor.phone}`; } 
+    } else if (method === 'sms') {
+      const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
+      if (smsUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
       else { window.location.href = smsUrl; }
+    } else {
+      addToast('Copied', 'Order list copied to clipboard!');
     }
     
     for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
@@ -1739,13 +1746,11 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
-           <div className="flex gap-2">
-             {vendors.find(v=>v.id===confirmModal.vendorId)?.email && (
-               <button onClick={() => executeOrder('email')} className={`flex-1 ${T.btn} flex items-center justify-center gap-2`}>✉️ Email Order</button>
-             )}
-             {vendors.find(v=>v.id===confirmModal.vendorId)?.phone && (
-               <button onClick={() => executeOrder('sms')} className={`flex-1 ${T.btn} flex items-center justify-center gap-2`}>📱 Text Order</button>
-             )}
+           <div className="grid grid-cols-2 gap-2">
+             <button onClick={() => executeOrder('email')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}>✉️ Email</button>
+             <button onClick={() => executeOrder('sms')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}>📱 Text</button>
+             <button onClick={() => executeOrder('csv')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}>📊 CSV Export</button>
+             <button onClick={() => executeOrder('copy')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}>📋 Copy List</button>
            </div>
          </div>
       </Modal>
