@@ -1384,6 +1384,8 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };
   const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
+const [editWaste, setEditWaste] = useState(null);
+
   const handleLogWaste = async (e) => {
     e.preventDefault(); if(!wItemId || !wQty) return; const item = inventoryItems.find(i => i.id === wItemId); if(!item) return;
     const qtyNum = parseFloat(wQty); const yieldDivider = parseFloat(item.yieldQty) || 1; 
@@ -1391,6 +1393,39 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString(), restaurantId: appUser.restaurantId });
     await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, item.currentStock - stockDeduction) });
     setWItemId(''); setWQty(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
+  };
+
+  const handleDeleteWaste = async (log) => {
+    if (!window.confirm(`Delete burn log for ${log.itemName} and restore stock?`)) return;
+    const item = inventoryItems.find(i => i.id === log.itemId);
+    if (item) {
+       const yieldDivider = parseFloat(item.yieldQty) || 1;
+       const stockRestoration = (parseFloat(log.qty) || 0) / yieldDivider;
+       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (item.currentStock||0) + stockRestoration) });
+    }
+    await deleteDoc(doc(db, "wasteLogs", log.id));
+    addToast('Log Deleted', 'Stock restored successfully.');
+  };
+
+  const handleSaveWasteEdit = async (e) => {
+    e.preventDefault();
+    const log = editWaste;
+    const item = inventoryItems.find(i => i.id === log.itemId);
+    if (item) {
+       const originalLog = wasteLogs.find(w => w.id === log.id);
+       const oldQty = parseFloat(originalLog.qty) || 0;
+       const newQty = parseFloat(log.qty) || 0;
+       const yieldDivider = parseFloat(item.yieldQty) || 1;
+       const stockDifference = (newQty - oldQty) / yieldDivider; 
+       const newCostLost = ((item.price || 0) / yieldDivider) * newQty;
+
+       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (item.currentStock||0) - stockDifference) });
+       await updateDoc(doc(db, "wasteLogs", log.id), { qty: newQty, reason: log.reason, costLost: newCostLost });
+    } else {
+       await updateDoc(doc(db, "wasteLogs", log.id), { qty: log.qty, reason: log.reason });
+    }
+    setEditWaste(null);
+    addToast('Log Updated', 'Burn log and stock adjusted.');
   };
 
   const itemsToOrder = inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : (i.currentStock || 0) < (i.parLevel || 0); });
