@@ -1353,14 +1353,14 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   );
 };
 
-// --- INVENTORY, VENDORS, & WASTE TRACKER (Accept Deliveries & Comm Fixes) ---
+// --- INVENTORY, VENDORS, & WASTE TRACKER ---
 const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
   const [invTab, setInvTab] = useState('count'); 
   const [searchTerm, setSearchTerm] = useState(''); 
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
   // Inventory Form
-  const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState('Produce'); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
+  const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
   const [editItem, setEditItem] = useState(null); 
   const [orderOverrides, setOrderOverrides] = useState({}); 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, vendorId: null, items: [] });
@@ -1371,10 +1371,11 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
   // Waste Form
   const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
+  const [editWaste, setEditWaste] = useState(null);
 
   // --- LOGIC ---
-  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat, pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 10, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
-  const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category, pfgCode: editItem.pfgCode.trim(), supplierId: editItem.supplierId, packSize: editItem.packSize, yieldQty: parseInt(editItem.yieldQty) || 1, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
+  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
+  const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category || 'Other', pfgCode: (editItem.pfgCode || '').trim(), supplierId: editItem.supplierId, packSize: editItem.packSize, yieldQty: parseInt(editItem.yieldQty) || 1, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
   const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseFloat(newStock) || 0) });
   const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseFloat(newPar) || 0) });
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
@@ -1382,8 +1383,6 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
   const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };
   const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
-
-const [editWaste, setEditWaste] = useState(null);
 
   const handleLogWaste = async (e) => {
     e.preventDefault(); if(!wItemId || !wQty) return; const item = inventoryItems.find(i => i.id === wItemId); if(!item) return;
@@ -1437,7 +1436,7 @@ const [editWaste, setEditWaste] = useState(null);
     setConfirmModal({ isOpen: true, vendorId, items: list });
   };
 
-const executeOrder = async (method) => {
+  const executeOrder = async (method) => {
     const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
     
     // Clean text format for reps (No Prices, Quantity First)
@@ -1475,304 +1474,62 @@ const executeOrder = async (method) => {
     addToast('Delivery Accepted', `Stock automatically updated for ${itemsToReceive.length} items.`);
   };
 
- const handleInjectPDF = async () => {
-    if(!window.confirm("WARNING: This will permanently delete ALL current vendors and inventory, and inject the FULL Shawano PDF data with yield, pricing, and historical order data. Proceed?")) return;
-    
-    for (const v of vendors) await deleteDoc(doc(db, "vendors", v.id));
-    for (const i of inventoryItems) await deleteDoc(doc(db, "inventoryItems", i.id));
-    
-    const newVendorRef = await addDoc(collection(db, "vendors"), { name: "Performance Foodservice", rep: "Lawrence Ward", email: "lawrence.ward@pgfc.com", phone: "9204183353", cutOffDays: ["Sunday", "Wednesday"], cutOffTime: "15:30", restaurantId: appUser.restaurantId });
-    const vId = newVendorRef.id;
+  const handleCSVUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!window.confirm(`Upload ${file.name} to your inventory?`)) return;
 
-    // High-Efficiency Data Matrix: [Name, Category, Code, PackSize, Yield, Price, Par, LastQty, LastDate]
-    const rawData = [
-      ['Bun Hamburger Gourmet Sliced 4.25" Split Top', 'Bakery', 'B1938', '6/8 Cnt', 48, 28.5, 2, 3, '2026-05-18'],
-      ['Bun Hamburger Soft Pretzel Bread 4"', 'Bakery', 'CR776', '72/3.2Oz', 72, 34.2, 2, 1, '2026-05-18'],
-      ['Bun Hoagie Italian 6" Hinged Split Top', 'Bakery', '69922', '6/6 Cnt', 36, 22.9, 2, 1, '2026-05-18'],
-      ['Dough Pizza Crust 12" Readi Rise', 'Bakery', '69432', '12/17 Oz', 12, 41.5, 4, 4, '2026-05-18'],
-      ['Pizza Crust 12" Thin Crispy Partial Baked', 'Bakery', 'EK598', '50/6.25', 50, 35, 2, 1, '2026-05-18'],
-      ['Bread Reuben Marble Rye 1/2" 21 Slice', 'Bakery', '23112', '6/32 Oz', 6, 28, 2, 1, '2026-05-14'],
-      ['Cake Chocolate Chip Cookie Dough 10"', 'Frozen', 'NW398', '2/14 Sl', 2, 40, 1, 1, '2026-05-14'],
-      ['Bread White Split Top 9/16" 20 Slice', 'Bakery', '21694', '6/32 Oz', 6, 22, 2, 1, '2026-05-07'],
-      ['Cheesecake Strawberry Lace 10" 14 Slice', 'Frozen', '21542', '2/99 Oz', 2, 45, 1, 1, '2026-05-07'],
-      ['Roll White Hard 5" Sliced Sheboygan Style', 'Bakery', 'NE588', '45/5 In', 45, 20, 2, 1, '2026-04-30'],
-      ['Bread Wheat Hearty Cracked 9/16" 14 Slice', 'Bakery', '27786', '10/24 Oz', 10, 26, 2, 1, '2026-04-27'],
-      ['Shell Taco Yellow Whole Grain 5"', 'Dry Goods', '50408', '8/25 Cnt', 200, 35, 2, 1, '2026-04-20'],
-      ['Tortilla Flour 6" Contigo', 'Dry Goods', 'DT172', '12/24Cnt', 288, 38, 2, 1, '2026-04-20'],
-      ['Bun Slider Hawaiian Sweet 9 Cnt', 'Bakery', 'TD860', '12/10 Oz', 12, 28, 2, 2, '2026-04-09'],
-      ['Cake Carrot Mommas Old Fashioned 16 Slice', 'Frozen', '21572', '2/114 Oz', 2, 50, 1, 1, '2026-04-02'],
-      ['Cake Limoncello Mascarpone 10" 14 Sliced', 'Frozen', 'NJ164', '2/3.5 Lb', 2, 48, 1, 1, '2026-02-16'],
-      ['Pie Boston Cream 10" Unsliced Thaw & Serve', 'Frozen', 'B5370', '6/33 Oz', 6, 45, 1, 1, '2025-12-22'],
-      ['Pie Strawberry Cream 10" Unsliced Thaw & Serve', 'Frozen', '65926', '6/27 Oz', 6, 45, 1, 1, '2025-12-22'],
-      ['Bun Kaiser Onion 4.25" 2.66 Oz Sliced', 'Bakery', '72890', '6/8 Cnt', 48, 25, 2, 1, '2025-12-18'],
-      ['Roll Hard 4" Slice Baked White', 'Bakery', 'G3774', '1/72 Cnt', 72, 0, 2, 2, '2025-12-11'],
-      ['Pie High Peanut Butter 12 Slice', 'Frozen', 'DV594', '2/82.08', 2, 0, 1, 1, '2025-11-26'],
-      ['Cheesecake Pecan Turtle 10" 14 Slice', 'Frozen', '21718', '2/96 Oz', 2, 0, 1, 1, '2025-11-17'],
-      ['Bar Assorted Uncut Caramel Raspberry', 'Frozen', '21724', '4/58 Oz', 4, 0, 1, 1, '2025-11-13'],
-      ['Bun Hot Dog 6" Hinged Slice', 'Bakery', 'D1884', '12/12Cnt', 12, 0, 2, 2, '2025-11-13'],
-      ['Cake Sinful Seven 10" 16 Slice', 'Frozen', '21620', '2/102 Oz', 2, 0, 1, 1, '2025-10-20'],
-      ['Cheesecake Peppermint Cookie Crust', 'Frozen', 'HM332', '2/71 Oz', 2, 0, 1, 1, '2025-10-06'],
-      ['Cheesecake Pumpkin 9" 10 Slice', 'Frozen', 'G0780', '4/86 Oz', 4, 0, 1, 1, '2025-09-22'],
-      ['Pie Caramel Apple Nut High 10"', 'Frozen', '63112', '6/10 In', 6, 0, 1, 1, '2025-09-04'],
-      ['Bun Hoagie Rustic 7.5" 3 Ounce', 'Bakery', '87554', '6/6 Cnt', 6, 0, 2, 1, '2025-09-01'],
-      ['Pie Lemon Meringue Grand 10"', 'Frozen', 'FC026', '4/46 Oz', 4, 0, 1, 1, '2025-08-14'],
-      ['Bread Pita White 6"', 'Bakery', 'PW300', '12/10Cnt', 12, 0, 2, 1, '2025-08-07'],
-      ['Bun Brioche 4.5" Baked Slice', 'Bakery', 'T0758', '8/10 Cnt', 8, 0, 2, 1, '2025-07-21'],
-      ['Cake Chocolate Peanut Butter Mousse', 'Frozen', '21678', '2/80 Oz', 2, 0, 1, 1, '2025-07-10'],
-      ['Tortilla Garden Vegetable 12"', 'Dry Goods', 'P8606', '6/10 Cnt', 6, 0, 2, 4, '2025-05-15'],
-      ['Beef Ground Patty Angus 81/19', 'Meat', 'EW538', '24/7 Oz', 24, 65, 4, 5, '2026-05-18'],
-      ['Beef Taco Filling Fully Cooked', 'Meat', 'GW640', '4/2.5 Lb', 4, 45, 2, 1, '2026-05-18'],
-      ['Beef Ground Patty 5-1 78/22 Round', 'Meat', '37510', '1/15 Lb', 15, 55, 2, 2, '2026-05-14'],
-      ['Corned Beef Brisket Choice Raw w/ Seasoning', 'Meat', 'K4206', '2/16 Up', 2, 85, 2, 1, '2026-05-04'],
-      ['Sirloin Beef Tip Random', 'Meat', '25138', '2/5 Lb', 2, 65, 2, 2, '2026-05-04'],
-      ['Beef Chuck Roll Choice 1" Neck Off', 'Meat', 'DR382', '3/23 Lb', 3, 110, 2, 1, '2026-04-30'],
-      ['Beef Ground 81/19 Raw Bulk Cryo', 'Meat', '46050', '4/5 Lb', 4, 75, 3, 1, '2026-04-23'],
-      ['Beef Ground Patty 4-1 78/22 Round', 'Meat', '36146', '1/15 Lb', 15, 60, 3, 1, '2026-04-16'],
-      ['Meatball Beef Chicken .5 Ounce Cooked', 'Meat', 'CC868', '2/5 Lb', 2, 35, 2, 1, '2026-03-26'],
-      ['Beef Top Blade 8 Oz Steak Choice Flat Iron', 'Meat', '35068', '20/8 Oz', 20, 145, 2, 1, '2026-03-12'],
-      ['Beef Prime Rib Whole 9Up 2" Lip-On No Roll', 'Meat', '11464', '1/14-18#', 1, 210, 1, 1, '2025-12-18'],
-      ['Beverage Syrup Coca Cola Classic BIB', 'Beverage', '28372', '1/5 Gal', 1, 95, 2, 1, '2026-05-14'],
-      ['Beverage Syrup Diet Coke BIB', 'Beverage', '28374', '1/5 Gal', 1, 95, 2, 1, '2026-05-14'],
-      ['Juice Orange 100% Plastic Bottle', 'Beverage', '14114', '24/10 Oz', 24, 28, 2, 1, '2026-05-14'],
-      ['Juice Pineapple Unsweetened 100% Can', 'Beverage', '11170', '48/6 Oz', 48, 32, 2, 1, '2026-05-07'],
-      ['Juice Tomato Sacramento', 'Beverage', '12066', '12/46 Oz', 12, 38, 2, 1, '2026-04-23'],
-      ['Juice Tomato 100%', 'Beverage', 'TB394', '24/7.2Oz', 24, 0, 2, 1, '2026-04-13'],
-      ['Bitters Cocktail Aromatic Glass Bottle', 'Beverage', 'A9510', '12/16 Oz', 12, 85, 1, 1, '2026-02-23'],
-      ['Juice Orange 100% Can', 'Beverage', 'TB388', '24/7.2Oz', 24, 35, 2, 1, '2025-12-22'],
-      ['Juice Pineapple 100%', 'Beverage', 'TB392', '24/7.2Oz', 24, 35, 2, 1, '2025-11-10'],
-      ['Mushroom Tradition Pickled', 'Dry Goods', '23134', '12/16 Oz', 12, 45, 2, 1, '2026-05-18'],
-      ['Bean Chili Mild (Pinto Bean)', 'Dry Goods', '10792', '6/#10Can', 6, 38, 2, 1, '2026-05-14'],
-      ['Tomato Diced In Juice Fancy', 'Dry Goods', '11230', '6/#10Can', 6, 32, 2, 1, '2026-05-14'],
-      ['Cherry Maraschino No Stem Extra Large', 'Dry Goods', '16352', '4/.5 Gal', 4, 48, 2, 1, '2026-05-14'],
-      ['Vegetable Blend Red & Green Pepper Onion Roasted', 'Frozen', '61634', '6/2.5 Lb', 6, 38, 2, 1, '2026-05-14'],
-      ['Vegetable Blend Calif Broccoli Cauli Carrot', 'Frozen', '61072', '12/2 Lb', 12, 42, 2, 1, '2026-05-07'],
-      ['Mushroom Pieces And Stems 62 Oz', 'Dry Goods', 'CP744', '6/#10Can', 6, 45, 2, 1, '2026-05-04'],
-      ['Bean Green Cut 4 Sieve Fancy', 'Dry Goods', 'CP622', '6/#10Can', 6, 35, 2, 1, '2026-04-30'],
-      ['Pepper Jalapeno Nacho Sliced', 'Dry Goods', 'CP740', '6/#10Can', 6, 32, 2, 1, '2026-04-23'],
-      ['Applesauce Sweetened 4 Oz Cup', 'Dry Goods', 'P5874', '72/4 Oz', 72, 28, 2, 1, '2026-04-20'],
-      ['Sauerkraut Shredded Canned', 'Dry Goods', '16286', '12/27 Oz', 12, 26, 2, 1, '2026-04-20'],
-      ['Veg Corn Sweet Roasted W/ Black Bean Onion', 'Frozen', 'A3464', '6/2.5 Lb', 6, 40, 2, 1, '2026-03-19'],
-      ['Pineapple Tidbit In Juice', 'Dry Goods', '10858', '6/#10Can', 6, 45, 2, 1, '2026-01-29'],
-      ['Cheese Mozzarella Part Skim Provolone', 'Dairy', 'VH765', '1/5 Lb', 1, 18, 4, 1, '2026-05-14'],
-      ['Cheese Mozz/Prov Shredded Buffalo Milk', 'Dairy', 'NE864', '6/5 Lb', 6, 85, 4, 2, '2026-05-14'],
-      ['Cheese Swiss Sliced 192', 'Dairy', 'PK940', '6/24 Oz', 6, 42, 2, 1, '2026-05-14'],
-      ['Cheese Mozzarella Sliced Low Moisture', 'Dairy', 'FK633', '1/64 Oz', 1, 16, 2, 1, '2026-05-11'],
-      ['Cheese Pepper Jack Sliced', 'Dairy', 'PK912', '6/24 Oz', 6, 40, 2, 1, '2026-05-11'],
-      ['Sour Cream Grade A Heavy Body', 'Dairy', 'DV226', '4/5 Lb', 4, 38, 2, 1, '2026-05-11'],
-      ['Sour Cream Stick Cultured Portion', 'Dairy', 'DW198', '100/1 Oz', 100, 25, 2, 1, '2026-05-11'],
-      ['Cheese Cream Loaf', 'Dairy', '70082', '10/3 Lb', 10, 65, 2, 1, '2026-05-07'],
-      ['Cheese American Yellow 120 Slice', 'Dairy', '70956', '4/5 Lb', 4, 55, 3, 1, '2026-05-04'],
-      ['Cheese Cheddar Sharp Sliced 192', 'Dairy', 'PK934', '6/24 Oz', 6, 45, 2, 1, '2026-05-04'],
-      ['Cheese Parmesan Grated Packet', 'Dairy', 'HB970', '200/3.5G', 200, 28, 2, 1, '2026-04-23'],
-      ['Creamer Half & Half Shelf Stable', 'Dairy', 'FE644', '360/.38', 360, 22, 2, 1, '2026-04-23'],
-      ['Cheese Blue Crumbles', 'Dairy', 'HB984', '1/5 Lb', 1, 28, 2, 1, '2026-04-20'],
-      ['Cream Whipping 36% Heavy', 'Dairy', 'FL276', '12/32 Oz', 12, 45, 2, 1, '2026-04-20'],
-      ['Egg Shell On White Large Grade AA', 'Dairy', 'ANF42', '2/5 Lb', 2, 25, 4, 1, '2026-02-19'],
-      ['Cottage Cheese 4% Small Curd', 'Dairy', '69030', '6/5 Lb', 6, 38, 2, 1, '2026-01-22'],
-      ['Egg Liquid Scrambled Pasteurized', 'Dairy', 'PK944', '6/24 Oz', 6, 35, 2, 1, '2025-12-18'],
-      ['Cheese Cheddar White Sharp Sliced', 'Dairy', 'NE868', '6/5 Lb', 6, 45, 2, 1, '2025-12-15'],
-      ['Degreaser Fry Boil Out Piece', 'Supplies', 'DT450', '24/8 Oz', 24, 65, 2, 1, '2026-04-27'],
-      ['Dressing Caesar Creamy', 'Dry Goods', '28502', '2/1 Gal', 2, 38, 2, 1, '2026-05-18'],
-      ['Mayonnaise Heavy Duty', 'Dry Goods', '11554', '4/1 Gal', 4, 45, 3, 1, '2026-05-18'],
-      ['Oil Butter Alternative Liquid Zero Trans', 'Dry Goods', '71022', '3/1 Gal', 3, 48, 2, 1, '2026-05-18'],
-      ['Oil Soy Clear Fry Trans Fat Free', 'Dry Goods', 'DV470', '1/35 Lb', 1, 35, 6, 4, '2026-05-18'],
-      ['Sauce Buffalo Wing', 'Dry Goods', 'T9466', '4/1 Gal', 4, 55, 3, 1, '2026-05-18'],
-      ['Sauce Pizza Fully Prepared Pizzaiola', 'Dry Goods', '20558', '6/#10Can', 6, 42, 4, 1, '2026-05-18'],
-      ['Sauce Barbecue Sweet And Spicy', 'Dry Goods', '28160', '4/1 Gal', 4, 48, 2, 1, '2026-05-14'],
-      ['Sauce Roasted Garlic Parmesan', 'Dry Goods', 'D0796', '2/1 Gal', 2, 38, 2, 1, '2026-05-14'],
-      ['Dressing French Red Maison', 'Dry Goods', '31502', '4/1 Gal', 4, 45, 2, 1, '2026-05-11'],
-      ['Sauce Mango Habanero Sweet Baby Rays', 'Dry Goods', 'R9944', '4/64 Oz', 4, 52, 2, 1, '2026-05-11'],
-      ['Sauce Spicy Peach Wing Glaze', 'Dry Goods', 'RK012', '4/64 Oz', 4, 52, 2, 1, '2026-05-11'],
-      ['Sauce Thai Chili Kikkoman', 'Dry Goods', 'A8482', '4/5 Lb', 4, 48, 2, 1, '2026-05-11'],
-      ['Dressing Honey Mustard Dijon', 'Dry Goods', '28354', '2/1 Gal', 2, 35, 2, 1, '2026-05-07'],
-      ['Dressing 1000 Island', 'Dry Goods', 'CP485', '1/32 Oz', 1, 15, 2, 1, '2026-05-07'],
-      ['Spread Garlic Gluten Free Refrigerated', 'Dairy', '23654', '4/1 Gal', 4, 55, 2, 1, '2026-05-04'],
-      ['Pickle Dill Chip Crinkle Cut 1/4"', 'Produce', 'DT376', '6/2 Lb', 6, 38, 2, 1, '2026-04-30'],
-      ['Sauce Teriyaki Sweet Garlic Kogi', 'Dry Goods', 'VM898', '1/5 Gal', 1, 35, 2, 1, '2026-04-30'],
-      ['Mayonnaise Packet', 'Dry Goods', 'MP296', '4/65 Oz', 4, 35, 2, 1, '2026-04-30'],
-      ['Sauce Barbecue Carolina Tangy Gold', 'Dry Goods', 'CV532', '500/9 Gm', 500, 28, 2, 1, '2026-04-23'],
-      ['Sauce Hot Original Cholula', 'Dry Goods', '23768', '2/1 Gal', 2, 45, 2, 1, '2026-04-23'],
-      ['Sauce Pepper Glass Bottle Tabasco', 'Dry Goods', 'NV808', '24/5 Oz', 24, 55, 2, 1, '2026-04-23'],
-      ['Sauce Taco Mild Original Ortega', 'Dry Goods', '33578', '24/2 Oz', 24, 45, 2, 1, '2026-04-23'],
-      ['Ketchup Fancy 33% Packet', 'Dry Goods', '16170', '4/1 Gal', 4, 38, 2, 1, '2026-04-16'],
-      ['Dressing Blue Cheese', 'Dry Goods', '15354', '1000/9Gm', 1000, 35, 2, 1, '2026-04-13'],
-      ['Ketchup Red Upside Down Plastic Bottle', 'Dry Goods', '20564', '4/1 Gal', 4, 35, 4, 9, '2026-04-10'],
-      ['Sauce Hot Honey Shelf Stable', 'Dry Goods', 'NW290', '16/20 Oz', 16, 55, 2, 1, '2026-04-09'],
-      ['Olive Ripe Black Sliced Red Crushed', 'Dry Goods', 'VC198', '4/.5 Gal', 4, 45, 2, 1, '2026-04-02'],
-      ['Salsa Picante Medium Adelante', 'Dry Goods', 'GP788', '6/#10Can', 6, 42, 2, 2, '2026-03-12'],
-      ['Sauce Taco Packet Trans Fat Free', 'Dry Goods', 'FA302', '500/1 Gm', 500, 28, 2, 1, '2026-03-09'],
-      ['Mustard Yellow Squeeze Bottle', 'Dry Goods', 'RP442', '4/135 Oz', 4, 35, 2, 1, '2026-03-09'],
-      ['Sauce Worcestershire Lea & Perrins', 'Dry Goods', 'PB780', '4/27 Oz', 4, 48, 2, 1, '2026-01-26'],
-      ['Mustard Yellow Packet Trans Fat Free', 'Dry Goods', '22222', '24/5 Oz', 24, 25, 2, 1, '2026-01-19'],
-      ['Pickle Dill Kosher Deli Spear', 'Produce', 'CV530', '500/5.5G', 500, 45, 2, 1, '2025-12-31'],
-      ['Dressing Ranch Fat Free Packet', 'Dry Goods', 'VM900', '1/5 Gal', 1, 35, 2, 1, '2025-12-31'],
-      ['Ketchup Fancy 33% (Z)', 'Dry Goods', 'VH219', '1/1 Gal', 1, 28, 2, 1, '2025-12-29'],
-      ['Beef Italian Sliced With Gravy Frozen', 'Meat', '17208', '6/1.5Oz', 6, 55, 2, 1, '2025-12-22'],
-      ['Ham Smoked Cooked Water Added Shingle', 'Meat', '12050', '6/#10Can', 6, 65, 2, 1, '2025-12-15'],
-      ['Box Pizza 12" B Flute Kraft', 'Supplies', 'LD816', '2/5 Lb', 2, 40, 4, 1, '2026-05-14'],
-      ['Napkin Xpress 13X8.6 Natural 1/4 Fold', 'Supplies', 'FA426', '1/50 Cnt', 1, 45, 5, 1, '2026-05-18'],
-      ['Container Foam 1 Comp 9X6x3 Large', 'Supplies', 'DT312', '12/500', 12, 55, 4, 1, '2026-05-18'],
-      ['Glove Nitrile Large Powder Free Black', 'Supplies', 'DV238', '2100Cnt', 1, 65, 6, 1, '2026-05-18'],
-      ['Lid Portion Cup Plastic 3.25-5.5 Oz', 'Supplies', 'DV408', '4100Cnt', 1, 45, 3, 1, '2026-05-18'],
-      ['Circle Pizza 12" Corrugated Fluted', 'Supplies', 'PF360', '20/125', 20, 38, 3, 1, '2026-05-18'],
-      ['Cup Portion Plastic 2 Oz Translucent', 'Supplies', 'CN926', '1/100Cnt', 1, 35, 3, 1, '2026-05-14'],
-      ['Foil Aluminum Heavy Duty 18" Roll', 'Supplies', 'PF342', '10/250', 10, 65, 2, 1, '2026-05-14'],
-      ['Bag T-Sack Thank You Plastic', 'Supplies', '83226', '1/500 Ft', 1, 42, 3, 1, '2026-05-14'],
-      ['Box Pizza 16" B Flute Kraft', 'Supplies', 'PF116', '1/1000', 1, 55, 4, 1, '2026-05-11'],
-      ['Pizza Circle 16" White On Kraft', 'Supplies', 'HB952', '1/50 Cnt', 1, 35, 3, 1, '2026-05-11'],
-      ['Towelette Moist Blue Lemon Scent', 'Supplies', 'PC006', '1100Cnt', 1, 28, 2, 1, '2026-05-11'],
-      ['Cutlery Kit Plastic Knife Fork Spoon', 'Supplies', 'NJ588', '1000/1', 1000, 45, 2, 1, '2026-04-30'],
-      ['Bag Plastic Portion 10X8.5 Large', 'Supplies', 'P4206', '1/250Cnt', 1, 32, 2, 1, '2026-04-30'],
-      ['Plate Bagasse 10" 3 Compartment', 'Supplies', 'FT557', '1/250Cnt', 1, 48, 2, 1, '2026-04-30'],
-      ['Paper Register Thermal 3.13"x200', 'Supplies', 'B1178', '1/2000', 1, 55, 2, 1, '2026-04-27'],
-      ['Cup Plastic 16 Ounce Ribbed', 'Supplies', 'VL874', '4/125Cnt', 4, 45, 3, 1, '2026-04-27'],
-      ['Cup Portion Plastic 3.25 Ounce', 'Supplies', '28078', '1/50 Rl', 1, 38, 3, 1, '2026-04-20'],
-      ['Container Food Paper 8 Ounce Round', 'Supplies', 'T7354', '20/50Cnt', 20, 55, 2, 1, '2026-04-09'],
-      ['Cup Plastic Kid 12 Ounce Jungle', 'Supplies', 'PF346', '10/250', 10, 65, 2, 1, '2026-04-09'],
-      ['Film Plastic 18" Roll Cutter Box', 'Supplies', 'FC542', '20/50Cnt', 20, 38, 2, 1, '2026-03-23'],
-      ['Glove Nitrile Extra Large Powder Free', 'Supplies', 'DT534', '1/250Cnt', 1, 75, 3, 1, '2026-03-23'],
-      ['Container Foam Sandwich 1 Comp', 'Supplies', '83234', '1/2000Ft', 1, 45, 3, 1, '2026-03-23'],
-      ['Straw Sipper Stir 5.25" Black', 'Supplies', 'DV344', '10/100', 10, 28, 2, 1, '2026-02-26'],
-      ['SOUP CONTAINER LIDS Round 16-32', 'Supplies', 'EG086', '4125Cnt', 1, 35, 2, 1, '2026-02-16'],
-      ['SOUP CONTAINERS Paper 16 Ounce', 'Supplies', 'RE949', '1/250Cnt', 1, 45, 2, 1, '2026-02-23'],
-      ['Roll Register 3"x165 1 Ply White', 'Supplies', 'RB078', '10/1000', 10, 38, 2, 1, '2026-01-19'],
-      ['Chip Potato Kettle Prop 65', 'Dry Goods', 'FC546', '20/25Cnt', 20, 35, 2, 1, '2026-02-16'],
-      ['Chip Tortilla Corn White Triangle', 'Dry Goods', 'FC548', '20/25Cnt', 20, 32, 2, 1, '2026-02-16'],
-      ['Dressing Mix Ranch Original', 'Dry Goods', '28048', '50/1 Cnt', 50, 65, 2, 1, '2026-01-19'],
-      ['Seasoning Sriracha Blend', 'Dry Goods', 'VF480', '8/16 Oz', 8, 45, 2, 1, '2026-05-18'],
-      ['Cracker Saltine Krispy', 'Dry Goods', 'FM228', '8/16 Oz', 8, 28, 2, 1, '2026-05-18'],
-      ['Crouton Cube Seasoned Portion', 'Dry Goods', '12278', '18/3.2Oz', 18, 35, 2, 1, '2026-05-14'],
-      ['Base Soup Chicken Low Sodium', 'Dry Goods', 'V6298', '6/22 Oz', 6, 55, 2, 1, '2026-05-14'],
-      ['Seasoning Fajita Mix Lawrys', 'Dry Goods', '21110', '500/2Cnt', 500, 48, 2, 1, '2026-05-11'],
-      ['Seasoning Dill Weed', 'Dry Goods', '15010', '250/.25', 250, 35, 2, 1, '2026-05-11'],
-      ['Seasoning Pepper Blend Shaker', 'Dry Goods', 'LG166', '6/1 Lb', 6, 45, 2, 1, '2026-05-07'],
-      ['Salt Seasoning No Msg Added', 'Dry Goods', '21226', '6/8.9 Oz', 6, 32, 2, 1, '2026-05-07'],
-      ['Sauce Mix Cheese Cheddar Deluxe', 'Dry Goods', '27230', '6/5 Lb', 6, 65, 2, 1, '2026-04-30'],
-      ['Base Soup Cream', 'Dry Goods', '66772', '6/10.3Oz', 6, 48, 2, 1, '2026-04-30'],
-      ['Soup Tomato Condensed Can', 'Dry Goods', 'CE865', '1/24 Oz', 1, 28, 2, 1, '2026-04-23'],
-      ['Seasoning Blend Barbecue Rib Rub', 'Dry Goods', 'A2468', '2/5 Lb', 2, 45, 2, 1, '2026-04-20'],
-      ['Oregano Leaves Whole', 'Dry Goods', 'CE729', '1/22 Oz', 1, 18, 2, 1, '2026-04-20'],
-      ['Pepper Black Coarse Ground 20 Mesh', 'Dry Goods', '26950', '8/32 Oz', 8, 65, 2, 1, '2026-04-02'],
-      ['Seasoning Taco Mix', 'Dry Goods', 'CE739', '1/18 Oz', 1, 15, 2, 1, '2026-03-23'],
-      ['Scrubber Stainless Steel 1.75 Oz', 'Supplies', 'CE731', '1/28 Oz', 1, 28, 2, 1, '2026-03-23'],
-      ['Macaroni And Cheese Premium', 'Dairy', 'LG174', '6/28 Oz', 6, 55, 2, 1, '2026-03-19'],
-      ['Sauce Pesto Basil No Pine Nut', 'Frozen', '11132', '12/50 Oz', 12, 85, 2, 1, '2026-03-12'],
-      ['Sauce Chimichurri Frozen', 'Frozen', 'E6089', '1/22 Oz', 1, 25, 2, 1, '2026-02-23'],
-      ['Sauce Alfredo Frozen', 'Frozen', 'CE583', '1/20 Oz', 1, 22, 2, 1, '2026-02-12'],
-      ['Paste Chili Red Gochujang', 'Dry Goods', 'CE568', '1/1.5 Lb', 1, 18, 2, 1, '2026-01-12'],
-      ['Chicken Breast Strip Grilled', 'Meat', 'HC310', '2/5 Lb', 2, 45, 2, 1, '2026-05-18'],
-      ['Chicken Wing 1st & 2nd Joints', 'Meat', 'CK522', '4/10 Lb', 4, 125, 10, 3, '2026-05-18'],
-      ['Chicken Breast Fillet 5 Oz Breaded', 'Meat', 'TT606', '2/5 Lb', 2, 55, 3, 1, '2026-05-14'],
-      ['Turkey Breast Smoked Skinless', 'Meat', 'PW962', '2/9 Lb', 2, 65, 2, 1, '2026-05-14'],
-      ['Chicken Breast 4 Oz Grilled', 'Meat', 'HC234', '2/5 Lb', 2, 48, 4, 2, '2026-04-30'],
-      ['Chicken Diced 60% Dark 40% White', 'Meat', 'DP306', '1/10 Lb', 1, 35, 2, 1, '2026-04-30'],
-      ['Chicken Diced 55% White 45% Dark', 'Meat', 'DP302', '1/10 Lb', 1, 38, 2, 1, '2026-03-19'],
-      ['Turkey Breast Oven Roasted No Bone', 'Meat', 'DV462', '2/9 Lb', 2, 75, 2, 1, '2026-03-12'],
-      ['Chicken Breast Skewer 1.75 Oz', 'Meat', 'PN096', '2/40 Cnt', 80, 65, 2, 1, '2026-01-26'],
-      ['Boneless Wing Chicken Breast Chunk', 'Meat', '96108', '2/5 Lb', 2, 55, 6, 6, '2025-12-19'],
-      ['Chicken Breast Tender 58 Count', 'Meat', '59048', '2/5 Lb', 2, 58, 6, 6, '2025-12-19'],
-      ['Celery Stalk 6 Count 36 Size', 'Produce', '13206', '1/6 Cnt', 6, 28, 2, 1, '2026-05-18'],
-      ['Lemon Choice 140 Size', 'Produce', '13364', '1/12 Cnt', 12, 32, 2, 1, '2026-05-18'],
-      ['Lime Fresh', 'Produce', '13506', '1/12 Cnt', 12, 25, 2, 1, '2026-05-18'],
-      ['Pepper Bell Green Medium #1', 'Produce', '13688', '1/5 Lb', 1, 18, 2, 1, '2026-05-18'],
-      ['Potato Idaho Russet 80 Count', 'Produce', 'FA248', '1/50 Lb', 1, 28, 3, 1, '2026-05-18'],
-      ['Salad Blend Iceberg/Romaine 80/20', 'Produce', 'HB274', '4/5 Lb', 4, 35, 4, 1, '2026-05-18'],
-      ['Tomato Round Diced 3/8"', 'Produce', '26030', '2/2.5 Lb', 2, 32, 2, 1, '2026-05-18'],
-      ['Tomato Round Red 5X6 Large', 'Produce', '25840', '1/10 Lb', 1, 38, 3, 1, '2026-05-18'],
-      ['Lettuce Romaine Liner Fresh', 'Produce', 'FA232', '24/1 Cnt', 24, 45, 2, 1, '2026-05-14'],
-      ['Salad Potato Steakhouse', 'Produce', 'CA232', '2/5 Lb', 2, 28, 2, 1, '2026-05-14'],
-      ['Brussels Sprouts Halves Fresh', 'Produce', 'WB336', '2/5 Lb', 2, 35, 2, 1, '2026-05-11'],
-      ['Onion Yellow Jumbo Bag Fresh', 'Produce', 'HB404', '1/50 Lb', 1, 32, 3, 1, '2026-05-11'],
-      ['Mushroom White Sliced 1/4"', 'Produce', 'NH674', '1/10 Lb', 1, 25, 2, 1, '2026-05-04'],
-      ['Lemon Choice 165/200 Size', 'Produce', '74184', '1/12 Cnt', 12, 28, 2, 1, '2026-04-02'],
-      ['Potato Red Small Size B Carton', 'Produce', '27500', '1/24 Cnt', 24, 35, 2, 1, '2026-03-19'],
-      ['Squash Yellow Fancy Straight', 'Produce', 'JJ766', '1/50 Lb', 1, 32, 2, 1, '2026-03-12'],
-      ['Squash Zucchini Fancy/Med Fresh', 'Produce', '13726', '1/5 Lb', 1, 25, 2, 1, '2026-03-12'],
-      ['Tomato Cherry Us #1 Grade', 'Produce', 'A0238', '6/1 Pint', 6, 32, 2, 1, '2026-03-12'],
-      ['Basil Fresh', 'Produce', 'CK134', '1/1 Lb', 1, 15, 1, 1, '2026-02-26'],
-      ['Mushroom Crimini Fresh', 'Produce', '22922', '1/5 Lb', 1, 22, 2, 1, '2026-02-16'],
-      ['Coleslaw Creamy Sweet With Dressing', 'Produce', 'R9570', '1/5 Lb', 1, 25, 2, 1, '2026-01-08'],
-      ['Pepper Bell Green Chopper Fresh', 'Produce', '62538', '2/5 Lb', 2, 35, 2, 1, '2025-12-31'],
-      ['Cheese Parmesan Shaved', 'Dairy', 'HB358', '11.11Bu', 11, 85, 2, 1, '2025-12-22'],
-      ['Haddock Loin 3 Ounce No Bone', 'Seafood', 'AA826', '2/5 Lb', 2, 65, 2, 1, '2026-05-07'],
-      ['Salmon Loin Average 6 Ounce Pacific', 'Seafood', 'VB978', '1/10 Lb', 1, 85, 2, 1, '2026-05-14'],
-      ['Perch Lake European Fillet Breaded', 'Seafood', 'F2376', '1/10 Lb', 1, 75, 2, 1, '2026-05-14'],
-      ['Pike Walleye Fillet 2-4 Ounce', 'Seafood', 'V1062', '1/10 Lb', 1, 95, 2, 1, '2026-05-07'],
-      ['Shrimp White Raw P&D Tail On', 'Seafood', '53477', '1/3 Lb', 1, 45, 2, 1, '2026-05-07'],
-      ['Shrimp Battered Beer Round 31-35', 'Seafood', '27758', '1/11 Lb', 1, 85, 2, 1, '2026-04-30'],
-      ['COD Fillet 3 Ounce Beer Battered', 'Seafood', 'CR080', '5/2 Lb', 5, 65, 2, 1, '2026-04-23'],
-      ['Appetizer Scallop Bacon Wrapped', 'Seafood', '98924', '4/3 Lb', 4, 110, 2, 1, '2026-04-09']
-    ];
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const rows = text.split('\n').filter(row => row.trim());
+        
+        let addedCount = 0;
+        // Start at index 1 to skip the header row
+        for (let i = 1; i < rows.length; i++) {
+          const cols = rows[i].split(/(?!\B"[^"]*),(?![^"]*"\B)/).map(c => c.trim().replace(/^"|"$/g, ''));
+          if (cols.length < 2) continue; 
+          
+          const name = cols[0];
+          const category = cols[1] || 'Other';
+          const code = cols[2] || '';
+          const packSize = cols[3] || '1 CS';
+          const yieldQty = parseFloat(cols[4]) || 1;
+          const price = parseFloat(cols[5]) || 0;
+          const vendorName = cols[6] || 'Unassigned Vendor';
 
-const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger", rep: "Tom", email: "", phone: "", cutOffDays: [], cutOffTime: "", restaurantId: appUser.restaurantId });
-    const badgerId = badgerVendorRef.id;
+          let vId = '';
+          let existingVendor = vendors.find(v => v.name.toLowerCase() === vendorName.toLowerCase());
+          
+          if (existingVendor) {
+            vId = existingVendor.id;
+          } else {
+            const newVRef = await addDoc(collection(db, "vendors"), { name: vendorName, rep: "", email: "", phone: "", restaurantId: appUser.restaurantId });
+            vId = newVRef.id;
+            vendors.push({id: vId, name: vendorName}); 
+          }
 
-    const badgerData = [
-      ['Chipotle honey', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Tenderloin', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Queso', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Guac packets', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Boneless', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Chicken strips', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Waffle fries', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Cheese Nuggets', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Chicken Breasts', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Onion petals', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Pretzel Bites', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Mini Taco', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Jalapeno popper', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Breaded mushroom', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Breaded Cauliflower', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Teasers', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Sour cream fries', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Ghost pepper', 'Frozen', '', '1 CS', 1, 0, 0, 0, ''],
-      ['Motz Sticks', 'Frozen', '', '1 CS', 1, 0, 0, 0, '']
-    ];
-
-    const batchPromises = rawData.map(item => 
-      addDoc(collection(db, "inventoryItems"), {
-        name: item[0],
-        category: item[1],
-        pfgCode: item[2],
-        packSize: item[3],
-        yieldQty: item[4],
-        price: item[5],
-        parLevel: 0,
-        lastOrderedQty: item[7],
-        lastOrderedDate: item[8],
-        supplierId: vId,
-        currentStock: 0,
-        pendingQty: 0,
-        isStarred: false,
-        restaurantId: appUser.restaurantId
-      })
-    );
-
-    const batchPromisesBadger = badgerData.map(item => 
-      addDoc(collection(db, "inventoryItems"), {
-        name: item[0],
-        category: item[1],
-        pfgCode: item[2],
-        packSize: item[3],
-        yieldQty: item[4],
-        price: item[5],
-        parLevel: 0,
-        lastOrderedQty: item[7],
-        lastOrderedDate: item[8],
-        supplierId: badgerId,
-        currentStock: 0,
-        pendingQty: 0,
-        isStarred: false,
-        restaurantId: appUser.restaurantId
-      })
-    );
-    
-    await Promise.all([...batchPromises, ...batchPromisesBadger]);
-    addToast("System Reset", "PFG & Badger Lists injected successfully!");
+          await addDoc(collection(db, "inventoryItems"), {
+            name, category, pfgCode: code, packSize, yieldQty, price, parLevel: 0,
+            lastOrderedQty: 0, lastOrderedDate: null, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, restaurantId: appUser.restaurantId
+          });
+          addedCount++;
+        }
+        addToast("Upload Complete", `Successfully imported ${addedCount} items.`);
+      } catch (err) {
+        addToast("Error", "Failed to parse CSV file. Ensure it matches the exact template format.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; 
   };
 
   const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { const cat = item.category || 'Uncategorized'; if (!acc[cat]) acc[cat] = []; acc[cat].push(item); return acc; }, {});
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
+
+  // Master Permission Check for Inventory Tabs
+  const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
@@ -1811,9 +1568,9 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
         <h2 className="text-2xl font-black flex items-center gap-2 text-white"><ClipboardList size={24} className={T.copper}/> Inventory</h2>
         <div className={`bg-[#12161A] p-1 rounded-xl flex border ${T.border} overflow-x-auto w-full sm:w-auto no-scrollbar`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
-         {(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
-              {(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
-              {(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🔥 Burn Log</button>
         </div>
       </div>
@@ -1828,7 +1585,8 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
                     <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'} • {item.packSize || '1 CS'} • YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
-disabled={!(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team)} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>                      <div className={`h-6 w-px bg-[#2A353D]`}></div>
+                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
+                      <div className={`h-6 w-px bg-[#2A353D]`}></div>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, (item.currentStock||0) - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>-</button><span className={`w-6 text-center font-black text-sm ${(item.currentStock||0) < (item.parLevel||0) ? 'text-red-500' : 'text-white'}`}>{Number(item.currentStock||0).toFixed(2).replace(/\.00$/, '')}</span><button onClick={() => updateStock(item.id, (item.currentStock||0) + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>+</button></div></div>
                     </div>
                   </div>
@@ -1838,7 +1596,7 @@ disabled={!(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.perm
         </div>
       )}
 
-{(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && invTab === 'order' && (
+      {hasInvPerms && invTab === 'order' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
           {pendingVendors.length > 0 && (
@@ -1894,7 +1652,7 @@ disabled={!(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.perm
         </div>
       )}
 
-      {(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && invTab === 'manage' && (
+      {hasInvPerms && invTab === 'manage' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
 
@@ -1924,7 +1682,7 @@ disabled={!(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.perm
         </div>
       )}
 
-      {(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && invTab === 'vendors' && (
+      {hasInvPerms && invTab === 'vendors' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleAddVendor} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add Vendor</h3>
@@ -1939,7 +1697,7 @@ disabled={!(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.perm
         </div>
       )}
 
-    {invTab === 'waste' && (
+      {invTab === 'waste' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
           <Modal isOpen={!!editWaste} onClose={() => setEditWaste(null)} title="Edit Burn Log">
