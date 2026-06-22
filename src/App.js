@@ -134,8 +134,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
  // Restricted tabs
   if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
   if (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep) { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> }); }
-  if (appUser?.isAdmin || perms.inventory) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });
-  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
+if (appUser?.isAdmin || perms.inventory || perms.team) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (appUser?.isAdmin || perms.sales) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
   // Master Admin only
@@ -1812,9 +1811,9 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
         <h2 className="text-2xl font-black flex items-center gap-2 text-white"><ClipboardList size={24} className={T.copper}/> Inventory</h2>
         <div className={`bg-[#12161A] p-1 rounded-xl flex border ${T.border} overflow-x-auto w-full sm:w-auto no-scrollbar`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
-          {appUser?.isAdmin && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
-          {appUser?.isAdmin && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
-          {appUser?.isAdmin && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
+         {(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
+              {(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
+              {(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🔥 Burn Log</button>
         </div>
       </div>
@@ -1829,8 +1828,7 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
                     <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'} • {item.packSize || '1 CS'} • YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
-                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!appUser?.isAdmin} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
-                      <div className={`h-6 w-px bg-[#2A353D]`}></div>
+disabled={!(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team)} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>                      <div className={`h-6 w-px bg-[#2A353D]`}></div>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, (item.currentStock||0) - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>-</button><span className={`w-6 text-center font-black text-sm ${(item.currentStock||0) < (item.parLevel||0) ? 'text-red-500' : 'text-white'}`}>{Number(item.currentStock||0).toFixed(2).replace(/\.00$/, '')}</span><button onClick={() => updateStock(item.id, (item.currentStock||0) + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>+</button></div></div>
                     </div>
                   </div>
@@ -1840,8 +1838,7 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
         </div>
       )}
 
-      {appUser?.isAdmin && invTab === 'order' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+{(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && invTab === 'order' && (        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
           {pendingVendors.length > 0 && (
             <div className="mb-6 space-y-4">
@@ -1896,8 +1893,7 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
         </div>
       )}
 
-      {appUser?.isAdmin && invTab === 'manage' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+{(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && invTab === 'manage' && (        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
 <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
           <div className="flex gap-2 mb-4">
              <button onClick={handleInjectPDF} className={`w-full flex items-center justify-center gap-2 bg-red-900/40 hover:bg-red-900 border border-red-500/50 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all`}>🔥 Nuke & Inject Untruncated Data</button>
@@ -1922,8 +1918,7 @@ const badgerVendorRef = await addDoc(collection(db, "vendors"), { name: "Badger"
         </div>
       )}
 
-      {appUser?.isAdmin && invTab === 'vendors' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+{(appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team) && invTab === 'vendors' && (        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleAddVendor} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add Vendor</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Company Name..." value={vName} onChange={e=>setVName(e.target.value)} className={T.input} required/><input type="text" placeholder="Rep Name..." value={vRep} onChange={e=>setVRep(e.target.value)} className={T.input}/><input type="tel" placeholder="Phone (For SMS Orders)" value={vPhone} onChange={e=>setVPhone(e.target.value)} className={T.input}/><input type="email" placeholder="Email (For PDF Orders)" value={vEmail} onChange={e=>setVEmail(e.target.value)} className={T.input}/></div>
