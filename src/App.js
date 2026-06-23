@@ -457,8 +457,7 @@ return (
       )}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} /></div>}
-    </div>
+{subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}    </div>
   );
 };
 
@@ -1917,7 +1916,7 @@ const handleInjectLegacyRecipes = async () => {
 };
 
 // --- TIME OFF REQUESTS ---
-const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
+const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) => {
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7)); 
   const [selectedDates, setSelectedDates] = useState([]); 
   const [isPartial, setIsPartial] = useState(false); 
@@ -1931,6 +1930,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
   
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
+
+  // Pull in the events for the current calendar month
+  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(calMonth));
 
   const changeMonth = (offset) => { 
     const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); 
@@ -2005,10 +2007,19 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
               const existingReq = myRequests.find(r => r.date === d); 
               const isPast = d < getToday();
               const holiday = getHoliday(d);
+              const dayEvents = monthEvents.filter(e => e.date === d);
+
               return (
                 <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}>
                   <span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                  
                   {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
+                  {dayEvents.map(ev => (
+                    <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>
+                      {ev.title}
+                    </span>
+                  ))}
+
                   {existingReq && <span className="text-[7px] font-black uppercase text-red-500 mt-auto mb-1">Off</span>}
                   {isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}
                 </div>
