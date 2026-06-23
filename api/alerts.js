@@ -1,15 +1,14 @@
 const admin = require('firebase-admin');
 
-export default async function handler(req, res) {
+// Use standard Node.js export instead of React's "export default"
+module.exports = async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Wrap the Firebase setup inside a try/catch so it doesn't hard-crash Vercel if the keys are messy
     if (!admin.apps.length) {
-      
       if (!process.env.FIREBASE_PRIVATE_KEY) {
         throw new Error("Vercel cannot see the FIREBASE_PRIVATE_KEY environment variable.");
       }
@@ -46,8 +45,7 @@ export default async function handler(req, res) {
     res.status(200).json({ success: true, messageId: response });
 
   } catch (error) {
-    // If anything breaks, send the exact error directly back to the console so we can see it
     console.error('Backend Crash Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-}
+};
