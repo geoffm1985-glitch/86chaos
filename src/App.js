@@ -170,9 +170,12 @@ if (appUser?.isAdmin || perms.inventory || perms.team) tabs.push({ id: 'inventor
              ))}
           </div>
           <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
-            <a href="mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A" onClick={onClose} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30">
-              <Bug size={16} /> Report a Bug / Error
-            </a>
+           <button 
+  onClick={() => { window.location.href = "mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A"; }} 
+  className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
+>
+  <Bug size={16} /> Report a Bug / Error
+</button>
             <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
           </div>
        </div>
