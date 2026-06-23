@@ -649,6 +649,7 @@ return (
 // --- MESSAGE BOARD ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState(''); 
+  const [isImportant, setIsImportant] = useState(false);
   const [replyTexts, setReplyTexts] = useState({});
   
   const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -656,9 +657,10 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   const handleBroadcast = async (e) => { 
     e.preventDefault(); 
     if(!message.trim()) return; 
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, restaurantId: appUser.restaurantId, replies: [] }); 
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: isImportant, restaurantId: appUser.restaurantId, replies: [] }); 
     setMessage(''); 
-    addToast('Posted', 'Message sent.'); 
+    setIsImportant(false);
+    addToast('Posted', isImportant ? 'Critical alert broadcasted.' : 'Message sent.'); 
   };
 
   const handleReplyChange = (id, text) => {
@@ -691,7 +693,18 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div className={`${T.card} p-4`}><form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3"><textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea><button className={`${T.btn} px-8`}>Post</button></form></div>
+      <div className={`${T.card} p-4`}>
+        <form onSubmit={handleBroadcast} className="flex flex-col gap-3">
+          <textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
+              <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-red-500" />
+              <span className={isImportant ? "text-red-400" : "text-slate-400"}>Mark as Critical (Sends Push Alert)</span>
+            </label>
+            <button className={`${T.btn} px-8 w-full sm:w-auto`}>Post</button>
+          </div>
+        </form>
+      </div>
       <div className="space-y-3">{allNotes.map(n => {
         const authorUser = users.find(u => u.name === n.author);
         return (
