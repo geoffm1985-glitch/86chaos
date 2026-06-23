@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc } from 'firebase/firestore';
+import { getMessaging, getToken } from "firebase/messaging";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
-import { getMessaging, getToken } from 'firebase/messaging';
+
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
 const T = {
@@ -2722,6 +2723,19 @@ export default function App() {
     else localStorage.removeItem('86chaosUser');
   }, [appUser]);
 
+useEffect(() => {
+    if (appUser && messaging) {
+      Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') {
+          getToken(messaging, { vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU' }).then((token) => {
+            if (token && appUser.fcmToken !== token) {
+              updateDoc(doc(db, "users", appUser.id), { fcmToken: token });
+            }
+          }).catch(err => console.warn("Push token failed", err));
+        }
+      });
+    }
+  }, [appUser?.id]);
   
 
   const [currentDate, setCurrentDate] = useState(getToday());
