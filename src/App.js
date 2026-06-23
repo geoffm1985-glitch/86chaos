@@ -122,14 +122,14 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages }) => {
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
 
   // Standard tabs everyone gets
   tabs.push({ id: 'published', label: 'Schedule & Time Off', icon: <Clock size={18}/> });
-  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
+  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   
  // Restricted tabs
   if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
@@ -160,7 +160,13 @@ if (appUser?.isAdmin || perms.inventory || perms.team) tabs.push({ id: 'inventor
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
              {tabs.map(tab => (
                <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
-                 <div className="flex items-center gap-3"><span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>{tab.label}</div>
+                 <div className="flex items-center gap-3">
+                   <div className="relative">
+                     <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
+                     {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+                   </div>
+                   {tab.label}
+                 </div>
                </button>
              ))}
           </div>
@@ -2705,7 +2711,18 @@ export default function App() {
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
+const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
+
+  // Unread messages logic
+  const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => Math.max(max, new Date(n.date).getTime()), 0);
+  const lastReadMsg = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadMsg`) || '0') : 0;
+  const hasUnreadMessages = latestNoteDate > lastReadMsg && activeTabState !== 'messages';
+
+  useEffect(() => {
+    if (activeTabState === 'messages' && liveAppUser) {
+      localStorage.setItem(`${liveAppUser.id}_lastReadMsg`, Date.now().toString());
+    }
+  }, [activeTabState, events, liveAppUser]);
 
   const addToast = (title, message) => {
     const id = Date.now();
@@ -2741,8 +2758,7 @@ export default function App() {
         <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white`}><Menu size={20} /></button>
       </header>
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} />
-
+<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} />
     {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
           {activeTabState === 'sales' ? (
