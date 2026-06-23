@@ -1,8 +1,6 @@
-const admin = require('firebase-admin');
+import admin from 'firebase-admin';
 
-// Use standard Node.js export instead of React's "export default"
-module.exports = async function handler(req, res) {
-  // Only allow POST requests
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -13,7 +11,7 @@ module.exports = async function handler(req, res) {
         throw new Error("Vercel cannot see the FIREBASE_PRIVATE_KEY environment variable.");
       }
 
-      // Strip any accidental quote marks and fix line breaks automatically
+      // Strip accidental quotes and fix line breaks automatically
       const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
 
       admin.initializeApp({
@@ -31,7 +29,6 @@ module.exports = async function handler(req, res) {
       throw new Error('Missing user token in request');
     }
 
-    // Build the alert
     const message = {
       notification: {
         title: title || '86 Chaos',
@@ -40,12 +37,12 @@ module.exports = async function handler(req, res) {
       token: token,
     };
 
-    // Fire the message
     const response = await admin.messaging().send(message);
     res.status(200).json({ success: true, messageId: response });
 
   } catch (error) {
+    // This will print the EXACT error directly into the Vercel logs you are looking at
     console.error('Backend Crash Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-};
+}
