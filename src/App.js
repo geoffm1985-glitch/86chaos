@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
+import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
@@ -122,14 +121,14 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages }) => {
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
 
   // Standard tabs everyone gets
   tabs.push({ id: 'published', label: 'Schedule & Time Off', icon: <Clock size={18}/> });
-  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/> });
+  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   
  // Restricted tabs
   if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
@@ -160,11 +159,23 @@ if (appUser?.isAdmin || perms.inventory || perms.team) tabs.push({ id: 'inventor
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
              {tabs.map(tab => (
                <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
-                 <div className="flex items-center gap-3"><span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>{tab.label}</div>
+                 <div className="flex items-center gap-3">
+                   <div className="relative">
+                     <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
+                     {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+                   </div>
+                   {tab.label}
+                 </div>
                </button>
              ))}
           </div>
           <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
+           <button 
+  onClick={() => { window.location.href = "mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A"; }} 
+  className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
+>
+  <Bug size={16} /> Report a Bug / Error
+</button>
             <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
           </div>
        </div>
@@ -457,8 +468,7 @@ return (
       )}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} /></div>}
-    </div>
+{subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}    </div>
   );
 };
 
@@ -1917,7 +1927,7 @@ const handleInjectLegacyRecipes = async () => {
 };
 
 // --- TIME OFF REQUESTS ---
-const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
+const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) => {
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7)); 
   const [selectedDates, setSelectedDates] = useState([]); 
   const [isPartial, setIsPartial] = useState(false); 
@@ -1931,6 +1941,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
   
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
+
+  // Pull in the events for the current calendar month
+  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(calMonth));
 
   const changeMonth = (offset) => { 
     const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); 
@@ -2005,10 +2018,19 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast }) => {
               const existingReq = myRequests.find(r => r.date === d); 
               const isPast = d < getToday();
               const holiday = getHoliday(d);
+              const dayEvents = monthEvents.filter(e => e.date === d);
+
               return (
                 <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}>
                   <span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                  
                   {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
+                  {dayEvents.map(ev => (
+                    <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>
+                      {ev.title}
+                    </span>
+                  ))}
+
                   {existingReq && <span className="text-[7px] font-black uppercase text-red-500 mt-auto mb-1">Off</span>}
                   {isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}
                 </div>
@@ -2694,7 +2716,20 @@ export default function App() {
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
+const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
+
+  // Unread messages logic
+  const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => Math.max(max, new Date(n.date).getTime()), 0);
+  const lastReadMsg = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadMsg`) || '0') : 0;
+  const hasUnreadMessages = latestNoteDate > lastReadMsg && activeTabState !== 'messages';
+
+  useEffect(() => {
+    if (activeTabState === 'messages' && liveAppUser) {
+      localStorage.setItem(`${liveAppUser.id}_lastReadMsg`, Date.now().toString());
+    }
+  }, [activeTabState, events, liveAppUser]);
+
+ 
 
   const addToast = (title, message) => {
     const id = Date.now();
@@ -2725,13 +2760,17 @@ export default function App() {
         .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
-     <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
+<header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo />
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white`}><Menu size={20} /></button>
+        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white`}>
+          <Menu size={20} />
+          {hasUnreadMessages && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+        </button>
       </header>
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} />
 
+<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} />
     {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
           {activeTabState === 'sales' ? (
@@ -2791,7 +2830,7 @@ export default function App() {
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 2.8</span>
+
       </div>
     </div>
   );
