@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc } from 'firebase/firestore';
-import { getMessaging, getToken } from "firebase/messaging";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
-
+import { getMessaging, getToken } from 'firebase/messaging';
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
 const T = {
@@ -649,7 +648,6 @@ return (
 // --- MESSAGE BOARD ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState(''); 
-  const [isImportant, setIsImportant] = useState(false);
   const [replyTexts, setReplyTexts] = useState({});
   
   const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -657,10 +655,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   const handleBroadcast = async (e) => { 
     e.preventDefault(); 
     if(!message.trim()) return; 
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: isImportant, restaurantId: appUser.restaurantId, replies: [] }); 
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, restaurantId: appUser.restaurantId, replies: [] }); 
     setMessage(''); 
-    setIsImportant(false);
-    addToast('Posted', isImportant ? 'Critical alert broadcasted.' : 'Message sent.'); 
+    addToast('Posted', 'Message sent.'); 
   };
 
   const handleReplyChange = (id, text) => {
@@ -693,18 +690,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div className={`${T.card} p-4`}>
-        <form onSubmit={handleBroadcast} className="flex flex-col gap-3">
-          <textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
-              <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-red-500" />
-              <span className={isImportant ? "text-red-400" : "text-slate-400"}>Mark as Critical (Sends Push Alert)</span>
-            </label>
-            <button className={`${T.btn} px-8 w-full sm:w-auto`}>Post</button>
-          </div>
-        </form>
-      </div>
+      <div className={`${T.card} p-4`}><form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3"><textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea><button className={`${T.btn} px-8`}>Post</button></form></div>
       <div className="space-y-3">{allNotes.map(n => {
         const authorUser = users.find(u => u.name === n.author);
         return (
@@ -2723,7 +2709,6 @@ export default function App() {
     else localStorage.removeItem('86chaosUser');
   }, [appUser]);
 
-
   
 
   const [currentDate, setCurrentDate] = useState(getToday());
@@ -2845,7 +2830,7 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 3.0</span>
       </div>
     </div>
   );
