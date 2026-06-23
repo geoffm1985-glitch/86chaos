@@ -33,7 +33,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const messaging = getMessaging(app);
 const auth = getAuth(app);
 let messaging = null;
 try { if (typeof window !== 'undefined' && 'Notification' in window) messaging = getMessaging(app); } catch (e) { console.warn("Push not supported."); }
