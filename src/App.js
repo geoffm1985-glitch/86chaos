@@ -23,12 +23,12 @@ const T = {
 
 // --- Firebase Initialization ---
 const firebaseConfig = {
-  apiKey: "AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw",
-  authDomain: "chaos-test-d1601.firebaseapp.com",
-  projectId: "chaos-test-d1601",
-  storageBucket: "chaos-test-d1601.firebasestorage.app",
-  messagingSenderId: "534993379994",
-  appId: "1:534993379994:web:9fefb6e10309223afe7523"
+  apiKey: "AIzaSyBTyx_RzxArATLaPwmtdKC8TSdBGusl0cQ",
+  authDomain: "cheers-sync-manager.firebaseapp.com",
+  projectId: "cheers-sync-manager",
+  storageBucket: "cheers-sync-manager.firebasestorage.app",
+  messagingSenderId: "810480537904",
+  appId: "1:810480537904:web:8f95be54456e6e6a85f8f5"
 };
 
 const app = initializeApp(firebaseConfig);
