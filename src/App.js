@@ -457,8 +457,7 @@ return (
       )}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
-{subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}    </div>
-  );
+{subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}  );
 };
 
 // --- TEAM MANAGEMENT ---
@@ -1923,7 +1922,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const [startTime, setStartTime] = useState('09:00'); 
   const [endTime, setEndTime] = useState('17:00');
 
-  // Filter requests specific to the logged-in user
   const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(a.date) - new Date(b.date)); 
   const myFutureRequests = myRequests.filter(r => r.date >= getToday());
   const allFutureRequests = timeOffRequests.filter(r => r.date >= getToday()).sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -1931,7 +1929,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
 
-  // Pull in the events for the current calendar month
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(calMonth));
 
   const changeMonth = (offset) => { 
@@ -1941,7 +1938,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const handleToggleDate = (d) => { 
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.'); 
     
-    // Check if they already requested this day
     const existingReq = myRequests.find(r => r.date === d); 
     if (existingReq) { 
       if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) {
@@ -2013,7 +2009,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
                 <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}>
                   <span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
                   
-                  {/* Ledger for Holidays and Events */}
                   {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
                   {dayEvents.map(ev => (
                     <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>
