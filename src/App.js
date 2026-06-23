@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
+import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
@@ -171,6 +170,9 @@ if (appUser?.isAdmin || perms.inventory || perms.team) tabs.push({ id: 'inventor
              ))}
           </div>
           <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
+            <a href="mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A" onClick={onClose} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30">
+              <Bug size={16} /> Report a Bug / Error
+            </a>
             <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
           </div>
        </div>
@@ -2725,6 +2727,8 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
   }, [activeTabState, events, liveAppUser]);
 
   const addToast = (title, message) => {
+
+  const addToast = (title, message) => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, title, message }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
@@ -2760,6 +2764,8 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
           {hasUnreadMessages && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
         </button>
       </header>
+
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} />
 
 <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} />
     {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
