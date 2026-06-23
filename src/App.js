@@ -2723,19 +2723,7 @@ export default function App() {
     else localStorage.removeItem('86chaosUser');
   }, [appUser]);
 
-useEffect(() => {
-    if (appUser && messaging) {
-      Notification.requestPermission().then((permission) => {
-        if (permission === 'granted') {
-          getToken(messaging, { vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU' }).then((token) => {
-            if (token && appUser.fcmToken !== token) {
-              updateDoc(doc(db, "users", appUser.id), { fcmToken: token });
-            }
-          }).catch(err => console.warn("Push token failed", err));
-        }
-      });
-    }
-  }, [appUser?.id]);
+
   
 
   const [currentDate, setCurrentDate] = useState(getToday());
