@@ -575,10 +575,12 @@ return (
           
           <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
           
-          <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
-            <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
-            <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
-          </label>
+         {appUser?.isAdmin && (
+            <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
+              <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
+              <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
+            </label>
+          )}
           
           {!isAdmin && (
             <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
@@ -617,7 +619,7 @@ return (
                 </div>
               </div>
               
-              {canManageTeam && (
+           {(appUser?.isAdmin || (canManageTeam && !u.isAdmin)) && (
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button onClick={() => handlePasswordReset(u)} className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded border border-[#2A353D]">Reset</button>
                   <button onClick={() => handleEditClick(u)} className="p-1 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Edit size={12}/></button>
