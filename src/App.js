@@ -2726,7 +2726,7 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
     }
   }, [activeTabState, events, liveAppUser]);
 
-  const addToast = (title, message) => {
+ 
 
   const addToast = (title, message) => {
     const id = Date.now();
