@@ -55,6 +55,10 @@ try { if (typeof window !== 'undefined' && 'Notification' in window) messaging =
 const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
+// --- VERSION TRACKING ---
+const CURRENT_VERSION = '3.0.0';
+
+
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
   const [data, setData] = useState([]);
@@ -2689,6 +2693,30 @@ const TabSales = ({ sales, addToast, appUser }) => {
 export default function App() {
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('86chaosUser'); return saved ? JSON.parse(saved) : null; });
   const rId = appUser?.restaurantId;
+
+  // --- VERSION CHECKER STATE & LOGIC ---
+  const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+
+  useEffect(() => {
+    const checkAppVersion = async () => {
+      try {
+        const response = await fetch(`/version.json?t=${Date.now()}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.version !== CURRENT_VERSION) {
+            setShowUpdateBanner(true);
+          }
+        }
+      } catch (error) {
+        console.warn("Background version check failed:", error);
+      }
+    };
+
+    // Check instantly on load, then every 3 minutes silently
+    checkAppVersion();
+    const versionInterval = setInterval(checkAppVersion, 3 * 60 * 1000);
+    return () => clearInterval(versionInterval);
+  }, []);
  
 
   const users = useLiveCollection('users', rId);
@@ -2774,6 +2802,23 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
+
+{/* UPDATE ALERT BANNER */}
+      {showUpdateBanner && (
+        <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex-shrink-0 animate-pulse text-sm">🚨</span>
+            <span className="truncate">System update available. Refresh to prevent database desync.</span>
+          </div>
+          <button 
+            onClick={() => window.location.reload(true)} 
+            className="bg-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3"
+          >
+            REFRESH NOW
+          </button>
+        </div>
+      )}
+
 
 <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo />
