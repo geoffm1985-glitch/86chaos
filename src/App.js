@@ -2831,7 +2831,17 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
 
 <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo />
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white`}>
+
+        {/* DYNAMIC RESTAURANT NAME */}
+        {liveAppUser && (
+          <div className="flex-1 text-center px-4 truncate mt-1">
+            <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-slate-500">
+              {liveAppUser.restaurantName || "Cheers"}
+            </span>
+          </div>
+        )}
+
+        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
           {hasUnreadMessages && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
         </button>
