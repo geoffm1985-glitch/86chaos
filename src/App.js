@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
 
@@ -155,9 +155,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 if (appUser?.isAdmin || perms.inventory || perms.team) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (appUser?.isAdmin || perms.sales) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
-  // Master Admin only
+ // Master Admin & God Mode
+  const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
+  if (isGod) tabs.push({ id: 'godmode', label: 'God Mode', icon: <Shield size={18}/> });
   if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
-  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   return (
@@ -2699,6 +2700,189 @@ const TabSales = ({ sales, addToast, appUser }) => {
 // ============================================================================
 // THE MASTER ENGINE (App Component)
 // ============================================================================
+
+
+// ============================================================================
+// GOD MODE: SUPER ADMIN DASHBOARD
+// ============================================================================
+const TabGodMode = ({ appUser, addToast }) => {
+  const [subTab, setSubTab] = useState('tenants');
+  const [restaurants, setRestaurants] = useState([]);
+  const [superAdmins, setSuperAdmins] = useState([]);
+
+  // Form States
+  const [rName, setRName] = useState('');
+  const [oName, setOName] = useState('');
+  const [oEmail, setOEmail] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [editingRest, setEditingRest] = useState(null);
+
+  // Fetch Global Data
+  useEffect(() => {
+    const unsubRests = onSnapshot(collection(db, 'restaurants'), snap => {
+      setRestaurants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    const unsubAdmins = onSnapshot(query(collection(db, 'users'), where('isSuperAdmin', '==', true)), snap => {
+      setSuperAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => { unsubRests(); unsubAdmins(); };
+  }, []);
+
+  const handleDeployTenant = async (e) => {
+    e.preventDefault();
+    if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
+
+    try {
+      // 1. Create the Restaurant Profile in Global Directory
+      const newRestRef = await addDoc(collection(db, "restaurants"), {
+        name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(),
+        isActive: true, createdAt: new Date().toISOString()
+      });
+
+      // 2. Generate Temp Password & Bypass Main Auth
+      const tPass = generateTempPass();
+      const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now());
+      const secondaryAuth = getAuth(secondaryApp);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass);
+      const newAuthUid = userCredential.user.uid;
+      await secondaryAuth.signOut();
+
+      // 3. Build Master Admin Profile for the New Client
+      await setDoc(doc(db, "users", newAuthUid), {
+        name: oName.trim(), email: oEmail.toLowerCase().trim(), password: tPass,
+        role: 'General Manager', isAdmin: true, isActive: true, forcePasswordChange: true,
+        restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true }
+      });
+
+      // 4. Send Welcome Email
+      const welcomeMsg = `Welcome to 86chaos!\n\nYour restaurant OS is live. Access it here: https://app.86chaos.com\n\nUsername: ${oEmail.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in to set a permanent password and begin building your roster.`;
+      window.location.href = `mailto:${oEmail.toLowerCase().trim()}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${rName.trim()}`)}&body=${encodeURIComponent(welcomeMsg)}`;
+
+      addToast('Tenant Deployed', `${rName} is now live and isolated.`);
+      setRName(''); setOName(''); setOEmail('');
+    } catch (error) {
+      addToast('Deployment Failed', error.message);
+    }
+  };
+
+  const handleUpdateTenant = async (e) => {
+    e.preventDefault();
+    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive });
+    setEditingRest(null);
+    addToast('Updated', 'Restaurant profile modified.');
+  };
+
+  const handleDeleteTenant = async (id, name) => {
+    if (!window.confirm(`CRITICAL WARNING: Are you sure you want to completely delete ${name}? This will lock out all their staff immediately.`)) return;
+    await deleteDoc(doc(db, "restaurants", id));
+    addToast('Deleted', `${name} has been erased.`);
+  };
+
+  const handleGrantAccess = async (e) => {
+    e.preventDefault();
+    if (!adminEmail.trim()) return;
+    
+    const q = query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()));
+    const snap = await getDocs(q);
+    
+    if (snap.empty) {
+      return addToast('Not Found', 'No user found with that email address.');
+    }
+    
+    const userDoc = snap.docs[0];
+    await updateDoc(doc(db, "users", userDoc.id), { isSuperAdmin: true });
+    setAdminEmail('');
+    addToast('Access Granted', `${userDoc.data().name} now has God Mode.`);
+  };
+
+  const handleRevokeAccess = async (user) => {
+    if (!window.confirm(`Revoke God Mode from ${user.name}?`)) return;
+    await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false });
+    addToast('Access Revoked', `${user.name} removed from God Mode.`);
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className="flex gap-2 border-b border-[#2A353D] mb-4 pb-2">
+        <button onClick={() => setSubTab('tenants')} className={`px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all flex-1 ${subTab === 'tenants' ? 'bg-red-600 text-white shadow-md' : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Active Clients</button>
+        <button onClick={() => setSubTab('admins')} className={`px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all flex-1 ${subTab === 'admins' ? 'bg-red-600 text-white shadow-md' : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Access Control</button>
+      </div>
+
+      <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title="Edit Client Configuration">
+        {editingRest && (
+          <form onSubmit={handleUpdateTenant} className="space-y-4">
+            <div><label className={T.label}>Restaurant Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
+            <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer mt-2">
+              <input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-5 h-5 accent-emerald-500 bg-[#1A2126] border-[#2A353D] rounded" />
+              <span className={`text-sm font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>Account Active (Allow Logins)</span>
+            </label>
+            <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white`}>Save Configuration</button>
+          </form>
+        )}
+      </Modal>
+
+      {subTab === 'tenants' && (
+        <div className="space-y-6">
+          <form onSubmit={handleDeployTenant} className={`${T.card} p-5 border-red-900/50 shadow-[0_0_20px_rgba(220,38,38,0.1)]`}>
+            <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><Shield className="text-red-500" size={20}/> Deploy New Restaurant</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">This will generate a completely isolated database environment.</p></div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input type="text" placeholder="Restaurant Name" value={rName} onChange={e=>setRName(e.target.value)} className={T.input} required />
+              <input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required />
+              <input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required />
+            </div>
+            <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database & Email Credentials</button>
+          </form>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white">Active Tenants</h3><span className="bg-red-900/20 text-red-500 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-red-500/50">{restaurants.length} Total</span></div>
+            <div className={`divide-y ${T.border}`}>
+              {restaurants.map(r => (
+                <div key={r.id} className={`${T.row} flex justify-between items-center`}>
+                  <div>
+                    <div className="font-black text-white text-lg flex items-center gap-2">{r.name} {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} ({r.ownerEmail})</div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors">Edit</button>
+                    <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/20 border border-red-900/50 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/50 transition-colors">Nuke</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'admins' && (
+        <div className="space-y-6">
+          <form onSubmit={handleGrantAccess} className={`${T.card} p-5`}>
+            <div className="mb-4"><h2 className="text-lg font-black text-white">Grant God Mode</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Add a user's exact email address to grant full system control.</p></div>
+            <div className="flex gap-2">
+              <input type="email" placeholder="User's exact email..." value={adminEmail} onChange={e=>setAdminEmail(e.target.value)} className={T.input} required />
+              <button type="submit" className="bg-red-600 hover:bg-red-700 text-white px-6 font-black uppercase tracking-widest rounded-xl transition-colors">Grant</button>
+            </div>
+          </form>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border}`}><h3 className="font-black text-sm text-white">Current Super Admins</h3></div>
+            <div className={`divide-y ${T.border}`}>
+              {superAdmins.map(admin => (
+                <div key={admin.id} className={`${T.row} flex justify-between items-center`}>
+                  <div><div className="font-black text-white">{admin.name}</div><div className="text-[10px] font-bold text-slate-400">{admin.email}</div></div>
+                  <button onClick={() => handleRevokeAccess(admin)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-red-400 transition-colors">Revoke</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+
 export default function App() {
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('86chaosUser'); return saved ? JSON.parse(saved) : null; });
   const rId = appUser?.restaurantId;
@@ -2893,8 +3077,9 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
+       {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'audit' && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
+        {activeTabState === 'godmode' && (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin) && <TabGodMode appUser={liveAppUser} addToast={addToast} />}
       </main>
 
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
