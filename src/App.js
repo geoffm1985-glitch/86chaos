@@ -2865,7 +2865,6 @@ const TabGodMode = ({ appUser, addToast }) => {
               ))}
             </div>
           </div>
-        </div>
       )}
 
       {subTab === 'admins' && (
