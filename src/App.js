@@ -56,7 +56,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '3.1.0';
+const CURRENT_VERSION = '3.1.1';
 
 
 // --- Helpers ---
@@ -210,8 +210,17 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
     return () => { clearTimeout(timer); window.removeEventListener('popstate', handleBackButton); };
   }, [onClose]);
   return (
-    <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black">
-      <style>{`@media print { @page { size: 3.5in 1.1in; margin: 0; } body, html { margin: 0 !important; background: white !important; } .no-print { display: none !important; } .dk-label { width: 3.5in !important; height: 1.1in !important; display: flex !important; flex-direction: column !important; justify-content: center !important; padding: 0.05in 0.15in !important; box-sizing: border-box !important; page-break-after: always !important; margin: 0 !important; font-family: sans-serif !important; overflow: hidden !important; } .dk-title { font-size: 16px !important; font-weight: 900 !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; } .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; margin-bottom: 2px !important; } .dk-exp { display: flex !important; justify-content: center !important; font-size: 14px !important; font-weight: 900 !important; border-top: 2px solid black !important; padding-top: 2px !important; } }`}</style>
+    <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black print:static print:block print:overflow-visible print:h-auto print:w-auto">
+      <style>{`@media print { 
+        @page { size: 3.5in 1.1in; margin: 0; } 
+        body, html { margin: 0 !important; background: white !important; height: auto !important; } 
+        #master-print-wrapper { position: static !important; overflow: visible !important; height: auto !important; display: block !important; }
+        .no-print { display: none !important; } 
+        .dk-label { width: 3.5in !important; height: 1.1in !important; display: flex !important; flex-direction: column !important; justify-content: center !important; padding: 0.05in 0.15in !important; box-sizing: border-box !important; page-break-after: always !important; margin: 0 !important; font-family: sans-serif !important; overflow: hidden !important; } 
+        .dk-title { font-size: 16px !important; font-weight: 900 !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; } 
+        .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; margin-bottom: 2px !important; } 
+        .dk-exp { display: flex !important; justify-content: center !important; font-size: 14px !important; font-weight: 900 !important; border-top: 2px solid black !important; padding-top: 2px !important; } 
+      }`}</style>
       <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
          <Loader2 className="animate-spin text-[#8F6040] mb-6" size={64} />
          <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
@@ -2890,7 +2899,7 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 3.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 3.1.1</span>
       </div>
     </div>
   );
