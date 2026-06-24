@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc } from 'firebase/firestore';
-import { getMessaging, getToken } from "firebase/messaging";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
-
+import { getMessaging, getToken } from 'firebase/messaging';
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
 const T = {
@@ -55,6 +54,10 @@ try { if (typeof window !== 'undefined' && 'Notification' in window) messaging =
 // --- Master Configuration ---
 const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
+
+// --- VERSION TRACKING ---
+const CURRENT_VERSION = '3.1.0';
+
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -664,7 +667,6 @@ return (
 // --- MESSAGE BOARD ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState(''); 
-  const [isImportant, setIsImportant] = useState(false);
   const [replyTexts, setReplyTexts] = useState({});
   
   const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -672,10 +674,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   const handleBroadcast = async (e) => { 
     e.preventDefault(); 
     if(!message.trim()) return; 
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: isImportant, restaurantId: appUser.restaurantId, replies: [] }); 
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, restaurantId: appUser.restaurantId, replies: [] }); 
     setMessage(''); 
-    setIsImportant(false);
-    addToast('Posted', isImportant ? 'Critical alert broadcasted.' : 'Message sent.'); 
+    addToast('Posted', 'Message sent.'); 
   };
 
   const handleReplyChange = (id, text) => {
@@ -708,18 +709,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div className={`${T.card} p-4`}>
-        <form onSubmit={handleBroadcast} className="flex flex-col gap-3">
-          <textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
-              <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-red-500" />
-              <span className={isImportant ? "text-red-400" : "text-slate-400"}>Mark as Critical (Sends Push Alert)</span>
-            </label>
-            <button className={`${T.btn} px-8 w-full sm:w-auto`}>Post</button>
-          </div>
-        </form>
-      </div>
+      <div className={`${T.card} p-4`}><form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3"><textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea><button className={`${T.btn} px-8`}>Post</button></form></div>
       <div className="space-y-3">{allNotes.map(n => {
         const authorUser = users.find(u => u.name === n.author);
         return (
@@ -2703,6 +2693,30 @@ const TabSales = ({ sales, addToast, appUser }) => {
 export default function App() {
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('86chaosUser'); return saved ? JSON.parse(saved) : null; });
   const rId = appUser?.restaurantId;
+
+  // --- VERSION CHECKER STATE & LOGIC ---
+  const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+
+  useEffect(() => {
+    const checkAppVersion = async () => {
+      try {
+        const response = await fetch(`/version.json?t=${Date.now()}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.version !== CURRENT_VERSION) {
+            setShowUpdateBanner(true);
+          }
+        }
+      } catch (error) {
+        console.warn("Background version check failed:", error);
+      }
+    };
+
+    // Check instantly on load, then every 3 minutes silently
+    checkAppVersion();
+    const versionInterval = setInterval(checkAppVersion, 3 * 60 * 1000);
+    return () => clearInterval(versionInterval);
+  }, []);
  
 
   const users = useLiveCollection('users', rId);
@@ -2738,19 +2752,6 @@ export default function App() {
     else localStorage.removeItem('86chaosUser');
   }, [appUser]);
 
-useEffect(() => {
-    if (appUser && messaging) {
-      Notification.requestPermission().then((permission) => {
-        if (permission === 'granted') {
-          getToken(messaging, { vapidKey: 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU' }).then((token) => {
-            if (token && appUser.fcmToken !== token) {
-              updateDoc(doc(db, "users", appUser.id), { fcmToken: token });
-            }
-          }).catch(err => console.warn("Push token failed", err));
-        }
-      });
-    }
-  }, [appUser?.id]);
   
 
   const [currentDate, setCurrentDate] = useState(getToday());
@@ -2801,6 +2802,23 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
+
+{/* UPDATE ALERT BANNER */}
+      {showUpdateBanner && (
+        <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex-shrink-0 animate-pulse text-sm">🚨</span>
+            <span className="truncate">System update available. Refresh to prevent database desync.</span>
+          </div>
+          <button 
+            onClick={() => window.location.reload(true)} 
+            className="bg-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3"
+          >
+            REFRESH NOW
+          </button>
+        </div>
+      )}
+
 
 <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo />
@@ -2872,7 +2890,7 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 3.1</span>
       </div>
     </div>
   );
