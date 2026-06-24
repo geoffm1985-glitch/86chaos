@@ -2801,6 +2801,22 @@ const TabGodMode = ({ appUser, addToast }) => {
     addToast('Access Revoked', `${user.name} removed from God Mode.`);
   };
 
+// --- ONE-CLICK IMPORT CURRENT WORKSPACE ---
+  const handleImportCheers = async () => {
+    if (!appUser.restaurantId) return addToast('Error', 'No restaurant ID found on your profile.');
+    try {
+      await setDoc(doc(db, "restaurants", appUser.restaurantId), {
+        name: appUser.restaurantName || "Cheers",
+        ownerName: appUser.name,
+        ownerEmail: appUser.email,
+        isActive: true,
+        createdAt: new Date().toISOString()
+      });
+      addToast('Imported', 'Cheers has been officially registered in the God Mode list.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
       <div className="flex gap-2 border-b border-[#2A353D] mb-4 pb-2">
@@ -2834,9 +2850,7 @@ const TabGodMode = ({ appUser, addToast }) => {
           </form>
 
           <div className={`${T.card} overflow-hidden`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white">Active Tenants</h3><span className="bg-red-900/20 text-red-500 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-red-500/50">{restaurants.length} Total</span></div>
-            <div className={`divide-y ${T.border}`}>
-              {restaurants.map(r => (
+<div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><div className="flex items-center gap-3"><h3 className="font-black text-sm text-white">Active Tenants</h3><button onClick={handleImportCheers} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors">Import Current</button></div><span className="bg-red-900/20 text-red-500 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-red-500/50">{restaurants.length} Total</span></div>              {restaurants.map(r => (
                 <div key={r.id} className={`${T.row} flex justify-between items-center`}>
                   <div>
                     <div className="font-black text-white text-lg flex items-center gap-2">{r.name} {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}</div>
@@ -3094,7 +3108,7 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 3.1.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 4.0.0</span>
       </div>
     </div>
   );
