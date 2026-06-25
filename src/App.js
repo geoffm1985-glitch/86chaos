@@ -3042,7 +3042,6 @@ export default function App() {
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.find(u => u.id === appUser.id) || appUser)) : null;
 
   // Unread messages logic
   const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => Math.max(max, new Date(n.date).getTime()), 0);
