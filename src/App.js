@@ -2987,10 +2987,7 @@ export default function App() {
   const wasteLogs = useLiveCollection('wasteLogs', rId);
 
   // --- LIVE APP USER LOGIC ---
-  let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
-  if (ghostTenant && liveAppUser) {
-    liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'God Mode' };
-  }
+
 
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
