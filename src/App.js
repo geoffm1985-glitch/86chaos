@@ -2779,31 +2779,61 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     addToast('Export Complete', 'Data delivered to downloads folder.');
   };
 
-  // --- 2. SYSTEM OPERATIONS & FORGE ---
+// --- 2. SYSTEM OPERATIONS & FORGE ---
   const handleMegaphone = async (e) => {
-    e.preventDefault(); if(!broadcastMsg.trim()) return; if(!window.confirm("Blast this to EVERY restaurant?")) return;
+    e.preventDefault(); 
+    if(!broadcastMsg.trim()) return; 
+    if(!window.confirm("Blast this to EVERY restaurant?")) return;
+    
     addToast('Broadcasting', 'Pushing message to all shards...');
-    try {
-      await Promise.allSettled(restaurants.map(r => 
-        addDoc(collection(db, "events"), { date: new Date().toISOString(), title: broadcastMsg.trim(), type: 'note', author: 'SYSTEM ALERT', isImportant: true, restaurantId: r.id, replies: [] })
-      ));
-      addToast('Megaphone', 'Message blasted successfully.'); 
-      setBroadcastMsg('');
-    } catch (err) {
-      addToast('Error', err.message);
+    let success = 0; let failed = 0;
+    
+    for (const r of restaurants) {
+      try {
+        await addDoc(collection(db, "events"), { 
+          date: new Date().toISOString(), 
+          title: broadcastMsg.trim(), 
+          type: 'note', 
+          author: 'System Alert', 
+          isImportant: true, 
+          restaurantId: r.id, 
+          replies: [] 
+        });
+        success++;
+      } catch (err) {
+        console.error("Megaphone blocked:", err);
+        failed++;
+      }
     }
+    
+    if (failed > 0) addToast('Partial Alert', `Sent to ${success}, but Firebase blocked ${failed}. Check console.`);
+    else addToast('Megaphone', `Message blasted successfully to ${success} locations.`);
+    
+    setBroadcastMsg('');
   };
 
   const handleForgePush = async (e, type) => {
-    e.preventDefault(); if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
-    try {
-      await Promise.allSettled(restaurants.map(r => {
-        if (type === 'Event') return addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
-        if (type === 'Recipe') return addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
-        return Promise.resolve();
-      }));
-      addToast('Forge Deployed', `${type} injected globally.`); setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
-    } catch (err) { addToast('Error', err.message); }
+    e.preventDefault(); 
+    if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
+    
+    addToast('Deploying', `Pushing ${type} to all shards...`);
+    let success = 0; let failed = 0;
+
+    for (const r of restaurants) {
+      try {
+        if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
+        if (type === 'Recipe') await addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
+        success++;
+      } catch (err) {
+        console.error("Forge blocked:", err);
+        failed++;
+      }
+    }
+    
+    if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
+    else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
+    
+    setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
   };
 
   const handleOrphanSweep = async () => {
