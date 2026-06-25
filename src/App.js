@@ -2949,10 +2949,7 @@ export default function App() {
   const [ghostTenant, setGhostTenant] = useState(null);
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   
-  let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
-  if (ghostTenant && liveAppUser) {
-    liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'God Mode' };
-  }
+
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
@@ -2989,8 +2986,13 @@ export default function App() {
   const timeOffRequests = useLiveCollection('timeOffRequests', rId);
   const tasks = useLiveCollection('tasks', rId);
   const vendors = useLiveCollection('vendors', rId);
-  const wasteLogs = useLiveCollection('wasteLogs', rId);
- // --- GLOBAL WORKSPACE & HEALTH PING ---
+const wasteLogs = useLiveCollection('wasteLogs', rId);
+
+  // --- LIVE APP USER LOGIC (Must be below database imports) ---
+  let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
+  if (ghostTenant && liveAppUser) {
+    liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'God Mode' };
+  } // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
 
