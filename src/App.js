@@ -140,25 +140,31 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {} }) => {
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
-
-  // Standard tabs everyone gets
-  tabs.push({ id: 'published', label: 'Schedule & Time Off', icon: <Clock size={18}/> });
-  tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
-  
- // Restricted tabs
-  if (appUser?.isAdmin || perms.schedule) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
-  if (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep) { tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> }); tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> }); }
-if (appUser?.isAdmin || perms.inventory || perms.team) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
-  if (appUser?.isAdmin || perms.sales) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
-  
- // Master Admin & God Mode
   const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
+
+  // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups like Cheers)
+  const isEnabled = (feat) => clientFeatures[feat] !== false;
+
+  // Dynamic Module Checks
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time Off', icon: <Clock size={18}/> });
+  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+  
+  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
+  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
+  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
+  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
+  
+  // Core UI (Always active)
+  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
+  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
+  
   if (isGod) tabs.push({ id: 'godmode', label: 'God Mode', icon: <Shield size={18}/> });
   if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
+  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   return (
@@ -2698,17 +2704,13 @@ const TabSales = ({ sales, addToast, appUser }) => {
 
 
 // ============================================================================
-// THE MASTER ENGINE (App Component)
-// ============================================================================
-
-
-// ============================================================================
 // GOD MODE: SUPER ADMIN DASHBOARD
 // ============================================================================
 const TabGodMode = ({ appUser, addToast }) => {
   const [subTab, setSubTab] = useState('tenants');
   const [restaurants, setRestaurants] = useState([]);
   const [superAdmins, setSuperAdmins] = useState([]);
+  const [userCounts, setUserCounts] = useState({});
 
   // Form States
   const [rName, setRName] = useState('');
@@ -2717,7 +2719,7 @@ const TabGodMode = ({ appUser, addToast }) => {
   const [adminEmail, setAdminEmail] = useState('');
   const [editingRest, setEditingRest] = useState(null);
 
-  // Fetch Global Data
+  // Fetch Global Data & Calculate User Seats
   useEffect(() => {
     const unsubRests = onSnapshot(collection(db, 'restaurants'), snap => {
       setRestaurants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -2725,7 +2727,17 @@ const TabGodMode = ({ appUser, addToast }) => {
     const unsubAdmins = onSnapshot(query(collection(db, 'users'), where('isSuperAdmin', '==', true)), snap => {
       setSuperAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    return () => { unsubRests(); unsubAdmins(); };
+    const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
+      const counts = {};
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.restaurantId) {
+          counts[data.restaurantId] = (counts[data.restaurantId] || 0) + 1;
+        }
+      });
+      setUserCounts(counts);
+    });
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); };
   }, []);
 
   const handleDeployTenant = async (e) => {
@@ -2733,10 +2745,11 @@ const TabGodMode = ({ appUser, addToast }) => {
     if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
 
     try {
-      // 1. Create the Restaurant Profile in Global Directory
+      // 1. Create the Restaurant Profile with Default Features Enabled
+      const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true };
       const newRestRef = await addDoc(collection(db, "restaurants"), {
         name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(),
-        isActive: true, createdAt: new Date().toISOString()
+        isActive: true, features: defaultFeatures, createdAt: new Date().toISOString()
       });
 
       // 2. Generate Temp Password & Bypass Main Auth
@@ -2767,9 +2780,13 @@ const TabGodMode = ({ appUser, addToast }) => {
 
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive });
+    await updateDoc(doc(db, "restaurants", editingRest.id), { 
+      name: editingRest.name, 
+      isActive: editingRest.isActive,
+      features: editingRest.features || {} 
+    });
     setEditingRest(null);
-    addToast('Updated', 'Restaurant profile modified.');
+    addToast('Updated', 'Restaurant profile and feature access modified.');
   };
 
   const handleDeleteTenant = async (id, name) => {
@@ -2801,21 +2818,22 @@ const TabGodMode = ({ appUser, addToast }) => {
     addToast('Access Revoked', `${user.name} removed from God Mode.`);
   };
 
-// --- ONE-CLICK IMPORT CURRENT WORKSPACE ---
+  // --- ONE-CLICK IMPORT CURRENT WORKSPACE ---
   const handleImportCheers = async () => {
     if (!appUser.restaurantId) return addToast('Error', 'No restaurant ID found on your profile.');
     try {
+      const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true };
       await setDoc(doc(db, "restaurants", appUser.restaurantId), {
         name: appUser.restaurantName || "Cheers",
         ownerName: appUser.name,
         ownerEmail: appUser.email,
         isActive: true,
+        features: defaultFeatures,
         createdAt: new Date().toISOString()
       });
       addToast('Imported', 'Cheers has been officially registered in the God Mode list.');
     } catch (err) { addToast('Error', err.message); }
   };
-
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
@@ -2828,11 +2846,33 @@ const TabGodMode = ({ appUser, addToast }) => {
         {editingRest && (
           <form onSubmit={handleUpdateTenant} className="space-y-4">
             <div><label className={T.label}>Restaurant Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
+            
             <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer mt-2">
               <input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-5 h-5 accent-emerald-500 bg-[#1A2126] border-[#2A353D] rounded" />
               <span className={`text-sm font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>Account Active (Allow Logins)</span>
             </label>
-            <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white`}>Save Configuration</button>
+
+            <div className="pt-2 border-t border-[#2A353D]">
+              <label className={T.label}>Active Modules / Tool Access</label>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales'].map(feat => (
+                  <label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors">
+                    <input 
+                      type="checkbox" 
+                      checked={editingRest.features ? editingRest.features[feat] : true} 
+                      onChange={e => setEditingRest({
+                        ...editingRest, 
+                        features: { ...(editingRest.features || {}), [feat]: e.target.checked }
+                      })} 
+                      className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" 
+                    />
+                    <span className="text-xs font-bold text-slate-300 capitalize">{feat}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
           </form>
         )}
       </Modal>
@@ -2850,12 +2890,14 @@ const TabGodMode = ({ appUser, addToast }) => {
           </form>
 
           <div className={`${T.card} overflow-hidden`}>
-<div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><div className="flex items-center gap-3"><h3 className="font-black text-sm text-white">Active Tenants</h3><button onClick={handleImportCheers} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors">Import Current</button></div><span className="bg-red-900/20 text-red-500 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-red-500/50">{restaurants.length} Total</span></div>              {restaurants.map(r => (
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><div className="flex items-center gap-3"><h3 className="font-black text-sm text-white">Active Tenants</h3><button onClick={handleImportCheers} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors">Import Current</button></div><span className="bg-red-900/20 text-red-500 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-red-500/50">{restaurants.length} Total</span></div>
+            <div className={`divide-y ${T.border}`}>
+              {restaurants.map(r => (
                 <div key={r.id} className={`${T.row} flex justify-between items-center`}>
                   <div>
                     <div className="font-black text-white text-lg flex items-center gap-2">{r.name} {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}</div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} ({r.ownerEmail})</div>
-                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id}</div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Staff Members</span></div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors">Edit</button>
@@ -2865,6 +2907,7 @@ const TabGodMode = ({ appUser, addToast }) => {
               ))}
             </div>
           </div>
+        </div>
       )}
 
       {subTab === 'admins' && (
@@ -2937,6 +2980,14 @@ export default function App() {
   const tasks = useLiveCollection('tasks', rId);
   const vendors = useLiveCollection('vendors', rId);
   const wasteLogs = useLiveCollection('wasteLogs', rId);
+  const [clientFeatures, setClientFeatures] = useState({});
+  useEffect(() => {
+    if (!rId) return;
+    const unsub = onSnapshot(doc(db, 'restaurants', rId), (d) => {
+      if (d.exists() && d.data().features) setClientFeatures(d.data().features);
+    });
+    return () => unsub();
+  }, [rId]);
 
  
   const [activeTabState, setActiveTabState] = useState('published');
@@ -3044,9 +3095,7 @@ const liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users.
         </button>
       </header>
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} />
-
-<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} />
+<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} clientFeatures={clientFeatures} />
     {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
           {activeTabState === 'sales' ? (
