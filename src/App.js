@@ -56,7 +56,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '4.5.1';
+const CURRENT_VERSION = '4.5.6';
 
 
 // --- Helpers ---
@@ -83,8 +83,7 @@ const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase(
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
 // --- Audit Log Helper ---
-const logAudit = async (user, action, target, details) => { try { await addDoc(collection(db, "auditLogs"), { userName: user?.name || user?.email || "Unknown User", action, target, details, timestamp: new Date().toISOString(), restaurantId: user?.restaurantId }); } catch (error) { console.error("Audit failed", error); } };
-
+const logAudit = async (user, action, target, details) => { try { await addDoc(collection(db, "auditLogs"), { userName: user?.name || user?.email || "Unknown User", isGhost: user?.role === 'System Administrator', action, target, details, timestamp: new Date().toISOString(), restaurantId: user?.restaurantId }); } catch (error) { console.error("Audit failed", error); } };
 // --- Global Crash Reporter ---
 if (typeof window !== 'undefined' && !window.crashCatcherAttached) { window.crashCatcherAttached = true; window.onerror = (msg, url, lineNo, columnNo, error) => { addDoc(collection(db, "crashReports"), { type: 'error', message: msg, stack: error?.stack || '', time: new Date().toISOString() }).catch(()=>{}); return false; }; }
 
@@ -2713,6 +2712,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [superAdmins, setSuperAdmins] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [crashLogs, setCrashLogs] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [userCounts, setUserCounts] = useState({});
 
   // Form States
@@ -2734,7 +2734,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
       setUserCounts(counts);
     });
     const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)));
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); };
+    const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100)));
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
   }, []);
 
   // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
@@ -2742,7 +2743,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
     try {
       const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true };
-      const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, planType: 'Trial', billingStatus: 'Paid', createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
+      const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planType: 'Trial', billingStatus: 'Paid', createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
       const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
       await setDoc(doc(db, "users", newAuthUid), { name: oName.trim(), email: oEmail.toLowerCase().trim(), password: tPass, role: 'General Manager', isAdmin: true, isActive: true, forcePasswordChange: true, restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true } });
@@ -2754,7 +2755,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
 
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
+    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
 
@@ -2778,20 +2779,61 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     addToast('Export Complete', 'Data delivered to downloads folder.');
   };
 
-  // --- 2. SYSTEM OPERATIONS & FORGE ---
+// --- 2. SYSTEM OPERATIONS & FORGE ---
   const handleMegaphone = async (e) => {
-    e.preventDefault(); if(!broadcastMsg.trim()) return; if(!window.confirm("Blast this to EVERY restaurant?")) return;
-    for (const r of restaurants) await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: broadcastMsg.trim(), type: 'note', author: 'SYSTEM ALERT', isImportant: true, restaurantId: r.id, replies: [] });
-    addToast('Megaphone', 'Message blasted to all networks.'); setBroadcastMsg('');
+    e.preventDefault(); 
+    if(!broadcastMsg.trim()) return; 
+    if(!window.confirm("Blast this to EVERY restaurant?")) return;
+    
+    addToast('Broadcasting', 'Pushing message to all shards...');
+    let success = 0; let failed = 0;
+    
+    for (const r of restaurants) {
+      try {
+        await addDoc(collection(db, "events"), { 
+          date: new Date().toISOString(), 
+          title: broadcastMsg.trim(), 
+          type: 'note', 
+          author: 'System Alert', 
+          isImportant: true, 
+          restaurantId: r.id, 
+          replies: [] 
+        });
+        success++;
+      } catch (err) {
+        console.error("Megaphone blocked:", err);
+        failed++;
+      }
+    }
+    
+    if (failed > 0) addToast('Partial Alert', `Sent to ${success}, but Firebase blocked ${failed}. Check console.`);
+    else addToast('Megaphone', `Message blasted successfully to ${success} locations.`);
+    
+    setBroadcastMsg('');
   };
 
   const handleForgePush = async (e, type) => {
-    e.preventDefault(); if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
+    e.preventDefault(); 
+    if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
+    
+    addToast('Deploying', `Pushing ${type} to all shards...`);
+    let success = 0; let failed = 0;
+
     for (const r of restaurants) {
-      if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
-      if (type === 'Recipe') await addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
+      try {
+        if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
+        if (type === 'Recipe') await addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
+        success++;
+      } catch (err) {
+        console.error("Forge blocked:", err);
+        failed++;
+      }
     }
-    addToast('Forge Deployed', `${type} injected globally.`); setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
+    
+    if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
+    else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
+    
+    setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
   };
 
   const handleOrphanSweep = async () => {
@@ -2808,13 +2850,14 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Pro' ? 99 : 0), 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
+  const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
       {/* MASTER NAVIGATION */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
-          <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-2 border-b border-[#2A353D] mb-6 pb-4">
+        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
+          <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
       </div>
 
@@ -2832,10 +2875,23 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
                 <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
               </div>
               <div className="pt-2 border-t border-[#2A353D]"><label className={T.label}>Module Access</label><div className="grid grid-cols-2 gap-2 mt-2">{['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales'].map(feat => (<label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]"><input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" /><span className="text-xs font-bold text-slate-300 capitalize">{feat}</span></label>))}</div></div>
+              
+              {/* LABS / CANARY ROLLOUT */}
+              <div className="pt-2 border-t border-[#2A353D]">
+                <label className={T.label}>Labs / Beta Features (Canary Rollout)</label>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <label className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]">
+                    <input type="checkbox" checked={editingRest.labs?.laborProjection || false} onChange={e => setEditingRest({...editingRest, labs: { ...(editingRest.labs || {}), laborProjection: e.target.checked }})} className="w-4 h-4 accent-purple-500" />
+                    <span className="text-xs font-bold text-purple-400 capitalize">Labor Projections</span>
+                  </label>
+                </div>
+              </div>
+
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
             <div className="pt-4 border-t border-red-900/50 mt-4 space-y-2">
-<button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">📊 Download CSV Export</button>              <button type="button" onClick={handleWipeSandbox} className="w-full bg-red-900/10 text-red-500 font-black py-2 rounded-xl border border-red-900/50 hover:bg-red-900/30 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Trash2 size={14}/> Wipe Sandbox Data</button>
+              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">📊 Download CSV Export</button>
+              <button type="button" onClick={handleWipeSandbox} className="w-full bg-red-900/10 text-red-500 font-black py-2 rounded-xl border border-red-900/50 hover:bg-red-900/30 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Trash2 size={14}/> Wipe Sandbox Data</button>
             </div>
           </div>
         )}
@@ -2849,6 +2905,23 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Network Users</div><div className="text-4xl font-black text-white">{allUsers.length}</div></div>
           </div>
+
+          {/* STALE ACCOUNT ALERTS */}
+          {staleTenants.length > 0 && (
+            <div className={`${T.card} p-6 border-orange-900/30`}>
+              <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Bell className="text-orange-500" size={18}/> Stale Account Alerts</h3>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-3">These active accounts have not logged in for over 21 days.</p>
+              <div className="space-y-2">
+                {staleTenants.map(r => (
+                  <div key={r.id} className="flex justify-between items-center bg-[#12161A] p-3 rounded-lg border border-[#2A353D]">
+                    <div><div className="font-bold text-sm text-white">{r.name}</div><div className="text-[10px] text-slate-500">{r.ownerEmail}</div></div>
+                    <div className="text-orange-400 font-black text-xs">Inactive {Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000)} Days</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className={`${T.card} p-6 border-red-900/30`}>
             <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Shield className="text-red-500" size={18}/> System Status</h3>
             <div className="flex items-center gap-3"><span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span><span className="text-sm font-bold text-slate-300">All Database Shards Operational • Version {CURRENT_VERSION} Online</span></div>
@@ -2916,6 +2989,31 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               <div key={log.id} className={`${T.row} flex flex-col gap-1`}>
                 <div className="flex justify-between items-start"><span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all">{log.message}</span><span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span></div>
                 {log.stack && <div className="text-[9px] text-slate-500 font-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-[#0B0E11] p-2 rounded border border-[#2A353D]">{log.stack}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB: FORENSICS (GLOBAL AUDIT TRAIL) --- */}
+      {subTab === 'forensics' && (
+        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
+          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white flex items-center gap-2"><Search className="text-blue-500" size={18}/> Global Forensics & Ghost Audit</h3></div>
+          <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+            {auditLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No forensic data logged yet.</div>}
+            {auditLogs.map(log => (
+              <div key={log.id} className={`${T.row} flex flex-col gap-1`}>
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-sm">{log.userName}</span>
+                    {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">👻 Ghost Action</span>}
+                    <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{log.action}</span>
+                  </div>
+                  <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.timestamp).toLocaleString()}</span>
+                </div>
+                <div className="text-xs text-slate-300 font-medium mt-1">
+                  {log.details} <span className="text-slate-500 ml-1">Target: [{log.target}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {log.restaurantId}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -3229,7 +3327,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 4.5.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 4.5.6</span>
       </div>
     </div>
   );
