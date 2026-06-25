@@ -1898,9 +1898,14 @@ const handleInjectLegacyRecipes = async () => {
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       <div className={`${T.card} p-4 sm:p-5 flex flex-col md:flex-row gap-4 items-center justify-between`}>
         <div className="flex-1 w-full relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/><input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/></div>
-        <div className="flex w-full md:w-auto gap-3">
+       <div className="flex w-full md:w-auto gap-3">
           <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className={`${T.input} md:w-48`}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
-          <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-sm flex items-center justify-center gap-2`} title="Inject Card Recipes">⬇️ Import</button>
+          
+          {/* ONLY GEOFF CAN SEE THIS BUTTON */}
+          {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
+            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-sm flex items-center justify-center gap-2`} title="Inject Card Recipes">⬇️ Import</button>
+          )}
+
           <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
         </div>
       </div>
