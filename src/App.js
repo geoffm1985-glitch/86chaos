@@ -2945,10 +2945,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
 
 export default function App() {
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('86chaosUser'); return saved ? JSON.parse(saved) : null; });
-// --- GHOST MODE & ROUTING STATE ---
+  
+  // --- GHOST MODE & ROUTING STATE ---
   const [ghostTenant, setGhostTenant] = useState(null);
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
-  
 
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -2968,13 +2968,12 @@ export default function App() {
       }
     };
 
-    // Check instantly on load, then every 3 minutes silently
     checkAppVersion();
     const versionInterval = setInterval(checkAppVersion, 3 * 60 * 1000);
     return () => clearInterval(versionInterval);
   }, []);
- 
 
+  // --- DATABASE IMPORTS ---
   const users = useLiveCollection('users', rId);
   const shifts = useLiveCollection('shifts', rId);
   const prepItems = useLiveCollection('prepItems', rId);
@@ -2986,13 +2985,15 @@ export default function App() {
   const timeOffRequests = useLiveCollection('timeOffRequests', rId);
   const tasks = useLiveCollection('tasks', rId);
   const vendors = useLiveCollection('vendors', rId);
-const wasteLogs = useLiveCollection('wasteLogs', rId);
+  const wasteLogs = useLiveCollection('wasteLogs', rId);
 
-  // --- LIVE APP USER LOGIC (Must be below database imports) ---
+  // --- LIVE APP USER LOGIC ---
   let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
   if (ghostTenant && liveAppUser) {
     liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'God Mode' };
-  } // --- GLOBAL WORKSPACE & HEALTH PING ---
+  }
+
+  // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
 
