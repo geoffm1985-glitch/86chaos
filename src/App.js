@@ -3186,17 +3186,19 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         </div>
       </Modal>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
-        {activeTabState === 'schedule' && liveAppUser?.isAdmin && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} addToast={addToast} appUser={liveAppUser} />}
+    <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+        {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
-{activeTabState === 'sales' && liveAppUser?.isAdmin && <TabSales sales={sales} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales sales={sales} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} tasks={tasks} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-       {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'audit' && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
-{activeTabState === 'godmode' && (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin) && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}      </main>
+        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'audit' && liveAppUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
+        {activeTabState === 'godmode' && (liveAppUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin) && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
+      </main>
 
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
