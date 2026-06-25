@@ -162,8 +162,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
-  if (isGod) tabs.push({ id: 'godmode', label: 'God Mode', icon: <Shield size={18}/> });
-  if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
+if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size={18}/> });  if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
   
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
@@ -2818,8 +2817,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     setBroadcastMsg('');
   };
 
-  const handleGrantAccess = async (e) => { /* logic hidden for space, same as before */ e.preventDefault(); const q = query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim())); const snap = await getDocs(q); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'God Mode given.'); };
-  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke God Mode from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
+ const handleGrantAccess = async (e) => { /* logic hidden for space, same as before */ e.preventDefault(); const q = query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim())); const snap = await getDocs(q); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Administrator access given.'); };
+  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Administrator access from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
   const handleImportCheers = async () => { if (!appUser.restaurantId) return; try { await setDoc(doc(db, "restaurants", appUser.restaurantId), { name: appUser.restaurantName || "Cheers", ownerName: appUser.name, ownerEmail: appUser.email, isActive: true, features: { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true }, planType: 'Enterprise', billingStatus: 'Paid', createdAt: new Date().toISOString() }); addToast('Imported', 'Cheers registered.'); } catch (err) { addToast('Error', err.message); } };
 
   const timeAgo = (dateStr) => {
@@ -2890,8 +2889,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               <input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required />
               <input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required />
             </div>
-            <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database</button>
-          </form>
+<button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database & Email Credentials</button>          </form>
 
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><div className="flex items-center gap-3"><h3 className="font-black text-sm text-white">Active Tenants</h3><button onClick={handleImportCheers} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors">Import Current</button></div><span className="bg-red-900/20 text-red-500 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-red-500/50">{restaurants.length} Total</span></div>
@@ -2931,8 +2929,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
       {subTab === 'admins' && (
         <div className="space-y-6">
           <form onSubmit={handleGrantAccess} className={`${T.card} p-5`}>
-            <div className="mb-4"><h2 className="text-lg font-black text-white">Grant God Mode</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Add a user's exact email address to grant full system control.</p></div>
-            <div className="flex gap-2"><input type="email" placeholder="User's exact email..." value={adminEmail} onChange={e=>setAdminEmail(e.target.value)} className={T.input} required /><button type="submit" className="bg-red-600 hover:bg-red-700 text-white px-6 font-black uppercase tracking-widest rounded-xl transition-colors">Grant</button></div>
+<div className="mb-4"><h2 className="text-lg font-black text-white">Grant Administrator Access</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Add a user's exact email address to grant full system control.</p></div>            <div className="flex gap-2"><input type="email" placeholder="User's exact email..." value={adminEmail} onChange={e=>setAdminEmail(e.target.value)} className={T.input} required /><button type="submit" className="bg-red-600 hover:bg-red-700 text-white px-6 font-black uppercase tracking-widest rounded-xl transition-colors">Grant</button></div>
           </form>
           <div className={`${T.card} overflow-hidden`}><div className={`bg-[#12161A] p-4 border-b ${T.border}`}><h3 className="font-black text-sm text-white">Current Super Admins</h3></div><div className={`divide-y ${T.border}`}>{superAdmins.map(admin => (<div key={admin.id} className={`${T.row} flex justify-between items-center`}><div><div className="font-black text-white">{admin.name}</div><div className="text-[10px] font-bold text-slate-400">{admin.email}</div></div><button onClick={() => handleRevokeAccess(admin)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-red-400 transition-colors">Revoke</button></div>))}</div></div>
         </div>
@@ -2989,10 +2986,9 @@ export default function App() {
   // --- LIVE APP USER LOGIC ---
 
 let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
-  if (ghostTenant && liveAppUser) {
-    liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'God Mode' };
+if (ghostTenant && liveAppUser) {
+    liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'System Administrator' };
   }
-  
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
