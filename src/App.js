@@ -2945,11 +2945,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
 
 export default function App() {
   const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('86chaosUser'); return saved ? JSON.parse(saved) : null; });
-  
   // --- GHOST MODE & ROUTING STATE ---
   const [ghostTenant, setGhostTenant] = useState(null);
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
-
+  
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
