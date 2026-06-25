@@ -2890,8 +2890,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               <input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required />
               <input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required />
             </div>
-            <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database</button>
-          </form>
+<button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database & Email Credentials</button>          </form>
 
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><div className="flex items-center gap-3"><h3 className="font-black text-sm text-white">Active Tenants</h3><button onClick={handleImportCheers} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors">Import Current</button></div><span className="bg-red-900/20 text-red-500 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-red-500/50">{restaurants.length} Total</span></div>
