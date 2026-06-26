@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
@@ -47,6 +46,10 @@ const firebaseConfig = window.location.hostname === 'app.86chaos.com' ? prodConf
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
+enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
+
 const auth = getAuth(app);
 let messaging = null;
 try { if (typeof window !== 'undefined' && 'Notification' in window) messaging = getMessaging(app); } catch (e) { console.warn("Push not supported."); }
