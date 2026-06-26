@@ -512,6 +512,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
   const [role, setRole] = useState('Bartender'); 
+  const [wage, setWage] = useState(''); // NEW: Wage State
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
   const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
@@ -524,11 +525,11 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
+    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
   };
 
   const handleEditClick = (u) => {
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
+    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -538,7 +539,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
     if (editingUserId) {
         try {
             await updateDoc(doc(db, "users", editingUserId), {
-                name: name.trim(), phone: phone.trim(), role, isAdmin, permissions: perms, photoURL: photoURL.trim()
+                name: name.trim(), phone: phone.trim(), role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, photoURL: photoURL.trim()
             });
             addToast('Updated', `${name}'s profile has been updated.`);
             resetForm();
@@ -557,7 +558,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
 
       await setDoc(doc(db, "users", newAuthUid), { 
         name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        password: tPass, role, isAdmin, permissions: perms, isActive: true, 
+        password: tPass, role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
         forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
       }); 
       
@@ -618,6 +619,14 @@ return (
           
           <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
           
+          <div>
+            <label className={T.label}>Hourly Wage ($)</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+              <input type="number" step="0.01" min="0" value={wage} onChange={e=>setWage(e.target.value)} className={`${T.input} pl-8`} placeholder="Ex: 15.50" />
+            </div>
+          </div>
+
          {appUser?.isAdmin && (
             <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
               <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
@@ -658,6 +667,7 @@ return (
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
+                    {appUser?.isAdmin && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
                   </div>
                 </div>
               </div>
