@@ -391,13 +391,16 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   
   // --- TIME CLOCK LOGIC ---
   const [activePunch, setActivePunch] = useState(null);
+  const [isTipModalOpen, setIsTipModalOpen] = useState(false);
+  const [tipCash, setTipCash] = useState('');
+  const [tipCredit, setTipCredit] = useState('');
 
   useEffect(() => {
     if (!appUser?.id) return;
     const q = query(
       collection(db, 'timePunches'), 
       where('employeeId', '==', appUser.id), 
-      where('status', '==', 'clocked_in')
+      where('status', 'in', ['clocked_in', 'on_break'])
     );
     const unsub = onSnapshot(q, snap => {
       if (!snap.empty) { setActivePunch({ id: snap.docs[0].id, ...snap.docs[0].data() }); } 
@@ -414,21 +417,55 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         clockInTime: new Date().toISOString(), 
         status: 'clocked_in', 
         restaurantId: appUser.restaurantId, 
-        date: getToday() 
+        date: getToday(),
+        breakMinutes: 0
       });
       addToast('Clocked In', 'Shift started successfully.');
     } catch (e) { addToast('Error', e.message); }
   };
 
-  const handleClockOut = async () => {
+  const handleStartBreak = async () => {
+    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: new Date().toISOString(), status: 'on_break' });
+    addToast('Break Started', 'Enjoy your break.');
+  };
+
+  const handleEndBreak = async () => {
+    const breakStart = new Date(activePunch.breakStartTime);
+    const now = new Date();
+    const mins = (now - breakStart) / 60000;
+    const currentBreaks = activePunch.breakMinutes || 0;
+    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: null, breakMinutes: currentBreaks + mins, status: 'clocked_in' });
+    addToast('Break Ended', 'Welcome back to work.');
+  };
+
+  const initiateClockOut = () => {
+    if (appUser?.systemSettings?.tips) { setIsTipModalOpen(true); } 
+    else { finalizeClockOut(); }
+  };
+
+  const finalizeClockOut = async (e) => {
+    if(e) e.preventDefault();
     if (!activePunch) return;
     try {
+      let finalBreakMins = activePunch.breakMinutes || 0;
+      if (activePunch.status === 'on_break') {
+         const breakStart = new Date(activePunch.breakStartTime);
+         finalBreakMins += (new Date() - breakStart) / 60000;
+      }
+      
       await updateDoc(doc(db, "timePunches", activePunch.id), { 
         clockOutTime: new Date().toISOString(), 
-        status: 'clocked_out' 
+        status: 'clocked_out',
+        cashTips: parseFloat(tipCash) || 0,
+        creditTips: parseFloat(tipCredit) || 0,
+        breakMinutes: finalBreakMins,
+        breakStartTime: null
       });
+      
+      setIsTipModalOpen(false);
+      setTipCash(''); setTipCredit('');
       addToast('Clocked Out', 'Shift ended. Great work today!');
-    } catch (e) { addToast('Error', e.message); }
+    } catch (err) { addToast('Error', err.message); }
   };
 
   // --- SHIFT LOGIC ---
@@ -447,10 +484,6 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     addToast('Posted', 'Shift sent to trade board.');
   };
 
-  const activeMonthShifts = shifts
-    .filter(s => s.date.startsWith(monthStr) && s.isPublished)
-    .sort((a,b) => a.date.localeCompare(b.date));
-
   // --- TRADE BOARD LOGIC ---
   const availableSwaps = shiftSwaps
     .filter(s => s.status === 'available' && s.date >= getToday())
@@ -465,17 +498,11 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const handleClaimShift = async (swap) => {
     if (!window.confirm(`Claim the ${swap.role} shift on ${formatDisplayDate(swap.date)}?`)) return;
     try {
-       // Reassign the actual shift to the person claiming it
        await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: appUser.id });
-       
-       // Mark the swap doc as claimed
        await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
-       
-       // Announce it to management via Message Board
        await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `✅ Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
-       
        addToast('Claimed', 'Shift successfully added to your schedule.');
-       setSubTab('my-schedule'); // Kick them back to their schedule to see it
+       setSubTab('my-schedule'); 
     } catch (e) {
        addToast('Error', e.message);
     }
@@ -483,6 +510,22 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24">
+      
+      <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
+        <form onSubmit={finalizeClockOut} className="space-y-4">
+          <p className="text-xs text-slate-300 font-bold mb-2">Please declare your tips for this shift before clocking out.</p>
+          <div>
+            <label className={T.label}>Cash Tips ($)</label>
+            <input type="number" step="0.01" min="0" value={tipCash} onChange={e=>setTipCash(e.target.value)} className={T.input} placeholder="0.00"/>
+          </div>
+          <div>
+            <label className={T.label}>Credit Card Tips ($)</label>
+            <input type="number" step="0.01" min="0" value={tipCredit} onChange={e=>setTipCredit(e.target.value)} className={T.input} placeholder="0.00"/>
+          </div>
+          <button type="submit" className={`w-full ${T.btn}`}>Finalize Clock Out</button>
+        </form>
+      </Modal>
+
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
@@ -506,12 +549,21 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
             ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
             
             {activePunch ? (
-              <button onClick={handleClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
-                <span>CLOCK OUT</span>
-                <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {new Date(activePunch.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-              </button>
+              <div className="space-y-2 relative z-10">
+                <button onClick={initiateClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
+                  <span>CLOCK OUT</span>
+                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {new Date(activePunch.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </button>
+                {appUser?.systemSettings?.breaks && (
+                  activePunch.status === 'on_break' ? (
+                    <button onClick={handleEndBreak} className="w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
+                  ) : (
+                    <button onClick={handleStartBreak} className="w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
+                  )
+                )}
+              </div>
             ) : (
-              <button onClick={handleClockIn} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all">
+              <button onClick={handleClockIn} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10">
                 CLOCK IN
               </button>
             )}
@@ -565,7 +617,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         </div>
       )}
 
-      {/* NEW: THE TRADE BOARD */}
+      {/* THE TRADE BOARD */}
       {subTab === 'trade-board' && (
         <div className="animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
@@ -624,11 +676,6 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
                      <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
                        <span>{formatDisplayDate(shift.date)}</span>
                        {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
-                       {events.filter(e => e.type === 'special_event' && e.date === shift.date).map(ev => (
-                         <span key={ev.id} className="bg-red-900/40 text-red-400 px-1.5 py-0.5 rounded border border-red-500/30">
-                           {ev.title} {ev.time && `@ ${formatShortTime(ev.time)}`}
-                         </span>
-                       ))}
                      </div>
                    )}
                    <div className={`${T.row} hover:bg-[#12161A]`}>
@@ -946,10 +993,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
-  // Filter out deactivated employees so they don't cause ghost duplicates
   const activeRoster = users.filter(u => u.isActive !== false);
 
-  // Sort display users for the dropdown
   const displayUsers = [...activeRoster].sort((a,b) => {
     const roleA = a.role || 'Unassigned';
     const roleB = b.role || 'Unassigned';
@@ -958,7 +1003,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     return roleA === roleB ? nameA.localeCompare(nameB) : roleA.localeCompare(roleB);
   });
   
-  // Group users by role for the categorized table
   const groupedUsers = activeRoster.reduce((acc, user) => {
     const role = user.role || 'Unassigned';
     if (!acc[role]) acc[role] = [];
@@ -967,7 +1011,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   }, {});
   const sortedRoles = Object.keys(groupedUsers).sort();
 
-  // Dynamic color coding for roles
   const getRoleColors = (role, isPublished) => {
     if (!isPublished) return 'bg-slate-400 text-slate-900';
     const r = (role || '').toLowerCase();
@@ -1056,38 +1099,70 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   });
 
-  // --- TIMESHEET ACTUAL LABOR ENGINE ---
-  const monthPunches = timePunches.filter(p => p.date?.startsWith(monthStr)).sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
+  // --- NEW TIMESHEET & OT ENGINE ---
+  const monthPunches = timePunches.filter(p => p.date?.startsWith(monthStr)).sort((a,b) => new Date(a.clockInTime || 0) - new Date(b.clockInTime || 0));
   
-  const calculatePunchHours = (inTime, outTime) => {
+  const calculatePunchHours = (inTime, outTime, breakMins = 0) => {
       if (!inTime || !outTime) return 0;
-      return (new Date(outTime) - new Date(inTime)) / (1000 * 60 * 60);
+      const rawMins = (new Date(outTime) - new Date(inTime)) / 60000;
+      return Math.max(0, (rawMins - breakMins) / 60);
   };
 
-  const actualMonthLabor = monthPunches.reduce((acc, p) => {
-      if (p.status === 'clocked_in' || !p.clockInTime || !p.clockOutTime) return acc;
-      const emp = users.find(u => u.id === p.employeeId);
-      const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
-      return acc + (hours * (emp?.wage || 0));
-  }, 0);
+  const getMonday = (dateString) => {
+      const d = new Date(dateString + 'T12:00:00');
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      return new Date(d.setDate(diff)).toISOString().split('T')[0];
+  };
 
-  // --- NEW: PAYROLL SUMMARY ENGINE ---
   const payrollSummary = {};
+  const weeklyHours = {}; 
+  const OT_THRESHOLD = parseFloat(appUser?.systemSettings?.overtime || 40);
+
   monthPunches.forEach(p => {
+      if (p.status === 'clocked_in' || !p.clockOutTime) return;
+      
       const emp = users.find(u => u.id === p.employeeId);
-      const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
       if (!payrollSummary[p.employeeId]) {
           payrollSummary[p.employeeId] = {
               name: p.employeeName || 'Unknown',
-              hours: 0,
+              regHours: 0,
+              otHours: 0,
+              cashTips: 0,
+              creditTips: 0,
               rate: emp?.wage || 0,
               pay: 0
           };
       }
-      payrollSummary[p.employeeId].hours += hours;
-      payrollSummary[p.employeeId].pay += (hours * (emp?.wage || 0));
+      
+      const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
+      const weekKey = `${p.employeeId}_${getMonday(p.date)}`;
+      const prevWeeklyHours = weeklyHours[weekKey] || 0;
+      const newWeeklyHours = prevWeeklyHours + hours;
+      
+      let reg = 0; let ot = 0;
+      if (prevWeeklyHours >= OT_THRESHOLD) {
+          ot = hours;
+      } else if (newWeeklyHours > OT_THRESHOLD) {
+          reg = OT_THRESHOLD - prevWeeklyHours;
+          ot = newWeeklyHours - OT_THRESHOLD;
+      } else {
+          reg = hours;
+      }
+      
+      weeklyHours[weekKey] = newWeeklyHours;
+      
+      payrollSummary[p.employeeId].regHours += reg;
+      payrollSummary[p.employeeId].otHours += ot;
+      payrollSummary[p.employeeId].cashTips += (parseFloat(p.cashTips) || 0);
+      payrollSummary[p.employeeId].creditTips += (parseFloat(p.creditTips) || 0);
+      
+      const rate = emp?.wage || 0;
+      payrollSummary[p.employeeId].pay += (reg * rate) + (ot * rate * 1.5);
   });
+  
   const summaryList = Object.values(payrollSummary).sort((a, b) => a.name.localeCompare(b.name));
+  const actualMonthLabor = summaryList.reduce((acc, s) => acc + s.pay, 0);
 
   const handleForceClockOut = async (punch) => {
       if (!window.confirm(`Force clock out ${punch.employeeName}?`)) return;
@@ -1106,6 +1181,9 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [editingPunch, setEditingPunch] = useState(null);
   const [editPunchIn, setEditPunchIn] = useState('');
   const [editPunchOut, setEditPunchOut] = useState('');
+  const [editBreakMins, setEditBreakMins] = useState('');
+  const [editCash, setEditCash] = useState('');
+  const [editCredit, setEditCredit] = useState('');
 
   const openEditPunchModal = (punch) => {
     setEditingPunch(punch);
@@ -1117,6 +1195,9 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     };
     setEditPunchIn(formatForInput(punch.clockInTime));
     setEditPunchOut(punch.clockOutTime && punch.status === 'clocked_out' ? formatForInput(punch.clockOutTime) : '');
+    setEditBreakMins(punch.breakMinutes || 0);
+    setEditCash(punch.cashTips || 0);
+    setEditCredit(punch.creditTips || 0);
     setIsPunchModalOpen(true);
   };
 
@@ -1124,7 +1205,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     e.preventDefault();
     if (!editingPunch || !editPunchIn) return;
     try {
-      const updateData = { clockInTime: new Date(editPunchIn).toISOString() };
+      const updateData = { 
+          clockInTime: new Date(editPunchIn).toISOString(),
+          breakMinutes: parseFloat(editBreakMins) || 0,
+          cashTips: parseFloat(editCash) || 0,
+          creditTips: parseFloat(editCredit) || 0
+      };
       if (editPunchOut) {
         updateData.clockOutTime = new Date(editPunchOut).toISOString();
         updateData.status = 'clocked_out';
@@ -1141,38 +1227,40 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   };
 
-// --- EXPORT TIMESHEETS ENGINE (UPDATED WITH SUMMARY) ---
+  // --- EXPORT TIMESHEETS ENGINE ---
   const handleExportTimesheets = () => {
     if (monthPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
     
-    // Calculate the exact date range for the current Timesheet view
     const [year, month] = monthStr.split('-');
     const periodStart = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const periodEnd = new Date(year, month, 0).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     
-    // Inject the Header and Payroll Summary
     let csv = `"--- PAYROLL SUMMARY ---"\n`;
     csv += `"Pay Period: ${periodStart} - ${periodEnd}"\n\n`;
-    csv += '"Employee Name","Total Hours","Hourly Rate","Total Pay"\n';
+    csv += '"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n';
     
     summaryList.forEach(s => {
-       csv += `"${s.name}","${s.hours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}"\n`;
+       csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`;
     });
     
-    // Inject the raw individual punches at the bottom
     csv += '\n"--- INDIVIDUAL PUNCHES ---"\n';
-    csv += '"Employee Name","Date","Clock In","Clock Out","Total Hours","Hourly Rate","Total Pay"\n';
+    csv += '"Employee Name","Date","Clock In","Clock Out","Break (Mins)","Total Hours","Hourly Rate","Total Pay","Cash Tips","Credit Tips"\n';
     
-    monthPunches.forEach(p => {
+    // Sort reverse chronological for the individual punch view
+    const sortedPunches = [...monthPunches].sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
+    
+    sortedPunches.forEach(p => {
        const emp = users.find(u => u.id === p.employeeId);
-       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
+       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
        const rate = emp?.wage || 0;
-       const cost = hours * rate;
+       // We use standard rate for individual rows because OT spans across multiple punches. 
+       // The accurate OT pay is in the summary block above.
+       const estCost = hours * rate; 
        
        const inStr = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown';
        const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown');
        
-       csv += `"${p.employeeName || 'Unknown'}","${p.date || 'Unknown'}","${inStr}","${outStr}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${cost.toFixed(2)}"\n`;
+       csv += `"${p.employeeName || 'Unknown'}","${p.date || 'Unknown'}","${inStr}","${outStr}","${p.breakMinutes||0}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${estCost.toFixed(2)}","$${parseFloat(p.cashTips||0).toFixed(2)}","$${parseFloat(p.creditTips||0).toFixed(2)}"\n`;
     });
 
     const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
@@ -1186,7 +1274,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    addToast('Exported', 'Spreadsheet generated with pay period dates.');
+    addToast('Exported', 'Spreadsheet generated.');
   };
 
   return (
@@ -1204,14 +1292,30 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       </Modal>
 
       <Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={`Edit Punch: ${editingPunch?.employeeName}`}>
-        <form onSubmit={handleSavePunchEdit} className="space-y-4">
-          <div>
-            <label className={T.label}>Clock In Time</label>
-            <input type="datetime-local" value={editPunchIn} onChange={e=>setEditPunchIn(e.target.value)} className={T.input} required/>
+        <form onSubmit={handleSavePunchEdit} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={T.label}>Clock In Time</label>
+              <input type="datetime-local" value={editPunchIn} onChange={e=>setEditPunchIn(e.target.value)} className={T.input} required/>
+            </div>
+            <div>
+              <label className={T.label}>Clock Out Time (Leave blank if currently on clock)</label>
+              <input type="datetime-local" value={editPunchOut} onChange={e=>setEditPunchOut(e.target.value)} className={T.input}/>
+            </div>
           </div>
-          <div>
-            <label className={T.label}>Clock Out Time (Leave blank if currently on clock)</label>
-            <input type="datetime-local" value={editPunchOut} onChange={e=>setEditPunchOut(e.target.value)} className={T.input}/>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className={T.label}>Break (Mins)</label>
+              <input type="number" min="0" value={editBreakMins} onChange={e=>setEditBreakMins(e.target.value)} className={T.input}/>
+            </div>
+            <div>
+              <label className={T.label}>Cash Tips ($)</label>
+              <input type="number" step="0.01" min="0" value={editCash} onChange={e=>setEditCash(e.target.value)} className={T.input}/>
+            </div>
+            <div>
+              <label className={T.label}>Credit Tips ($)</label>
+              <input type="number" step="0.01" min="0" value={editCredit} onChange={e=>setEditCredit(e.target.value)} className={T.input}/>
+            </div>
           </div>
           <button type="submit" className={`w-full ${T.btn}`}>Save Time Punch</button>
         </form>
@@ -1375,7 +1479,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                   <div key={s.name} className="bg-[#1A2126] p-3 rounded-xl border border-[#2A353D] flex justify-between items-center shadow-sm hover:border-[#D4A381]/50 transition-colors">
                     <div>
                       <div className="font-bold text-white text-sm">{s.name}</div>
-                      <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest mt-0.5">{s.hours.toFixed(2)} hrs @ ${s.rate.toFixed(2)}/hr</div>
+                      <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest mt-0.5">
+                        REG: {s.regHours.toFixed(2)}h | OT: {s.otHours.toFixed(2)}h
+                      </div>
+                      <div className="text-[9px] font-black uppercase text-emerald-500 tracking-widest mt-0.5">
+                        TIPS: ${(s.cashTips + s.creditTips).toFixed(2)}
+                      </div>
                     </div>
                     <div className="text-[#D4A381] font-black text-lg">${s.pay.toFixed(2)}</div>
                   </div>
@@ -1387,11 +1496,11 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
           <div className={`divide-y ${T.border}`}>
             {monthPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded this month.</div>}
             
-            {monthPunches.map(p => {
+            {monthPunches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0)).map(p => {
                const emp = users.find(u => u.id === p.employeeId);
-               const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
+               const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
                const cost = hours * (emp?.wage || 0);
-               const isClockedIn = p.status === 'clocked_in';
+               const isClockedIn = p.status === 'clocked_in' || p.status === 'on_break';
                
                const safeIn = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR';
                const safeOut = isClockedIn ? '---' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR');
@@ -1432,7 +1541,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     </div>
   );
 };
-
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
   const monthStr = getMonthStr(currentDate); 
