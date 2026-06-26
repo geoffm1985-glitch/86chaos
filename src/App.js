@@ -1124,11 +1124,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   };
 
-  // --- EXPORT TIMESHEETS ENGINE ---
+ // --- EXPORT TIMESHEETS ENGINE ---
   const handleExportTimesheets = () => {
     if (monthPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
     
-    let csv = "Employee Name,Date,Clock In,Clock Out,Total Hours,Hourly Rate,Total Pay\n";
+    // Wrapped headers in quotes to force strict CSV compliance
+    let csv = '"Employee Name","Date","Clock In","Clock Out","Total Hours","Hourly Rate","Total Pay"\n';
     
     monthPunches.forEach(p => {
        const emp = users.find(u => u.id === p.employeeId);
@@ -1147,7 +1148,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     
     const link = document.createElement("a"); 
     link.setAttribute("href", url); 
-    link.setAttribute("download", `Timesheets_${formatDisplayMonth(currentDate).replace(/\s+/g, '_')}.csv`);
+    // Fixed the Invalid Date bug by passing monthStr instead of currentDate
+    link.setAttribute("download", `Timesheets_${formatDisplayMonth(monthStr).replace(/\s+/g, '_')}.csv`);
     document.body.appendChild(link); 
     link.click(); 
     document.body.removeChild(link);
