@@ -992,30 +992,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       addToast('Deleted', 'Time punch removed.');
   };
 
-  // --- EXPORT TIMESHEETS ENGINE ---
-  const handleExportTimesheets = () => {
-    if (monthPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
-    
-    let csv = "Employee Name,Date,Clock In,Clock Out,Total Hours,Hourly Rate,Total Pay\n";
-    
-    monthPunches.forEach(p => {
-       const emp = users.find(u => u.id === p.employeeId);
-       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
-       const rate = emp?.wage || 0;
-       const cost = hours * rate;
-       const inStr = new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-       const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-       
-       csv += `"${p.employeeName}","${p.date}","${inStr}","${outStr}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${cost.toFixed(2)}"\n`;
-    });
-
-    const link = document.createElement("a"); 
-    const universalBOM = "\uFEFF"; // Forces Excel to read strings correctly
-    link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + universalBOM + csv)); 
-    link.setAttribute("download", `Timesheets_${formatDisplayMonth(currentDate).replace(/\s+/g, '_')}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    addToast('Exported', 'Spreadsheet generated.');
-  };
+// --- EXPORT TIMESHEETS ENGINE ---
 
   return (
     <div className="space-y-4 pb-12 w-full">
