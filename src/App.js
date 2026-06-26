@@ -835,7 +835,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addToast, appUser }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
+  const [subTab, setSubTab] = useState('schedule'); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
   const [presetShift, setPresetShift] = useState('Custom'); 
@@ -885,7 +886,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
     if (r.includes('host')) return 'bg-emerald-400 text-emerald-950';
     if (r.includes('manager')) return 'bg-purple-400 text-purple-950';
     if (r.includes('dish')) return 'bg-cyan-400 text-cyan-950';
-    return 'bg-[#D4A381] text-slate-900'; // Default Copper
+    return 'bg-[#D4A381] text-slate-900'; 
   };
 
   const SHIFT_PRESETS = [ { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" }, { label: "Custom", start: "", end: "" } ];
@@ -938,13 +939,13 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
     setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(true);
   };
 
-  // --- PROJECTED LABOR ENGINE ---
+  // --- LABOR PROJECTION ENGINE ---
   const calculateShiftHours = (start, end) => {
     if (!start || !end) return 0;
     let sH = parseInt(start.split(':')[0]), sM = parseInt(start.split(':')[1]) / 60;
     let eH = end === 'CLOSE' ? 23 : parseInt(end.split(':')[0]), eM = end === 'CLOSE' ? 59 / 60 : parseInt(end.split(':')[1]) / 60;
     let total = (eH + eM) - (sH + sM);
-    if (total < 0) total += 24; // Handles overnight shifts gracefully
+    if (total < 0) total += 24; 
     return total;
   };
 
@@ -964,8 +965,35 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
     }
   });
 
+  // --- TIMESHEET ACTUAL LABOR ENGINE ---
+  const monthPunches = timePunches.filter(p => p.date?.startsWith(monthStr)).sort((a,b) => new Date(b.clockInTime) - new Date(a.clockInTime));
+  
+  const calculatePunchHours = (inTime, outTime) => {
+      if (!outTime) return 0;
+      return (new Date(outTime) - new Date(inTime)) / (1000 * 60 * 60);
+  };
+
+  const actualMonthLabor = monthPunches.reduce((acc, p) => {
+      if (p.status === 'clocked_in') return acc;
+      const emp = users.find(u => u.id === p.employeeId);
+      const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
+      return acc + (hours * (emp?.wage || 0));
+  }, 0);
+
+  const handleForceClockOut = async (punch) => {
+      if (!window.confirm(`Force clock out ${punch.employeeName}?`)) return;
+      await updateDoc(doc(db, "timePunches", punch.id), { clockOutTime: new Date().toISOString(), status: 'clocked_out' });
+      addToast('Updated', `Punched out ${punch.employeeName}.`);
+  };
+
+  const handleDeletePunch = async (id) => {
+      if (!window.confirm("Delete this time punch permanently?")) return;
+      await deleteDoc(doc(db, "timePunches", id));
+      addToast('Deleted', 'Time punch removed.');
+  };
+
   return (
-    <div className="space-y-6 pb-12 w-full">
+    <div className="space-y-4 pb-12 w-full">
       <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title={editingEventId ? "Edit Special Event" : "Add Special Event"}>
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -978,136 +1006,191 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
         </form>
       </Modal>
 
-      <div className={`${T.card} p-2 sm:p-3 flex flex-col lg:flex-row gap-2 items-center justify-between`}>
-        <div className="grid grid-cols-2 lg:flex lg:flex-nowrap gap-2 w-full lg:w-auto items-center">
-          <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
-          <select value={presetShift} onChange={handlePresetChange} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
-          <div className="flex gap-2 w-full col-span-2 lg:col-span-1 lg:w-auto">
-            <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9`}/>
-            <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9 disabled:opacity-50`}/>
-          </div>
-          <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full col-span-2 lg:col-span-1 lg:w-auto ${T.btn} py-1.5 px-3 text-xs h-9 disabled:opacity-50 flex items-center justify-center`}>Assign ({assignDates.length})</button>
-        </div>
-        <div className="flex w-full lg:w-auto gap-2 items-center">
-          
-          {/* THE NEW LABOR METRICS DISPLAY */}
-          <div className="hidden lg:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-3 py-1 rounded-lg">
-            <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
-            <span className="text-emerald-400 font-black text-sm">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-          </div>
-
-          <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-1.5 text-xs h-9 flex items-center justify-center`}>Publish</button>
-          <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 text-xs h-9 flex items-center justify-center`}>+ Event</button>
-        </div>
+      {/* TOP NAVIGATION TOGGLE */}
+      <div className="flex gap-2 border-b border-[#2A353D] pb-3 mb-2">
+        <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
+        <button onClick={() => setSubTab('timesheets')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Timesheets & Labor</button>
       </div>
 
-      <div className={`${T.card} w-full overflow-hidden`}>
-        <div className="overflow-x-auto w-full no-scrollbar">
-          <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
-            <thead>
-              <tr className="bg-[#12161A] border-b border-[#2A353D]">
-                <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
-                {monthDays.map(d => {
-                  const holiday = getHoliday(d);
-                  const dayEvents = monthEvents.filter(e => e.date === d);
-                  const hasAlert = holiday || dayEvents.length > 0;
-                  
-                  return (
-                  <th key={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
-                    <div className={`font-bold uppercase text-[8px] sm:text-[9px] ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'narrow'})}</div>
-                    <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
-                      {parseInt(d.split('-')[2])}
-                    </div>
-                    
-                    {/* Desktop Hover Tooltip for Holidays/Events */}
-                    {hasAlert && (
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
-                        {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
-                        {dayEvents.map(ev => (
-                          <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
-                            {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
-                            {ev.notes && <span className="block text-slate-300 font-normal mt-0.5">{ev.notes}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </th>
-                )})}
-              </tr>
-            </thead>
-         <tbody className="divide-y divide-[#2A353D]">
-              {sortedRoles.map(role => (
-                <React.Fragment key={`role-group-${role}`}>
-                  <tr className="bg-[#1A2126]">
-                    <td colSpan={monthDays.length + 1} className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
-                      {role}
-                    </td>
-                  </tr>
-                  {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
-                    <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-                      <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
-                      {monthDays.map(d => {
-                        const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                        const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
-                        const sel = assignDates.includes(d) && selectedEmp===u.id;
-                        return (
-                        <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
-                        <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
-                          {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                          {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                          {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
-                        </div>
-                      </td>)
-                      })}
-                    </tr>
-                  ))}
-                </React.Fragment>
-              ))}
-
-              {/* NEW: THE DAILY LABOR PROJECTION ROW */}
-              <tr className="bg-[#0B0E11] border-t-2 border-[#D4A381]/30">
-                <td className={`px-2 py-2 text-[8px] font-black uppercase tracking-widest text-[#D4A381] sticky left-0 z-10 border-r border-[#2A353D] text-right shadow-md`}>
-                  Proj. Cost
-                </td>
-                {monthDays.map(d => (
-                  <td key={`cost-${d}`} className={`p-1 border-r border-[#2A353D] text-center align-middle font-black text-[9px] sm:text-[10px] ${projectedDailyLabor[d] > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
-                    ${projectedDailyLabor[d].toFixed(0)}
-                  </td>
-                ))}
-              </tr>
-
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
-      {/* Event Ledger underneath for clear visibility */}
-      <div className={`${T.card} overflow-hidden`}>
-        <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-          <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
-        </div>
-        <div className={`divide-y ${T.border}`}>
-          {monthEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
-          {monthEvents.map(ev => (
-            <div key={ev.id} className={`${T.row} flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
-              <div className="flex items-start sm:items-center gap-4">
-                <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
-                  <div className="text-[10px] uppercase">{new Date(ev.date+'T12:00').toLocaleDateString('en-US',{month:'short'})}</div><div className="text-lg leading-tight">{parseInt(ev.date.split('-')[2])}</div>
-                </div>
-                <div>
-                  <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
-                  {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">{ev.notes}</p>}
-                  <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
-                </div>
+      {subTab === 'schedule' && (
+        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-2 sm:p-3 flex flex-col lg:flex-row gap-2 items-center justify-between`}>
+            <div className="grid grid-cols-2 lg:flex lg:flex-nowrap gap-2 w-full lg:w-auto items-center">
+              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
+              <select value={presetShift} onChange={handlePresetChange} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
+              <div className="flex gap-2 w-full col-span-2 lg:col-span-1 lg:w-auto">
+                <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9`}/>
+                <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9 disabled:opacity-50`}/>
               </div>
-              <div className="flex items-center gap-1 sm:self-end self-start">
-                <button onClick={() => openEditEventModal(ev)} className="p-2 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Edit size={14}/></button>
-                <button onClick={() => { if(window.confirm("Delete event?")) deleteDoc(doc(db,"events",ev.id)); }} className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
-              </div>
+              <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full col-span-2 lg:col-span-1 lg:w-auto ${T.btn} py-1.5 px-3 text-xs h-9 disabled:opacity-50 flex items-center justify-center`}>Assign ({assignDates.length})</button>
             </div>
-          ))}
+            <div className="flex w-full lg:w-auto gap-2 items-center">
+              <div className="hidden lg:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-3 py-1 rounded-lg">
+                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
+                <span className="text-emerald-400 font-black text-sm">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+              </div>
+              <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-1.5 text-xs h-9 flex items-center justify-center`}>Publish</button>
+              <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 text-xs h-9 flex items-center justify-center`}>+ Event</button>
+            </div>
+          </div>
+
+          <div className={`${T.card} w-full overflow-hidden`}>
+            <div className="overflow-x-auto w-full no-scrollbar">
+              <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
+                <thead>
+                  <tr className="bg-[#12161A] border-b border-[#2A353D]">
+                    <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
+                    {monthDays.map(d => {
+                      const holiday = getHoliday(d);
+                      const dayEvents = monthEvents.filter(e => e.date === d);
+                      const hasAlert = holiday || dayEvents.length > 0;
+                      
+                      return (
+                      <th key={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
+                        <div className={`font-bold uppercase text-[8px] sm:text-[9px] ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'narrow'})}</div>
+                        <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
+                          {parseInt(d.split('-')[2])}
+                        </div>
+                        
+                        {hasAlert && (
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-32 bg-[#1A2126] border border-[#D4A381] text-white text-[10px] p-2 rounded shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible z-50 pointer-events-none transition-all">
+                            {holiday && <div className="text-amber-400 font-black mb-1 leading-tight">{holiday}</div>}
+                            {dayEvents.map(ev => (
+                              <div key={ev.id} className="text-red-400 font-bold leading-tight mt-1 border-t border-[#2A353D] pt-1">
+                                {ev.title} {ev.time && <span className="block text-white opacity-80">{formatShortTime(ev.time)}</span>}
+                                {ev.notes && <span className="block text-slate-300 font-normal mt-0.5">{ev.notes}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </th>
+                    )})}
+                  </tr>
+                </thead>
+             <tbody className="divide-y divide-[#2A353D]">
+                  {sortedRoles.map(role => (
+                    <React.Fragment key={`role-group-${role}`}>
+                      <tr className="bg-[#1A2126]">
+                        <td colSpan={monthDays.length + 1} className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
+                          {role}
+                        </td>
+                      </tr>
+                      {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
+                        <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
+                          <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                          {monthDays.map(d => {
+                            const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                            const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                            const sel = assignDates.includes(d) && selectedEmp===u.id;
+                            return (
+                            <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
+                            <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
+                              {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
+                              {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
+                              {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
+                            </div>
+                          </td>)
+                          })}
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                  <tr className="bg-[#0B0E11] border-t-2 border-[#D4A381]/30">
+                    <td className={`px-2 py-2 text-[8px] font-black uppercase tracking-widest text-[#D4A381] sticky left-0 z-10 border-r border-[#2A353D] text-right shadow-md`}>
+                      Proj. Cost
+                    </td>
+                    {monthDays.map(d => (
+                      <td key={`cost-${d}`} className={`p-1 border-r border-[#2A353D] text-center align-middle font-black text-[9px] sm:text-[10px] ${projectedDailyLabor[d] > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                        ${projectedDailyLabor[d].toFixed(0)}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          {/* Event Ledger underneath for clear visibility */}
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
+            </div>
+            <div className={`divide-y ${T.border}`}>
+              {monthEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
+              {monthEvents.map(ev => (
+                <div key={ev.id} className={`${T.row} flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
+                  <div className="flex items-start sm:items-center gap-4">
+                    <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
+                      <div className="text-[10px] uppercase">{new Date(ev.date+'T12:00').toLocaleDateString('en-US',{month:'short'})}</div><div className="text-lg leading-tight">{parseInt(ev.date.split('-')[2])}</div>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
+                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">{ev.notes}</p>}
+                      <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 sm:self-end self-start">
+                    <button onClick={() => openEditEventModal(ev)} className="p-2 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Edit size={14}/></button>
+                    <button onClick={() => { if(window.confirm("Delete event?")) deleteDoc(doc(db,"events",ev.id)); }} className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* NEW: THE TIMESHEET SUB-TAB */}
+      {subTab === 'timesheets' && (
+        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
+          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+            <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Actual Labor: {formatDisplayMonth(currentDate)}</h3>
+            <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end">
+              <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Actual Month Labor</span>
+              <span className="text-emerald-400 font-black text-sm">${actualMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            </div>
+          </div>
+          <div className={`divide-y ${T.border}`}>
+            {monthPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded this month.</div>}
+            
+            {monthPunches.map(p => {
+               const emp = users.find(u => u.id === p.employeeId);
+               const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
+               const cost = hours * (emp?.wage || 0);
+               const isClockedIn = p.status === 'clocked_in';
+               
+               return (
+                 <div key={p.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                   <div>
+                     <div className="font-bold text-white text-base">{p.employeeName}</div>
+                     <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
+                       {formatDisplayDate(p.date)}
+                     </div>
+                   </div>
+                   <div className="flex items-center gap-6">
+                     <div className="text-right">
+                       <div className="text-xs font-mono text-slate-300">
+                         <span className="text-emerald-400">IN:</span> {new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                       </div>
+                       <div className="text-xs font-mono text-slate-300">
+                         <span className="text-red-400">OUT:</span> {isClockedIn ? '---' : new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                       </div>
+                     </div>
+                     <div className="text-right border-l border-[#2A353D] pl-6 w-24">
+                       <div className={`text-sm font-black ${isClockedIn ? 'text-amber-400 animate-pulse' : 'text-white'}`}>{isClockedIn ? 'ON CLOCK' : `${hours.toFixed(2)} hrs`}</div>
+                       <div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest">${cost.toFixed(2)}</div>
+                     </div>
+                     <div className="flex gap-2 border-l border-[#2A353D] pl-4">
+                       {isClockedIn && <button onClick={() => handleForceClockOut(p)} className="px-3 py-1 bg-red-900/20 text-red-500 text-[10px] font-black uppercase rounded-lg border border-red-900/50 hover:bg-red-900/40 transition-colors">Force Out</button>}
+                       <button onClick={() => handleDeletePunch(p.id)} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+                     </div>
+                   </div>
+                 </div>
+               )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -3203,8 +3286,9 @@ export default function App() {
   const timeOffRequests = useLiveCollection('timeOffRequests', rId);
   const tasks = useLiveCollection('tasks', rId);
   const vendors = useLiveCollection('vendors', rId);
-  const wasteLogs = useLiveCollection('wasteLogs', rId);
-
+const wasteLogs = useLiveCollection('wasteLogs', rId);
+  const timePunches = useLiveCollection('timePunches', rId);
+  
   // --- LIVE APP USER LOGIC ---
 
 let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
