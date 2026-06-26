@@ -3943,8 +3943,8 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
   }
 
   // MAINTENANCE KILLSWITCH LOCK SCREEN (Bypassed by Ghost Mode and Super Admins)
-  if (clientData?.maintenanceMode && !ghostTenant && !liveAppUser?.isSuperAdmin) {
-    return (
+// FIXED: Now checks if the user's email is your specific admin email (or isSuperAdmin) so you never get locked out again
+  if (clientData?.maintenanceMode && !ghostTenant && !liveAppUser?.isSuperAdmin && liveAppUser?.email !== 'geoffm1985@gmail.com') {    return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-orange-900/50 shadow-2xl max-w-md w-full">
           <span className="text-6xl mb-4 block">🚧</span>
