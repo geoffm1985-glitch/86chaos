@@ -508,7 +508,15 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
     addToast('Posted', 'Shift sent to trade board.');
   };
+// ---> PASTE THIS MISSING BLOCK RIGHT HERE <---
+  const activeMonthShifts = shifts
+    .filter(s => s.date.startsWith(monthStr) && s.isPublished)
+    .sort((a,b) => a.date.localeCompare(b.date));
+  // ---------------------------------------------
 
+  return (
+
+  
   // --- TRADE BOARD LOGIC ---
   const availableSwaps = shiftSwaps
     .filter(s => s.status === 'available' && s.date >= getToday())
@@ -1087,8 +1095,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
-  const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
-  
+const handlePublish = async () => { 
+    if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
+    const unpub = monthShifts.filter(s => !s.isPublished); 
+    for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); 
+    addToast("Published", "Schedule is live."); 
+  };  
   const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
@@ -1836,14 +1848,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
   };
 
-  const renderTasks = (freqFilter) => {
-    const filteredTasks = tasks.filter(t => t.frequency === freqFilter);
-    const grouped = filteredTasks.reduce((acc, t) => { if(!acc[t.category]) acc[t.category]=[]; acc[t.category].push(t); return acc; }, { 'Cleaning': [], 'General': [] });
-    const periodKey = getTaskPeriodKey(freqFilter);
-
-    return (
-      <div className="space-y-4 mt-4">
-        {appUser?.isAdmin && (
+ const renderTasks = (freqFilter) => {
           <form onSubmit={handleAddTask} className={`${T.card} p-3 flex flex-col md:flex-row gap-2 items-center bg-[#1A2126]`}>
             {editingTaskId && <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest px-2 whitespace-nowrap">Editing Task</div>}
             <input type="text" value={taskText} onChange={e=>setTaskText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-sm font-medium text-white" placeholder={`New ${freqFilter} task...`} required/>
@@ -1877,9 +1882,9 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
-                        {appUser?.isAdmin && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
-                        {appUser?.isAdmin && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
+               <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
+                        {canManageTasks && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
+                        {canManageTasks && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                       </div>
                     </div>
                   )
@@ -2467,8 +2472,7 @@ const handleInjectLegacyRecipes = async () => {
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
 
   // Determine if the current user has permission to edit/delete the viewed recipe
-  const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' || appUser?.id === activeRecipe.authorId);
-
+const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.permissions?.team || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' || appUser?.id === activeRecipe.authorId);
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       <div className={`${T.card} p-4 sm:p-5 flex flex-col md:flex-row gap-4 items-center justify-between`}>
