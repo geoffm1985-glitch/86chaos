@@ -3273,11 +3273,12 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [userCounts, setUserCounts] = useState({});
 
   // Form States
-const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
+  const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [editingRest, setEditingRest] = useState(null);
   const [forgeRecipeTitle, setForgeRecipeTitle] = useState(''); const [forgeRecipeBody, setForgeRecipeBody] = useState('');
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
+  const [userSearch, setUserSearch] = useState('');
 
   // Fetch Global Intelligence
   useEffect(() => {
@@ -3400,6 +3401,17 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
     addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
   };
 
+  const handleForceRefresh = async () => {
+    if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
+    addToast('Executing', 'Sending refresh signal...');
+    const stamp = new Date().toISOString();
+    let count = 0;
+    for (const r of restaurants) {
+       try { await updateDoc(doc(db, "restaurants", r.id), { forceRefresh: stamp }); count++; } catch(e){}
+    }
+    addToast('Refresh Broadcast', `Hard reload signal sent to ${count} databases.`);
+  };
+
   const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Administrator access given.'); };
   const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
 
@@ -3411,8 +3423,8 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
       {/* MASTER NAVIGATION */}
-      <div className="grid grid-cols-2 md:grid-cols-7 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 border-b border-[#2A353D] mb-6 pb-4">
+        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
       </div>
@@ -3490,7 +3502,8 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleDeployTenant} className={`${T.card} p-5 border-red-900/50 shadow-[0_0_20px_rgba(220,38,38,0.1)]`}>
             <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2">Deploy New Workspace</h2></div>
-<div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Restaurant Name" value={rName} onChange={e=>setRName(e.target.value)} className={T.input} required /><input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required /><input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required /><input type="tel" placeholder="Owner Phone" value={oPhone} onChange={e=>setOPhone(e.target.value)} className={T.input} required /></div>            <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database & Email Credentials</button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Restaurant Name" value={rName} onChange={e=>setRName(e.target.value)} className={T.input} required /><input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required /><input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required /><input type="tel" placeholder="Owner Phone" value={oPhone} onChange={e=>setOPhone(e.target.value)} className={T.input} required /></div>
+            <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database & Email Credentials</button>
           </form>
 
           <div className={`${T.card} overflow-hidden`}>
@@ -3505,7 +3518,8 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
                       {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
                     </div>
-<div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1">•</span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1">•</span> {r.ownerPhone}</>}</div>                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1">•</span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1">•</span> {r.ownerPhone}</>}</div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1">👻 Possess</button>
@@ -3515,6 +3529,33 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NEW TAB: GLOBAL USERS (User Impersonation) --- */}
+      {subTab === 'users' && (
+        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-4 flex gap-3 items-center`}>
+            <Search className={T.copper} size={20}/>
+            <input type="text" placeholder="Search any user by name, email, role, or ID..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
+          </div>
+          <div className={`divide-y ${T.border} ${T.card} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+            {allUsers.filter(u => (u.name+u.email+u.role+u.id).toLowerCase().includes(userSearch.toLowerCase())).slice(0, 50).map(u => {
+              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
+              return (
+                <div key={u.id} className={`${T.row} flex justify-between items-center`}>
+                  <div>
+                    <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
+                    <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1">•</span> <span className={T.copper}>{u.role}</span></div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName}</div>
+                  </div>
+                  <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
+                    👻 Possess
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -3533,12 +3574,12 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
         </div>
       )}
 
-     {/* --- TAB: SUPPORT & CRASHES --- */}
+      {/* --- TAB: SUPPORT & CRASHES --- */}
       {subTab === 'support' && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
             <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Live Diagnostics / Bug Ledger</h3>
-            <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded">Clear Logs</button>
+            <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
           </div>
           <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
             {crashLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No bugs or crashes logged yet. System stable.</div>}
@@ -3555,7 +3596,7 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
                      <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">User Action Telemetry (Last 15 Clicks)</div>
                      <div className="text-[10px] font-mono text-slate-400 space-y-0.5">
                        {log.breadcrumbs.map((crumb, idx) => (
-                         <div key={idx} className="flex gap-2">
+                         <div key={idx} className="flex gap-2 hover:bg-[#12161A] px-1 rounded transition-colors">
                            <span className="text-emerald-500/70">[{crumb.time}]</span>
                            <span className="text-slate-500">{crumb.action}:</span>
                            <span className="text-blue-300">"{crumb.target}"</span>
@@ -3605,16 +3646,17 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
             <textarea value={broadcastMsg} onChange={e=>setBroadcastMsg(e.target.value)} rows="3" className={`${T.input} mb-3 border-[#D4A381]/50 focus:border-[#D4A381]`} placeholder="SYSTEM ALERT: Maintenance scheduled for 3AM..."></textarea>
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
+          
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`${T.card} p-5 border-emerald-900/30`}>
+              <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
+              <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
+            </div>
             <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
-            </div>
-            <div className={`${T.card} p-5 border-red-900/30`}>
-              <h3 className="font-black text-white mb-1">Platform Killswitch</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">For emergency maintenance only. Forces all clients into a locked "Under Maintenance" holding screen.</p>
-              <button onClick={() => addToast('Disabled', 'Killswitch requires manual cloud function activation to prevent accidental total lockout.')} className="w-full bg-red-900/20 text-red-500 border border-red-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors">Engage Lockout</button>
             </div>
           </div>
         </div>
@@ -3683,23 +3725,42 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
 // --- LIVE APP USER LOGIC ---
   let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
   if (ghostTenant && liveAppUser) {
-    liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'System Administrator' };
+    if (ghostTenant.impersonate) {
+       // IMPERSONATION MODE: Inherit exact permissions of target user
+       liveAppUser = { ...ghostTenant.impersonate, isGhost: true };
+    } else {
+       // STANDARD GHOST MODE: Enter as a super admin
+       liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'System Administrator', isGhost: true };
+    }
   }
 
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
 
-  // INJECT GLOBAL SETTINGS INTO ACTIVE USER
   if (liveAppUser && clientData?.systemSettings) {
      liveAppUser = { ...liveAppUser, systemSettings: clientData.systemSettings };
   }
 
   useEffect(() => {
+    if (!rId) return;
     
     // 1. Fetch Master Client Data (Features & Billing)
     const unsub = onSnapshot(doc(db, 'restaurants', rId), (d) => {
-      if (d.exists()) setClientData(d.data());
+      if (d.exists()) {
+         const data = d.data();
+         setClientData(data);
+         
+         // FORCE REFRESH LISTENER
+         const localRefresh = sessionStorage.getItem('lastRefreshSignal');
+         if (data.forceRefresh && data.forceRefresh !== localRefresh) {
+            sessionStorage.setItem('lastRefreshSignal', data.forceRefresh);
+            if (localRefresh) {
+                // Instantly triggers a hard reload and pulls fresh cache from Vercel
+                window.location.reload(true);
+            }
+         }
+      }
     });
 
     // 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
