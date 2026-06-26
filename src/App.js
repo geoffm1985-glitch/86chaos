@@ -389,7 +389,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
   
-  // --- NEW TIME CLOCK STATE & LOGIC ---
+  // --- TIME CLOCK LOGIC ---
   const [activePunch, setActivePunch] = useState(null);
 
   useEffect(() => {
@@ -430,8 +430,8 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
       addToast('Clocked Out', 'Shift ended. Great work today!');
     } catch (e) { addToast('Error', e.message); }
   };
-  // ------------------------------------
 
+  // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
     .filter(s => s.employeeId === appUser.id && s.date.startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date));
@@ -451,7 +451,37 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date));
 
-return (
+  // --- TRADE BOARD LOGIC ---
+  const availableSwaps = shiftSwaps
+    .filter(s => s.status === 'available' && s.date >= getToday())
+    .sort((a,b) => a.date.localeCompare(b.date));
+
+  const handleCancelSwap = async (swapId) => {
+    if (!window.confirm("Remove this shift from the Trade Board?")) return;
+    await deleteDoc(doc(db, "shiftSwaps", swapId));
+    addToast('Revoked', 'Shift removed from Trade Board.');
+  };
+
+  const handleClaimShift = async (swap) => {
+    if (!window.confirm(`Claim the ${swap.role} shift on ${formatDisplayDate(swap.date)}?`)) return;
+    try {
+       // Reassign the actual shift to the person claiming it
+       await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: appUser.id });
+       
+       // Mark the swap doc as claimed
+       await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
+       
+       // Announce it to management via Message Board
+       await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `✅ Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
+       
+       addToast('Claimed', 'Shift successfully added to your schedule.');
+       setSubTab('my-schedule'); // Kick them back to their schedule to see it
+    } catch (e) {
+       addToast('Error', e.message);
+    }
+  };
+
+  return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24">
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
@@ -475,7 +505,6 @@ return (
               <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(myNextShift.date)} • {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
             ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
             
-            {/* DYNAMIC TIME CLOCK BUTTON */}
             {activePunch ? (
               <button onClick={handleClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
                 <span>CLOCK OUT</span>
@@ -490,7 +519,10 @@ return (
           </div>
           
           <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => addToast("Trade Board", "The Trade Board UI is currently under construction in the Forge.")} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🤝</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span></button>
+            <button onClick={() => setSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
+               <span className="text-xl">🤝</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
+               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
+            </button>
             <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🏖️</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span></button>
           </div>
 
@@ -522,6 +554,48 @@ return (
                               Swap
                             </button>
                           )
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW: THE TRADE BOARD */}
+      {subTab === 'trade-board' && (
+        <div className="animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>🤝 Trade Board</h3>
+              <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">Back to Dashboard</button>
+            </div>
+            
+            <div className={`divide-y ${T.border}`}>
+              {availableSwaps.length === 0 ? (
+                <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No shifts currently available.</div>
+              ) : (
+                availableSwaps.map(swap => {
+                  const isMine = swap.originalEmployeeId === appUser.id;
+                  const originalEmp = users.find(u => u.id === swap.originalEmployeeId);
+                  
+                  return (
+                    <div key={swap.id} className={`${T.row} p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
+                      <div>
+                        <div className="font-bold text-white text-base">{formatDisplayDate(swap.date)}</div>
+                        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">
+                          {swap.role} • {formatShortTime(swap.startTime)} - {formatShortTime(swap.endTime)}
+                        </div>
+                        <div className="text-xs text-slate-400 font-medium mt-1">Listed by {originalEmp?.name || 'Unknown Staff'}</div>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {isMine ? (
+                          <button onClick={() => handleCancelSwap(swap.id)} className="w-full sm:w-auto px-4 py-2 bg-red-900/20 text-red-500 text-xs font-black uppercase tracking-widest rounded-lg border border-red-900/50 hover:bg-red-900/40 transition-colors">Revoke Listing</button>
+                        ) : (
+                          <button onClick={() => handleClaimShift(swap)} className="w-full sm:w-auto px-4 py-2 bg-emerald-900/20 text-emerald-400 text-xs font-black uppercase tracking-widest rounded-lg border border-emerald-900/50 hover:bg-emerald-900/40 transition-colors shadow-[0_0_10px_rgba(16,185,129,0.1)]">Claim Shift</button>
                         )}
                       </div>
                     </div>
@@ -572,7 +646,8 @@ return (
       )}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
-{subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}    </div>
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}    
+    </div>
   );
 };
 
