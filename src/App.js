@@ -56,7 +56,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.5.0';
+const CURRENT_VERSION = '5.6.0';
 
 
 // --- Helpers ---
@@ -177,7 +177,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time Clock', icon: <Clock size={18}/> });  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
-  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
+  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen'
+ || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
   
@@ -337,7 +338,8 @@ const LoginScreen = ({ setAppUser }) => {
       return;
     }
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth,
+ email);
       setLoginError("Reset link sent! Check your email inbox.");
     } catch (error) {
       setLoginError(error.message);
@@ -413,19 +415,22 @@ const LoginScreen = ({ setAppUser }) => {
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
-
-  // --- NEW TIME CLOCK STATE & LOGIC ---
+  
+  // --- TIME CLOCK LOGIC ---
   const [activePunch, setActivePunch] = useState(null);
+  const [isTipModalOpen, setIsTipModalOpen] = useState(false);
+  const [tipCash, setTipCash] = useState('');
+  const [tipCredit, setTipCredit] = useState('');
 
   useEffect(() => {
     if (!appUser?.id) return;
     const q = query(
-      collection(db, 'timePunches'),
-      where('employeeId', '==', appUser.id),
-      where('status', '==', 'clocked_in')
+      collection(db, 'timePunches'), 
+      where('employeeId', '==', appUser.id), 
+      where('status', 'in', ['clocked_in', 'on_break'])
     );
     const unsub = onSnapshot(q, snap => {
-      if (!snap.empty) { setActivePunch({ id: snap.docs[0].id, ...snap.docs[0].data() }); }
+      if (!snap.empty) { setActivePunch({ id: snap.docs[0].id, ...snap.docs[0].data() }); } 
       else { setActivePunch(null); }
     });
     return () => unsub();
@@ -433,27 +438,61 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
   const handleClockIn = async () => {
     try {
-      await addDoc(collection(db, "timePunches"), {
-        employeeId: appUser.id,
-        employeeName: appUser.name,
-        clockInTime: new Date().toISOString(),
-        status: 'clocked_in',
-        restaurantId: appUser.restaurantId,
-        date: getToday()
+      await addDoc(collection(db, "timePunches"), { 
+        employeeId: appUser.id, 
+        employeeName: appUser.name, 
+        clockInTime: new Date().toISOString(), 
+        status: 'clocked_in', 
+        restaurantId: appUser.restaurantId, 
+        date: getToday(),
+        breakMinutes: 0
       });
       addToast('Clocked In', 'Shift started successfully.');
     } catch (e) { addToast('Error', e.message); }
   };
 
-  const handleClockOut = async () => {
+  const handleStartBreak = async () => {
+    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: new Date().toISOString(), status: 'on_break' });
+    addToast('Break Started', 'Enjoy your break.');
+  };
+
+  const handleEndBreak = async () => {
+    const breakStart = new Date(activePunch.breakStartTime);
+    const now = new Date();
+    const mins = (now - breakStart) / 60000;
+    const currentBreaks = activePunch.breakMinutes || 0;
+    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: null, breakMinutes: currentBreaks + mins, status: 'clocked_in' });
+    addToast('Break Ended', 'Welcome back to work.');
+  };
+
+  const initiateClockOut = () => {
+    if (appUser?.systemSettings?.tips) { setIsTipModalOpen(true); } 
+    else { finalizeClockOut(); }
+  };
+
+  const finalizeClockOut = async (e) => {
+    if(e) e.preventDefault();
     if (!activePunch) return;
     try {
-      await updateDoc(doc(db, "timePunches", activePunch.id), {
-        clockOutTime: new Date().toISOString(),
-        status: 'clocked_out'
+      let finalBreakMins = activePunch.breakMinutes || 0;
+      if (activePunch.status === 'on_break') {
+         const breakStart = new Date(activePunch.breakStartTime);
+         finalBreakMins += (new Date() - breakStart) / 60000;
+      }
+      
+      await updateDoc(doc(db, "timePunches", activePunch.id), { 
+        clockOutTime: new Date().toISOString(), 
+        status: 'clocked_out',
+        cashTips: parseFloat(tipCash) || 0,
+        creditTips: parseFloat(tipCredit) || 0,
+        breakMinutes: finalBreakMins,
+        breakStartTime: null
       });
+      
+      setIsTipModalOpen(false);
+      setTipCash(''); setTipCredit('');
       addToast('Clocked Out', 'Shift ended. Great work today!');
-    } catch (e) { addToast('Error', e.message); }
+    } catch (err) { addToast('Error', err.message); }
   };
 
   // --- SHIFT LOGIC ---
@@ -469,16 +508,55 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date));
 
-  // --- TRADE BOARD LOGIC ---
   const handleOfferSwap = async (shift) => {
-    if (!window.confirm("Offer shift to Trade Board?")) return;
+    if (!window.confirm(`Offer your ${formatDisplayDate(shift.date)} shift to the Trade Board?`)) return;
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Schedule!`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `? Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
     addToast('Posted', 'Shift sent to trade board.');
+  };
+
+  // --- TRADE BOARD LOGIC ---
+  const availableSwaps = shiftSwaps
+    .filter(s => s.status === 'available' && s.date >= getToday())
+    .sort((a,b) => a.date.localeCompare(b.date));
+
+  const handleCancelSwap = async (swapId) => {
+    if (!window.confirm("Remove this shift from the Trade Board?")) return;
+    await deleteDoc(doc(db, "shiftSwaps", swapId));
+    addToast('Revoked', 'Shift removed from Trade Board.');
+  };
+
+  const handleClaimShift = async (swap) => {
+    if (!window.confirm(`Claim the ${swap.role} shift on ${formatDisplayDate(swap.date)}?`)) return;
+    try {
+       await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: appUser.id });
+       await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
+       await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `? Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
+       addToast('Claimed', 'Shift successfully added to your schedule.');
+       setSubTab('my-schedule'); 
+    } catch (e) {
+       addToast('Error', e.message);
+    }
   };
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24">
+      
+      <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
+        <form onSubmit={finalizeClockOut} className="space-y-4">
+          <p className="text-xs text-slate-300 font-bold mb-2">Please declare your tips for this shift before clocking out.</p>
+          <div>
+            <label className={T.label}>Cash Tips ($)</label>
+            <input type="number" step="0.01" min="0" value={tipCash} onChange={e=>setTipCash(e.target.value)} className={T.input} placeholder="0.00"/>
+          </div>
+          <div>
+            <label className={T.label}>Credit Card Tips ($)</label>
+            <input type="number" step="0.01" min="0" value={tipCredit} onChange={e=>setTipCredit(e.target.value)} className={T.input} placeholder="0.00"/>
+          </div>
+          <button type="submit" className={`w-full ${T.btn}`}>Finalize Clock Out</button>
+        </form>
+      </Modal>
+
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
@@ -491,32 +569,44 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {events.filter(e => e.type === 'note' && e.isImportant).slice(0,1).map(alert => (
             <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
-              <span className="text-xl">🔔</span><div><span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span><p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p></div>
+              <span className="text-xl">?</span><div><span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span><p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p></div>
             </div>
           ))}
           <div className={`${T.grad} rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-[#D4A381]/30`}>
             <div className="absolute -top-4 -right-4 text-8xl font-black text-slate-900/10">86</div>
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-900/60 mb-1">My Schedule</h3>
             {myNextShift ? (
-              <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(myNextShift.date)} • {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
+              <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(myNextShift.date)}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
             ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
             
-            {/* DYNAMIC TIME CLOCK BUTTON */}
             {activePunch ? (
-              <button onClick={handleClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
-                <span>CLOCK OUT</span>
-                <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {new Date(activePunch.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-              </button>
+              <div className="space-y-2 relative z-10">
+                <button onClick={initiateClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
+                  <span>CLOCK OUT</span>
+                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {new Date(activePunch.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </button>
+                {appUser?.systemSettings?.breaks && (
+                  activePunch.status === 'on_break' ? (
+                    <button onClick={handleEndBreak} className="w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
+                  ) : (
+                    <button onClick={handleStartBreak} className="w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
+                  )
+                )}
+              </div>
             ) : (
-              <button onClick={handleClockIn} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all">
+              <button onClick={handleClockIn} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10">
                 CLOCK IN
               </button>
             )}
 
           </div>
+          
           <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => { if(myNextShift) { handleOfferSwap(myNextShift); } else { addToast("Error", "No upcoming shift to offer."); } }} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🔄</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Offer Shift</span></button>
-            <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🏖️</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span></button>
+            <button onClick={() => setSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
+               <span className="text-xl">?</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
+               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
+            </button>
+            <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">??</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span></button>
           </div>
 
           <div className={`${T.card} overflow-hidden mt-4`}>
@@ -525,17 +615,76 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
               {myMonthShifts.length === 0 ? (
                 <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No shifts scheduled for you this month.</div>
               ) : (
-                myMonthShifts.map(s => (
-                  <div key={s.id} className={`${T.row} flex justify-between items-center`}>
-                    <div>
-                      <div className="font-bold text-white text-sm">{formatDisplayDate(s.date)}</div>
-                      <div className={`text-[9px] font-black uppercase tracking-widest ${T.copper} mt-0.5`}>{s.role}</div>
+                myMonthShifts.map(s => {
+                  const isFuture = s.date >= getToday();
+                  const isOffered = shiftSwaps.some(swap => swap.shiftId === s.id && swap.status === 'available');
+
+                  return (
+                    <div key={s.id} className={`${T.row} flex justify-between items-center`}>
+                      <div>
+                        <div className="font-bold text-white text-sm">{formatDisplayDate(s.date)}</div>
+                        <div className={`text-[9px] font-black uppercase tracking-widest ${T.copper} mt-0.5`}>{s.role}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>
+                          {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
+                        </div>
+                        {isFuture && (
+                          isOffered ? (
+                            <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">Listed</span>
+                          ) : (
+                            <button onClick={() => handleOfferSwap(s)} className="text-[8px] font-black uppercase tracking-widest bg-[#1A2126] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] hover:border-[#D4A381]/50 px-2 py-1 rounded transition-colors shadow-sm">
+                              Swap
+                            </button>
+                          )
+                        )}
+                      </div>
                     </div>
-                    <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>
-                      {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* THE TRADE BOARD */}
+      {subTab === 'trade-board' && (
+        <div className="animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>? Trade Board</h3>
+              <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">Back to Dashboard</button>
+            </div>
+            
+            <div className={`divide-y ${T.border}`}>
+              {availableSwaps.length === 0 ? (
+                <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No shifts currently available.</div>
+              ) : (
+                availableSwaps.map(swap => {
+                  const isMine = swap.originalEmployeeId === appUser.id;
+                  const originalEmp = users.find(u => u.id === swap.originalEmployeeId);
+                  
+                  return (
+                    <div key={swap.id} className={`${T.row} p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
+                      <div>
+                        <div className="font-bold text-white text-base">{formatDisplayDate(swap.date)}</div>
+                        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">
+                          {swap.role}   {formatShortTime(swap.startTime)} - {formatShortTime(swap.endTime)}
+                        </div>
+                        <div className="text-xs
+ text-slate-400 font-medium mt-1">Listed by {originalEmp?.name || 'Unknown Staff'}</div>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {isMine ? (
+                          <button onClick={() => handleCancelSwap(swap.id)} className="w-full sm:w-auto px-4 py-2 bg-red-900/20 text-red-500 text-xs font-black uppercase tracking-widest rounded-lg border border-red-900/50 hover:bg-red-900/40 transition-colors">Revoke Listing</button>
+                        ) : (
+                          <button onClick={() => handleClaimShift(swap)} className="w-full sm:w-auto px-4 py-2 bg-emerald-900/20 text-emerald-400 text-xs font-black uppercase tracking-widest rounded-lg border border-emerald-900/50 hover:bg-emerald-900/40 transition-colors shadow-[0_0_10px_rgba(16,185,129,0.1)]">Claim Shift</button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -559,11 +708,6 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
                      <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
                        <span>{formatDisplayDate(shift.date)}</span>
                        {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
-                       {events.filter(e => e.type === 'special_event' && e.date === shift.date).map(ev => (
-                         <span key={ev.id} className="bg-red-900/40 text-red-400 px-1.5 py-0.5 rounded border border-red-500/30">
-                           {ev.title} {ev.time && `@ ${formatShortTime(ev.time)}`}
-                         </span>
-                       ))}
                      </div>
                    )}
                    <div className={`${T.row} hover:bg-[#12161A]`}>
@@ -581,7 +725,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
       )}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}    
     </div>
   );
 };
@@ -685,7 +829,7 @@ return (
           {editingUserId && (
             <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
               <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
-              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit ✕</button>
+              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit ?</button>
             </div>
           )}
           
@@ -695,6 +839,7 @@ return (
             <label className={T.label}>Email {editingUserId && <span className="text-slate-500 lowercase normal-case ml-1">(Cannot be changed after creation)</span>}</label>
             <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
           </div>
+
           
           <div><label className={T.label}>Phone</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className={T.input} required /></div>
           
@@ -864,7 +1009,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser
+ }) => {
   const [subTab, setSubTab] = useState('schedule'); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -950,12 +1096,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
-const handlePublish = async () => { 
-    if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
-    const unpub = monthShifts.filter(s => !s.isPublished); 
-    for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); 
-    addToast("Published", "Schedule is live."); 
-  };  
+  const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
+  
   const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
@@ -1059,7 +1201,8 @@ const handlePublish = async () => {
       
       payrollSummary[p.employeeId].regHours += reg;
       payrollSummary[p.employeeId].otHours += ot;
-      payrollSummary[p.employeeId].cashTips += (parseFloat(p.cashTips) || 0);
+      payrollSummary[p.employeeId].cashTips += (parseFloat(p.cashTips)
+ || 0);
       payrollSummary[p.employeeId].creditTips += (parseFloat(p.creditTips) || 0);
       
       const rate = emp?.wage || 0;
@@ -1235,7 +1378,8 @@ const handlePublish = async () => {
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-2 sm:p-3 flex flex-col lg:flex-row gap-2 items-center justify-between`}>
             <div className="grid grid-cols-2 lg:flex lg:flex-nowrap gap-2 w-full lg:w-auto items-center">
-              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}><option value="">👤 Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
+              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}><option value="">?
+ Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
               <select value={presetShift} onChange={handlePresetChange} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
               <div className="flex gap-2 w-full col-span-2 lg:col-span-1 lg:w-auto">
                 <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9`}/>
@@ -1343,7 +1487,8 @@ const handlePublish = async () => {
                     </div>
                     <div>
                       <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
-                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">{ev.notes}</p>}
+                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg
+ border border-[#2A353D]">{ev.notes}</p>}
                       <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
                     </div>
                   </div>
@@ -1373,7 +1518,7 @@ const handlePublish = async () => {
             </div>
             
             <div className="flex items-center gap-3">
-              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📊 Export CSV</button>
+              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">? Export CSV</button>
               <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
                 <span className="text-emerald-400 font-black text-sm">${actualPeriodLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
@@ -1513,7 +1658,8 @@ const TabMonth = ({ currentDate, users, shifts }) => {
             grid-template-rows: 25px repeat(${weeks}, 1fr) !important;
             border-top: 2px solid black !important;
             border-left: 2px solid black !important;
-            height: calc(100vh - 45px) !important; /* Math: 100% minus the header height to prevent page 2 bleed */
+            height: calc(100vh - 45px) !important; /* Math: 100% minus the header
+ height to prevent page 2 bleed */
             max-height: calc(100vh - 45px) !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
@@ -1552,11 +1698,11 @@ const TabMonth = ({ currentDate, users, shifts }) => {
       `}</style>
       
       <div className="flex justify-end p-2 no-print border-b border-[#2A353D] bg-[#12161A]">
-        <button onClick={()=>window.print()} className={T.btnAlt}>🖨️ Print Calendar</button>
+        <button onClick={()=>window.print()} className={T.btnAlt}>?? Print Calendar</button>
       </div>
       
       <div className="hidden print:block print-header">
-        86chaos Schedule • {formatDisplayMonth(monthStr)}
+        86chaos Schedule   {formatDisplayMonth(monthStr)}
       </div>
 
       <div className={`grid grid-cols-7 border-t border-l ${T.border} print-grid`}>
@@ -1708,7 +1854,7 @@ const renderTasks = (freqFilter) => {
     const grouped = filteredTasks.reduce((acc, t) => { if(!acc[t.category]) acc[t.category]=[]; acc[t.category].push(t); return acc; }, { 'Cleaning': [], 'General': [] });
     const periodKey = getTaskPeriodKey(freqFilter);
     
-    // Gives Team Managers access to add/edit/delete tasks
+    // GIVES TEAM MANAGERS ACCESS TO TASKS
     const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team;
 
     return (
@@ -1779,8 +1925,7 @@ const renderTasks = (freqFilter) => {
           <form onSubmit={handleAddPrep} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
             <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add prep item..." required/>
             <div className="flex w-full sm:w-auto gap-3 items-center">
-              <select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select>
-              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
+<select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select>              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
               <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
             </div>
           </form>
@@ -1799,7 +1944,7 @@ const renderTasks = (freqFilter) => {
                     return (
                     <div key={i.id} className={`${T.row} ${isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
-                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
+                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>? {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
@@ -1836,7 +1981,8 @@ const renderTasks = (freqFilter) => {
               }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
             </div>
           </div>
-        </div>
+  
+      </div>
       )}
 
       {subTab !== 'prep' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
@@ -1943,11 +2089,11 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       addToast('Exported', 'Order downloaded as Spreadsheet.');
     } else if (method === 'email') {
       const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
-      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
+      if (emailUrl.length > 2000) { addToast('? Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
       else { window.location.href = emailUrl; }
     } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
-      if (smsUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
+      if (smsUrl.length > 2000) { addToast('? Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
       else { window.location.href = smsUrl; }
     } else {
       addToast('Copied', 'Order list copied to clipboard!');
@@ -1957,7 +2103,8 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
   };
 
-  const handleReceiveDelivery = async (vendorId) => {
+  const handleReceiveDelivery
+ = async (vendorId) => {
     const itemsToReceive = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
     for (const item of itemsToReceive) {
       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 });
@@ -2029,10 +2176,10 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
            <div className="grid grid-cols-2 gap-2">
-             <button onClick={() => executeOrder('email')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}>✉️ Email</button>
-             <button onClick={() => executeOrder('sms')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}>📱 Text</button>
-             <button onClick={() => executeOrder('csv')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}>📊 CSV Export</button>
-             <button onClick={() => executeOrder('copy')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}>📋 Copy List</button>
+             <button onClick={() => executeOrder('email')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}>?? Email</button>
+             <button onClick={() => executeOrder('sms')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}>? Text</button>
+             <button onClick={() => executeOrder('csv')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}>? CSV Export</button>
+             <button onClick={() => executeOrder('copy')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}>? Copy List</button>
            </div>
          </div>
       </Modal>
@@ -2062,7 +2209,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
-          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🔥 Burn Log</button>
+          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>? Burn Log</button>
         </div>
       </div>
 
@@ -2074,7 +2221,8 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
-                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'} • {item.packSize || '1 CS'} • YIELD: {item.yieldQty||1}</div></div>
+                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted}
+ uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>
@@ -2110,7 +2258,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                        ))}
                      </div>
                      <div className={`p-4 bg-[#12161A] border-t ${T.border}`}>
-                       <button onClick={() => handleReceiveDelivery(vendor.id)} className={`w-full bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-emerald-400 hover:text-white font-black py-2 rounded-xl transition-colors`}>✓ Accept & Add to Inventory</button>
+                       <button onClick={() => handleReceiveDelivery(vendor.id)} className={`w-full bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-emerald-400 hover:text-white font-black py-2 rounded-xl transition-colors`}>? Accept & Add to Inventory</button>
                      </div>
                    </div>
                  )
@@ -2129,7 +2277,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                       const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.ceil(deficit);
                       return (
                         <tr key={item.id} className={T.row}>
-                          <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel||0} • Case: ${Number(item.price||0).toFixed(2)}</span></td>
+                          <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel||0}   Case: ${Number(item.price||0).toFixed(2)}</span></td>
                           <td className="p-3"><div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className={`w-12 h-8 text-center font-black bg-[#12161A] border ${T.border} ${T.copper} rounded-lg outline-none`}/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>+</button></div></td>
                         </tr>
                       )
@@ -2149,7 +2297,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
           <div className="flex gap-2 mb-4">
             <label className={`w-full flex items-center justify-center gap-2 bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all cursor-pointer`}>
-              <span>⬇️ Import Inventory from CSV Spreadsheet</span>
+              <span>?? Import Inventory from CSV Spreadsheet</span>
               <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
             </label>
           </div>
@@ -2164,12 +2312,13 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
               <select value={newItemSupplier} onChange={e=>setNewItemSupplier(e.target.value)} className={T.input} required><option value="">Select Vendor...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" placeholder="Ex: 24.50" value={newItemPrice} onChange={e=>setNewItemPrice(e.target.value)} className={T.input}/></div>
+              <div><label className={T.label}>Case Price ($)</label><input type="number"
+ step="0.01" placeholder="Ex: 24.50" value={newItemPrice} onChange={e=>setNewItemPrice(e.target.value)} className={T.input}/></div>
               <div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" placeholder="Ex: 12" value={newItemYield} onChange={e=>setNewItemYield(e.target.value)} className={T.input} required/></div>
             </div>
             <button type="submit" className={`w-full ${T.btn} py-2`}><Plus size={18} className="inline mr-2"/> Add Item to Master List</button>
           </form>
-          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">[{item.pfgCode}]</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)} • Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">[{item.pfgCode}]</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
         </div>
       )}
 
@@ -2205,7 +2354,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           </Modal>
 
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
-            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🔥 The Burn Log</h3>
+            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">? The Burn Log</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required><option value="">Select Item to Burn...</option>{inventoryItems.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
               <div><input type="number" min="1" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/><span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span></div>
@@ -2220,7 +2369,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
               <div key={w.id} className={`${T.row} flex justify-between items-center`}>
                 <div className="flex-1"> 
                   <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span>
-                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.reason} • By {w.loggedBy}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.reason}   By {w.loggedBy}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div>
@@ -2254,7 +2403,8 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
   const [category, setCategory] = useState('Sauce/Dressing'); 
   const [prepTime, setPrepTime] = useState(''); 
   const [yieldAmt, setYieldAmt] = useState(''); 
-  const [ingredients, setIngredients] = useState(''); 
+  const [ingredients, setIngredients] = useState('');
+ 
   const [instructions, setInstructions] = useState('');
   const categories = ['All', 'Sauce/Dressing', 'Meat Prep', 'Appetizer', 'Entree', 'Side', 'Dessert', 'Cocktail'];
 
@@ -2306,7 +2456,7 @@ const handleInjectLegacyRecipes = async () => {
       {
         title: "Chili", category: "Entree", prepTime: "1 hour", yieldAmt: "--",
         ingredients: "2 (5lb) Beef logs\nPeppers/Onion\n3 cans Tomato Soup (Basement)\n4 cans Tomato Juice (Basement)\n1 can Chili Bean (Basement)\n1 can Diced Tomato (Basement)\n2 (4oz) cups Chili powder\n1 (4oz) cup Kosher salt\n1 (2oz) cup pepper\n1 (2oz) cup garlic granulated\n1 (2oz) cup oregano\n1 (2oz) cup Italian\n1/2 (2oz) cup red pep flakes",
-        instructions: "Brown the beef logs and drain grease.\nSauté peppers and onions.\nCombine beef, sautéed veggies, tomato soup, tomato juice, chili beans, and diced tomatoes in a large pot.\nStir in all seasonings (chili powder, salt, pepper, garlic, oregano, italian, red pepper flakes).\nSimmer until flavors are thoroughly combined."
+        instructions: "Brown the beef logs and drain grease.\nSaut  peppers and onions.\nCombine beef, saut ed veggies, tomato soup, tomato juice, chili beans, and diced tomatoes in a large pot.\nStir in all seasonings (chili powder, salt, pepper, garlic, oregano, italian, red pepper flakes).\nSimmer until flavors are thoroughly combined."
       },
       {
         title: "Beer Dip", category: "Appetizer", prepTime: "15 mins", yieldAmt: "--",
@@ -2348,7 +2498,7 @@ const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.permission
           
           {/* ONLY GEOFF CAN SEE THIS BUTTON */}
           {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
-            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-sm flex items-center justify-center gap-2`} title="Inject Card Recipes">⬇️ Import</button>
+            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-sm flex items-center justify-center gap-2`} title="Inject Card Recipes">?? Import</button>
           )}
 
           <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
@@ -2361,7 +2511,7 @@ const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.permission
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredRecipes.map(r => (
             <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className={`${T.card} p-5 hover:border-[#D4A381] transition-all cursor-pointer group flex flex-col h-full`}>
-              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{r.category}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec →</span></div>
+              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{r.category}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec ?</span></div>
               <h3 className="text-xl font-black text-white mb-auto leading-tight">{r.title}</h3>
               <div className={`flex items-center gap-4 mt-5 pt-4 border-t ${T.border}`}><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Clock size={14}/> {r.prepTime}</div><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Scale size={14}/> Yield: {r.yieldAmt}</div></div>
             </div>
@@ -2372,7 +2522,8 @@ const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.permission
       <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
         {activeRecipe && (
           <div className="space-y-6">
-            <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{activeRecipe.title}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{activeRecipe.category}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {activeRecipe.prepTime}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span></div></div>
+            <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{activeRecipe.title}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{activeRecipe.category}</span><span className={`bg-[#12161A]
+ border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {activeRecipe.prepTime}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span></div></div>
             <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#12161A] p-3 rounded-xl border ${T.border} mb-6`}><span className={`text-[10px] font-black uppercase ${T.muted} tracking-widest`}>Yield Multiplier</span><div className={`flex bg-[#1A2126] rounded-lg p-1 border ${T.border}`}>{[0.5, 1, 2, 4].map(m => (<button key={m} onClick={() => setYieldMult(m)} className={`px-4 py-1.5 text-xs font-black rounded-md transition-all ${yieldMult === m ? `${T.grad} text-slate-900` : `text-slate-500 hover:text-white`}`}>{m}x</button>))}</div></div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               <div className="md:col-span-2 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Ingredients <span className={`lowercase ml-1 ${yieldMult !== 1 ? T.copper : ''}`}>({yieldMult}x)</span></h4><ul className="space-y-2 text-sm font-bold text-slate-300">{activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${yieldMult !== 1 ? 'bg-[#D4A381]' : 'bg-slate-500'}`}/><span>{parseAndMultiply(ing, yieldMult)}</span></li>)}</ul></div>
@@ -2491,7 +2642,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
           <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
             <button onClick={() => changeMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button>
             <h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3>
-            <button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button>
+            <button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight
+ size={16}/></button>
           </div>
           <div className={`grid grid-cols-7 border-t ${T.border}`}>
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`py-1.5 text-center text-[9px] font-black ${T.copper} uppercase border-b border-[#2A353D] bg-[#12161A]`}>{d}</div>)}
@@ -2576,8 +2728,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
 
 
 // --- THE EXPANDED SETTINGS COMMAND CENTER ---
-const TabSettings = ({ appUser, addToast }) => {
+const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const [subTab, setSubTab] = useState('profile');
+  const [newOwnerId, setNewOwnerId] = useState('');
 
   // --- Profile State ---
   const [name, setName] = useState(appUser?.name || '');
@@ -2658,7 +2811,8 @@ const TabSettings = ({ appUser, addToast }) => {
     e.preventDefault();
     try {
       await updateDoc(doc(db, "users", appUser.id), {
-        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime, payPeriod }
+        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
+ payPeriod }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
@@ -2827,6 +2981,7 @@ const TabSettings = ({ appUser, addToast }) => {
                     <label className={T.label}>Default Pay Period</label>
                     <select value={payPeriod} onChange={e => setPayPeriod(e.target.value)} className={`${T.input} py-2 text-sm`}>
                       <option value="Weekly">Weekly</option>
+
                       <option value="Bi-Weekly">Bi-Weekly</option>
                       <option value="Semi-Monthly">Semi-Monthly</option>
                       <option value="Monthly">Monthly</option>
@@ -2952,7 +3107,8 @@ const TabSettings = ({ appUser, addToast }) => {
                  </div>
                  <input type="number" min="0" value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
                </div>
-             </div>
+        
+     </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Shift Board Rules</div>
              <div className="space-y-2">
@@ -2974,14 +3130,44 @@ const TabSettings = ({ appUser, addToast }) => {
              </div>
 
           </div>
-          <button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
+<button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
+        </form>
+      )}
+
+      {/* --- TRANSFER OWNERSHIP ZONE --- */}
+      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com') && (
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          if (!newOwnerId) return addToast('Error', 'Select a new owner.');
+          if (prompt(`CRITICAL: Type "TRANSFER" to hand over ownership of this workspace. You will lose master control.`) !== 'TRANSFER') return addToast('Aborted', 'Transfer canceled.');
+          
+          const newOwner = users.find(u => u.id === newOwnerId);
+          try {
+            await updateDoc(doc(db, "users", newOwner.id), { isAdmin: true });
+            await updateDoc(doc(db, "restaurants", appUser.restaurantId), { ownerName: newOwner.name, ownerEmail: newOwner.email });
+            addToast('Transferred', `Ownership transferred to ${newOwner.name}.`);
+            setNewOwnerId('');
+          } catch(err) { addToast('Error', err.message); }
+        }} className={`${T.card} p-4 sm:p-5 mt-4 border-red-900/50 shadow-[0_0_15px_rgba(220,38,38,0.1)]`}>
+           <div className="mb-3 border-b border-[#2A353D] pb-2">
+             <h2 className="text-base font-black text-red-500">Transfer Ownership</h2>
+             <p className="text-[10px] text-slate-400 font-medium leading-snug mt-1">Permanently transfer billing and master control to another active team member.</p>
+           </div>
+           <div className="flex flex-col sm:flex-row gap-3">
+             <select value={newOwnerId} onChange={e => setNewOwnerId(e.target.value)} className={T.input} required>
+               <option value="">Select New Owner...</option>
+               {users.filter(u => u.isActive && u.id !== appUser.id).map(u => (
+                 <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+               ))}
+             </select>
+             <button type="submit" className="bg-red-900/20 text-red-500 font-black tracking-widest uppercase border border-red-900/50 rounded-xl px-6 py-3 hover:bg-red-900/40 transition-colors whitespace-nowrap">Transfer</button>
+           </div>
         </form>
       )}
 
     </div>
   );
 };
-
 // --- AUDIT LOGS TAB (Master Admin Only) ---
 const TabAuditLog = ({ appUser }) => {
   const logs = useLiveCollection('auditLogs', appUser?.restaurantId);
@@ -3144,7 +3330,8 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
         <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Gross</div><div className="text-sm sm:text-lg font-black text-[#D4A381]">${wtdGross.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</div></div>
         <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Labor</div><div className={`text-sm sm:text-lg font-black ${wtdLaborPct > 30 ? 'text-red-400' : 'text-emerald-400'}`}>{wtdLaborPct}%</div></div>
         <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Food</div><div className={`text-sm sm:text-lg font-black ${wtdFoodPct > 33 ? 'text-red-400' : 'text-emerald-400'}`}>{wtdFoodPct}%</div></div>
-        <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Profit</div><div className={`text-sm sm:text-lg font-black ${wtdProfit < 0 ? 'text-red-400' : 'text-emerald-400'}`}>${wtdProfit.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</div></div>
+        <div className={`${T.card} p-2
+ sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Profit</div><div className={`text-sm sm:text-lg font-black ${wtdProfit < 0 ? 'text-red-400' : 'text-emerald-400'}`}>${wtdProfit.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</div></div>
       </div>
 
       {/* Ultra-Compact 7-Day Ledger with Notes */}
@@ -3249,7 +3436,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
 
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
+    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features
+ || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
 
@@ -3337,19 +3525,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     sSnap.forEach(d => { const s = d.data(); if (!allUsers.find(u => u.id === s.employeeId)) { deleteDoc(doc(db, "shifts", d.id)); deadCount++; } });
     addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
   };
-const handleKillswitch = async (engage) => {
-    const keyword = engage ? 'LOCKDOWN' : 'REVIVE';
-    if (prompt(`CRITICAL: Type "${keyword}" to ${engage ? 'instantly lock out all clients' : 'restore global access'}.`) !== keyword) return addToast('Aborted', 'Killswitch operation canceled.');
-    
-    addToast('Executing', `${engage ? 'Locking down' : 'Restoring'} databases...`);
-    let count = 0;
-    for (const r of restaurants) {
-       try { await updateDoc(doc(db, "restaurants", r.id), { maintenanceMode: engage }); count++; } catch(e){}
-    }
-    addToast('Complete', `Signal sent to ${count} databases.`);
-  };
+
   const handleForceRefresh = async () => {
-    if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
+    if (!window.confirm("? CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
     addToast('Executing', 'Sending refresh signal...');
     const stamp = new Date().toISOString();
     let count = 0;
@@ -3389,7 +3567,8 @@ const handleKillswitch = async (engage) => {
                 <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
                 <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
               </div>
-              <div className="pt-2 border-t border-[#2A353D]"><label className={T.label}>Module Access</label><div className="grid grid-cols-2 gap-2 mt-2">{['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales'].map(feat => (<label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]"><input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" /><span className="text-xs font-bold text-slate-300 capitalize">{feat}</span></label>))}</div></div>
+              <div className="pt-2 border-t border-[#2A353D]"><label className={T.label}>Module Access</label><div className="grid grid-cols-2 gap-2 mt-2">{['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales'].map(feat => (<label key={feat}
+ className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]"><input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" /><span className="text-xs font-bold text-slate-300 capitalize">{feat}</span></label>))}</div></div>
               
               {/* LABS / CANARY ROLLOUT */}
               <div className="pt-2 border-t border-[#2A353D]">
@@ -3405,7 +3584,7 @@ const handleKillswitch = async (engage) => {
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
             <div className="pt-4 border-t border-red-900/50 mt-4 space-y-2">
-              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">📊 Download CSV Export</button>
+              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">? Download CSV Export</button>
               <button type="button" onClick={handleWipeSandbox} className="w-full bg-red-900/10 text-red-500 font-black py-2 rounded-xl border border-red-900/50 hover:bg-red-900/30 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Trash2 size={14}/> Wipe Sandbox Data</button>
             </div>
           </div>
@@ -3440,7 +3619,7 @@ const handleKillswitch = async (engage) => {
 
           <div className={`${T.card} p-6 border-red-900/30`}>
             <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Shield className="text-red-500" size={18}/> System Status</h3>
-            <div className="flex items-center gap-3"><span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span><span className="text-sm font-bold text-slate-300">All Database Shards Operational • Version {CURRENT_VERSION} Online</span></div>
+            <div className="flex items-center gap-3"><span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span><span className="text-sm font-bold text-slate-300">All Database Shards Operational   Version {CURRENT_VERSION} Online</span></div>
           </div>
         </div>
       )}
@@ -3466,17 +3645,18 @@ const handleKillswitch = async (engage) => {
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
                       {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
                     </div>
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1">•</span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1">•</span> {r.ownerPhone}</>}</div>
-                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1"> </span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1"> </span> {r.ownerPhone}</>}</div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1">👻 Possess</button>
+                    <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1">? Possess</button>
                     <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors shadow-sm">Manage</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
                 </div>
               ))}
-            </div>
+        
+    </div>
           </div>
         </div>
       )}
@@ -3495,11 +3675,11 @@ const handleKillswitch = async (engage) => {
                 <div key={u.id} className={`${T.row} flex justify-between items-center`}>
                   <div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
-                    <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1">•</span> <span className={T.copper}>{u.role}</span></div>
+                    <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
                     <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName}</div>
                   </div>
                   <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
-                    👻 Possess
+                    ? Possess
                   </button>
                 </div>
               )
@@ -3572,7 +3752,7 @@ const handleKillswitch = async (engage) => {
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-white text-sm">{log.userName}</span>
-                    {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">👻 Ghost Action</span>}
+                    {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">? Ghost Action</span>}
                     <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{log.action}</span>
                   </div>
                   <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.timestamp).toLocaleString()}</span>
@@ -3586,7 +3766,7 @@ const handleKillswitch = async (engage) => {
         </div>
       )}
 
-   {/* --- TAB: OPERATIONS --- */}
+      {/* --- TAB: OPERATIONS --- */}
       {subTab === 'ops' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleMegaphone} className={`${T.card} p-5`}>
@@ -3595,24 +3775,17 @@ const handleKillswitch = async (engage) => {
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
           
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className={`${T.card} p-5 border-emerald-900/30 flex flex-col`}>
+          <div className="grid grid-cols-1 sm:grid-cols-2
+ gap-4">
+            <div className={`${T.card} p-5 border-emerald-900/30`}>
               <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug flex-1">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
-              <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors mt-auto">Execute Global Refresh</button>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
+              <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
             </div>
-            <div className={`${T.card} p-5 border-blue-900/30 flex flex-col`}>
+            <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug flex-1">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
-              <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors mt-auto">Run DB Sweep</button>
-            </div>
-            <div className={`${T.card} p-5 border-red-900/30 flex flex-col`}>
-              <h3 className="font-black text-white mb-1">Platform Killswitch</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug flex-1">Forces all clients into a locked "Under Maintenance" holding screen. Re-click to revive.</p>
-              <div className="flex gap-2 mt-auto">
-                <button onClick={() => handleKillswitch(true)} className="flex-1 bg-red-900/20 text-red-500 border border-red-900/50 font-black text-[10px] uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors">Lockdown</button>
-                <button onClick={() => handleKillswitch(false)} className="flex-1 bg-emerald-900/20 text-emerald-500 border border-emerald-900/50 font-black text-[10px] uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Revive</button>
-              </div>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
+              <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
             </div>
           </div>
         </div>
@@ -3794,33 +3967,20 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
   const nextMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() + 1); setCurrentDate(formatDate(d)); };
 
-  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
+  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items}
+ prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
 
 if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
 
-// BILLING LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
+  // BILLING LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
   if (clientData?.billingStatus === 'Past Due' && !ghostTenant) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">
-          <span className="text-6xl mb-4 block">💳</span>
+          <span className="text-6xl mb-4 block">?</span>
           <h1 className="text-2xl font-black text-white mb-2">Subscription Past Due</h1>
           <p className="text-slate-400 font-medium mb-6">Access to 86 Chaos has been temporarily suspended for {clientData.name || 'this workspace'}. Please contact your management team or 86 Chaos Support to renew your plan.</p>
-          <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); window.location.reload(); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
-        </div>
-      </div>
-    );
-  }
-
-  // MAINTENANCE KILLSWITCH LOCK SCREEN (Bypassed by Ghost Mode and Super Admins)
-// FIXED: Now checks if the user's email is your specific admin email (or isSuperAdmin) so you never get locked out again
-  if (clientData?.maintenanceMode && !ghostTenant && !liveAppUser?.isSuperAdmin && liveAppUser?.email !== 'geoffm1985@gmail.com') {    return (
-      <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
-        <div className="bg-[#1A2126] p-8 rounded-3xl border border-orange-900/50 shadow-2xl max-w-md w-full">
-          <span className="text-6xl mb-4 block">🚧</span>
-          <h1 className="text-2xl font-black text-white mb-2">System Maintenance</h1>
-          <p className="text-slate-400 font-medium mb-6">86 Chaos is currently down for emergency maintenance. We will be back online shortly. Hang tight!</p>
-          <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); window.location.reload(); }} className="w-full bg-orange-900/20 text-orange-500 font-black py-3 rounded-xl border border-orange-900/50 hover:bg-orange-900/40 transition-all uppercase tracking-widest">Log Out</button>
+          <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
         </div>
       </div>
     );
@@ -3833,7 +3993,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       {ghostTenant && (
         <div className="bg-gradient-to-r from-purple-900 to-fuchsia-900 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[99999] shadow-2xl uppercase tracking-wider border-b border-fuchsia-500/50">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex-shrink-0 animate-pulse text-sm">👻</span>
+            <span className="flex-shrink-0 animate-pulse text-sm">?</span>
             <span className="truncate">GHOST MODE OVERRIDE: {ghostTenant.name}</span>
           </div>
           <button onClick={() => { setGhostTenant(null); window.history.pushState({ tab: 'godmode' }, '', '?tab=godmode'); setActiveTabState('godmode'); }} className="bg-white text-purple-900 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3">
@@ -3857,7 +4017,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       {showUpdateBanner && (
         <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex-shrink-0 animate-pulse text-sm">🚨</span>
+            <span className="flex-shrink-0 animate-pulse text-sm">?</span>
             <span className="truncate">System update available. Refresh to prevent database desync.</span>
           </div>
           <button 
@@ -3931,25 +4091,24 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'audit' && liveAppUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
-        {activeTabState === 'godmode' && (liveAppUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin) && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
-      </main>
+{activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}      </main>
 
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
-            <div className="bg-[#12161A] p-1.5 rounded-full text-[#D4A381] mt-0.5 border border-[#2A353D]"><Bell size={16} /></div>
+            <div className="bg-[#12161A] p-1.5 rounded-full
+ text-[#D4A381] mt-0.5 border border-[#2A353D]"><Bell size={16} /></div>
             <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p></div>
             <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
           </div>
         ))}
       </div>
       
-  <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
+      <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.5.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.6.0</span>
       </div>
     </div>
   );
 }
+
