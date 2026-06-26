@@ -528,8 +528,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
        await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: appUser.id });
        await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
        await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `? Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
-       addToast('Claimed', 'Shift successfully added
- to your schedule.');
+       addToast('Claimed', 'Shift successfully added to your schedule.');
        setSubTab('my-schedule'); 
     } catch (e) {
        addToast('Error', e.message);
