@@ -3314,6 +3314,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [userCounts, setUserCounts] = useState({});
+  const [totalInstalls, setTotalInstalls] = useState(0); // NEW: Tracks the install count
 
   // Form States
   const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
@@ -3334,7 +3335,13 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
       setUserCounts(counts);
     });
     const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)));
-    const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100)));
+    const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
+       const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+       setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
+       
+       // NEW: Count the total number of installs ever recorded globally
+       setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
+    });
     return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
   }, []);
 
@@ -3511,10 +3518,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
       {/* --- TAB: OVERVIEW --- */}
       {subTab === 'overview' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-4xl font-black text-white">${mrr}<span className="text-lg text-slate-500">/mo</span></div></div>
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Network Users</div><div className="text-4xl font-black text-white">{allUsers.length}</div></div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
           </div>
 
           {/* STALE ACCOUNT ALERTS */}
@@ -3748,6 +3756,16 @@ export default function App() {
     checkAppVersion();
     const versionInterval = setInterval(checkAppVersion, 3 * 60 * 1000);
     return () => clearInterval(versionInterval);
+  }, []);
+
+  // --- APP INSTALL TRACKER (NEW) ---
+  useEffect(() => {
+    const handleAppInstall = () => {
+      const currentUser = JSON.parse(localStorage.getItem('86chaosUser'));
+      logAudit(currentUser, 'APP_INSTALLED', 'Device OS', 'User installed 86chaos as a native app to their device.');
+    };
+    window.addEventListener('appinstalled', handleAppInstall);
+    return () => window.removeEventListener('appinstalled', handleAppInstall);
   }, []);
 
   // --- DATABASE IMPORTS ---
