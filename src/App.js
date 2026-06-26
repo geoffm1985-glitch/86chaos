@@ -1141,13 +1141,20 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   };
 
-  // --- EXPORT TIMESHEETS ENGINE (UPDATED WITH SUMMARY) ---
+// --- EXPORT TIMESHEETS ENGINE (UPDATED WITH SUMMARY) ---
   const handleExportTimesheets = () => {
     if (monthPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
     
-    // Inject the total summaries at the top of the CSV file
-    let csv = '"--- PAYROLL SUMMARY ---"\n';
+    // Calculate the exact date range for the current Timesheet view
+    const [year, month] = monthStr.split('-');
+    const periodStart = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const periodEnd = new Date(year, month, 0).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    
+    // Inject the Header and Payroll Summary
+    let csv = `"--- PAYROLL SUMMARY ---"\n`;
+    csv += `"Pay Period: ${periodStart} - ${periodEnd}"\n\n`;
     csv += '"Employee Name","Total Hours","Hourly Rate","Total Pay"\n';
+    
     summaryList.forEach(s => {
        csv += `"${s.name}","${s.hours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}"\n`;
     });
@@ -1179,7 +1186,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    addToast('Exported', 'Spreadsheet generated.');
+    addToast('Exported', 'Spreadsheet generated with pay period dates.');
   };
 
   return (
