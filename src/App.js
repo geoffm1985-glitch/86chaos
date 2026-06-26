@@ -56,7 +56,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.6.0';
+const CURRENT_VERSION = '5.7.0';
 
 
 // --- Helpers ---
@@ -136,6 +136,25 @@ const getHoliday = (dateStr) => {
   const mmdd = dateStr.substring(5);
   return HOLIDAYS[dateStr] || HOLIDAYS[mmdd] || null;
 };
+
+
+// --- SYSTEM AUDIT LOGGER ---
+const logAudit = async (user, action, target, details) => {
+  if (!user || !user.restaurantId) return;
+  try {
+    await addDoc(collection(db, "auditLogs"), {
+      userId: user.id || 'system',
+      userName: user.name || 'System',
+      action,
+      target,
+      details,
+      timestamp: new Date().toISOString(),
+      restaurantId: user.restaurantId,
+      isGhost: user.isGhost || false
+    });
+  } catch (err) { console.error("Audit log failed:", err); }
+};
+
 
 // --- UI Components ---
 // ============================================================================
@@ -4106,7 +4125,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.6.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.7.0</span>
       </div>
     </div>
   );
