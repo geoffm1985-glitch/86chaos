@@ -730,7 +730,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
   const [role, setRole] = useState('Bartender'); 
-  const [wage, setWage] = useState(''); // NEW: Wage State
+  const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
   const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
@@ -837,13 +837,16 @@ return (
           
           <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
           
-          <div>
-            <label className={T.label}>Hourly Wage ($)</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
-              <input type="number" step="0.01" min="0" value={wage} onChange={e=>setWage(e.target.value)} className={`${T.input} pl-8`} placeholder="Ex: 15.50" />
+          {/* STRICTLY LOCKED TO ADMINS */}
+          {appUser?.isAdmin && (
+            <div>
+              <label className={T.label}>Hourly Wage ($)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+                <input type="number" step="0.01" min="0" value={wage} onChange={e=>setWage(e.target.value)} className={`${T.input} pl-8`} placeholder="Ex: 15.50" />
+              </div>
             </div>
-          </div>
+          )}
 
          {appUser?.isAdmin && (
             <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
