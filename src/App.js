@@ -964,16 +964,16 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   });
 
-  // --- TIMESHEET ACTUAL LABOR ENGINE ---
-  const monthPunches = timePunches.filter(p => p.date?.startsWith(monthStr)).sort((a,b) => new Date(b.clockInTime) - new Date(a.clockInTime));
+ // --- TIMESHEET ACTUAL LABOR ENGINE ---
+  const monthPunches = timePunches.filter(p => p.date?.startsWith(monthStr)).sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
   
   const calculatePunchHours = (inTime, outTime) => {
-      if (!outTime) return 0;
+      if (!inTime || !outTime) return 0;
       return (new Date(outTime) - new Date(inTime)) / (1000 * 60 * 60);
   };
 
   const actualMonthLabor = monthPunches.reduce((acc, p) => {
-      if (p.status === 'clocked_in') return acc;
+      if (p.status === 'clocked_in' || !p.clockInTime || !p.clockOutTime) return acc;
       const emp = users.find(u => u.id === p.employeeId);
       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
       return acc + (hours * (emp?.wage || 0));
@@ -991,7 +991,37 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       addToast('Deleted', 'Time punch removed.');
   };
 
-// --- EXPORT TIMESHEETS ENGINE ---
+  // --- EXPORT TIMESHEETS ENGINE ---
+  const handleExportTimesheets = () => {
+    if (monthPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
+    
+    let csv = "Employee Name,Date,Clock In,Clock Out,Total Hours,Hourly Rate,Total Pay\n";
+    
+    monthPunches.forEach(p => {
+       const emp = users.find(u => u.id === p.employeeId);
+       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
+       const rate = emp?.wage || 0;
+       const cost = hours * rate;
+       
+       const inStr = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown';
+       const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown');
+       
+       csv += `"${p.employeeName || 'Unknown'}","${p.date || 'Unknown'}","${inStr}","${outStr}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${cost.toFixed(2)}"\n`;
+    });
+
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a"); 
+    link.setAttribute("href", url); 
+    link.setAttribute("download", `Timesheets_${formatDisplayMonth(currentDate).replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link); 
+    link.click(); 
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    addToast('Exported', 'Spreadsheet generated.');
+  };
 
   return (
     <div className="space-y-4 pb-12 w-full">
@@ -1143,7 +1173,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </div>
       )}
 
-      {/* NEW: THE TIMESHEET SUB-TAB (Secured) */}
+      {/* NEW: THE TIMESHEET SUB-TAB (Secured & Safed) */}
       {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center flex-wrap gap-2`}>
@@ -1165,21 +1195,25 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                const cost = hours * (emp?.wage || 0);
                const isClockedIn = p.status === 'clocked_in';
                
+               // Bulletproof Date Checks
+               const safeIn = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR';
+               const safeOut = isClockedIn ? '---' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR');
+               
                return (
                  <div key={p.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
                    <div>
-                     <div className="font-bold text-white text-base">{p.employeeName}</div>
+                     <div className="font-bold text-white text-base">{p.employeeName || 'Unknown'}</div>
                      <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
-                       {formatDisplayDate(p.date)}
+                       {p.date ? formatDisplayDate(p.date) : 'Unknown Date'}
                      </div>
                    </div>
                    <div className="flex items-center gap-6">
                      <div className="text-right">
                        <div className="text-xs font-mono text-slate-300">
-                         <span className="text-emerald-400">IN:</span> {new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                         <span className="text-emerald-400">IN:</span> {safeIn}
                        </div>
                        <div className="text-xs font-mono text-slate-300">
-                         <span className="text-red-400">OUT:</span> {isClockedIn ? '---' : new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                         <span className="text-red-400">OUT:</span> {safeOut}
                        </div>
                      </div>
                      <div className="text-right border-l border-[#2A353D] pl-6 w-24">
