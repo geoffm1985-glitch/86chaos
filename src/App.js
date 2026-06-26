@@ -981,7 +981,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   });
 
- // --- TIMESHEET ACTUAL LABOR ENGINE ---
+  // --- TIMESHEET ACTUAL LABOR ENGINE ---
   const monthPunches = timePunches.filter(p => p.date?.startsWith(monthStr)).sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
   
   const calculatePunchHours = (inTime, outTime) => {
@@ -1006,6 +1006,47 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       if (!window.confirm("Delete this time punch permanently?")) return;
       await deleteDoc(doc(db, "timePunches", id));
       addToast('Deleted', 'Time punch removed.');
+  };
+
+  // --- EDIT PUNCH ENGINE ---
+  const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
+  const [editingPunch, setEditingPunch] = useState(null);
+  const [editPunchIn, setEditPunchIn] = useState('');
+  const [editPunchOut, setEditPunchOut] = useState('');
+
+  const openEditPunchModal = (punch) => {
+    setEditingPunch(punch);
+    // Adjusts ISO to local time so the HTML input displays it properly
+    const formatForInput = (iso) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const tzOffset = d.getTimezoneOffset() * 60000;
+      return new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
+    };
+    setEditPunchIn(formatForInput(punch.clockInTime));
+    setEditPunchOut(punch.clockOutTime && punch.status === 'clocked_out' ? formatForInput(punch.clockOutTime) : '');
+    setIsPunchModalOpen(true);
+  };
+
+  const handleSavePunchEdit = async (e) => {
+    e.preventDefault();
+    if (!editingPunch || !editPunchIn) return;
+    try {
+      const updateData = { clockInTime: new Date(editPunchIn).toISOString() };
+      if (editPunchOut) {
+        updateData.clockOutTime = new Date(editPunchOut).toISOString();
+        updateData.status = 'clocked_out';
+      } else {
+        updateData.clockOutTime = null;
+        updateData.status = 'clocked_in';
+      }
+      await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
+      addToast('Updated', 'Time punch modified successfully.');
+      setIsPunchModalOpen(false);
+      setEditingPunch(null);
+    } catch (err) {
+      addToast('Error', err.message);
+    }
   };
 
   // --- EXPORT TIMESHEETS ENGINE ---
@@ -1054,7 +1095,22 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </form>
       </Modal>
 
-      {/* TOP NAVIGATION TOGGLE (Secured for Admins) */}
+      {/* NEW PUNCH EDIT MODAL */}
+      <Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={`Edit Punch: ${editingPunch?.employeeName}`}>
+        <form onSubmit={handleSavePunchEdit} className="space-y-4">
+          <div>
+            <label className={T.label}>Clock In Time</label>
+            <input type="datetime-local" value={editPunchIn} onChange={e=>setEditPunchIn(e.target.value)} className={T.input} required/>
+          </div>
+          <div>
+            <label className={T.label}>Clock Out Time (Leave blank if currently on clock)</label>
+            <input type="datetime-local" value={editPunchOut} onChange={e=>setEditPunchOut(e.target.value)} className={T.input}/>
+          </div>
+          <button type="submit" className={`w-full ${T.btn}`}>Save Time Punch</button>
+        </form>
+      </Modal>
+
+      {/* TOP NAVIGATION TOGGLE */}
       <div className="flex gap-2 border-b border-[#2A353D] pb-3 mb-2">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
         {appUser?.isAdmin && (
@@ -1190,7 +1246,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </div>
       )}
 
-      {/* NEW: THE TIMESHEET SUB-TAB (Secured & Safed) */}
+      {/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
       {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center flex-wrap gap-2`}>
@@ -1212,7 +1268,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                const cost = hours * (emp?.wage || 0);
                const isClockedIn = p.status === 'clocked_in';
                
-               // Bulletproof Date Checks
                const safeIn = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR';
                const safeOut = isClockedIn ? '---' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR');
                
@@ -1239,6 +1294,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                      </div>
                      <div className="flex gap-2 border-l border-[#2A353D] pl-4">
                        {isClockedIn && <button onClick={() => handleForceClockOut(p)} className="px-3 py-1 bg-red-900/20 text-red-500 text-[10px] font-black uppercase rounded-lg border border-red-900/50 hover:bg-red-900/40 transition-colors">Force Out</button>}
+                       <button onClick={() => openEditPunchModal(p)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
                        <button onClick={() => handleDeletePunch(p.id)} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
                      </div>
                    </div>
