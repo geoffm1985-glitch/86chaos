@@ -2685,7 +2685,7 @@ const TabSettings = ({ appUser, addToast }) => {
   // --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
-  const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false); // NEW: Unpaid Breaks
+  const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false); 
   const [sysTips, setSysTips] = useState(sys.tips ?? true);
   const [sysTrades, setSysTrades] = useState(sys.trades ?? true);
   const [sysAutoApprove, setSysAutoApprove] = useState(sys.autoApprove ?? false);
@@ -2701,8 +2701,10 @@ const TabSettings = ({ appUser, addToast }) => {
   const [editingRoleId, setEditingRoleId] = useState(null);
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
+  
+  // FIX: Unpacked the arrays into a new array [...dbRoles] before sorting to prevent the frozen data crash
   const displayRoles = dbRoles.length > 0 
-    ? dbRoles.sort((a,b) => a.name.localeCompare(b.name)) 
+    ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
     : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
 
   // --- Image Upload Engine ---
@@ -2747,21 +2749,23 @@ const TabSettings = ({ appUser, addToast }) => {
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
   };
 
-const handleSaveSystem = async (e) => {
+  const handleSaveSystem = async (e) => {
     e.preventDefault();
     try {
-      // Swapped updateDoc for setDoc with merge:true so it creates the master file if your legacy account is missing it
-      const targetId = appUser.restaurantId || 'legacy-sandbox';
+      const targetId = appUser?.restaurantId || 'legacy-sandbox';
       await setDoc(doc(db, "restaurants", targetId), {
         systemSettings: { geofence: sysGeofence, breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime }
       }, { merge: true });
-      
       addToast('System Saved', 'Global workspace configurations updated.');
       logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
-    } catch (err) { 
-      // Changed this to print the exact Firebase error just in case!
-      addToast('Error', err.message); 
-    }
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handlePasswordReset = async () => {
+    try {
+      await sendPasswordResetEmail(auth, appUser.email);
+      addToast('Email Sent', 'Check your inbox for the password reset link.');
+    } catch (err) { addToast('Error', err.message); }
   };
 
   const handleAddRole = async (e) => {
@@ -2958,7 +2962,7 @@ const handleSaveSystem = async (e) => {
                   }} className={`${T.btn} py-2 whitespace-nowrap`}>Add Station</button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {(dbPrepCats.length > 0 ? dbPrepCats : ['Grill', 'Fry', 'Salad/Cold', 'Expo', 'Prep Table'].map(c => ({id: c, name: c, isDefault: true}))).sort((a,b) => a.name.localeCompare(b.name)).map(cat => (
+                  {(dbPrepCats.length > 0 ? [...dbPrepCats] : ['Grill', 'Fry', 'Salad/Cold', 'Expo', 'Prep Table'].map(c => ({id: c, name: c, isDefault: true}))).sort((a,b) => a.name.localeCompare(b.name)).map(cat => (
                     <div key={cat.id} className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-lg shadow-sm">
                       <span className="text-[10px] font-bold text-slate-300">{cat.name}</span>
                       <button type="button" onClick={async () => { 
