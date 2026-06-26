@@ -390,6 +390,49 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
   
+  // --- NEW TIME CLOCK STATE & LOGIC ---
+  const [activePunch, setActivePunch] = useState(null);
+
+  useEffect(() => {
+    if (!appUser?.id) return;
+    const q = query(
+      collection(db, 'timePunches'), 
+      where('employeeId', '==', appUser.id), 
+      where('status', '==', 'clocked_in')
+    );
+    const unsub = onSnapshot(q, snap => {
+      if (!snap.empty) { setActivePunch({ id: snap.docs[0].id, ...snap.docs[0].data() }); } 
+      else { setActivePunch(null); }
+    });
+    return () => unsub();
+  }, [appUser?.id]);
+
+  const handleClockIn = async () => {
+    try {
+      await addDoc(collection(db, "timePunches"), { 
+        employeeId: appUser.id, 
+        employeeName: appUser.name, 
+        clockInTime: new Date().toISOString(), 
+        status: 'clocked_in', 
+        restaurantId: appUser.restaurantId, 
+        date: getToday() 
+      });
+      addToast('Clocked In', 'Shift started successfully.');
+    } catch (e) { addToast('Error', e.message); }
+  };
+
+  const handleClockOut = async () => {
+    if (!activePunch) return;
+    try {
+      await updateDoc(doc(db, "timePunches", activePunch.id), { 
+        clockOutTime: new Date().toISOString(), 
+        status: 'clocked_out' 
+      });
+      addToast('Clocked Out', 'Shift ended. Great work today!');
+    } catch (e) { addToast('Error', e.message); }
+  };
+  // ------------------------------------
+
   const myMonthShifts = shifts
     .filter(s => s.employeeId === appUser.id && s.date.startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date));
@@ -432,7 +475,19 @@ return (
             {myNextShift ? (
               <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(myNextShift.date)} • {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
             ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
-            <button onClick={() => addToast("Time Clock", "Geofencing Engine currently disabled in Phase 1.")} className="w-full py-4 bg-[#12161A] text-white rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-[#1A2126] border border-[#2A353D] transition-colors">CLOCK IN / OUT</button>
+            
+            {/* DYNAMIC TIME CLOCK BUTTON */}
+            {activePunch ? (
+              <button onClick={handleClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
+                <span>CLOCK OUT</span>
+                <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {new Date(activePunch.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              </button>
+            ) : (
+              <button onClick={handleClockIn} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all">
+                CLOCK IN
+              </button>
+            )}
+
           </div>
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => { if(myNextShift) { handleOfferSwap(myNextShift); } else { addToast("Error", "No upcoming shift to offer."); } }} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🔄</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Offer Shift</span></button>
@@ -799,7 +854,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
-  // FIX: Filter out deactivated employees so they don't cause ghost duplicates
+  // Filter out deactivated employees so they don't cause ghost duplicates
   const activeRoster = users.filter(u => u.isActive !== false);
 
   // Sort display users for the dropdown
@@ -811,7 +866,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
     return roleA === roleB ? nameA.localeCompare(nameB) : roleA.localeCompare(roleB);
   });
   
-  // RESTORED: Group users by role for the categorized table
+  // Group users by role for the categorized table
   const groupedUsers = activeRoster.reduce((acc, user) => {
     const role = user.role || 'Unassigned';
     if (!acc[role]) acc[role] = [];
@@ -820,7 +875,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   }, {});
   const sortedRoles = Object.keys(groupedUsers).sort();
 
-  // RESTORED: Dynamic color coding for roles
+  // Dynamic color coding for roles
   const getRoleColors = (role, isPublished) => {
     if (!isPublished) return 'bg-slate-400 text-slate-900';
     const r = (role || '').toLowerCase();
@@ -876,22 +931,38 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
   };
 
   const openEditEventModal = (ev) => {
-    setEventDate(ev.date);
-    setEventTime(ev.time || '');
-    setEventTitle(ev.title || '');
-    setEventNotes(ev.notes || '');
-    setEditingEventId(ev.id);
-    setIsEventModalOpen(true);
+    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setIsEventModalOpen(true);
   };
 
   const openNewEventModal = () => {
-    setEventDate(currentDate);
-    setEventTime('');
-    setEventTitle('');
-    setEventNotes('');
-    setEditingEventId(null);
-    setIsEventModalOpen(true);
+    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(true);
   };
+
+  // --- PROJECTED LABOR ENGINE ---
+  const calculateShiftHours = (start, end) => {
+    if (!start || !end) return 0;
+    let sH = parseInt(start.split(':')[0]), sM = parseInt(start.split(':')[1]) / 60;
+    let eH = end === 'CLOSE' ? 23 : parseInt(end.split(':')[0]), eM = end === 'CLOSE' ? 59 / 60 : parseInt(end.split(':')[1]) / 60;
+    let total = (eH + eM) - (sH + sM);
+    if (total < 0) total += 24; // Handles overnight shifts gracefully
+    return total;
+  };
+
+  let projectedMonthLabor = 0;
+  const projectedDailyLabor = {};
+  monthDays.forEach(d => projectedDailyLabor[d] = 0);
+
+  monthShifts.forEach(shift => {
+    const emp = users.find(u => u.id === shift.employeeId);
+    const wage = emp?.wage || 0; 
+    const hours = calculateShiftHours(shift.startTime, shift.endTime);
+    const cost = hours * wage;
+    
+    projectedMonthLabor += cost;
+    if (projectedDailyLabor[shift.date] !== undefined) {
+      projectedDailyLabor[shift.date] += cost;
+    }
+  });
 
   return (
     <div className="space-y-6 pb-12 w-full">
@@ -917,7 +988,14 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
           </div>
           <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full col-span-2 lg:col-span-1 lg:w-auto ${T.btn} py-1.5 px-3 text-xs h-9 disabled:opacity-50 flex items-center justify-center`}>Assign ({assignDates.length})</button>
         </div>
-        <div className="flex w-full lg:w-auto gap-2">
+        <div className="flex w-full lg:w-auto gap-2 items-center">
+          
+          {/* THE NEW LABOR METRICS DISPLAY */}
+          <div className="hidden lg:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-3 py-1 rounded-lg">
+            <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
+            <span className="text-emerald-400 font-black text-sm">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+          </div>
+
           <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-1.5 text-xs h-9 flex items-center justify-center`}>Publish</button>
           <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 text-xs h-9 flex items-center justify-center`}>+ Event</button>
         </div>
@@ -985,6 +1063,19 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, addT
                   ))}
                 </React.Fragment>
               ))}
+
+              {/* NEW: THE DAILY LABOR PROJECTION ROW */}
+              <tr className="bg-[#0B0E11] border-t-2 border-[#D4A381]/30">
+                <td className={`px-2 py-2 text-[8px] font-black uppercase tracking-widest text-[#D4A381] sticky left-0 z-10 border-r border-[#2A353D] text-right shadow-md`}>
+                  Proj. Cost
+                </td>
+                {monthDays.map(d => (
+                  <td key={`cost-${d}`} className={`p-1 border-r border-[#2A353D] text-center align-middle font-black text-[9px] sm:text-[10px] ${projectedDailyLabor[d] > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                    ${projectedDailyLabor[d].toFixed(0)}
+                  </td>
+                ))}
+              </tr>
+
             </tbody>
           </table>
         </div>
