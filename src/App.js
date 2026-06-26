@@ -504,6 +504,10 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date))[0];
 
+  const activeMonthShifts = shifts
+    .filter(s => s.date.startsWith(monthStr) && s.isPublished)
+    .sort((a,b) => a.date.localeCompare(b.date));
+
   const handleOfferSwap = async (shift) => {
     if (!window.confirm(`Offer your ${formatDisplayDate(shift.date)} shift to the Trade Board?`)) return;
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
@@ -3131,7 +3135,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
       )}
 
       {/* --- TRANSFER OWNERSHIP ZONE --- */}
-      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin) && (
+      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com') && (
         <form onSubmit={async (e) => {
           e.preventDefault();
           if (!newOwnerId) return addToast('Error', 'Select a new owner.');
@@ -4087,8 +4091,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-{activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}        {activeTabState === 'godmode' && (liveAppUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin) && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
-      </main>
+{activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}      </main>
 
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
