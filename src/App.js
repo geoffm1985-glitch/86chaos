@@ -2747,10 +2747,11 @@ const TabSettings = ({ appUser, addToast }) => {
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
   };
 
-  const handleSaveSystem = async (e) => {
+const handleSaveSystem = async (e) => {
     e.preventDefault();
     try {
-      await updateDoc(doc(db, "users", appUser.id), {
+      // FIXED: Now saves to the global Restaurant database instead of the individual User profile
+      await updateDoc(doc(db, "restaurants", appUser.restaurantId), {
         systemSettings: { geofence: sysGeofence, breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime }
       });
       addToast('System Saved', 'Global workspace configurations updated.');
@@ -3629,18 +3630,22 @@ export default function App() {
 const wasteLogs = useLiveCollection('wasteLogs', rId);
   const timePunches = useLiveCollection('timePunches', rId);
   
-  // --- LIVE APP USER LOGIC ---
-
-let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
-if (ghostTenant && liveAppUser) {
+// --- LIVE APP USER LOGIC ---
+  let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
+  if (ghostTenant && liveAppUser) {
     liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'System Administrator' };
   }
+
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
 
+  // INJECT GLOBAL SETTINGS INTO ACTIVE USER
+  if (liveAppUser && clientData?.systemSettings) {
+     liveAppUser = { ...liveAppUser, systemSettings: clientData.systemSettings };
+  }
+
   useEffect(() => {
-    if (!rId) return;
     
     // 1. Fetch Master Client Data (Features & Billing)
     const unsub = onSnapshot(doc(db, 'restaurants', rId), (d) => {
