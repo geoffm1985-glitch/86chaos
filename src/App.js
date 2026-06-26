@@ -82,10 +82,35 @@ const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${enco
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
-// --- Audit Log Helper ---
-const logAudit = async (user, action, target, details) => { try { await addDoc(collection(db, "auditLogs"), { userName: user?.name || user?.email || "Unknown User", isGhost: user?.role === 'System Administrator', action, target, details, timestamp: new Date().toISOString(), restaurantId: user?.restaurantId }); } catch (error) { console.error("Audit failed", error); } };
-// --- Global Crash Reporter ---
-if (typeof window !== 'undefined' && !window.crashCatcherAttached) { window.crashCatcherAttached = true; window.onerror = (msg, url, lineNo, columnNo, error) => { addDoc(collection(db, "crashReports"), { type: 'error', message: msg, stack: error?.stack || '', time: new Date().toISOString() }).catch(()=>{}); return false; }; }
+// --- Global Crash Reporter & Telemetry Engine ---
+if (typeof window !== 'undefined' && !window.crashCatcherAttached) { 
+  window.crashCatcherAttached = true; 
+  window.breadcrumbs = [];
+
+  // Silently record the last 15 buttons clicked
+  window.addEventListener('click', (e) => {
+    let target = e.target;
+    // Find the closest button if they clicked an icon inside a button
+    let btn = target.closest('button');
+    if (btn) {
+      let text = btn.innerText || btn.getAttribute('aria-label') || 'Icon Button';
+      if (text.length > 40) text = text.substring(0, 40) + '...';
+      window.breadcrumbs.push({ time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}), action: 'Clicked', target: text.trim().replace(/\n/g, ' ') });
+      if (window.breadcrumbs.length > 15) window.breadcrumbs.shift();
+    }
+  }, true);
+
+  window.onerror = (msg, url, lineNo, columnNo, error) => { 
+    addDoc(collection(db, "crashReports"), { 
+      type: 'error', 
+      message: msg, 
+      stack: error?.stack || '', 
+      breadcrumbs: window.breadcrumbs || [], // Attach the breadcrumbs to the crash
+      time: new Date().toISOString() 
+    }).catch(()=>{}); 
+    return false; 
+  }; 
+}
 
 // --- HOLIDAY & TIME ENGINE ---
 const HOLIDAYS = {
@@ -3508,16 +3533,39 @@ const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); 
         </div>
       )}
 
-      {/* --- TAB: SUPPORT & CRASHES --- */}
+     {/* --- TAB: SUPPORT & CRASHES --- */}
       {subTab === 'support' && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Live Diagnostics / Bug Ledger</h3></div>
+          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+            <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Live Diagnostics / Bug Ledger</h3>
+            <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded">Clear Logs</button>
+          </div>
           <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
             {crashLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No bugs or crashes logged yet. System stable.</div>}
             {crashLogs.map(log => (
-              <div key={log.id} className={`${T.row} flex flex-col gap-1`}>
-                <div className="flex justify-between items-start"><span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all">{log.message}</span><span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span></div>
-                {log.stack && <div className="text-[9px] text-slate-500 font-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-[#0B0E11] p-2 rounded border border-[#2A353D]">{log.stack}</div>}
+              <div key={log.id} className={`${T.row} flex flex-col gap-2`}>
+                <div className="flex justify-between items-start">
+                  <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span>
+                </div>
+                
+                {/* TELEMETRY BREADCRUMBS UI */}
+                {log.breadcrumbs && log.breadcrumbs.length > 0 && (
+                  <div className="bg-[#0B0E11] rounded-lg border border-[#2A353D] p-2 mt-1">
+                     <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">User Action Telemetry (Last 15 Clicks)</div>
+                     <div className="text-[10px] font-mono text-slate-400 space-y-0.5">
+                       {log.breadcrumbs.map((crumb, idx) => (
+                         <div key={idx} className="flex gap-2">
+                           <span className="text-emerald-500/70">[{crumb.time}]</span>
+                           <span className="text-slate-500">{crumb.action}:</span>
+                           <span className="text-blue-300">"{crumb.target}"</span>
+                         </div>
+                       ))}
+                     </div>
+                  </div>
+                )}
+
+                {log.stack && <div className="text-[9px] text-slate-500 font-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-[#0B0E11] p-2 rounded border border-[#2A353D] opacity-70 hover:opacity-100 transition-opacity">{log.stack}</div>}
               </div>
             ))}
           </div>
