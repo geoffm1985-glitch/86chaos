@@ -507,16 +507,12 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
     await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
     addToast('Posted', 'Shift sent to trade board.');
-  };
 // ---> PASTE THIS MISSING BLOCK RIGHT HERE <---
   const activeMonthShifts = shifts
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date));
   // ---------------------------------------------
 
-  return (
-
-  
   // --- TRADE BOARD LOGIC ---
   const availableSwaps = shiftSwaps
     .filter(s => s.status === 'available' && s.date >= getToday())
@@ -528,6 +524,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     addToast('Revoked', 'Shift removed from Trade Board.');
   };
 
+  return (
   const handleClaimShift = async (swap) => {
     if (!window.confirm(`Claim the ${swap.role} shift on ${formatDisplayDate(swap.date)}?`)) return;
     try {
