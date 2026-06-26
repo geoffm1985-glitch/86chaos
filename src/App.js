@@ -3131,7 +3131,7 @@ const TabAuditLog = ({ appUser }) => {
 };
 
 // --- SALES & TRENDS TAB ---
-const TabSales = ({ sales, addToast, appUser }) => {
+const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) => {
   const getMonday = (dStr) => {
     const d = new Date(dStr + 'T12:00:00');
     const day = d.getDay();
@@ -3148,13 +3148,31 @@ const TabSales = ({ sales, addToast, appUser }) => {
     return d.toISOString().split('T')[0];
   });
 
+  // --- NEW: AUTO-LABOR CALCULATION ENGINE ---
+  const calculatePunchHours = (inTime, outTime, breakMins = 0) => {
+      if (!inTime) return 0;
+      const end = outTime ? new Date(outTime) : new Date(); // If currently on clock, calc up to this exact minute
+      const rawMins = (end - new Date(inTime)) / 60000;
+      return Math.max(0, (rawMins - breakMins) / 60);
+  };
+
+  const getDailyLabor = (date) => {
+      const dayPunches = timePunches.filter(p => p.date === date);
+      return dayPunches.reduce((acc, p) => {
+          const emp = users.find(u => u.id === p.employeeId);
+          const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
+          return acc + (hours * (emp?.wage || 0));
+      }, 0);
+  };
+
   useEffect(() => {
     const newEditData = {};
     weekDays.forEach(date => {
       const daySale = sales.find(s => s.date === date);
       newEditData[date] = {
         grossSales: daySale?.grossSales || '',
-        laborCost: daySale?.laborCost || '',
+        // If they saved a specific labor cost, use it. Otherwise leave it blank so the placeholder/auto-fill kicks in.
+        laborCost: daySale?.laborCost !== undefined ? daySale.laborCost : '',
         foodCost: daySale?.foodCost || '',
         notes: daySale?.notes || ''
       };
@@ -3171,10 +3189,15 @@ const TabSales = ({ sales, addToast, appUser }) => {
   const handleSave = async (date) => {
     const data = editData[date];
     const existing = sales.find(s => s.date === date);
+    const autoLabor = getDailyLabor(date);
+    
+    // If they didn't type anything, grab the auto-calculated labor
+    const finalLabor = data.laborCost !== '' ? parseFloat(data.laborCost) : autoLabor;
+
     const payload = {
       date,
       grossSales: parseFloat(data.grossSales) || 0,
-      laborCost: parseFloat(data.laborCost) || 0,
+      laborCost: finalLabor || 0,
       foodCost: parseFloat(data.foodCost) || 0,
       notes: data.notes || '',
       restaurantId: appUser.restaurantId,
@@ -3201,7 +3224,14 @@ const TabSales = ({ sales, addToast, appUser }) => {
   let wtdGross = 0; let wtdLabor = 0; let wtdFood = 0;
   weekDays.forEach(d => {
     const s = sales.find(x => x.date === d);
-    if (s) { wtdGross += (s.grossSales||0); wtdLabor += (s.laborCost||0); wtdFood += (s.foodCost||0); }
+    const autoLabor = getDailyLabor(d);
+    if (s) { 
+      wtdGross += (s.grossSales||0); 
+      wtdLabor += (s.laborCost > 0 ? s.laborCost : autoLabor); 
+      wtdFood += (s.foodCost||0); 
+    } else {
+      wtdLabor += autoLabor; // Add auto-labor even if not saved yet to show running trends
+    }
   });
   const wtdLaborPct = wtdGross > 0 ? ((wtdLabor / wtdGross) * 100).toFixed(1) : 0;
   const wtdFoodPct = wtdGross > 0 ? ((wtdFood / wtdGross) * 100).toFixed(1) : 0;
@@ -3232,19 +3262,24 @@ const TabSales = ({ sales, addToast, appUser }) => {
               const data = editData[date] || { grossSales: '', laborCost: '', foodCost: '', notes: '' };
               const isToday = date === getToday();
               const hasData = sales.find(s => s.date === date);
+              const autoLabor = getDailyLabor(date);
+              
+              // Display imported labor in green if not manually overridden
+              const displayLabor = data.laborCost !== '' ? data.laborCost : (autoLabor > 0 ? autoLabor.toFixed(2) : '');
 
               return (
                 <div key={date} className={`p-2 sm:p-3 flex flex-col gap-1.5 ${isToday ? 'bg-[#12161A] border-l-2 border-[#D4A381]' : 'hover:bg-[#12161A]/50 transition-colors'}`}>
                    <div className="flex justify-between items-center">
                       <span className={`text-[10px] font-black uppercase tracking-widest ${isToday ? 'text-[#D4A381]' : 'text-slate-300'}`}>{new Date(date+'T12:00').toLocaleDateString('en-US', {weekday:'short', month:'numeric', day:'numeric'})}</span>
                       <div className="flex items-center gap-2">
-                         {hasData && <span className="text-[8px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-900/20 px-1.5 py-0.5 rounded">Saved</span>}
+                         {data.laborCost === '' && autoLabor > 0 && <span className="text-[8px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-900/20 px-1.5 py-0.5 rounded border border-emerald-900/50">Auto-Labor</span>}
+                         {hasData && <span className="text-[8px] text-[#D4A381] font-black uppercase tracking-widest bg-[#8F6040]/20 px-1.5 py-0.5 rounded border border-[#D4A381]/30">Saved</span>}
                          {hasData && appUser?.isAdmin && <button onClick={() => { if(window.confirm("Delete record?")) deleteDoc(doc(db,"sales",hasData.id)); }} className="text-slate-500 hover:text-red-500"><Trash2 size={12}/></button>}
                       </div>
                    </div>
                    <div className="flex gap-1.5">
                       <div className="relative flex-1"><span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold">$</span><input type="number" value={data.grossSales} onChange={e=>handleInputChange(date, 'grossSales', e.target.value)} placeholder="Gross" className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381]" /></div>
-                      <div className="relative flex-1"><span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold">$</span><input type="number" value={data.laborCost} onChange={e=>handleInputChange(date, 'laborCost', e.target.value)} placeholder="Labor" className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381]" /></div>
+                      <div className="relative flex-1"><span className={`absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold ${data.laborCost === '' && autoLabor > 0 ? 'text-emerald-500' : 'text-slate-500'}`}>$</span><input type="number" value={displayLabor} onChange={e=>handleInputChange(date, 'laborCost', e.target.value)} placeholder="Labor" className={`w-full bg-[#0B0E11] border border-[#2A353D] text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381] ${data.laborCost === '' && autoLabor > 0 ? 'text-emerald-400 bg-emerald-900/10 border-emerald-900/50' : 'text-white'}`} /></div>
                       <div className="relative flex-1"><span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold">$</span><input type="number" value={data.foodCost} onChange={e=>handleInputChange(date, 'foodCost', e.target.value)} placeholder="Food" className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381]" /></div>
                       <button onClick={()=>handleSave(date)} className="w-8 sm:w-10 bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 font-black rounded flex items-center justify-center flex-shrink-0 hover:opacity-80 transition-opacity"><Check size={14}/></button>
                    </div>
@@ -3256,7 +3291,6 @@ const TabSales = ({ sales, addToast, appUser }) => {
     </div>
   );
 };
-
 
 // ============================================================================
 // ADMINISTRATOR COMMAND CENTER (Formerly God Mode)
