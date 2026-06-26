@@ -3467,7 +3467,17 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     sSnap.forEach(d => { const s = d.data(); if (!allUsers.find(u => u.id === s.employeeId)) { deleteDoc(doc(db, "shifts", d.id)); deadCount++; } });
     addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
   };
-
+const handleKillswitch = async (engage) => {
+    const keyword = engage ? 'LOCKDOWN' : 'REVIVE';
+    if (prompt(`CRITICAL: Type "${keyword}" to ${engage ? 'instantly lock out all clients' : 'restore global access'}.`) !== keyword) return addToast('Aborted', 'Killswitch operation canceled.');
+    
+    addToast('Executing', `${engage ? 'Locking down' : 'Restoring'} databases...`);
+    let count = 0;
+    for (const r of restaurants) {
+       try { await updateDoc(doc(db, "restaurants", r.id), { maintenanceMode: engage }); count++; } catch(e){}
+    }
+    addToast('Complete', `Signal sent to ${count} databases.`);
+  };
   const handleForceRefresh = async () => {
     if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
     addToast('Executing', 'Sending refresh signal...');
@@ -3706,7 +3716,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
         </div>
       )}
 
-      {/* --- TAB: OPERATIONS --- */}
+   {/* --- TAB: OPERATIONS --- */}
       {subTab === 'ops' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleMegaphone} className={`${T.card} p-5`}>
@@ -3715,16 +3725,24 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className={`${T.card} p-5 border-emerald-900/30`}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={`${T.card} p-5 border-emerald-900/30 flex flex-col`}>
               <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
-              <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug flex-1">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
+              <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors mt-auto">Execute Global Refresh</button>
             </div>
-            <div className={`${T.card} p-5 border-blue-900/30`}>
+            <div className={`${T.card} p-5 border-blue-900/30 flex flex-col`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
-              <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug flex-1">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
+              <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors mt-auto">Run DB Sweep</button>
+            </div>
+            <div className={`${T.card} p-5 border-red-900/30 flex flex-col`}>
+              <h3 className="font-black text-white mb-1">Platform Killswitch</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug flex-1">Forces all clients into a locked "Under Maintenance" holding screen. Re-click to revive.</p>
+              <div className="flex gap-2 mt-auto">
+                <button onClick={() => handleKillswitch(true)} className="flex-1 bg-red-900/20 text-red-500 border border-red-900/50 font-black text-[10px] uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors">Lockdown</button>
+                <button onClick={() => handleKillswitch(false)} className="flex-1 bg-emerald-900/20 text-emerald-500 border border-emerald-900/50 font-black text-[10px] uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Revive</button>
+              </div>
             </div>
           </div>
         </div>
@@ -3910,7 +3928,7 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
 
 if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
 
-  // BILLING LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
+// BILLING LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
   if (clientData?.billingStatus === 'Past Due' && !ghostTenant) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
@@ -3918,7 +3936,21 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
           <span className="text-6xl mb-4 block">💳</span>
           <h1 className="text-2xl font-black text-white mb-2">Subscription Past Due</h1>
           <p className="text-slate-400 font-medium mb-6">Access to 86 Chaos has been temporarily suspended for {clientData.name || 'this workspace'}. Please contact your management team or 86 Chaos Support to renew your plan.</p>
-          <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
+          <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); window.location.reload(); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
+        </div>
+      </div>
+    );
+  }
+
+  // MAINTENANCE KILLSWITCH LOCK SCREEN (Bypassed by Ghost Mode and Super Admins)
+  if (clientData?.maintenanceMode && !ghostTenant && !liveAppUser?.isSuperAdmin) {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
+        <div className="bg-[#1A2126] p-8 rounded-3xl border border-orange-900/50 shadow-2xl max-w-md w-full">
+          <span className="text-6xl mb-4 block">🚧</span>
+          <h1 className="text-2xl font-black text-white mb-2">System Maintenance</h1>
+          <p className="text-slate-400 font-medium mb-6">86 Chaos is currently down for emergency maintenance. We will be back online shortly. Hang tight!</p>
+          <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); window.location.reload(); }} className="w-full bg-orange-900/20 text-orange-500 font-black py-3 rounded-xl border border-orange-900/50 hover:bg-orange-900/40 transition-all uppercase tracking-widest">Log Out</button>
         </div>
       </div>
     );
