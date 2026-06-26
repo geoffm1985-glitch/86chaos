@@ -56,7 +56,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.1.0';
+const CURRENT_VERSION = '5.5.0';
 
 
 // --- Helpers ---
@@ -1021,6 +1021,16 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
+  // --- NEW STATE: CUSTOM PAYROLL DATE RANGE ---
+  const [periodStart, setPeriodStart] = useState(`${monthStr}-01`);
+  const [periodEnd, setPeriodEnd] = useState(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
+
+  // Auto-sync the date pickers if they use the master calendar dropdown
+  useEffect(() => {
+    setPeriodStart(`${monthStr}-01`);
+    setPeriodEnd(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
+  }, [monthStr]);
+
   const activeRoster = users.filter(u => u.isActive !== false);
 
   const displayUsers = [...activeRoster].sort((a,b) => {
@@ -1127,8 +1137,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   });
 
-  // --- NEW TIMESHEET & OT ENGINE ---
-  const monthPunches = timePunches.filter(p => p.date?.startsWith(monthStr)).sort((a,b) => new Date(a.clockInTime || 0) - new Date(b.clockInTime || 0));
+  // --- NEW TIMESHEET & OT ENGINE (TIED TO CUSTOM PERIOD) ---
+  const periodPunches = timePunches.filter(p => p.date >= periodStart && p.date <= periodEnd).sort((a,b) => new Date(a.clockInTime || 0) - new Date(b.clockInTime || 0));
   
   const calculatePunchHours = (inTime, outTime, breakMins = 0) => {
       if (!inTime || !outTime) return 0;
@@ -1147,7 +1157,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const weeklyHours = {}; 
   const OT_THRESHOLD = parseFloat(appUser?.systemSettings?.overtime || 40);
 
-  monthPunches.forEach(p => {
+  periodPunches.forEach(p => {
       if (p.status === 'clocked_in' || !p.clockOutTime) return;
       
       const emp = users.find(u => u.id === p.employeeId);
@@ -1190,7 +1200,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   });
   
   const summaryList = Object.values(payrollSummary).sort((a, b) => a.name.localeCompare(b.name));
-  const actualMonthLabor = summaryList.reduce((acc, s) => acc + s.pay, 0);
+  const actualPeriodLabor = summaryList.reduce((acc, s) => acc + s.pay, 0);
 
   const handleForceClockOut = async (punch) => {
       if (!window.confirm(`Force clock out ${punch.employeeName}?`)) return;
@@ -1257,14 +1267,13 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
   // --- EXPORT TIMESHEETS ENGINE ---
   const handleExportTimesheets = () => {
-    if (monthPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
+    if (periodPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
     
-    const [year, month] = monthStr.split('-');
-    const periodStart = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    const periodEnd = new Date(year, month, 0).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const pStartStr = new Date(periodStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const pEndStr = new Date(periodEnd + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
     let csv = `"--- PAYROLL SUMMARY ---"\n`;
-    csv += `"Pay Period: ${periodStart} - ${periodEnd}"\n\n`;
+    csv += `"Pay Period: ${pStartStr} - ${pEndStr}"\n\n`;
     csv += '"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n';
     
     summaryList.forEach(s => {
@@ -1275,14 +1284,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     csv += '"Employee Name","Date","Clock In","Clock Out","Break (Mins)","Total Hours","Hourly Rate","Total Pay","Cash Tips","Credit Tips"\n';
     
     // Sort reverse chronological for the individual punch view
-    const sortedPunches = [...monthPunches].sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
+    const sortedPunches = [...periodPunches].sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
     
     sortedPunches.forEach(p => {
        const emp = users.find(u => u.id === p.employeeId);
        const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
        const rate = emp?.wage || 0;
-       // We use standard rate for individual rows because OT spans across multiple punches. 
-       // The accurate OT pay is in the summary block above.
        const estCost = hours * rate; 
        
        const inStr = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown';
@@ -1296,7 +1303,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     
     const link = document.createElement("a"); 
     link.setAttribute("href", url); 
-    link.setAttribute("download", `Payroll_Export_${formatDisplayMonth(monthStr).replace(/\s+/g, '_')}.csv`);
+    link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
     document.body.appendChild(link); 
     link.click(); 
     document.body.removeChild(link);
@@ -1487,18 +1494,26 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       {/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
       {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center flex-wrap gap-2`}>
-            <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Actual Labor: {formatDisplayMonth(currentDate)}</h3>
+          
+          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+            <div className="flex items-center gap-4 flex-wrap">
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Payroll</h3>
+              <div className="flex items-center gap-2 bg-[#1A2126] border border-[#2A353D] p-1.5 rounded-lg shadow-inner">
+                 <input type="date" value={periodStart} onChange={e=>setPeriodStart(e.target.value)} className="bg-transparent text-[#D4A381] text-xs font-bold outline-none cursor-pointer" />
+                 <span className="text-slate-500 font-black text-[10px] uppercase">to</span>
+                 <input type="date" value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)} className="bg-transparent text-[#D4A381] text-xs font-bold outline-none cursor-pointer" />
+              </div>
+            </div>
+            
             <div className="flex items-center gap-3">
               <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📊 Export CSV</button>
               <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
-                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Actual Month Labor</span>
-                <span className="text-emerald-400 font-black text-sm">${actualMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
+                <span className="text-emerald-400 font-black text-sm">${actualPeriodLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
             </div>
           </div>
 
-          {/* NEW PAYROLL SUMMARY UI */}
           {summaryList.length > 0 && (
             <div className="p-4 border-b border-[#2A353D] bg-[#0B0E11]">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Payroll Summary</h4>
@@ -1522,9 +1537,9 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
           )}
 
           <div className={`divide-y ${T.border}`}>
-            {monthPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded this month.</div>}
+            {periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
             
-            {monthPunches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0)).map(p => {
+            {periodPunches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0)).map(p => {
                const emp = users.find(u => u.id === p.employeeId);
                const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
                const cost = hours * (emp?.wage || 0);
@@ -1569,6 +1584,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     </div>
   );
 };
+
+
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
   const monthStr = getMonthStr(currentDate); 
@@ -4029,7 +4046,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.1.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.5.0</span>
       </div>
     </div>
   );
