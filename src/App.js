@@ -1071,6 +1071,24 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       return acc + (hours * (emp?.wage || 0));
   }, 0);
 
+  // --- NEW: PAYROLL SUMMARY ENGINE ---
+  const payrollSummary = {};
+  monthPunches.forEach(p => {
+      const emp = users.find(u => u.id === p.employeeId);
+      const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
+      if (!payrollSummary[p.employeeId]) {
+          payrollSummary[p.employeeId] = {
+              name: p.employeeName || 'Unknown',
+              hours: 0,
+              rate: emp?.wage || 0,
+              pay: 0
+          };
+      }
+      payrollSummary[p.employeeId].hours += hours;
+      payrollSummary[p.employeeId].pay += (hours * (emp?.wage || 0));
+  });
+  const summaryList = Object.values(payrollSummary).sort((a, b) => a.name.localeCompare(b.name));
+
   const handleForceClockOut = async (punch) => {
       if (!window.confirm(`Force clock out ${punch.employeeName}?`)) return;
       await updateDoc(doc(db, "timePunches", punch.id), { clockOutTime: new Date().toISOString(), status: 'clocked_out' });
@@ -1091,7 +1109,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
   const openEditPunchModal = (punch) => {
     setEditingPunch(punch);
-    // Adjusts ISO to local time so the HTML input displays it properly
     const formatForInput = (iso) => {
       if (!iso) return '';
       const d = new Date(iso);
@@ -1124,12 +1141,20 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   };
 
- // --- EXPORT TIMESHEETS ENGINE ---
+  // --- EXPORT TIMESHEETS ENGINE (UPDATED WITH SUMMARY) ---
   const handleExportTimesheets = () => {
     if (monthPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
     
-    // Wrapped headers in quotes to force strict CSV compliance
-    let csv = '"Employee Name","Date","Clock In","Clock Out","Total Hours","Hourly Rate","Total Pay"\n';
+    // Inject the total summaries at the top of the CSV file
+    let csv = '"--- PAYROLL SUMMARY ---"\n';
+    csv += '"Employee Name","Total Hours","Hourly Rate","Total Pay"\n';
+    summaryList.forEach(s => {
+       csv += `"${s.name}","${s.hours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}"\n`;
+    });
+    
+    // Inject the raw individual punches at the bottom
+    csv += '\n"--- INDIVIDUAL PUNCHES ---"\n';
+    csv += '"Employee Name","Date","Clock In","Clock Out","Total Hours","Hourly Rate","Total Pay"\n';
     
     monthPunches.forEach(p => {
        const emp = users.find(u => u.id === p.employeeId);
@@ -1148,8 +1173,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     
     const link = document.createElement("a"); 
     link.setAttribute("href", url); 
-    // Fixed the Invalid Date bug by passing monthStr instead of currentDate
-    link.setAttribute("download", `Timesheets_${formatDisplayMonth(monthStr).replace(/\s+/g, '_')}.csv`);
+    link.setAttribute("download", `Payroll_Export_${formatDisplayMonth(monthStr).replace(/\s+/g, '_')}.csv`);
     document.body.appendChild(link); 
     link.click(); 
     document.body.removeChild(link);
@@ -1172,7 +1196,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </form>
       </Modal>
 
-      {/* NEW PUNCH EDIT MODAL */}
       <Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={`Edit Punch: ${editingPunch?.employeeName}`}>
         <form onSubmit={handleSavePunchEdit} className="space-y-4">
           <div>
@@ -1293,7 +1316,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
             </div>
           </div>
           
-          {/* Event Ledger underneath for clear visibility */}
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
@@ -1330,12 +1352,31 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
             <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Actual Labor: {formatDisplayMonth(currentDate)}</h3>
             <div className="flex items-center gap-3">
               <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📊 Export CSV</button>
-              <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end">
+              <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Actual Month Labor</span>
                 <span className="text-emerald-400 font-black text-sm">${actualMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
             </div>
           </div>
+
+          {/* NEW PAYROLL SUMMARY UI */}
+          {summaryList.length > 0 && (
+            <div className="p-4 border-b border-[#2A353D] bg-[#0B0E11]">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Payroll Summary</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {summaryList.map(s => (
+                  <div key={s.name} className="bg-[#1A2126] p-3 rounded-xl border border-[#2A353D] flex justify-between items-center shadow-sm hover:border-[#D4A381]/50 transition-colors">
+                    <div>
+                      <div className="font-bold text-white text-sm">{s.name}</div>
+                      <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest mt-0.5">{s.hours.toFixed(2)} hrs @ ${s.rate.toFixed(2)}/hr</div>
+                    </div>
+                    <div className="text-[#D4A381] font-black text-lg">${s.pay.toFixed(2)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className={`divide-y ${T.border}`}>
             {monthPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded this month.</div>}
             
