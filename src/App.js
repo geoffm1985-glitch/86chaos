@@ -441,9 +441,9 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     .sort((a,b) => a.date.localeCompare(b.date))[0];
 
   const handleOfferSwap = async (shift) => {
-    if (!window.confirm("Offer shift to Trade Board?")) return;
+    if (!window.confirm(`Offer your ${formatDisplayDate(shift.date)} shift to the Trade Board?`)) return;
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}). Claim it on the Schedule!`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
     addToast('Posted', 'Shift sent to trade board.');
   };
 
@@ -488,8 +488,9 @@ return (
             )}
 
           </div>
+          
           <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => { if(myNextShift) { handleOfferSwap(myNextShift); } else { addToast("Error", "No upcoming shift to offer."); } }} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🔄</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Offer Shift</span></button>
+            <button onClick={() => addToast("Trade Board", "The Trade Board UI is currently under construction in the Forge.")} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🤝</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span></button>
             <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">🏖️</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span></button>
           </div>
 
@@ -499,17 +500,33 @@ return (
               {myMonthShifts.length === 0 ? (
                 <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No shifts scheduled for you this month.</div>
               ) : (
-                myMonthShifts.map(s => (
-                  <div key={s.id} className={`${T.row} flex justify-between items-center`}>
-                    <div>
-                      <div className="font-bold text-white text-sm">{formatDisplayDate(s.date)}</div>
-                      <div className={`text-[9px] font-black uppercase tracking-widest ${T.copper} mt-0.5`}>{s.role}</div>
+                myMonthShifts.map(s => {
+                  const isFuture = s.date >= getToday();
+                  const isOffered = shiftSwaps.some(swap => swap.shiftId === s.id && swap.status === 'available');
+
+                  return (
+                    <div key={s.id} className={`${T.row} flex justify-between items-center`}>
+                      <div>
+                        <div className="font-bold text-white text-sm">{formatDisplayDate(s.date)}</div>
+                        <div className={`text-[9px] font-black uppercase tracking-widest ${T.copper} mt-0.5`}>{s.role}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>
+                          {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
+                        </div>
+                        {isFuture && (
+                          isOffered ? (
+                            <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">Listed</span>
+                          ) : (
+                            <button onClick={() => handleOfferSwap(s)} className="text-[8px] font-black uppercase tracking-widest bg-[#1A2126] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] hover:border-[#D4A381]/50 px-2 py-1 rounded transition-colors shadow-sm">
+                              Swap
+                            </button>
+                          )
+                        )}
+                      </div>
                     </div>
-                    <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>
-                      {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
