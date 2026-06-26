@@ -992,6 +992,31 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       addToast('Deleted', 'Time punch removed.');
   };
 
+  // --- EXPORT TIMESHEETS ENGINE ---
+  const handleExportTimesheets = () => {
+    if (monthPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
+    
+    let csv = "Employee Name,Date,Clock In,Clock Out,Total Hours,Hourly Rate,Total Pay\n";
+    
+    monthPunches.forEach(p => {
+       const emp = users.find(u => u.id === p.employeeId);
+       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime);
+       const rate = emp?.wage || 0;
+       const cost = hours * rate;
+       const inStr = new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+       const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+       
+       csv += `"${p.employeeName}","${p.date}","${inStr}","${outStr}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${cost.toFixed(2)}"\n`;
+    });
+
+    const link = document.createElement("a"); 
+    const universalBOM = "\uFEFF"; // Forces Excel to read strings correctly
+    link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + universalBOM + csv)); 
+    link.setAttribute("download", `Timesheets_${formatDisplayMonth(currentDate).replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    addToast('Exported', 'Spreadsheet generated.');
+  };
+
   return (
     <div className="space-y-4 pb-12 w-full">
       <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title={editingEventId ? "Edit Special Event" : "Add Special Event"}>
@@ -1006,10 +1031,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </form>
       </Modal>
 
-      {/* TOP NAVIGATION TOGGLE */}
+      {/* TOP NAVIGATION TOGGLE (Secured for Admins) */}
       <div className="flex gap-2 border-b border-[#2A353D] pb-3 mb-2">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
-        <button onClick={() => setSubTab('timesheets')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Timesheets & Labor</button>
+        {appUser?.isAdmin && (
+          <button onClick={() => setSubTab('timesheets')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Timesheets & Labor</button>
+        )}
       </div>
 
       {subTab === 'schedule' && (
@@ -1140,14 +1167,17 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </div>
       )}
 
-      {/* NEW: THE TIMESHEET SUB-TAB */}
-      {subTab === 'timesheets' && (
+      {/* NEW: THE TIMESHEET SUB-TAB (Secured) */}
+      {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center flex-wrap gap-2`}>
             <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Actual Labor: {formatDisplayMonth(currentDate)}</h3>
-            <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end">
-              <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Actual Month Labor</span>
-              <span className="text-emerald-400 font-black text-sm">${actualMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            <div className="flex items-center gap-3">
+              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📊 Export CSV</button>
+              <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end">
+                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Actual Month Labor</span>
+                <span className="text-emerald-400 font-black text-sm">${actualMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+              </div>
             </div>
           </div>
           <div className={`divide-y ${T.border}`}>
@@ -2327,6 +2357,7 @@ const TabSettings = ({ appUser, addToast }) => {
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
+  const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); // NEW: Pay Period State
 
   // --- Notification State ---
   const [notifSchedule, setNotifSchedule] = useState(prefs.notifSchedule ?? true);
@@ -2393,7 +2424,7 @@ const TabSettings = ({ appUser, addToast }) => {
     e.preventDefault();
     try {
       await updateDoc(doc(db, "users", appUser.id), {
-        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime }
+        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime, payPeriod }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
@@ -2547,6 +2578,7 @@ const TabSettings = ({ appUser, addToast }) => {
                   <select value={defaultTab} onChange={e => setDefaultTab(e.target.value)} className={`${T.input} py-2 text-sm`}>
                     <option value="published">My Schedule</option>
                     <option value="messages">Message Board</option>
+                    <option value="team">Team Roster</option>
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
                     {appUser?.isAdmin && <option value="schedule">Master Schedule</option>}
                     {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
@@ -2561,6 +2593,25 @@ const TabSettings = ({ appUser, addToast }) => {
                 </div>
               </div>
             </div>
+
+            {/* NEW: ADMIN PAYROLL SETTING */}
+            {appUser?.isAdmin && (
+              <div className="pt-2">
+                <h2 className="text-base font-black text-emerald-400 mb-3 border-b border-[#2A353D] pb-2">Payroll Settings</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={T.label}>Default Pay Period</label>
+                    <select value={payPeriod} onChange={e => setPayPeriod(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                      <option value="Weekly">Weekly</option>
+                      <option value="Bi-Weekly">Bi-Weekly</option>
+                      <option value="Semi-Monthly">Semi-Monthly</option>
+                      <option value="Monthly">Monthly</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <button type="submit" className={`w-full ${T.btn} py-2`}>Save Preferences</button>
           </form>
 
