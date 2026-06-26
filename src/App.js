@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
@@ -47,6 +46,10 @@ const firebaseConfig = window.location.hostname === 'app.86chaos.com' ? prodConf
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
+enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
+
 const auth = getAuth(app);
 let messaging = null;
 try { if (typeof window !== 'undefined' && 'Notification' in window) messaging = getMessaging(app); } catch (e) { console.warn("Push not supported."); }
@@ -56,7 +59,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.6.0';
+const CURRENT_VERSION = '5.7.0';
 
 
 // --- Helpers ---
@@ -136,6 +139,25 @@ const getHoliday = (dateStr) => {
   const mmdd = dateStr.substring(5);
   return HOLIDAYS[dateStr] || HOLIDAYS[mmdd] || null;
 };
+
+
+// --- SYSTEM AUDIT LOGGER ---
+const logAudit = async (user, action, target, details) => {
+  if (!user || !user.restaurantId) return;
+  try {
+    await addDoc(collection(db, "auditLogs"), {
+      userId: user.id || 'system',
+      userName: user.name || 'System',
+      action,
+      target,
+      details,
+      timestamp: new Date().toISOString(),
+      restaurantId: user.restaurantId,
+      isGhost: user.isGhost || false
+    });
+  } catch (err) { console.error("Audit log failed:", err); }
+};
+
 
 // --- UI Components ---
 // ============================================================================
@@ -4106,7 +4128,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.6.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.7.0</span>
       </div>
     </div>
   );
