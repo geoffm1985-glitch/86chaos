@@ -2750,20 +2750,18 @@ const TabSettings = ({ appUser, addToast }) => {
 const handleSaveSystem = async (e) => {
     e.preventDefault();
     try {
-      // FIXED: Now saves to the global Restaurant database instead of the individual User profile
-      await updateDoc(doc(db, "restaurants", appUser.restaurantId), {
+      // Swapped updateDoc for setDoc with merge:true so it creates the master file if your legacy account is missing it
+      const targetId = appUser.restaurantId || 'legacy-sandbox';
+      await setDoc(doc(db, "restaurants", targetId), {
         systemSettings: { geofence: sysGeofence, breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime }
-      });
+      }, { merge: true });
+      
       addToast('System Saved', 'Global workspace configurations updated.');
       logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
-    } catch (err) { addToast('Error', 'Failed to save system settings.'); }
-  };
-
-  const handlePasswordReset = async () => {
-    try {
-      await sendPasswordResetEmail(auth, appUser.email);
-      addToast('Email Sent', 'Check your inbox for the password reset link.');
-    } catch (err) { addToast('Error', err.message); }
+    } catch (err) { 
+      // Changed this to print the exact Firebase error just in case!
+      addToast('Error', err.message); 
+    }
   };
 
   const handleAddRole = async (e) => {
