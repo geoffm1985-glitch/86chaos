@@ -56,7 +56,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.5.0';
+const CURRENT_VERSION = '5.6.0';
 
 
 // --- Helpers ---
@@ -1703,12 +1703,12 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
   };
 
-const renderTasks = (freqFilter) => {
+  const renderTasks = (freqFilter) => {
     const filteredTasks = tasks.filter(t => t.frequency === freqFilter);
     const grouped = filteredTasks.reduce((acc, t) => { if(!acc[t.category]) acc[t.category]=[]; acc[t.category].push(t); return acc; }, { 'Cleaning': [], 'General': [] });
     const periodKey = getTaskPeriodKey(freqFilter);
     
-    // Gives Team Managers access to add/edit/delete tasks
+    // GIVES TEAM MANAGERS ACCESS TO TASKS
     const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team;
 
     return (
@@ -3978,7 +3978,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
   <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.5.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.6.0</span>
       </div>
     </div>
   );
