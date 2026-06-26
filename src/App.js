@@ -56,7 +56,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.0.0';
+const CURRENT_VERSION = '5.1.0';
 
 
 // --- Helpers ---
@@ -2565,7 +2565,7 @@ const TabSettings = ({ appUser, addToast }) => {
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
-  const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); // NEW: Pay Period State
+  const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
 
   // --- Notification State ---
   const [notifSchedule, setNotifSchedule] = useState(prefs.notifSchedule ?? true);
@@ -2577,6 +2577,7 @@ const TabSettings = ({ appUser, addToast }) => {
   // --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
+  const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false); // NEW: Unpaid Breaks
   const [sysTips, setSysTips] = useState(sys.tips ?? true);
   const [sysTrades, setSysTrades] = useState(sys.trades ?? true);
   const [sysAutoApprove, setSysAutoApprove] = useState(sys.autoApprove ?? false);
@@ -2642,7 +2643,7 @@ const TabSettings = ({ appUser, addToast }) => {
     e.preventDefault();
     try {
       await updateDoc(doc(db, "users", appUser.id), {
-        systemSettings: { geofence: sysGeofence, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime }
+        systemSettings: { geofence: sysGeofence, breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime }
       });
       addToast('System Saved', 'Global workspace configurations updated.');
       logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
@@ -2656,7 +2657,6 @@ const TabSettings = ({ appUser, addToast }) => {
     } catch (err) { addToast('Error', err.message); }
   };
 
-  // --- Role Handlers ---
   const handleAddRole = async (e) => {
     e.preventDefault();
     if(!newRoleName.trim()) return;
@@ -2716,8 +2716,6 @@ const TabSettings = ({ appUser, addToast }) => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      
-      {/* Settings Navigation (Compact Mobile Grid) */}
       <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
         {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace'] : []).map((tab) => (
           <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
@@ -2726,11 +2724,9 @@ const TabSettings = ({ appUser, addToast }) => {
         ))}
       </div>
 
-      {/* --- SUB-TAB: MY PROFILE --- */}
       {subTab === 'profile' && (
         <div className="space-y-3">
           <div className={`${T.card} p-3 sm:p-5`}>
-            
             <div className="flex items-center gap-4 mb-4 pb-4 border-b border-[#2A353D]">
               <div className="relative group cursor-pointer">
                 <img src={getAvatar(name, photoURL)} alt="Profile" className={`w-14 h-14 rounded-full border-2 border-[#D4A381] object-cover shadow-lg bg-[#12161A]`} />
@@ -2753,17 +2749,14 @@ const TabSettings = ({ appUser, addToast }) => {
                 <div><label className={T.label}>Full Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className={`${T.input} py-2 text-sm`} required /></div>
                 <div><label className={T.label}>Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={`${T.input} py-2 text-sm`} /></div>
               </div>
-              
               <div>
                 <label className={T.label}>Profile Picture URL</label>
                 <input type="text" value={photoURL} onChange={e => setPhotoURL(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Paste image link here or use the upload button above..." />
               </div>
-
               <div><label className={T.label}>Email Address (Cannot change)</label><input type="email" value={appUser?.email} disabled className={`${T.input} py-2 text-sm opacity-50 cursor-not-allowed`} /></div>
               <button type="submit" className={`w-full ${T.btn} py-2`}>Save Profile</button>
             </form>
           </div>
-
           <div className={`${T.card} p-3 sm:p-5 bg-red-900/10 border-red-900/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
              <div>
                <h3 className="text-xs font-black text-red-500 uppercase tracking-widest mb-1">Security</h3>
@@ -2774,7 +2767,6 @@ const TabSettings = ({ appUser, addToast }) => {
         </div>
       )}
 
-     {/* --- SUB-TAB: PREFERENCES --- */}
       {subTab === 'preferences' && (
         <div className="space-y-4">
           <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
@@ -2801,8 +2793,6 @@ const TabSettings = ({ appUser, addToast }) => {
                 </div>
               </div>
             </div>
-
-            {/* NEW: ADMIN PAYROLL SETTING */}
             {appUser?.isAdmin && (
               <div className="pt-2">
                 <h2 className="text-base font-black text-emerald-400 mb-3 border-b border-[#2A353D] pb-2">Payroll Settings</h2>
@@ -2819,7 +2809,6 @@ const TabSettings = ({ appUser, addToast }) => {
                 </div>
               </div>
             )}
-
             <button type="submit" className={`w-full ${T.btn} py-2`}>Save Preferences</button>
           </form>
 
@@ -2828,12 +2817,10 @@ const TabSettings = ({ appUser, addToast }) => {
               <div>
                 <h2 className="text-base font-black text-white mb-1">Roster Roles</h2>
                 <p className="text-[10px] text-slate-400 font-medium mb-3">Add, edit, or remove job titles.</p>
-                
                 <form onSubmit={handleAddRole} className="flex flex-col sm:flex-row gap-2 mb-3">
                   <input type="text" value={newRoleName} onChange={e=>setNewRoleName(e.target.value)} placeholder="New Role Name..." className={`${T.input} py-2 text-sm`} required />
                   <button type="submit" className={`${T.btn} py-2 whitespace-nowrap`}><Plus size={16} className="inline mr-1"/> Add Role</button>
                 </form>
-                
                 <div className="flex flex-wrap gap-2">
                   {displayRoles.map(role => (
                     <div key={role.id} className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-2 py-1 rounded-lg shadow-sm">
@@ -2850,7 +2837,6 @@ const TabSettings = ({ appUser, addToast }) => {
                   ))}
                 </div>
               </div>
-
             <div className="pt-4 mt-4 border-t border-[#2A353D]">
                 <h2 className="text-base font-black text-white mb-2">Prep Stations</h2>
                 <div className="flex gap-2 mb-3">
@@ -2886,18 +2872,15 @@ const TabSettings = ({ appUser, addToast }) => {
         </div>
       )}
 
-      {/* --- SUB-TAB: ALERTS --- */}
       {subTab === 'alerts' && (
         <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
           <div>
             <h2 className="text-base font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={16}/> Alerts & Routing</h2>
             <p className="text-[10px] text-slate-400 font-medium mb-3">Control how 86 Chaos pings your device.</p>
-            
             <div className="space-y-2">
               <Toggle label="Schedule Publications" desc="Get alerted the exact second a new schedule goes live." checked={notifSchedule} onChange={e => setNotifSchedule(e.target.checked)} />
               <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
               <Toggle label="Urgent Message Board" desc="Receive push alerts for announcements marked 'Critical' by managers." checked={notifMessages} onChange={e => setNotifMessages(e.target.checked)} />
-              
               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl`}>
                 <label className="flex items-center justify-between cursor-pointer group">
                   <div>
@@ -2910,18 +2893,10 @@ const TabSettings = ({ appUser, addToast }) => {
                     <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${notifReminders ? 'transform translate-x-4' : ''}`}></div>
                   </div>
                 </label>
-
                 {notifReminders && (
                   <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
-                    <input 
-                      type="number" 
-                      min="1" 
-                      value={reminderTime} 
-                      onChange={e => setReminderTime(e.target.value)} 
-                      className={`${T.input} w-20 py-1 text-center text-xs font-black`} 
-                      placeholder="120"
-                    />
+                    <input type="number" min="1" value={reminderTime} onChange={e => setReminderTime(e.target.value)} className={`${T.input} w-20 py-1 text-center text-xs font-black`} placeholder="120" />
                   </div>
                 )}
               </div>
@@ -2931,10 +2906,8 @@ const TabSettings = ({ appUser, addToast }) => {
         </form>
       )}
 
-      {/* --- SUB-TAB: GLOBAL WORKSPACE (ADMIN ONLY) --- */}
       {subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
-          
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
                <h2 className="text-base font-black text-white"><Shield className={`inline mr-2 ${T.copper}`} size={16}/> Global Config</h2>
@@ -2944,8 +2917,8 @@ const TabSettings = ({ appUser, addToast }) => {
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
                <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
+               <Toggle label="Unpaid Break Tracking" desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} />
                <Toggle label="Block Early Clock-Ins" desc="Prevent staff from punching in before their grace period begins." checked={sysBlockEarly} onChange={e => setSysBlockEarly(e.target.checked)} />
-               
                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
                  <div>
                    <div className="text-xs font-bold text-white">Clock-In Grace Period</div>
@@ -2959,7 +2932,7 @@ const TabSettings = ({ appUser, addToast }) => {
              <div className="space-y-2">
                <Toggle label="Enable Peer-to-Peer Trades" desc="Allow staff to post their shifts to the Trade Board for others to claim." checked={sysTrades} onChange={e => setSysTrades(e.target.checked)} />
                <Toggle label="Auto-Approve Shift Swaps" desc="If enabled, shift claims are approved instantly without manager intervention." checked={sysAutoApprove} disabled={!sysTrades} onChange={e => setSysAutoApprove(e.target.checked)} />
-               <Toggle label="Role-Restricted Trades" desc="Staff can only claim shifts that match their assigned role (e.g., Bartenders can't claim Kitchen shifts)." checked={sysSameRoleTrades} disabled={!sysTrades} onChange={e => setSysSameRoleTrades(e.target.checked)} />
+               <Toggle label="Role-Restricted Trades" desc="Staff can only claim shifts that match their assigned role." checked={sysSameRoleTrades} disabled={!sysTrades} onChange={e => setSysSameRoleTrades(e.target.checked)} />
              </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
@@ -3772,7 +3745,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.1.0</span>
       </div>
     </div>
   );
