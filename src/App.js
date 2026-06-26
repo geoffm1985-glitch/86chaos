@@ -2576,8 +2576,9 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
 
 
 // --- THE EXPANDED SETTINGS COMMAND CENTER ---
-const TabSettings = ({ appUser, addToast }) => {
+const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const [subTab, setSubTab] = useState('profile');
+  const [newOwnerId, setNewOwnerId] = useState('');
 
   // --- Profile State ---
   const [name, setName] = useState(appUser?.name || '');
@@ -2973,8 +2974,38 @@ const TabSettings = ({ appUser, addToast }) => {
                </div>
              </div>
 
-          </div>
-          <button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
+<button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
+        </form>
+      )}
+
+      {/* --- TRANSFER OWNERSHIP ZONE --- */}
+      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin) && (
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          if (!newOwnerId) return addToast('Error', 'Select a new owner.');
+          if (prompt(`CRITICAL: Type "TRANSFER" to hand over ownership of this workspace. You will lose master control.`) !== 'TRANSFER') return addToast('Aborted', 'Transfer canceled.');
+          
+          const newOwner = users.find(u => u.id === newOwnerId);
+          try {
+            await updateDoc(doc(db, "users", newOwner.id), { isAdmin: true });
+            await updateDoc(doc(db, "restaurants", appUser.restaurantId), { ownerName: newOwner.name, ownerEmail: newOwner.email });
+            addToast('Transferred', `Ownership transferred to ${newOwner.name}.`);
+            setNewOwnerId('');
+          } catch(err) { addToast('Error', err.message); }
+        }} className={`${T.card} p-4 sm:p-5 mt-4 border-red-900/50 shadow-[0_0_15px_rgba(220,38,38,0.1)]`}>
+           <div className="mb-3 border-b border-[#2A353D] pb-2">
+             <h2 className="text-base font-black text-red-500">Transfer Ownership</h2>
+             <p className="text-[10px] text-slate-400 font-medium leading-snug mt-1">Permanently transfer billing and master control to another active team member.</p>
+           </div>
+           <div className="flex flex-col sm:flex-row gap-3">
+             <select value={newOwnerId} onChange={e => setNewOwnerId(e.target.value)} className={T.input} required>
+               <option value="">Select New Owner...</option>
+               {users.filter(u => u.isActive && u.id !== appUser.id).map(u => (
+                 <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+               ))}
+             </select>
+             <button type="submit" className="bg-red-900/20 text-red-500 font-black tracking-widest uppercase border border-red-900/50 rounded-xl px-6 py-3 hover:bg-red-900/40 transition-colors whitespace-nowrap">Transfer</button>
+           </div>
         </form>
       )}
 
@@ -3931,8 +3962,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'audit' && liveAppUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
+{activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}        {activeTabState === 'audit' && liveAppUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && <TabAuditLog appUser={liveAppUser} />}
         {activeTabState === 'godmode' && (liveAppUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin) && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
       </main>
 
