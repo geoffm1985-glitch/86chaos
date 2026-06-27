@@ -59,7 +59,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '6.0.0';
+const CURRENT_VERSION = '6.0.1';
 
 
 // --- Helpers ---
@@ -208,8 +208,8 @@ if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time 
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
-if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });  
-  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
+if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size={18}/> });
+  if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   return (
      <div className="fixed inset-0 z-[70] flex justify-end">
@@ -4207,7 +4207,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.1</span>
       </div>
     </div>
   );
