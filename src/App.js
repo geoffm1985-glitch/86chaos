@@ -2605,44 +2605,61 @@ const [yieldMult, setYieldMult] = useState(1);
   const [editingRecipeId, setEditingRecipeId] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
 
-  const handleScanRecipe = async (e) => {
+const handleScanRecipe = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) return addToast('Error', 'Image must be under 5MB.');
 
     setIsScanning(true);
-    addToast('Scanning', 'AI is reading the recipe...');
+    addToast('Scanning', 'Optimizing and reading recipe...');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = async () => {
-      try {
-        const response = await fetch('/api/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: reader.result })
-        });
-
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Failed to scan.');
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = async () => {
+        // Compress the image on the device BEFORE sending it to Vercel/Gemini
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200; // Drops a 12MB photo down to ~200KB instantly
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) {
+           scaleSize = MAX_WIDTH / img.width;
         }
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
 
-        const data = await response.json();
-        
-        setTitle(data.title || '');
-        setPrepTime(data.prepTime || '--');
-        setYieldAmt(data.yieldAmt || '--');
-        setIngredients(data.ingredients || '');
-        setInstructions(data.instructions || '');
-        
-        setIsFormOpen(true);
-        addToast('Success', 'Recipe extracted! Please review.');
-      } catch (err) {
-        addToast('Error', err.message);
-      } finally {
-        setIsScanning(false);
-      }
+        try {
+          const response = await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64Compressed })
+          });
+
+          if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || 'Failed to scan.');
+          }
+
+          const data = await response.json();
+          
+          setTitle(data.title || '');
+          setPrepTime(data.prepTime || '--');
+          setYieldAmt(data.yieldAmt || '--');
+          setIngredients(data.ingredients || '');
+          setInstructions(data.instructions || '');
+          
+          setIsFormOpen(true);
+          addToast('Success', 'Recipe extracted! Please review.');
+        } catch (err) {
+          addToast('Error', err.message);
+        } finally {
+          setIsScanning(false);
+        }
+      };
     };
     e.target.value = ''; // Reset input so you can scan the same file again if needed
   };
@@ -2754,16 +2771,25 @@ const handleInjectLegacyRecipes = async () => {
 
 {canManageRecipes && (
             <div className="flex gap-2 w-full sm:w-auto">
-              <label className={`${T.btnAlt} flex items-center justify-center gap-2 cursor-pointer ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
-                {isScanning ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
-                <span className="whitespace-nowrap">{isScanning ? 'Scanning...' : 'Scan Image'}</span>
-                <input type="file" accept="image/*" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
-              </label>
+              
+              <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm flex-shrink-0 ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
+                 <label className="flex items-center justify-center px-4 py-2.5 cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-slate-300 hover:text-[#D4A381]" title="Take Photo">
+                    {isScanning ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
+                    {/* capture="environment" forces the camera open */}
+                    <input type="file" accept="image/*" capture="environment" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
+                 </label>
+                 <label className="flex items-center justify-center px-4 py-2.5 cursor-pointer hover:bg-[#1A2126] transition-colors text-slate-300 hover:text-[#D4A381]" title="Upload Photo">
+                    <span className="text-xs font-bold uppercase tracking-wider">Upload</span>
+                    {/* Lacking the capture tag forces the file gallery open */}
+                    <input type="file" accept="image/*" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
+                 </label>
+              </div>
+
               <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2 whitespace-nowrap`}>
                 <Plus size={16}/> New Spec
               </button>
             </div>
-          )}       </div>
+          )}      </div>
       </div>
       
       {filteredRecipes.length === 0 ? (
