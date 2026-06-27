@@ -59,7 +59,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '6.0.1';
+const CURRENT_VERSION = '6.0.2';
 
 
 // --- Helpers ---
@@ -201,8 +201,7 @@ if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time 
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen'
  || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
-  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
-  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
+if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
   
   // Core UI (Always active)
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
@@ -1179,13 +1178,13 @@ const validDates = [];
       return Math.max(0, (rawMins - breakMins) / 60);
   };
 
-  const getMonday = (dateString) => {
-      const d = new Date(dateString + 'T12:00:00');
-      const day = d.getDay();
-      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-      return new Date(d.setDate(diff)).toISOString().split('T')[0];
+const getWeekStart = (dateString) => {
+      const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+      const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
+      let d = new Date(dateString + 'T12:00:00');
+      while (d.getDay() !== startDayInt) { d.setDate(d.getDate() - 1); }
+      return d.toISOString().split('T')[0];
   };
-
   const payrollSummary = {};
   const weeklyHours = {}; 
   const OT_THRESHOLD = parseFloat(appUser?.systemSettings?.overtime || 40);
@@ -1207,8 +1206,8 @@ const validDates = [];
       }
       
       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-      const weekKey = `${p.employeeId}_${getMonday(p.date)}`;
-      const prevWeeklyHours = weeklyHours[weekKey] || 0;
+const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
+    const prevWeeklyHours = weeklyHours[weekKey] || 0;
       const newWeeklyHours = prevWeeklyHours + hours;
       
       let reg = 0; let ot = 0;
@@ -1346,12 +1345,16 @@ const validDates = [];
 addToast('Exported', 'Spreadsheet generated.');
   };
 
-  // --- WEEKLY HOURS TRACKER ENGINE ---
+// --- WEEKLY HOURS TRACKER ENGINE ---
+  const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+  const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
+  const endDayInt = startDayInt === 0 ? 6 : startDayInt - 1;
+
   const weeksInMonth = [];
   let currentWeek = [];
   monthDays.forEach(d => {
       currentWeek.push(d);
-      if (new Date(d+'T12:00').getDay() === 0) {
+      if (new Date(d+'T12:00').getDay() === endDayInt) {
           weeksInMonth.push(currentWeek);
           currentWeek = [];
       }
@@ -2587,8 +2590,9 @@ const handleInjectLegacyRecipes = async () => {
 
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
 
-  // Determine if the current user has permission to edit/delete the viewed recipe
-const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.permissions?.team || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' || appUser?.id === activeRecipe.authorId);
+// Determine if the current user has permission to edit/delete the viewed recipe
+  const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+  const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       <div className={`${T.card} p-4 sm:p-5 flex flex-col md:flex-row gap-4 items-center justify-between`}>
@@ -2601,8 +2605,9 @@ const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.permission
             <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-sm flex items-center justify-center gap-2`} title="Inject Card Recipes">?? Import</button>
           )}
 
-          <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
-        </div>
+{canManageRecipes && (
+            <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
+          )}        </div>
       </div>
       
       {filteredRecipes.length === 0 ? (
@@ -2841,8 +2846,8 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
-  const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
-
+const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
+  const [payPeriodStart, setPayPeriodStart] = useState(prefs.payPeriodStart || 'Monday');
   // --- Notification State ---
   const [notifSchedule, setNotifSchedule] = useState(prefs.notifSchedule ?? true);
   const [notifMessages, setNotifMessages] = useState(prefs.notifMessages ?? true);
@@ -2907,12 +2912,11 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
     } catch (err) { addToast('Error', 'Failed to save profile.'); }
   };
 
-  const handleSavePrefs = async (e) => {
+const handleSavePrefs = async (e) => {
     e.preventDefault();
     try {
       await updateDoc(doc(db, "users", appUser.id), {
-        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
- payPeriod }
+        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime, payPeriod, payPeriodStart }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
@@ -3078,13 +3082,18 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
                 <h2 className="text-base font-black text-emerald-400 mb-3 border-b border-[#2A353D] pb-2">Payroll Settings</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className={T.label}>Default Pay Period</label>
+<label className={T.label}>Default Pay Period</label>
                     <select value={payPeriod} onChange={e => setPayPeriod(e.target.value)} className={`${T.input} py-2 text-sm`}>
                       <option value="Weekly">Weekly</option>
-
                       <option value="Bi-Weekly">Bi-Weekly</option>
                       <option value="Semi-Monthly">Semi-Monthly</option>
                       <option value="Monthly">Monthly</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={T.label}>Work Week Starts On</label>
+                    <select value={payPeriodStart} onChange={e => setPayPeriodStart(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
                 </div>
@@ -4207,7 +4216,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.2</span>
       </div>
     </div>
   );
