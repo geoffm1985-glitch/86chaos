@@ -59,7 +59,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.7.0';
+const CURRENT_VERSION = '5.7.1';
 
 
 // --- Helpers ---
@@ -1105,8 +1105,11 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const handleAssign = async () => {
     if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
     const sTime = startTime; const eTime = presetShift.includes('close') ? '23:59' : endTime;
-    const validDates = [];
+const validDates = [];
     for (const d of assignDates) { 
+      const existingShift = monthShifts.find(s => s.date === d && s.employeeId === emp.id);
+      if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
+      
       const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id);
       if (req) {
         if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
@@ -1732,9 +1735,14 @@ const TabMonth = ({ currentDate, users, shifts }) => {
         
         {Array.from({length:firstDay}).map((_,i)=><div key={`e-${i}`} className={`bg-[#12161A]/50 border-b border-r ${T.border} min-h-[50px] cell`}/>)}
         
-        {Array.from({length:days}).map((_,i)=>{
+{Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
-          const dayShifts = shifts.filter(s=>s.date===date&&s.isPublished);
+          const dayShifts = shifts
+            .filter(s => s.date === date && s.isPublished)
+            .sort((a, b) => {
+              if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
+              return (a.startTime || '').localeCompare(b.startTime || '');
+            });
           return (
             <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell`}>
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
@@ -4128,7 +4136,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.7.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.7.1</span>
       </div>
     </div>
   );
