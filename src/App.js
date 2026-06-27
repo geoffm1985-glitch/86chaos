@@ -1956,8 +1956,7 @@ const renderTasks = (freqFilter) => {
     const periodKey = getTaskPeriodKey(freqFilter);
     
     // GIVES TEAM MANAGERS ACCESS TO TASKS
-    const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team;
-
+const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
     return (
       <div className="space-y-4 mt-4">
         {canManageTasks && (
