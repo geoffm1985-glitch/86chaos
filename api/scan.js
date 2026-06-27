@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     }
 
     // 3. Strip the prefix off the base64 image string so the AI can read it
-    const base64Data = imageBase64.split(',')[1];
+    const base64Data = imageBase64.split(',')[1] || imageBase64;
 
     // 4. Give the AI its strict operating instructions
     const prompt = `You are an expert culinary AI. Read this recipe card. Extract the data and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.
@@ -25,19 +25,24 @@ export default async function handler(req, res) {
     - "ingredients" (string, each ingredient on a new line)
     - "instructions" (string, each step on a new line)`;
 
-    // 5. Send the payload to Google's Gemini 1.5 Flash Vision Model
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST', // <--- This is the line that was missing!
+    // 5. Send the payload using the strict camelCase formatting Google requires
+    const response = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$){apiKey}`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{
           parts: [
             { text: prompt },
-            { inline_data: { mime_type: "image/jpeg", data: base64Data } }
+            { 
+              inlineData: { 
+                mimeType: "image/jpeg", 
+                data: base64Data 
+              } 
+            }
           ]
         }],
         generationConfig: { 
-            response_mime_type: "application/json" 
+            responseMimeType: "application/json" 
         }
       })
     });
@@ -49,10 +54,12 @@ export default async function handler(req, res) {
       throw new Error(data.error.message);
     }
 
-    // 7. Extract the clean JSON and send it back to your app
+    // 7. Extract the text and apply a safety net to strip rogue markdown
     const rawText = data.candidates[0].content.parts[0].text;
-    const recipeData = JSON.parse(rawText);
-
+    const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    // 8. Parse the clean JSON and send it back to your app
+    const recipeData = JSON.parse(cleanText);
     return res.status(200).json(recipeData);
 
   } catch (error) {
