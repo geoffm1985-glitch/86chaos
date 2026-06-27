@@ -208,8 +208,7 @@ if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time 
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
-if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size={18}/> });  if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
-  
+if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   return (
@@ -4195,8 +4194,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
 {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
         {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
-        {activeTabState === 'audit' && <TabAuditLog appUser={liveAppUser} />}
-      </main>
+{activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} />}      </main>
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
