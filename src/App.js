@@ -61,7 +61,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '7.0.0';
+const CURRENT_VERSION = '7.5.0';
 
 
 // --- Helpers ---
@@ -533,7 +533,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const handleOfferSwap = async (shift) => {
     if (!window.confirm(`Offer your ${formatDisplayDate(shift.date)} shift to the Trade Board?`)) return;
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `? Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
     addToast('Posted', 'Shift sent to trade board.');
   };
 
@@ -553,7 +553,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     try {
        await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: appUser.id });
        await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
-       await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `? Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
+       await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `✅ Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
        addToast('Claimed', 'Shift successfully added to your schedule.');
        setSubTab('my-schedule'); 
     } catch (e) {
@@ -591,7 +591,11 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {events.filter(e => e.type === 'note' && e.isImportant).slice(0,1).map(alert => (
             <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
-              <span className="text-xl">?</span><div><span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span><p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p></div>
+              <Bell size={24} className="text-red-500 flex-shrink-0" />
+              <div>
+                <span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span>
+                <p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p>
+              </div>
             </div>
           ))}
           <div className={`${T.grad} rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-[#D4A381]/30`}>
@@ -625,10 +629,14 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
           
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => setSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
-               <span className="text-xl">?</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
-               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
+              <Repeat size={24} className={T.copper}/>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
+              {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
             </button>
-            <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">??</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span></button>
+            <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
+              <Calendar size={24} className={T.copper}/>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>
+            </button>
           </div>
 
           <div className={`${T.card} overflow-hidden mt-4`}>
@@ -675,7 +683,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         <div className="animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>? Trade Board</h3>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Repeat size={18} /> Trade Board</h3>
               <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">Back to Dashboard</button>
             </div>
             
@@ -694,8 +702,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
                         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">
                           {swap.role}   {formatShortTime(swap.startTime)} - {formatShortTime(swap.endTime)}
                         </div>
-                        <div className="text-xs
- text-slate-400 font-medium mt-1">Listed by {originalEmp?.name || 'Unknown Staff'}</div>
+                        <div className="text-xs text-slate-400 font-medium mt-1">Listed by {originalEmp?.name || 'Unknown Staff'}</div>
                       </div>
                       <div className="flex-shrink-0">
                         {isMine ? (
@@ -747,7 +754,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
       )}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}    
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}  
     </div>
   );
 };
@@ -1024,13 +1031,18 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
             </div>
           )}
 
-          <div className="flex gap-2 items-center">
-            <label className={`bg-[#12161A] text-[#D4A381] border border-[#2A353D] rounded-xl cursor-pointer hover:bg-[#1A2126] transition-colors flex items-center justify-center shadow-sm h-12 w-16 flex-shrink-0 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-              <Camera size={20} />
-              {/* capture="environment" forces mobile devices to open the rear-facing camera instantly */}
-              <input type="file" accept="image/*" capture="environment" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
-            </label>
-            <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
+<div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
+            <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+               <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
+                  <Camera size={20} />
+                  <input type="file" accept="image/*" capture="environment" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
+               </label>
+               <label className="flex-1 sm:w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381]" title="Upload Photo">
+                  <span className="text-[10px] font-black uppercase tracking-wider">Upload</span>
+                  <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
+               </label>
+            </div>
+            <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`flex-1 sm:flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
               {isUploading ? <Loader2 className="animate-spin" size={20}/> : 'Post'}
             </button>
           </div>
@@ -1472,12 +1484,18 @@ addToast('Exported', 'Spreadsheet generated.');
               </div>
             )}
             
-            <div className="flex gap-2 items-center">
-              <label className={`bg-[#12161A] text-[#D4A381] border border-[#2A353D] rounded-xl cursor-pointer hover:bg-[#1A2126] transition-colors flex items-center justify-center shadow-sm h-12 w-16 flex-shrink-0 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                <Camera size={20} />
-                <input type="file" accept="image/*" capture="environment" onChange={(e) => setEventImageFile(e.target.files[0])} className="hidden" disabled={isEventUploading} />
-              </label>
-              <button type="submit" disabled={isEventUploading || !eventTitle.trim()} className={`flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
+<div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
+              <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                 <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
+                    <Camera size={20} />
+                    <input type="file" accept="image/*" capture="environment" onChange={(e) => setEventImageFile(e.target.files[0])} className="hidden" disabled={isEventUploading} />
+                 </label>
+                 <label className="flex-1 sm:w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381]" title="Upload Photo">
+                    <span className="text-[10px] font-black uppercase tracking-wider">Upload</span>
+                    <input type="file" accept="image/*" onChange={(e) => setEventImageFile(e.target.files[0])} className="hidden" disabled={isEventUploading} />
+                 </label>
+              </div>
+              <button type="submit" disabled={isEventUploading || !eventTitle.trim()} className={`flex-1 sm:flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
                 {isEventUploading ? <Loader2 className="animate-spin" size={20}/> : (editingEventId ? 'Update Event' : 'Save Event')}
               </button>
             </div>
@@ -2504,7 +2522,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
           <div className="flex gap-2 mb-4">
             <label className={`w-full flex items-center justify-center gap-2 bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all cursor-pointer`}>
-              <span>?? Import Inventory from CSV Spreadsheet</span>
+              <span><Package size={14} /> Import Inventory from CSV Spreadsheet</span>
               <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
             </label>
           </div>
@@ -2601,11 +2619,11 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
   const [filterCat, setFilterCat] = useState('All'); 
   const [isFormOpen, setIsFormOpen] = useState(false); 
   const [activeRecipe, setActiveRecipe] = useState(null); 
-const [yieldMult, setYieldMult] = useState(1);
+  const [yieldMult, setYieldMult] = useState(1);
   const [editingRecipeId, setEditingRecipeId] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
 
-const handleScanRecipe = async (e) => {
+  const handleScanRecipe = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -2714,7 +2732,7 @@ const handleScanRecipe = async (e) => {
   
   const handleDelete = async (id) => { if (!window.confirm("Delete recipe?")) return; await deleteDoc(doc(db, "recipes", id)); setActiveRecipe(null); addToast('Deleted', 'Recipe removed.'); };
   
-const handleInjectLegacyRecipes = async () => {
+  const handleInjectLegacyRecipes = async () => {
     const legacyData = [
       {
         title: "French Onion Dip", category: "Sauce/Dressing", prepTime: "10 mins", yieldAmt: "--",
@@ -2778,7 +2796,7 @@ return (
           
           {/* ONLY GEOFF CAN SEE THIS BUTTON */}
           {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
-            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-xs flex items-center justify-center gap-2`} title="Inject Card Recipes">?? Import</button>
+            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-xs flex items-center justify-center gap-2`} title="Inject Card Recipes"><Package size={16} /> Import</button>
           )}
 
           {canManageRecipes && (
@@ -2810,7 +2828,7 @@ return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredRecipes.map(r => (
             <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className={`${T.card} p-5 hover:border-[#D4A381] transition-all cursor-pointer group flex flex-col h-full`}>
-              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{r.category}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec ?</span></div>
+              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{r.category}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec →</span></div>
               <h3 className="text-xl font-black text-white mb-auto leading-tight">{r.title}</h3>
               <div className={`flex items-center gap-4 mt-5 pt-4 border-t ${T.border}`}><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Clock size={14}/> {r.prepTime}</div><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Scale size={14}/> Yield: {r.yieldAmt}</div></div>
             </div>
@@ -2822,7 +2840,7 @@ return (
         {activeRecipe && (
           <div className="space-y-6">
             <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{activeRecipe.title}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{activeRecipe.category}</span><span className={`bg-[#12161A]
- border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {activeRecipe.prepTime}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span></div></div>
+border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {activeRecipe.prepTime}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span></div></div>
             <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#12161A] p-3 rounded-xl border ${T.border} mb-6`}><span className={`text-[10px] font-black uppercase ${T.muted} tracking-widest`}>Yield Multiplier</span><div className={`flex bg-[#1A2126] rounded-lg p-1 border ${T.border}`}>{[0.5, 1, 2, 4].map(m => (<button key={m} onClick={() => setYieldMult(m)} className={`px-4 py-1.5 text-xs font-black rounded-md transition-all ${yieldMult === m ? `${T.grad} text-slate-900` : `text-slate-500 hover:text-white`}`}>{m}x</button>))}</div></div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               <div className="md:col-span-2 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Ingredients <span className={`lowercase ml-1 ${yieldMult !== 1 ? T.copper : ''}`}>({yieldMult}x)</span></h4><ul className="space-y-2 text-sm font-bold text-slate-300">{activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${yieldMult !== 1 ? 'bg-[#D4A381]' : 'bg-slate-500'}`}/><span>{parseAndMultiply(ing, yieldMult)}</span></li>)}</ul></div>
@@ -4410,7 +4428,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 7.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 7.5.0</span>
       </div>
     </div>
   );
