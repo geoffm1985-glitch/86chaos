@@ -2757,41 +2757,52 @@ const handleInjectLegacyRecipes = async () => {
 // Determine if the current user has permission to edit/delete the viewed recipe
   const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
-  return (
+return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
-      <div className={`${T.card} p-4 sm:p-5 flex flex-col md:flex-row gap-4 items-center justify-between`}>
-        <div className="flex-1 w-full relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/><input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/></div>
-       <div className="flex w-full md:w-auto gap-3">
-          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className={`${T.input} md:w-48`}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+      <div className={`${T.card} p-4 sm:p-5 flex flex-col gap-4`}>
+        
+        {/* Top Row: Search and Category Filter */}
+        <div className="flex flex-col md:flex-row gap-3 w-full">
+          <div className="flex-1 w-full relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/>
+            <input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
+          </div>
+          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className={`${T.input} md:w-48`}>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* Bottom Row: Action Buttons */}
+        <div className="flex flex-wrap gap-2 justify-end w-full">
           
           {/* ONLY GEOFF CAN SEE THIS BUTTON */}
           {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
-            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-sm flex items-center justify-center gap-2`} title="Inject Card Recipes">?? Import</button>
+            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-xs flex items-center justify-center gap-2`} title="Inject Card Recipes">?? Import</button>
           )}
 
-{canManageRecipes && (
-            <div className="flex gap-2 w-full sm:w-auto">
+          {canManageRecipes && (
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
               
-              <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm flex-shrink-0 ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
-                 <label className="flex items-center justify-center px-4 py-2.5 cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-slate-300 hover:text-[#D4A381]" title="Take Photo">
+              <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
+                 <label className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-slate-300 hover:text-[#D4A381]" title="Take Photo">
                     {isScanning ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
-                    {/* capture="environment" forces the camera open */}
+                    {/* capture="environment" forces the camera open instantly */}
                     <input type="file" accept="image/*" capture="environment" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
                  </label>
-                 <label className="flex items-center justify-center px-4 py-2.5 cursor-pointer hover:bg-[#1A2126] transition-colors text-slate-300 hover:text-[#D4A381]" title="Upload Photo">
-                    <span className="text-xs font-bold uppercase tracking-wider">Upload</span>
-                    {/* Lacking the capture tag forces the file gallery open */}
+                 <label className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 cursor-pointer hover:bg-[#1A2126] transition-colors text-slate-300 hover:text-[#D4A381]" title="Upload Photo">
+                    <span className="text-[10px] font-black uppercase tracking-wider">Upload</span>
+                    {/* No capture tag allows file gallery selection */}
                     <input type="file" accept="image/*" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
                  </label>
               </div>
 
-              <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2 whitespace-nowrap`}>
+              <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex-1 sm:flex-none flex items-center justify-center gap-2 whitespace-nowrap py-2 px-4 text-xs`}>
                 <Plus size={16}/> New Spec
               </button>
             </div>
-          )}      </div>
+          )}
+        </div>
       </div>
-      
       {filteredRecipes.length === 0 ? (
         <div className={`text-center py-20 px-4 border-2 border-dashed ${T.border} rounded-3xl`}><ChefHat className={`mx-auto ${T.copper} mb-4`} size={48}/><h3 className={`text-lg font-black ${T.muted}`}>No recipes found.</h3></div>
       ) : (
