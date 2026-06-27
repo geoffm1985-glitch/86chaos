@@ -1104,7 +1104,9 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [eventTime, setEventTime] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventNotes, setEventNotes] = useState('');
-  const [editingEventId, setEditingEventId] = useState(null);
+const [editingEventId, setEditingEventId] = useState(null);
+  const [eventImageFile, setEventImageFile] = useState(null);
+  const [isEventUploading, setIsEventUploading] = useState(false);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
@@ -1182,26 +1184,43 @@ const validDates = [];
 
   const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
   
-  const handleAddEvent = async (e) => { 
+const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
-    
+    setIsEventUploading(true);
+
+    let photoUrl = null;
+    if (eventImageFile) {
+      try {
+        const fileRef = ref(storage, `events/${appUser.restaurantId}/${Date.now()}_${eventImageFile.name}`);
+        await uploadBytes(fileRef, eventImageFile);
+        photoUrl = await getDownloadURL(fileRef);
+      } catch (error) {
+        addToast('Error', 'Image upload failed. Check connection.');
+        setIsEventUploading(false);
+        return;
+      }
+    }
+
+    const eventData = { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() };
+    if (photoUrl) eventData.imageUrl = photoUrl; // Only overwrite image if a new one is uploaded
+
     if (editingEventId) {
-      await updateDoc(doc(db, "events", editingEventId), { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() });
+      await updateDoc(doc(db, "events", editingEventId), eventData);
       addToast('Updated', 'Event modified successfully.');
     } else {
-      await addDoc(collection(db, "events"), { type: 'special_event', date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name, restaurantId: appUser.restaurantId }); 
+      await addDoc(collection(db, "events"), { type: 'special_event', ...eventData, addedBy: appUser.name, restaurantId: appUser.restaurantId }); 
       addToast('Event Added', 'Calendar updated.');
     }
-    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(false); 
+    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventUploading(false); setIsEventModalOpen(false); 
   };
 
   const openEditEventModal = (ev) => {
-    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setIsEventModalOpen(true);
+    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setEventImageFile(null); setIsEventModalOpen(true);
   };
 
   const openNewEventModal = () => {
-    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(true);
+    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventModalOpen(true);
   };
 
   // --- LABOR PROJECTION ENGINE ---
@@ -1441,9 +1460,28 @@ addToast('Exported', 'Spreadsheet generated.');
             <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
             <div><label className={T.label}>Time (Optional)</label><input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/></div>
           </div>
-          <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
-          <div><label className={T.label}>Notes (Optional)</label><textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={T.input} placeholder="Extra details..."/></div>
-          <button type="submit" className={`w-full ${T.btn}`}>{editingEventId ? 'Update Event' : 'Save Event'}</button>
+        <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
+          <div>
+            <label className={T.label}>Notes & Photo (Optional)</label>
+            <textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={`${T.input} mb-2`} placeholder="Extra details..."/>
+            
+            {eventImageFile && (
+              <div className="text-xs text-emerald-400 font-bold bg-emerald-900/20 p-2 rounded-lg border border-emerald-900/50 flex justify-between items-center mb-2">
+                <span className="truncate pr-2">📷 {eventImageFile.name} attached</span>
+                <button type="button" onClick={()=>setEventImageFile(null)} className="text-red-400 hover:text-red-300 p-1"><X size={14}/></button>
+              </div>
+            )}
+            
+            <div className="flex gap-2 items-center">
+              <label className={`bg-[#12161A] text-[#D4A381] border border-[#2A353D] rounded-xl cursor-pointer hover:bg-[#1A2126] transition-colors flex items-center justify-center shadow-sm h-12 w-16 flex-shrink-0 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                <Camera size={20} />
+                <input type="file" accept="image/*" capture="environment" onChange={(e) => setEventImageFile(e.target.files[0])} className="hidden" disabled={isEventUploading} />
+              </label>
+              <button type="submit" disabled={isEventUploading || !eventTitle.trim()} className={`flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
+                {isEventUploading ? <Loader2 className="animate-spin" size={20}/> : (editingEventId ? 'Update Event' : 'Save Event')}
+              </button>
+            </div>
+          </div>
         </form>
       </Modal>
 
@@ -1637,9 +1675,14 @@ addToast('Exported', 'Spreadsheet generated.');
                     <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
                       <div className="text-[10px] uppercase">{new Date(ev.date+'T12:00').toLocaleDateString('en-US',{month:'short'})}</div><div className="text-lg leading-tight">{parseInt(ev.date.split('-')[2])}</div>
                     </div>
-                    <div>
+                  <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
-                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">{ev.notes}</p>}
+                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D] whitespace-pre-wrap">{ev.notes}</p>}
+                      {ev.imageUrl && (
+                        <div className="mt-2 overflow-hidden rounded-xl border border-[#2A353D] shadow-inner bg-[#0B0E11] max-w-sm">
+                          <img src={ev.imageUrl} alt="Attached" className="w-full max-h-48 object-contain" />
+                        </div>
+                      )}
                       <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
                     </div>
                   </div>
