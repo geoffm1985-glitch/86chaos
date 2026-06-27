@@ -1,5 +1,4 @@
-// 1. Force Vercel to run this strictly in the US (Washington D.C.) 
-// This prevents Google from blocking the AI if Vercel tries to route through Europe.
+// Force Vercel to run strictly in the US (Washington D.C.) 
 export const config = {
   regions: ['iad1'],
 };
@@ -12,7 +11,7 @@ export default async function handler(req, res) {
   try {
     const { imageBase64 } = req.body;
     
-    // Clean the API key of any accidental invisible spaces or quotes
+    // Clean the API key of any accidental spaces or quotes
     const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/['"]/g, '');
 
     if (!apiKey) throw new Error("API Key is missing from Vercel.");
@@ -21,7 +20,6 @@ export default async function handler(req, res) {
 
     const prompt = `You are an expert culinary AI. Read this recipe card. Extract the data and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\nRequired keys:\n- "title" (string)\n- "prepTime" (string, use "--" if missing)\n- "yieldAmt" (string, use "--" if missing)\n- "ingredients" (string, each ingredient on a new line)\n- "instructions" (string, each step on a new line)`;
 
-    // 2. Use the stable v1 endpoint and the rock-solid 1.5-flash model
     const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -30,16 +28,15 @@ export default async function handler(req, res) {
           parts: [
             { text: prompt },
             {
-              // 3. STRICT snake_case formatting required by Google's REST API
-              inline_data: {
-                mime_type: "image/jpeg",
+              inlineData: {
+                mimeType: "image/jpeg",
                 data: base64Data
               }
             }
           ]
         }],
-        generation_config: {
-          response_mime_type: "application/json"
+        generationConfig: {
+          responseMimeType: "application/json"
         }
       })
     });
