@@ -1178,13 +1178,13 @@ const validDates = [];
       return Math.max(0, (rawMins - breakMins) / 60);
   };
 
-  const getMonday = (dateString) => {
-      const d = new Date(dateString + 'T12:00:00');
-      const day = d.getDay();
-      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-      return new Date(d.setDate(diff)).toISOString().split('T')[0];
+const getWeekStart = (dateString) => {
+      const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+      const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
+      let d = new Date(dateString + 'T12:00:00');
+      while (d.getDay() !== startDayInt) { d.setDate(d.getDate() - 1); }
+      return d.toISOString().split('T')[0];
   };
-
   const payrollSummary = {};
   const weeklyHours = {}; 
   const OT_THRESHOLD = parseFloat(appUser?.systemSettings?.overtime || 40);
@@ -1206,8 +1206,8 @@ const validDates = [];
       }
       
       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-      const weekKey = `${p.employeeId}_${getMonday(p.date)}`;
-      const prevWeeklyHours = weeklyHours[weekKey] || 0;
+const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
+    const prevWeeklyHours = weeklyHours[weekKey] || 0;
       const newWeeklyHours = prevWeeklyHours + hours;
       
       let reg = 0; let ot = 0;
@@ -1345,12 +1345,16 @@ const validDates = [];
 addToast('Exported', 'Spreadsheet generated.');
   };
 
-  // --- WEEKLY HOURS TRACKER ENGINE ---
+// --- WEEKLY HOURS TRACKER ENGINE ---
+  const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+  const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
+  const endDayInt = startDayInt === 0 ? 6 : startDayInt - 1;
+
   const weeksInMonth = [];
   let currentWeek = [];
   monthDays.forEach(d => {
       currentWeek.push(d);
-      if (new Date(d+'T12:00').getDay() === 0) {
+      if (new Date(d+'T12:00').getDay() === endDayInt) {
           weeksInMonth.push(currentWeek);
           currentWeek = [];
       }
@@ -2842,8 +2846,8 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
-  const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
-
+const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
+  const [payPeriodStart, setPayPeriodStart] = useState(prefs.payPeriodStart || 'Monday');
   // --- Notification State ---
   const [notifSchedule, setNotifSchedule] = useState(prefs.notifSchedule ?? true);
   const [notifMessages, setNotifMessages] = useState(prefs.notifMessages ?? true);
@@ -2908,12 +2912,11 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
     } catch (err) { addToast('Error', 'Failed to save profile.'); }
   };
 
-  const handleSavePrefs = async (e) => {
+const handleSavePrefs = async (e) => {
     e.preventDefault();
     try {
       await updateDoc(doc(db, "users", appUser.id), {
-        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
- payPeriod }
+        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime, payPeriod, payPeriodStart }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
@@ -3079,13 +3082,18 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
                 <h2 className="text-base font-black text-emerald-400 mb-3 border-b border-[#2A353D] pb-2">Payroll Settings</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className={T.label}>Default Pay Period</label>
+<label className={T.label}>Default Pay Period</label>
                     <select value={payPeriod} onChange={e => setPayPeriod(e.target.value)} className={`${T.input} py-2 text-sm`}>
                       <option value="Weekly">Weekly</option>
-
                       <option value="Bi-Weekly">Bi-Weekly</option>
                       <option value="Semi-Monthly">Semi-Monthly</option>
                       <option value="Monthly">Monthly</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={T.label}>Work Week Starts On</label>
+                    <select value={payPeriodStart} onChange={e => setPayPeriodStart(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
                 </div>
