@@ -21,8 +21,7 @@ export default async function handler(req, res) {
     const prompt = `You are an expert culinary AI. Read this recipe card. Extract the data and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\nRequired keys:\n- "title" (string)\n- "prepTime" (string, use "--" if missing)\n- "yieldAmt" (string, use "--" if missing)\n- "ingredients" (string, each ingredient on a new line)\n- "instructions" (string, each step on a new line)`;
 
     // STRICTLY using the stable v1 endpoint that successfully connected earlier
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
+const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{
