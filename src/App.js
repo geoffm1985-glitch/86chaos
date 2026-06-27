@@ -2632,9 +2632,9 @@ const handleScanRecipe = async (e) => {
         
         const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
 
-        try {
+try {
           const response = await fetch('/api/scan', {
-            method: 'POST',
+            method: 'POST', // <--- Make sure this line is explicitly here
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ imageBase64: base64Compressed })
           });
