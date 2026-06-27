@@ -1031,13 +1031,18 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
             </div>
           )}
 
-          <div className="flex gap-2 items-center">
-            <label className={`bg-[#12161A] text-[#D4A381] border border-[#2A353D] rounded-xl cursor-pointer hover:bg-[#1A2126] transition-colors flex items-center justify-center shadow-sm h-12 w-16 flex-shrink-0 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-              <Camera size={20} />
-              {/* capture="environment" forces mobile devices to open the rear-facing camera instantly */}
-              <input type="file" accept="image/*" capture="environment" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
-            </label>
-            <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
+<div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
+            <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+               <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
+                  <Camera size={20} />
+                  <input type="file" accept="image/*" capture="environment" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
+               </label>
+               <label className="flex-1 sm:w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381]" title="Upload Photo">
+                  <span className="text-[10px] font-black uppercase tracking-wider">Upload</span>
+                  <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
+               </label>
+            </div>
+            <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`flex-1 sm:flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
               {isUploading ? <Loader2 className="animate-spin" size={20}/> : 'Post'}
             </button>
           </div>
@@ -1479,12 +1484,18 @@ addToast('Exported', 'Spreadsheet generated.');
               </div>
             )}
             
-            <div className="flex gap-2 items-center">
-              <label className={`bg-[#12161A] text-[#D4A381] border border-[#2A353D] rounded-xl cursor-pointer hover:bg-[#1A2126] transition-colors flex items-center justify-center shadow-sm h-12 w-16 flex-shrink-0 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                <Camera size={20} />
-                <input type="file" accept="image/*" capture="environment" onChange={(e) => setEventImageFile(e.target.files[0])} className="hidden" disabled={isEventUploading} />
-              </label>
-              <button type="submit" disabled={isEventUploading || !eventTitle.trim()} className={`flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
+<div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
+              <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                 <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
+                    <Camera size={20} />
+                    <input type="file" accept="image/*" capture="environment" onChange={(e) => setEventImageFile(e.target.files[0])} className="hidden" disabled={isEventUploading} />
+                 </label>
+                 <label className="flex-1 sm:w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381]" title="Upload Photo">
+                    <span className="text-[10px] font-black uppercase tracking-wider">Upload</span>
+                    <input type="file" accept="image/*" onChange={(e) => setEventImageFile(e.target.files[0])} className="hidden" disabled={isEventUploading} />
+                 </label>
+              </div>
+              <button type="submit" disabled={isEventUploading || !eventTitle.trim()} className={`flex-1 sm:flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
                 {isEventUploading ? <Loader2 className="animate-spin" size={20}/> : (editingEventId ? 'Update Event' : 'Save Event')}
               </button>
             </div>
