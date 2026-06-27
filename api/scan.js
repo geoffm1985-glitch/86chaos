@@ -26,8 +26,7 @@ export default async function handler(req, res) {
     - "instructions" (string, each step on a new line)`;
 
     // 5. Send the payload to Google's Gemini 1.5 Flash Vision Model
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
+const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{
