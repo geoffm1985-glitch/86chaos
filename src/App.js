@@ -591,8 +591,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {events.filter(e => e.type === 'note' && e.isImportant).slice(0,1).map(alert => (
             <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
-              <span className="text-xl">?</span><div><span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span><p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p></div>
-            </div>
+<Bell size={24} className="text-red-500" /><div><span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span>            </div>
           ))}
           <div className={`${T.grad} rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-[#D4A381]/30`}>
             <div className="absolute -top-4 -right-4 text-8xl font-black text-slate-900/10">86</div>
@@ -625,11 +624,9 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
           
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => setSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
-               <span className="text-xl">?</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
-               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
+<Repeat size={24} className={T.copper}/><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
             </button>
-            <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}><span className="text-xl">??</span><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span></button>
-          </div>
+<Calendar size={24} className={T.copper}/><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>          </div>
 
           <div className={`${T.card} overflow-hidden mt-4`}>
             <div className={T.th}>My Month Shifts</div>
@@ -2504,7 +2501,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
           <div className="flex gap-2 mb-4">
             <label className={`w-full flex items-center justify-center gap-2 bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all cursor-pointer`}>
-              <span>?? Import Inventory from CSV Spreadsheet</span>
+              <span><Package size={14} /> Import Inventory from CSV Spreadsheet</span>
               <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
             </label>
           </div>
@@ -2810,7 +2807,7 @@ return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredRecipes.map(r => (
             <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className={`${T.card} p-5 hover:border-[#D4A381] transition-all cursor-pointer group flex flex-col h-full`}>
-              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{r.category}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec ?</span></div>
+              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{r.category}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec →</span></div>
               <h3 className="text-xl font-black text-white mb-auto leading-tight">{r.title}</h3>
               <div className={`flex items-center gap-4 mt-5 pt-4 border-t ${T.border}`}><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Clock size={14}/> {r.prepTime}</div><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Scale size={14}/> Yield: {r.yieldAmt}</div></div>
             </div>
