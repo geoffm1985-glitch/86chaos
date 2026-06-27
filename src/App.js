@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getMessaging, getToken } from 'firebase/messaging';
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
@@ -46,6 +47,7 @@ const firebaseConfig = window.location.hostname === 'app.86chaos.com' ? prodConf
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
 enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
@@ -59,7 +61,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '6.0.2';
+const CURRENT_VERSION = '7.0.0';
 
 
 // --- Helpers ---
@@ -941,14 +943,43 @@ return (
 const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState(''); 
   const [replyTexts, setReplyTexts] = useState({});
+  const [imageFile, setImageFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   
   const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
   
   const handleBroadcast = async (e) => { 
     e.preventDefault(); 
-    if(!message.trim()) return; 
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: message.trim(), type: 'note', author: appUser.name, isImportant: false, restaurantId: appUser.restaurantId, replies: [] }); 
+    if(!message.trim() && !imageFile) return; 
+    setIsUploading(true);
+
+    let photoUrl = null;
+    if (imageFile) {
+      try {
+        const fileRef = ref(storage, `messages/${appUser.restaurantId}/${Date.now()}_${imageFile.name}`);
+        await uploadBytes(fileRef, imageFile);
+        photoUrl = await getDownloadURL(fileRef);
+      } catch (error) {
+        addToast('Error', 'Image upload failed. Check connection.');
+        setIsUploading(false);
+        return;
+      }
+    }
+
+    await addDoc(collection(db, "events"), { 
+      date: new Date().toISOString(), 
+      title: message.trim(), 
+      type: 'note', 
+      author: appUser.name, 
+      isImportant: false, 
+      restaurantId: appUser.restaurantId, 
+      replies: [],
+      imageUrl: photoUrl 
+    }); 
+    
     setMessage(''); 
+    setImageFile(null);
+    setIsUploading(false);
     addToast('Posted', 'Message sent.'); 
   };
 
@@ -982,18 +1013,48 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div className={`${T.card} p-4`}><form onSubmit={handleBroadcast} className="flex flex-col sm:flex-row gap-3"><textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team..." required></textarea><button className={`${T.btn} px-8`}>Post</button></form></div>
+      <div className={`${T.card} p-4`}>
+        <form onSubmit={handleBroadcast} className="flex flex-col gap-3">
+          <textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team... (Photo optional)"></textarea>
+          
+          {imageFile && (
+            <div className="text-xs text-emerald-400 font-bold bg-emerald-900/20 p-2 rounded-lg border border-emerald-900/50 flex justify-between items-center">
+              <span className="truncate pr-2">📷 {imageFile.name} attached</span>
+              <button type="button" onClick={()=>setImageFile(null)} className="text-red-400 hover:text-red-300 p-1"><X size={14}/></button>
+            </div>
+          )}
+
+          <div className="flex gap-2 items-center">
+            <label className={`bg-[#12161A] text-[#D4A381] border border-[#2A353D] rounded-xl cursor-pointer hover:bg-[#1A2126] transition-colors flex items-center justify-center shadow-sm h-12 w-16 flex-shrink-0 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+              <Camera size={20} />
+              {/* capture="environment" forces mobile devices to open the rear-facing camera instantly */}
+              <input type="file" accept="image/*" capture="environment" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
+            </label>
+            <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
+              {isUploading ? <Loader2 className="animate-spin" size={20}/> : 'Post'}
+            </button>
+          </div>
+        </form>
+      </div>
+
       <div className="space-y-3">{allNotes.map(n => {
         const authorUser = users.find(u => u.name === n.author);
         return (
         <div key={n.id} className={`p-4 flex gap-3 ${n.isImportant ? `bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 rounded-2xl shadow-sm` : T.card}`}>
-          {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 rounded-full border ${T.border} flex-shrink-0`} alt="pic"/>}
+          {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 rounded-full border ${T.border} flex-shrink-0 object-cover`} alt="pic"/>}
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-start mb-1">
               <span className={`font-black text-sm ${n.isImportant ? 'text-red-500' : T.copper}`}>{n.author}</span>
               <span className="text-[10px] font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span>
             </div>
-            <p className="font-medium leading-snug text-slate-200 break-words">{n.title}</p>
+            {n.title && <p className="font-medium leading-snug text-slate-200 break-words whitespace-pre-wrap">{n.title}</p>}
+            
+            {/* RENDER THE IMAGE IF IT HAS ONE */}
+            {n.imageUrl && (
+              <div className="mt-3 overflow-hidden rounded-xl border border-[#2A353D] shadow-inner bg-[#0B0E11]">
+                <img src={n.imageUrl} alt="Attached" className="w-full max-h-96 object-contain" />
+              </div>
+            )}
             
             {/* Replies Section */}
             {(n.replies && n.replies.length > 0) && (
@@ -4216,7 +4277,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.2</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 7.0.0</span>
       </div>
     </div>
   );
