@@ -2620,7 +2620,7 @@ const handleScanRecipe = async (e) => {
       img.onload = async () => {
         // Compress the image on the device BEFORE sending it to Vercel/Gemini
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200; // Drops a 12MB photo down to ~200KB instantly
+        const MAX_WIDTH = 1200; // Drops a massive photo down to ~200KB instantly
         let scaleSize = 1;
         if (img.width > MAX_WIDTH) {
            scaleSize = MAX_WIDTH / img.width;
@@ -2632,16 +2632,17 @@ const handleScanRecipe = async (e) => {
         
         const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
 
-try {
+        try {
+          // THIS IS THE CRITICAL BLOCK. It MUST explicitly say POST.
           const response = await fetch('/api/scan', {
-            method: 'POST', // <--- Make sure this line is explicitly here
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ imageBase64: base64Compressed })
           });
 
           if (!response.ok) {
             const errData = await response.json();
-            throw new Error(errData.error || 'Failed to scan.');
+            throw new Error(errData.error || 'Failed to scan. Check API key or Vercel logs.');
           }
 
           const data = await response.json();
