@@ -61,7 +61,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '7.5.0';
+const CURRENT_VERSION = '7.0.0';
 
 
 // --- Helpers ---
@@ -1104,7 +1104,9 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [eventTime, setEventTime] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventNotes, setEventNotes] = useState('');
-  const [editingEventId, setEditingEventId] = useState(null);
+const [editingEventId, setEditingEventId] = useState(null);
+  const [eventImageFile, setEventImageFile] = useState(null);
+  const [isEventUploading, setIsEventUploading] = useState(false);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
@@ -1182,26 +1184,43 @@ const validDates = [];
 
   const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
   
-  const handleAddEvent = async (e) => { 
+const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
-    
+    setIsEventUploading(true);
+
+    let photoUrl = null;
+    if (eventImageFile) {
+      try {
+        const fileRef = ref(storage, `events/${appUser.restaurantId}/${Date.now()}_${eventImageFile.name}`);
+        await uploadBytes(fileRef, eventImageFile);
+        photoUrl = await getDownloadURL(fileRef);
+      } catch (error) {
+        addToast('Error', 'Image upload failed. Check connection.');
+        setIsEventUploading(false);
+        return;
+      }
+    }
+
+    const eventData = { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() };
+    if (photoUrl) eventData.imageUrl = photoUrl; // Only overwrite image if a new one is uploaded
+
     if (editingEventId) {
-      await updateDoc(doc(db, "events", editingEventId), { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() });
+      await updateDoc(doc(db, "events", editingEventId), eventData);
       addToast('Updated', 'Event modified successfully.');
     } else {
-      await addDoc(collection(db, "events"), { type: 'special_event', date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name, restaurantId: appUser.restaurantId }); 
+      await addDoc(collection(db, "events"), { type: 'special_event', ...eventData, addedBy: appUser.name, restaurantId: appUser.restaurantId }); 
       addToast('Event Added', 'Calendar updated.');
     }
-    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(false); 
+    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventUploading(false); setIsEventModalOpen(false); 
   };
 
   const openEditEventModal = (ev) => {
-    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setIsEventModalOpen(true);
+    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setEventImageFile(null); setIsEventModalOpen(true);
   };
 
   const openNewEventModal = () => {
-    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setIsEventModalOpen(true);
+    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventModalOpen(true);
   };
 
   // --- LABOR PROJECTION ENGINE ---
@@ -1441,9 +1460,28 @@ addToast('Exported', 'Spreadsheet generated.');
             <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
             <div><label className={T.label}>Time (Optional)</label><input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/></div>
           </div>
-          <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
-          <div><label className={T.label}>Notes (Optional)</label><textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={T.input} placeholder="Extra details..."/></div>
-          <button type="submit" className={`w-full ${T.btn}`}>{editingEventId ? 'Update Event' : 'Save Event'}</button>
+        <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
+          <div>
+            <label className={T.label}>Notes & Photo (Optional)</label>
+            <textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={`${T.input} mb-2`} placeholder="Extra details..."/>
+            
+            {eventImageFile && (
+              <div className="text-xs text-emerald-400 font-bold bg-emerald-900/20 p-2 rounded-lg border border-emerald-900/50 flex justify-between items-center mb-2">
+                <span className="truncate pr-2">📷 {eventImageFile.name} attached</span>
+                <button type="button" onClick={()=>setEventImageFile(null)} className="text-red-400 hover:text-red-300 p-1"><X size={14}/></button>
+              </div>
+            )}
+            
+            <div className="flex gap-2 items-center">
+              <label className={`bg-[#12161A] text-[#D4A381] border border-[#2A353D] rounded-xl cursor-pointer hover:bg-[#1A2126] transition-colors flex items-center justify-center shadow-sm h-12 w-16 flex-shrink-0 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                <Camera size={20} />
+                <input type="file" accept="image/*" capture="environment" onChange={(e) => setEventImageFile(e.target.files[0])} className="hidden" disabled={isEventUploading} />
+              </label>
+              <button type="submit" disabled={isEventUploading || !eventTitle.trim()} className={`flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
+                {isEventUploading ? <Loader2 className="animate-spin" size={20}/> : (editingEventId ? 'Update Event' : 'Save Event')}
+              </button>
+            </div>
+          </div>
         </form>
       </Modal>
 
@@ -1637,9 +1675,14 @@ addToast('Exported', 'Spreadsheet generated.');
                     <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
                       <div className="text-[10px] uppercase">{new Date(ev.date+'T12:00').toLocaleDateString('en-US',{month:'short'})}</div><div className="text-lg leading-tight">{parseInt(ev.date.split('-')[2])}</div>
                     </div>
-                    <div>
+                  <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
-                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">{ev.notes}</p>}
+                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D] whitespace-pre-wrap">{ev.notes}</p>}
+                      {ev.imageUrl && (
+                        <div className="mt-2 overflow-hidden rounded-xl border border-[#2A353D] shadow-inner bg-[#0B0E11] max-w-sm">
+                          <img src={ev.imageUrl} alt="Attached" className="w-full max-h-48 object-contain" />
+                        </div>
+                      )}
                       <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
                     </div>
                   </div>
@@ -2558,8 +2601,69 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
   const [filterCat, setFilterCat] = useState('All'); 
   const [isFormOpen, setIsFormOpen] = useState(false); 
   const [activeRecipe, setActiveRecipe] = useState(null); 
-  const [yieldMult, setYieldMult] = useState(1);
+const [yieldMult, setYieldMult] = useState(1);
   const [editingRecipeId, setEditingRecipeId] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+
+const handleScanRecipe = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsScanning(true);
+    addToast('Scanning', 'Optimizing and reading recipe...');
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = async () => {
+        // Compress the image on the device BEFORE sending it to Vercel/Gemini
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200; // Drops a massive photo down to ~200KB instantly
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) {
+           scaleSize = MAX_WIDTH / img.width;
+        }
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
+
+        try {
+          // THIS IS THE CRITICAL BLOCK. It MUST explicitly say POST.
+          const response = await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64Compressed })
+          });
+
+          if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || 'Failed to scan. Check API key or Vercel logs.');
+          }
+
+          const data = await response.json();
+          
+          setTitle(data.title || '');
+          setPrepTime(data.prepTime || '--');
+          setYieldAmt(data.yieldAmt || '--');
+          setIngredients(data.ingredients || '');
+          setInstructions(data.instructions || '');
+          
+          setIsFormOpen(true);
+          addToast('Success', 'Recipe extracted! Please review.');
+        } catch (err) {
+          addToast('Error', err.message);
+        } finally {
+          setIsScanning(false);
+        }
+      };
+    };
+    e.target.value = ''; // Reset input so you can scan the same file again if needed
+  };
 
   const parseAndMultiply = (text, mult) => { if (mult === 1) return text; const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/); if (!match) return text; let numStr = match[1], rest = match[2], val = 0; if (numStr.includes('/')) { const parts = numStr.split(' '); if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); } else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); } } else { val = parseFloat(numStr); } let finalVal = val * mult; let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2); if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim(); else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim(); else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim(); else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim(); else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim(); if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); return `${cleanVal} ${rest}`; };
   
@@ -2654,23 +2758,52 @@ const handleInjectLegacyRecipes = async () => {
 // Determine if the current user has permission to edit/delete the viewed recipe
   const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
-  return (
+return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
-      <div className={`${T.card} p-4 sm:p-5 flex flex-col md:flex-row gap-4 items-center justify-between`}>
-        <div className="flex-1 w-full relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/><input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/></div>
-       <div className="flex w-full md:w-auto gap-3">
-          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className={`${T.input} md:w-48`}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+      <div className={`${T.card} p-4 sm:p-5 flex flex-col gap-4`}>
+        
+        {/* Top Row: Search and Category Filter */}
+        <div className="flex flex-col md:flex-row gap-3 w-full">
+          <div className="flex-1 w-full relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/>
+            <input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
+          </div>
+          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className={`${T.input} md:w-48`}>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* Bottom Row: Action Buttons */}
+        <div className="flex flex-wrap gap-2 justify-end w-full">
           
           {/* ONLY GEOFF CAN SEE THIS BUTTON */}
           {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
-            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-sm flex items-center justify-center gap-2`} title="Inject Card Recipes">?? Import</button>
+            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-xs flex items-center justify-center gap-2`} title="Inject Card Recipes">?? Import</button>
           )}
 
-{canManageRecipes && (
-            <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
-          )}        </div>
+          {canManageRecipes && (
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+              
+              <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
+                 <label className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-slate-300 hover:text-[#D4A381]" title="Take Photo">
+                    {isScanning ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
+                    {/* capture="environment" forces the camera open instantly */}
+                    <input type="file" accept="image/*" capture="environment" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
+                 </label>
+                 <label className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 cursor-pointer hover:bg-[#1A2126] transition-colors text-slate-300 hover:text-[#D4A381]" title="Upload Photo">
+                    <span className="text-[10px] font-black uppercase tracking-wider">Upload</span>
+                    {/* No capture tag allows file gallery selection */}
+                    <input type="file" accept="image/*" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
+                 </label>
+              </div>
+
+              <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex-1 sm:flex-none flex items-center justify-center gap-2 whitespace-nowrap py-2 px-4 text-xs`}>
+                <Plus size={16}/> New Spec
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-      
       {filteredRecipes.length === 0 ? (
         <div className={`text-center py-20 px-4 border-2 border-dashed ${T.border} rounded-3xl`}><ChefHat className={`mx-auto ${T.copper} mb-4`} size={48}/><h3 className={`text-lg font-black ${T.muted}`}>No recipes found.</h3></div>
       ) : (
@@ -4277,7 +4410,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 7.5.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 7.0.0</span>
       </div>
     </div>
   );
