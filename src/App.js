@@ -1625,6 +1625,9 @@ const validDates = [];
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
+  const [roleFilter, setRoleFilter] = useState('All');
+  const uniqueRoles = ['All', ...new Set(users.map(u => u.role).filter(Boolean))].sort();
+
   const monthStr = getMonthStr(currentDate); 
   const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); 
   const days = getDaysInMonth(monthStr);
@@ -1722,12 +1725,18 @@ const TabMonth = ({ currentDate, users, shifts }) => {
         }
       `}</style>
       
-      <div className="flex justify-end p-2 no-print border-b border-[#2A353D] bg-[#12161A]">
-        <button onClick={()=>window.print()} className={T.btnAlt}>?? Print Calendar</button>
+<div className="flex justify-between items-center p-2 no-print border-b border-[#2A353D] bg-[#12161A]">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 hidden sm:inline">Filter Role:</span>
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer shadow-inner">
+            {uniqueRoles.map(r => <option key={r} value={r}>{r === 'All' ? 'Whole Schedule' : r}</option>)}
+          </select>
+        </div>
+        <button onClick={()=>window.print()} className={T.btnAlt}>🖨️ Print Calendar</button>
       </div>
       
       <div className="hidden print:block print-header">
-        86chaos Schedule   {formatDisplayMonth(monthStr)}
+        86chaos Schedule {roleFilter !== 'All' ? `- ${roleFilter}` : ''}   {formatDisplayMonth(monthStr)}
       </div>
 
       <div className={`grid grid-cols-7 border-t border-l ${T.border} print-grid`}>
@@ -1737,8 +1746,8 @@ const TabMonth = ({ currentDate, users, shifts }) => {
         
 {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
-          const dayShifts = shifts
-            .filter(s => s.date === date && s.isPublished)
+const dayShifts = shifts
+            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || s.role === roleFilter))
             .sort((a, b) => {
               if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
               return (a.startTime || '').localeCompare(b.startTime || '');
