@@ -2497,51 +2497,8 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
   const [filterCat, setFilterCat] = useState('All'); 
   const [isFormOpen, setIsFormOpen] = useState(false); 
   const [activeRecipe, setActiveRecipe] = useState(null); 
-const [yieldMult, setYieldMult] = useState(1);
+  const [yieldMult, setYieldMult] = useState(1);
   const [editingRecipeId, setEditingRecipeId] = useState(null);
-  const [isScanning, setIsScanning] = useState(false);
-
-  const handleScanRecipe = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) return addToast('Error', 'Image must be under 5MB.');
-
-    setIsScanning(true);
-    addToast('Scanning', 'AI is reading the recipe...');
-
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = async () => {
-      try {
-        const response = await fetch('/api/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: reader.result })
-        });
-
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Failed to scan.');
-        }
-
-        const data = await response.json();
-        
-        setTitle(data.title || '');
-        setPrepTime(data.prepTime || '--');
-        setYieldAmt(data.yieldAmt || '--');
-        setIngredients(data.ingredients || '');
-        setInstructions(data.instructions || '');
-        
-        setIsFormOpen(true);
-        addToast('Success', 'Recipe extracted! Please review.');
-      } catch (err) {
-        addToast('Error', err.message);
-      } finally {
-        setIsScanning(false);
-      }
-    };
-    e.target.value = ''; // Reset input so you can scan the same file again if needed
-  };
 
   const parseAndMultiply = (text, mult) => { if (mult === 1) return text; const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/); if (!match) return text; let numStr = match[1], rest = match[2], val = 0; if (numStr.includes('/')) { const parts = numStr.split(' '); if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); } else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); } } else { val = parseFloat(numStr); } let finalVal = val * mult; let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2); if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim(); else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim(); else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim(); else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim(); else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim(); if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); return `${cleanVal} ${rest}`; };
   
@@ -2634,9 +2591,8 @@ const handleInjectLegacyRecipes = async () => {
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
 
 // Determine if the current user has permission to edit/delete the viewed recipe
-const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+  const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
-
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       <div className={`${T.card} p-4 sm:p-5 flex flex-col md:flex-row gap-4 items-center justify-between`}>
@@ -2650,20 +2606,9 @@ const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUs
           )}
 
 {canManageRecipes && (
-            <div className="flex gap-2 w-full sm:w-auto">
-              <label className={`${T.btnAlt} flex items-center justify-center gap-2 cursor-pointer ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
-                {isScanning ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
-                <span className="whitespace-nowrap">{isScanning ? 'Scanning...' : 'Scan Image'}</span>
-                <input type="file" accept="image/*" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
-              </label>
-              <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2 whitespace-nowrap`}>
-                <Plus size={16}/> New Spec
-              </button>
-            </div>
-          )}
-        </div>
-      </div>  </div>
- 
+            <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
+          )}        </div>
+      </div>
       
       {filteredRecipes.length === 0 ? (
         <div className={`text-center py-20 px-4 border-2 border-dashed ${T.border} rounded-3xl`}><ChefHat className={`mx-auto ${T.copper} mb-4`} size={48}/><h3 className={`text-lg font-black ${T.muted}`}>No recipes found.</h3></div>
