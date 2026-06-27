@@ -1,5 +1,10 @@
+// 1. Force Vercel to run this strictly in the US (Washington D.C.) 
+// This prevents Google from blocking the AI if Vercel tries to route through Europe.
+export const config = {
+  regions: ['iad1'],
+};
+
 export default async function handler(req, res) {
-  // 1. Reject any request that isn't a POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
@@ -7,43 +12,41 @@ export default async function handler(req, res) {
   try {
     const { imageBase64 } = req.body;
     
-    // 2. Add .trim() to destroy any invisible spaces copied from Google AI Studio
-    const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+    // Clean the API key of any accidental invisible spaces or quotes
+    const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/['"]/g, '');
 
-    if (!apiKey) {
-      throw new Error("API Key is missing from Vercel.");
-    }
+    if (!apiKey) throw new Error("API Key is missing from Vercel.");
 
     const base64Data = imageBase64.split(',')[1] || imageBase64;
 
-    const prompt = `You are an expert culinary AI. Read this recipe card. Extract the data and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.
-    Required keys:
-    - "title" (string)
-    - "prepTime" (string, use "--" if missing)
-    - "yieldAmt" (string, use "--" if missing)
-    - "ingredients" (string, each ingredient on a new line)
-    - "instructions" (string, each step on a new line)`;
+    const prompt = `You are an expert culinary AI. Read this recipe card. Extract the data and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\nRequired keys:\n- "title" (string)\n- "prepTime" (string, use "--" if missing)\n- "yieldAmt" (string, use "--" if missing)\n- "ingredients" (string, each ingredient on a new line)\n- "instructions" (string, each step on a new line)`;
 
-    // 3. Upgraded to Gemini 1.5 Pro (Google's flagship, most stable model)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
+    // 2. Use the stable v1 endpoint and the rock-solid 1.5-flash model
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{
           parts: [
             { text: prompt },
-            { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+            {
+              // 3. STRICT snake_case formatting required by Google's REST API
+              inline_data: {
+                mime_type: "image/jpeg",
+                data: base64Data
+              }
+            }
           ]
         }],
-        generationConfig: { responseMimeType: "application/json" }
+        generation_config: {
+          response_mime_type: "application/json"
+        }
       })
     });
 
     const data = await response.json();
 
-    if (data.error) {
-      throw new Error(data.error.message);
-    }
+    if (data.error) throw new Error(data.error.message);
 
     const rawText = data.candidates[0].content.parts[0].text;
     const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
