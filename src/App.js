@@ -665,7 +665,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
             </div>
           </div>
         </div>
-      )}
+    
 
       {/* THE TRADE BOARD */}
       {subTab === 'trade-board' && (
