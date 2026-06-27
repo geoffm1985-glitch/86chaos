@@ -59,7 +59,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '6.0.1';
+const CURRENT_VERSION = '6.0.2';
 
 
 // --- Helpers ---
@@ -201,8 +201,7 @@ if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time 
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen'
  || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
-  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
-  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
+if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
   
   // Core UI (Always active)
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
@@ -2587,8 +2586,9 @@ const handleInjectLegacyRecipes = async () => {
 
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
 
-  // Determine if the current user has permission to edit/delete the viewed recipe
-const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.permissions?.team || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' || appUser?.id === activeRecipe.authorId);
+// Determine if the current user has permission to edit/delete the viewed recipe
+  const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+  const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       <div className={`${T.card} p-4 sm:p-5 flex flex-col md:flex-row gap-4 items-center justify-between`}>
@@ -2601,8 +2601,9 @@ const canModifyRecipe = activeRecipe && (appUser?.isAdmin || appUser?.permission
             <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-sm flex items-center justify-center gap-2`} title="Inject Card Recipes">?? Import</button>
           )}
 
-          <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
-        </div>
+{canManageRecipes && (
+            <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={18}/> New Spec</button>
+          )}        </div>
       </div>
       
       {filteredRecipes.length === 0 ? (
@@ -4207,7 +4208,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.2</span>
       </div>
     </div>
   );
