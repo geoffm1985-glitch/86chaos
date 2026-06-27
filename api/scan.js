@@ -29,8 +29,9 @@ export default async function handler(req, res) {
           parts: [
             { text: prompt },
             {
-              inlineData: {
-                mimeType: "image/jpeg",
+              // STRICTLY using snake_case so Google doesn't drop the payload
+              inline_data: {
+                mime_type: "image/jpeg",
                 data: base64Data
               }
             }
