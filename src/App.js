@@ -533,7 +533,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const handleOfferSwap = async (shift) => {
     if (!window.confirm(`Offer your ${formatDisplayDate(shift.date)} shift to the Trade Board?`)) return;
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `? Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
+    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
     addToast('Posted', 'Shift sent to trade board.');
   };
 
@@ -553,7 +553,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     try {
        await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: appUser.id });
        await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
-       await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `? Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
+       await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `✅ Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
        addToast('Claimed', 'Shift successfully added to your schedule.');
        setSubTab('my-schedule'); 
     } catch (e) {
@@ -591,7 +591,12 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {events.filter(e => e.type === 'note' && e.isImportant).slice(0,1).map(alert => (
             <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
-<Bell size={24} className="text-red-500" /><div><span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span>            </div>
+              <Bell size={24} className="text-red-500 flex-shrink-0" />
+              <div>
+                <span className="text-[9px] font-black uppercase text-[#D4A381] tracking-widest block">System Alert</span>
+                <p className="text-xs text-slate-200 font-medium leading-snug">{alert.title}</p>
+              </div>
+            </div>
           ))}
           <div className={`${T.grad} rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-[#D4A381]/30`}>
             <div className="absolute -top-4 -right-4 text-8xl font-black text-slate-900/10">86</div>
@@ -624,9 +629,15 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
           
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => setSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
-<Repeat size={24} className={T.copper}/><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
+              <Repeat size={24} className={T.copper}/>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
+              {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
             </button>
-<Calendar size={24} className={T.copper}/><span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>          </div>
+            <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
+              <Calendar size={24} className={T.copper}/>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>
+            </button>
+          </div>
 
           <div className={`${T.card} overflow-hidden mt-4`}>
             <div className={T.th}>My Month Shifts</div>
@@ -665,14 +676,14 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
             </div>
           </div>
         </div>
-    )}
+      )}
 
       {/* THE TRADE BOARD */}
       {subTab === 'trade-board' && (
         <div className="animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>? Trade Board</h3>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Repeat size={18} /> Trade Board</h3>
               <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">Back to Dashboard</button>
             </div>
             
@@ -691,8 +702,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
                         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">
                           {swap.role}   {formatShortTime(swap.startTime)} - {formatShortTime(swap.endTime)}
                         </div>
-                        <div className="text-xs
- text-slate-400 font-medium mt-1">Listed by {originalEmp?.name || 'Unknown Staff'}</div>
+                        <div className="text-xs text-slate-400 font-medium mt-1">Listed by {originalEmp?.name || 'Unknown Staff'}</div>
                       </div>
                       <div className="flex-shrink-0">
                         {isMine ? (
@@ -744,7 +754,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
       )}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}    
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}  
     </div>
   );
 };
