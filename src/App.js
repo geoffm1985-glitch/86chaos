@@ -2663,7 +2663,7 @@ const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUs
           )}
         </div>
       </div>  </div>
-      </div>
+ 
       
       {filteredRecipes.length === 0 ? (
         <div className={`text-center py-20 px-4 border-2 border-dashed ${T.border} rounded-3xl`}><ChefHat className={`mx-auto ${T.copper} mb-4`} size={48}/><h3 className={`text-lg font-black ${T.muted}`}>No recipes found.</h3></div>
