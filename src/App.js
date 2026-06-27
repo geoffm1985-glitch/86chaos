@@ -59,7 +59,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.7.1';
+const CURRENT_VERSION = '6.0.0';
 
 
 // --- Helpers ---
@@ -208,8 +208,7 @@ if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time 
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
-if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size={18}/> });  if (appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });
-  
+if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   return (
@@ -1344,8 +1343,31 @@ const validDates = [];
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    addToast('Exported', 'Spreadsheet generated.');
+addToast('Exported', 'Spreadsheet generated.');
   };
+
+  // --- WEEKLY HOURS TRACKER ENGINE ---
+  const weeksInMonth = [];
+  let currentWeek = [];
+  monthDays.forEach(d => {
+      currentWeek.push(d);
+      if (new Date(d+'T12:00').getDay() === 0) {
+          weeksInMonth.push(currentWeek);
+          currentWeek = [];
+      }
+  });
+  if (currentWeek.length > 0) weeksInMonth.push(currentWeek);
+
+  const scheduledHours = displayUsers.map(u => {
+     const userShifts = monthShifts.filter(s => s.employeeId === u.id);
+     const weekly = weeksInMonth.map(weekDaysArr => {
+        return weekDaysArr.reduce((sum, d) => {
+           const shift = userShifts.find(s => s.date === d);
+           return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0);
+        }, 0);
+     });
+     return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
+  }).filter(u => u.total > 0);
 
   return (
     <div className="space-y-4 pb-12 w-full">
@@ -1391,9 +1413,10 @@ const validDates = [];
         </form>
       </Modal>
 
-      {/* TOP NAVIGATION TOGGLE */}
-      <div className="flex gap-2 border-b border-[#2A353D] pb-3 mb-2">
+{/* TOP NAVIGATION TOGGLE */}
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-2">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
+        <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
         {appUser?.isAdmin && (
           <button onClick={() => setSubTab('timesheets')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Timesheets & Labor</button>
         )}
@@ -1498,6 +1521,46 @@ const validDates = [];
             </div>
           </div>
           
+<div className={`${T.card} overflow-hidden mt-6`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className={`font-black text-sm flex items-center gap-2 ${T.copper}`}><Clock className={T.copper} size={16}/> Scheduled Hours Tracker</h3>
+              <span className={`text-[9px] font-bold ${T.muted} uppercase tracking-widest`}>OT Threshold: {appUser?.systemSettings?.overtime || 40}h</span>
+            </div>
+            <div className="overflow-x-auto no-scrollbar">
+              <table className="w-full text-left text-xs border-collapse min-w-[600px]">
+                <thead>
+                  <tr className="bg-[#1A2126] border-b border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-400">
+                    <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-24">Employee</th>
+                    {weeksInMonth.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D]">Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5">{parseInt(w[0].split('-')[2])}-{parseInt(w[w.length-1].split('-')[2])}</div></th>)}
+                    <th className="p-3 text-center text-[#D4A381]">Month Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#2A353D]">
+                  {scheduledHours.length === 0 && <tr><td colSpan={weeksInMonth.length + 2} className="p-6 text-center text-slate-500 font-bold">No hours scheduled yet.</td></tr>}
+                  {scheduledHours.map(u => (
+                    <tr key={u.id} className="hover:bg-[#12161A]/50 transition-colors">
+                      <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate">{u.name.split(' ')[0]}</td>
+                      {u.weekly.map((hrs, i) => (
+                        <td key={i} className={`p-3 text-center font-black border-r border-[#2A353D] ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                          {hrs > 0 ? hrs.toFixed(1) : '-'}
+                        </td>
+                      ))}
+                      <td className="p-3 text-center font-black text-[#D4A381] bg-[#12161A]/30">{u.total.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- THE NEW EVENTS LEDGER SUB-TAB --- */}
+      {subTab === 'events' && (
+        <div className="animate-[slideIn_0.2s_ease-out] space-y-4">
+          <div className="flex gap-2">
+             <button onClick={openNewEventModal} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={16}/> Add Special Event</button>
+          </div>
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
@@ -1512,8 +1575,7 @@ const validDates = [];
                     </div>
                     <div>
                       <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
-                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg
- border border-[#2A353D]">{ev.notes}</p>}
+                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">{ev.notes}</p>}
                       <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
                     </div>
                   </div>
@@ -1625,6 +1687,9 @@ const validDates = [];
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
+  const [roleFilter, setRoleFilter] = useState('All');
+  const uniqueRoles = ['All', ...new Set(users.map(u => u.role).filter(Boolean))].sort();
+
   const monthStr = getMonthStr(currentDate); 
   const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); 
   const days = getDaysInMonth(monthStr);
@@ -1722,12 +1787,18 @@ const TabMonth = ({ currentDate, users, shifts }) => {
         }
       `}</style>
       
-      <div className="flex justify-end p-2 no-print border-b border-[#2A353D] bg-[#12161A]">
-        <button onClick={()=>window.print()} className={T.btnAlt}>?? Print Calendar</button>
+<div className="flex justify-between items-center p-2 no-print border-b border-[#2A353D] bg-[#12161A]">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 hidden sm:inline">Filter Role:</span>
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer shadow-inner">
+            {uniqueRoles.map(r => <option key={r} value={r}>{r === 'All' ? 'Whole Schedule' : r}</option>)}
+          </select>
+        </div>
+        <button onClick={()=>window.print()} className={T.btnAlt}>🖨️ Print Calendar</button>
       </div>
       
       <div className="hidden print:block print-header">
-        86chaos Schedule   {formatDisplayMonth(monthStr)}
+        86chaos Schedule {roleFilter !== 'All' ? `- ${roleFilter}` : ''}   {formatDisplayMonth(monthStr)}
       </div>
 
       <div className={`grid grid-cols-7 border-t border-l ${T.border} print-grid`}>
@@ -1737,8 +1808,8 @@ const TabMonth = ({ currentDate, users, shifts }) => {
         
 {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
-          const dayShifts = shifts
-            .filter(s => s.date === date && s.isPublished)
+const dayShifts = shifts
+            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || s.role === roleFilter))
             .sort((a, b) => {
               if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
               return (a.startTime || '').localeCompare(b.startTime || '');
@@ -1885,8 +1956,7 @@ const renderTasks = (freqFilter) => {
     const periodKey = getTaskPeriodKey(freqFilter);
     
     // GIVES TEAM MANAGERS ACCESS TO TASKS
-    const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team;
-
+const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
     return (
       <div className="space-y-4 mt-4">
         {canManageTasks && (
@@ -4121,8 +4191,9 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-{activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}      </main>
-
+{activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
+        {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
+{activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} />}      </main>
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
@@ -4136,7 +4207,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.7.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.0</span>
       </div>
     </div>
   );
