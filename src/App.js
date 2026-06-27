@@ -59,7 +59,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '5.7.1';
+const CURRENT_VERSION = '6.0.0';
 
 
 // --- Helpers ---
@@ -1344,8 +1344,31 @@ const validDates = [];
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    addToast('Exported', 'Spreadsheet generated.');
+addToast('Exported', 'Spreadsheet generated.');
   };
+
+  // --- WEEKLY HOURS TRACKER ENGINE ---
+  const weeksInMonth = [];
+  let currentWeek = [];
+  monthDays.forEach(d => {
+      currentWeek.push(d);
+      if (new Date(d+'T12:00').getDay() === 0) {
+          weeksInMonth.push(currentWeek);
+          currentWeek = [];
+      }
+  });
+  if (currentWeek.length > 0) weeksInMonth.push(currentWeek);
+
+  const scheduledHours = displayUsers.map(u => {
+     const userShifts = monthShifts.filter(s => s.employeeId === u.id);
+     const weekly = weeksInMonth.map(weekDaysArr => {
+        return weekDaysArr.reduce((sum, d) => {
+           const shift = userShifts.find(s => s.date === d);
+           return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0);
+        }, 0);
+     });
+     return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
+  }).filter(u => u.total > 0);
 
   return (
     <div className="space-y-4 pb-12 w-full">
@@ -1391,9 +1414,10 @@ const validDates = [];
         </form>
       </Modal>
 
-      {/* TOP NAVIGATION TOGGLE */}
-      <div className="flex gap-2 border-b border-[#2A353D] pb-3 mb-2">
+{/* TOP NAVIGATION TOGGLE */}
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-2">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
+        <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
         {appUser?.isAdmin && (
           <button onClick={() => setSubTab('timesheets')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Timesheets & Labor</button>
         )}
@@ -1498,6 +1522,46 @@ const validDates = [];
             </div>
           </div>
           
+<div className={`${T.card} overflow-hidden mt-6`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className={`font-black text-sm flex items-center gap-2 ${T.copper}`}><Clock className={T.copper} size={16}/> Scheduled Hours Tracker</h3>
+              <span className={`text-[9px] font-bold ${T.muted} uppercase tracking-widest`}>OT Threshold: {appUser?.systemSettings?.overtime || 40}h</span>
+            </div>
+            <div className="overflow-x-auto no-scrollbar">
+              <table className="w-full text-left text-xs border-collapse min-w-[600px]">
+                <thead>
+                  <tr className="bg-[#1A2126] border-b border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-400">
+                    <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-24">Employee</th>
+                    {weeksInMonth.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D]">Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5">{parseInt(w[0].split('-')[2])}-{parseInt(w[w.length-1].split('-')[2])}</div></th>)}
+                    <th className="p-3 text-center text-[#D4A381]">Month Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#2A353D]">
+                  {scheduledHours.length === 0 && <tr><td colSpan={weeksInMonth.length + 2} className="p-6 text-center text-slate-500 font-bold">No hours scheduled yet.</td></tr>}
+                  {scheduledHours.map(u => (
+                    <tr key={u.id} className="hover:bg-[#12161A]/50 transition-colors">
+                      <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate">{u.name.split(' ')[0]}</td>
+                      {u.weekly.map((hrs, i) => (
+                        <td key={i} className={`p-3 text-center font-black border-r border-[#2A353D] ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                          {hrs > 0 ? hrs.toFixed(1) : '-'}
+                        </td>
+                      ))}
+                      <td className="p-3 text-center font-black text-[#D4A381] bg-[#12161A]/30">{u.total.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- THE NEW EVENTS LEDGER SUB-TAB --- */}
+      {subTab === 'events' && (
+        <div className="animate-[slideIn_0.2s_ease-out] space-y-4">
+          <div className="flex gap-2">
+             <button onClick={openNewEventModal} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={16}/> Add Special Event</button>
+          </div>
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
@@ -1512,8 +1576,7 @@ const validDates = [];
                     </div>
                     <div>
                       <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
-                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg
- border border-[#2A353D]">{ev.notes}</p>}
+                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">{ev.notes}</p>}
                       <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
                     </div>
                   </div>
@@ -4145,7 +4208,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 5.7.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 6.0.0</span>
       </div>
     </div>
   );
