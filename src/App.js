@@ -2235,9 +2235,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [vName, setVName] = useState(''); const [vRep, setVRep] = useState(''); const [vPhone, setVPhone] = useState(''); const [vEmail, setVEmail] = useState(''); const [vDays, setVDays] = useState([]); const [vTime, setVTime] = useState('');
   const [editVendor, setEditVendor] = useState(null);
 
-  // Waste Form
-  const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
-  const [editWaste, setEditWaste] = useState(null);
+
 
   // Waste Form
   const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
