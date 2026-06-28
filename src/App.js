@@ -2235,9 +2235,13 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [vName, setVName] = useState(''); const [vRep, setVRep] = useState(''); const [vPhone, setVPhone] = useState(''); const [vEmail, setVEmail] = useState(''); const [vDays, setVDays] = useState([]); const [vTime, setVTime] = useState('');
   const [editVendor, setEditVendor] = useState(null);
 
-  // Waste Form
-const [wSearchTerm, setWSearchTerm] = useState(''); // Filters the dropdown  const [editWaste, setEditWaste] = useState(null);
-  const [wasteSearch, setWasteSearch] = useState(''); // Search state for the burn log
+  // Waste Form States
+  const [wItemId, setWItemId] = useState(''); 
+  const [wQty, setWQty] = useState(''); 
+  const [wReason, setWReason] = useState('Dropped / Spilled');
+  const [editWaste, setEditWaste] = useState(null);
+  const [wSearchTerm, setWSearchTerm] = useState(''); // Search filter for selecting items to burn
+  const [wasteSearch, setWasteSearch] = useState(''); // Search filter for looking up past burn logs
 
   // AI Invoice Scanner State
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
@@ -2263,7 +2267,7 @@ const [wSearchTerm, setWSearchTerm] = useState(''); // Filters the dropdown  con
     const stockDeduction = qtyNum / yieldDivider; const costLost = ((item.price || 0) / yieldDivider) * qtyNum; 
     await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString(), restaurantId: appUser.restaurantId });
     await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, item.currentStock - stockDeduction) });
-    setWItemId(''); setWQty(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
+    setWItemId(''); setWQty(''); setWSearchTerm(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
   };
 
   const handleDeleteWaste = async (log) => {
@@ -2831,7 +2835,7 @@ const [wSearchTerm, setWSearchTerm] = useState(''); // Filters the dropdown  con
             )}
           </Modal>
 
-<form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+          <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🚨 The Burn Log</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               
@@ -2841,7 +2845,7 @@ const [wSearchTerm, setWSearchTerm] = useState(''); // Filters the dropdown  con
                 <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required>
                   <option value="">Select Item to Burn...</option>
                   {inventoryItems
-                    .filter(i => (i.name||'').toLowerCase().includes(wSearchTerm.toLowerCase()) || (i.pfgCode||'').toLowerCase().includes(wSearchTerm.toLowerCase()))
+                    .filter(i => (i.name||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()) || (i.pfgCode||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()))
                     .map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
                 </select>
               </div>
