@@ -1589,7 +1589,10 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         )}
       </div>
 
-<div className={`${T.card} p-3 sm:p-4 flex flex-col 2xl:flex-row gap-3 items-center justify-between`}>
+      {subTab === 'schedule' && (
+        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          
+          <div className={`${T.card} p-3 sm:p-4 flex flex-col 2xl:flex-row gap-3 items-center justify-between`}>
             <div className="flex flex-wrap xl:flex-nowrap gap-3 w-full 2xl:w-auto items-center">
               
               {/* Staff Selector */}
@@ -1633,17 +1636,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
               </div>
               <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
-            </div>
-          </div>
-            
-            {/* Action Row */}
-            <div className="flex w-full lg:w-auto gap-2 items-center pt-3 lg:pt-0 border-t lg:border-t-0 border-[#2A353D]">
-              <div className="hidden xl:flex flex-col items-end mr-3 bg-[#12161A] border border-[#2A353D] px-4 py-1.5 rounded-xl">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
-                <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-              </div>
-              <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
-              <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
 
@@ -1890,7 +1882,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     </div>
   );
 };
-
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
