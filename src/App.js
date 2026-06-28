@@ -2450,10 +2450,46 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
          processedBy: appUser.name
        });
 
-       // 2. Loop through and apply stock updates ONLY to matched items
+       // 2. Resolve Vendor (Auto-Create if Missing)
+       let vId = '';
+       let existingVendor = vendors.find(v => v.name.toLowerCase() === (scannedInvoice.vendorName || '').toLowerCase());
+       
+       if (existingVendor) {
+          vId = existingVendor.id;
+       } else if (scannedInvoice.vendorName) {
+          const newVRef = await addDoc(collection(db, "vendors"), { 
+            name: scannedInvoice.vendorName, 
+            rep: "", email: "", phone: "", 
+            restaurantId: appUser.restaurantId 
+          });
+          vId = newVRef.id;
+       }
+
+       // 3. Loop through and apply stock updates OR create new items
        let updateCount = 0;
+       let newCount = 0;
+       
        for (const item of scannedInvoice.lineItems) {
-          if (item.matchedItemId) {
+          if (item.matchedItemId === 'CREATE_NEW') {
+             // Create a brand new item in inventory
+             await addDoc(collection(db, "inventoryItems"), {
+                name: item.itemName,
+                category: 'Other', 
+                pfgCode: '', 
+                supplierId: vId,
+                packSize: item.packSize || '1 CS',
+                yieldQty: 1, 
+                price: parseFloat(item.unitPrice) || 0,
+                parLevel: 0,
+                currentStock: parseFloat(item.quantity) || 0,
+                pendingQty: 0,
+                isStarred: false,
+                lastOrderedDate: null,
+                restaurantId: appUser.restaurantId
+             });
+             newCount++;
+          } else if (item.matchedItemId) {
+             // Update existing item
              const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
              if (invItem) {
                 const addedStock = parseFloat(item.quantity) || 0;
@@ -2465,7 +2501,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           }
        }
 
-       addToast('Invoice Processed', `Logged invoice and updated stock for ${updateCount} items.`);
+       addToast('Invoice Processed', `Updated ${updateCount} items and added ${newCount} new items.`);
        setScannedInvoice(null);
      } catch(e) {
        addToast('Error', 'Failed to process invoice updates.');
@@ -2515,9 +2551,10 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                        newItems[idx].matchedItemId = e.target.value;
                        setScannedInvoice({...scannedInvoice, lineItems: newItems});
                     }}
-                    className={`${T.input} py-2 text-xs font-bold ${item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
+                    className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
                   >
                     <option value="">-- Do Not Import / Skip --</option>
+                    <option value="CREATE_NEW">➕ Add as New Item</option>
                     {inventoryItems.map(inv => (
                       <option key={inv.id} value={inv.id}>{inv.name}</option>
                     ))}
@@ -2655,10 +2692,10 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
 
-          <div className="flex flex-col md:flex-row gap-2 mb-4">
+          <div className="flex flex-col gap-3 mb-6">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
-            <div className={`flex flex-1 bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
                <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
                   {isScanningInvoice ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
                   <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
@@ -2670,7 +2707,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
             </div>
 
             {/* CSV IMPORT */}
-            <label className={`flex-1 flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>
+            <label className={`flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>
               <span className="text-[11px] sm:text-xs">📊 Import CSV</span>
               <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
             </label>
