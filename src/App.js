@@ -1124,25 +1124,39 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
-  // --- CUSTOM SHIFT PRESETS LOGIC ---
-  const customPresets = useLiveCollection('shiftPresets', appUser?.restaurantId);
+// --- CUSTOM SHIFT PRESETS LOGIC ---
+  const [customPresets, setCustomPresets] = useState([]);
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [editingPresetId, setEditingPresetId] = useState(null);
   const [newPresetLabel, setNewPresetLabel] = useState('');
   const [newPresetStart, setNewPresetStart] = useState('');
   const [newPresetEnd, setNewPresetEnd] = useState('');
 
-  const DEFAULT_PRESETS = [ 
-    { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, 
-    { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, 
-    { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, 
-    { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" } 
-  ];
+  useEffect(() => {
+    const saved = localStorage.getItem(`customPresets_${appUser?.restaurantId}`);
+    if (saved) {
+      setCustomPresets(JSON.parse(saved));
+    } else {
+      // Seed the defaults so they are fully editable/deletable by the user
+      const seed = [ 
+        { id: '1', label: "9a-3p", start: "09:00", end: "15:00" }, { id: '2', label: "10a-4p", start: "10:00", end: "16:00" }, 
+        { id: '3', label: "10a-9p", start: "10:00", end: "21:00" }, { id: '4', label: "11a-3p", start: "11:00", end: "15:00" }, 
+        { id: '5', label: "11a-4p", start: "11:00", end: "16:00" }, { id: '6', label: "4p-9p", start: "16:00", end: "21:00" }, 
+        { id: '7', label: "7p-close", start: "19:00", end: "CLOSE" }, { id: '8', label: "9p-close", start: "21:00", end: "CLOSE" } 
+      ];
+      setCustomPresets(seed);
+      localStorage.setItem(`customPresets_${appUser?.restaurantId}`, JSON.stringify(seed));
+    }
+  }, [appUser?.restaurantId]);
+
+  const saveCustomPresetsLocally = (newPresets) => {
+    setCustomPresets(newPresets);
+    localStorage.setItem(`customPresets_${appUser?.restaurantId}`, JSON.stringify(newPresets));
+  };
 
   const SHIFT_PRESETS = [
-    ...DEFAULT_PRESETS,
-    ...customPresets.sort((a,b) => a.start.localeCompare(b.start)),
-    { label: "Custom", start: "", end: "" }
+    ...[...customPresets].sort((a,b) => a.start.localeCompare(b.start)),
+    { id: 'custom', label: "Custom", start: "", end: "" }
   ];
 
   const handlePresetChange = (e) => { 
@@ -1155,28 +1169,27 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     } 
   };
 
-  const handleSavePreset = async (e) => {
+  const handleSavePreset = (e) => {
     e.preventDefault();
     if (!newPresetLabel || !newPresetStart || !newPresetEnd) return;
-    try {
-      if (editingPresetId) {
-        await updateDoc(doc(db, "shiftPresets", editingPresetId), {
-          label: newPresetLabel.trim(),
-          start: newPresetStart,
-          end: newPresetEnd
-        });
-        addToast('Updated', 'Custom shift updated.');
-      } else {
-        await addDoc(collection(db, "shiftPresets"), {
-          label: newPresetLabel.trim(),
-          start: newPresetStart,
-          end: newPresetEnd,
-          restaurantId: appUser.restaurantId
-        });
-        addToast('Saved', 'Custom shift time added.');
-      }
-      cancelPresetEdit();
-    } catch(err) { addToast('Error', err.message); }
+    
+    if (editingPresetId) {
+      const updated = customPresets.map(p => 
+        p.id === editingPresetId ? { ...p, label: newPresetLabel.trim(), start: newPresetStart, end: newPresetEnd } : p
+      );
+      saveCustomPresetsLocally(updated);
+      addToast('Updated', 'Shift preset updated.');
+    } else {
+      const newPreset = {
+        id: Date.now().toString(),
+        label: newPresetLabel.trim(),
+        start: newPresetStart,
+        end: newPresetEnd
+      };
+      saveCustomPresetsLocally([...customPresets, newPreset]);
+      addToast('Saved', 'New shift preset added.');
+    }
+    cancelPresetEdit();
   };
 
   const handleEditPreset = (preset) => {
@@ -1193,9 +1206,10 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     setEditingPresetId(null);
   };
 
-  const handleDeletePreset = async (id) => {
-    if(window.confirm('Delete this custom preset?')) {
-      await deleteDoc(doc(db, "shiftPresets", id));
+  const handleDeletePreset = (id) => {
+    if(window.confirm('Delete this preset?')) {
+      const filtered = customPresets.filter(p => p.id !== id);
+      saveCustomPresetsLocally(filtered);
     }
   };
 
