@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, AlertTriangle } from 'lucide-react';import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getMessaging, getToken } from 'firebase/messaging';
 
@@ -4785,11 +4784,11 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
   return (
     <div className={`min-h-screen font-sans flex flex-col ${T.bg}`}>
       
-      {/* GHOST MODE BANNER */}
+{/* GHOST MODE BANNER */}
       {ghostTenant && (
         <div className="bg-gradient-to-r from-purple-900 to-fuchsia-900 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[99999] shadow-2xl uppercase tracking-wider border-b border-fuchsia-500/50">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex-shrink-0 animate-pulse text-sm">?</span>
+            <Moon size={16} className="flex-shrink-0 animate-pulse text-fuchsia-300" />
             <span className="truncate">GHOST MODE OVERRIDE: {ghostTenant.name}</span>
           </div>
           <button onClick={() => { setGhostTenant(null); window.history.pushState({ tab: 'godmode' }, '', '?tab=godmode'); setActiveTabState('godmode'); }} className="bg-white text-purple-900 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3">
@@ -4797,23 +4796,12 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
           </button>
         </div>
       )}
-      <style>{`
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        input[type="date"]::-webkit-calendar-picker-indicator, input[type="month"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-      `}</style>
 
-{/* UPDATE ALERT BANNER */}
+      {/* UPDATE ALERT BANNER */}
       {showUpdateBanner && (
         <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex-shrink-0 animate-pulse text-sm">?</span>
+            <AlertTriangle size={16} className="flex-shrink-0 animate-pulse text-white" />
             <span className="truncate">System update available. Refresh to prevent database desync.</span>
           </div>
           <button 
