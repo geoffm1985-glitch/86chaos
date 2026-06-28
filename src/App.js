@@ -1127,6 +1127,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   // --- CUSTOM SHIFT PRESETS LOGIC ---
   const customPresets = useLiveCollection('shiftPresets', appUser?.restaurantId);
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
+  const [editingPresetId, setEditingPresetId] = useState(null);
   const [newPresetLabel, setNewPresetLabel] = useState('');
   const [newPresetStart, setNewPresetStart] = useState('');
   const [newPresetEnd, setNewPresetEnd] = useState('');
@@ -1154,19 +1155,42 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     } 
   };
 
-  const handleAddPreset = async (e) => {
+  const handleSavePreset = async (e) => {
     e.preventDefault();
     if (!newPresetLabel || !newPresetStart || !newPresetEnd) return;
     try {
-      await addDoc(collection(db, "shiftPresets"), {
-        label: newPresetLabel.trim(),
-        start: newPresetStart,
-        end: newPresetEnd,
-        restaurantId: appUser.restaurantId
-      });
-      setNewPresetLabel(''); setNewPresetStart(''); setNewPresetEnd('');
-      addToast('Saved', 'Custom shift time added.');
+      if (editingPresetId) {
+        await updateDoc(doc(db, "shiftPresets", editingPresetId), {
+          label: newPresetLabel.trim(),
+          start: newPresetStart,
+          end: newPresetEnd
+        });
+        addToast('Updated', 'Custom shift updated.');
+      } else {
+        await addDoc(collection(db, "shiftPresets"), {
+          label: newPresetLabel.trim(),
+          start: newPresetStart,
+          end: newPresetEnd,
+          restaurantId: appUser.restaurantId
+        });
+        addToast('Saved', 'Custom shift time added.');
+      }
+      cancelPresetEdit();
     } catch(err) { addToast('Error', err.message); }
+  };
+
+  const handleEditPreset = (preset) => {
+    setNewPresetLabel(preset.label);
+    setNewPresetStart(preset.start);
+    setNewPresetEnd(preset.end);
+    setEditingPresetId(preset.id);
+  };
+
+  const cancelPresetEdit = () => {
+    setNewPresetLabel('');
+    setNewPresetStart('');
+    setNewPresetEnd('');
+    setEditingPresetId(null);
   };
 
   const handleDeletePreset = async (id) => {
@@ -1509,10 +1533,13 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       </Modal>
 
       {/* --- PRESET MANAGER MODAL --- */}
-      <Modal isOpen={isPresetModalOpen} onClose={() => setIsPresetModalOpen(false)} title="Manage Custom Shifts">
+      <Modal isOpen={isPresetModalOpen} onClose={() => { setIsPresetModalOpen(false); cancelPresetEdit(); }} title="Manage Custom Shifts">
         <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-            <form onSubmit={handleAddPreset} className="space-y-3 p-3 bg-[#1A2126] border border-[#2A353D] rounded-xl">
-                <h4 className="text-xs font-black text-[#D4A381] uppercase tracking-widest">Add New Preset</h4>
+            <form onSubmit={handleSavePreset} className="space-y-3 p-4 bg-[#1A2126] border border-[#2A353D] rounded-xl">
+                <div className="flex justify-between items-center">
+                    <h4 className="text-sm font-black text-[#D4A381] uppercase tracking-widest">{editingPresetId ? 'Edit Preset' : 'Add New Preset'}</h4>
+                    {editingPresetId && <button type="button" onClick={cancelPresetEdit} className="text-xs font-bold text-slate-400 hover:text-white transition-colors">Cancel ✖</button>}
+                </div>
                 <div>
                     <label className={T.label}>Label (e.g., "Mid Shift 12p-5p")</label>
                     <input type="text" value={newPresetLabel} onChange={e=>setNewPresetLabel(e.target.value)} className={T.input} required />
@@ -1527,21 +1554,26 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                         <input type="time" value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required />
                     </div>
                 </div>
-                <button type="submit" className={`w-full ${T.btn} py-2 text-xs`}><Plus size={16} className="inline mr-1"/> Add Custom Time</button>
+                <button type="submit" className={`w-full ${T.btn} py-3 text-sm flex items-center justify-center`}><Plus size={18} className="inline mr-2"/> {editingPresetId ? 'Update Preset' : 'Save Custom Time'}</button>
             </form>
 
-            <div className="space-y-2">
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-[#2A353D] pb-1">Your Custom Shifts</h4>
-                {customPresets.length === 0 && <p className="text-xs font-bold text-slate-500 text-center p-4">No custom times added yet.</p>}
+            <div className="space-y-2 pt-2">
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-[#2A353D] pb-2">Your Custom Shifts</h4>
+                {customPresets.length === 0 && <p className="text-xs font-bold text-slate-500 text-center p-4 border border-dashed border-[#2A353D] rounded-xl">No custom times added yet.</p>}
                 {customPresets.map(preset => (
-                    <div key={preset.id} className="flex justify-between items-center bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">
+                    <div key={preset.id} className="flex justify-between items-center bg-[#12161A] p-3 rounded-lg border border-[#2A353D]">
                         <div>
-                            <div className="font-bold text-sm text-white">{preset.label}</div>
-                            <div className="text-[10px] font-mono text-[#D4A381]">{formatShortTime(preset.start)} - {formatShortTime(preset.end)}</div>
+                            <div className="font-bold text-base text-white">{preset.label}</div>
+                            <div className="text-xs font-mono font-bold text-[#D4A381]">{formatShortTime(preset.start)} - {formatShortTime(preset.end)}</div>
                         </div>
-                        <button onClick={() => handleDeletePreset(preset.id)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors bg-[#1A2126] rounded border border-[#2A353D]">
-                            <Trash2 size={14}/>
-                        </button>
+                        <div className="flex items-center gap-1 border-l border-[#2A353D] pl-2 ml-2">
+                            <button type="button" onClick={() => handleEditPreset(preset)} className="p-2 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#1A2126] rounded border border-[#2A353D]">
+                                <Edit size={16}/>
+                            </button>
+                            <button type="button" onClick={() => handleDeletePreset(preset.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#1A2126] rounded border border-[#2A353D]">
+                                <Trash2 size={16}/>
+                            </button>
+                        </div>
                     </div>
                 ))}
             </div>
@@ -1549,7 +1581,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       </Modal>
 
       {/* TOP NAVIGATION TOGGLE */}
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-2">
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
         <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
         {appUser?.isAdmin && (
@@ -1559,35 +1591,55 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
       {subTab === 'schedule' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className={`${T.card} p-2 sm:p-3 flex flex-col lg:flex-row gap-2 items-center justify-between`}>
-            <div className="grid grid-cols-2 lg:flex lg:flex-nowrap gap-2 w-full lg:w-auto items-center">
-              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>
-                <option value="">-- Select Staff --</option>
-                {displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
+          
+          <div className={`${T.card} p-3 sm:p-4 flex flex-col lg:flex-row gap-3 items-center justify-between`}>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 w-full lg:w-auto items-center">
               
-              <div className="col-span-1 flex gap-1 items-center">
-                <select value={presetShift} onChange={handlePresetChange} className={`${T.input} w-full py-1.5 px-2 text-[11px] sm:text-xs h-9`}>
+              {/* Staff Selector - Big */}
+              <div className="md:col-span-3">
+                  <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} w-full py-2.5 px-3 text-sm font-bold h-12 shadow-inner`}>
+                    <option value="">-- Select Staff --</option>
+                    {displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+              </div>
+              
+              {/* Preset Selector & Edit Button - Bigger */}
+              <div className="md:col-span-4 flex gap-2 items-center">
+                <select value={presetShift} onChange={handlePresetChange} className={`${T.input} w-full py-2.5 px-3 text-sm font-bold h-12 shadow-inner`}>
                   {SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}
                 </select>
-                <button onClick={() => setIsPresetModalOpen(true)} className="p-2 bg-[#12161A] text-slate-400 hover:text-[#D4A381] border border-[#2A353D] rounded-lg transition-colors h-9 flex items-center justify-center shrink-0" title="Edit Presets">
-                  <Edit size={14}/>
+                <button onClick={() => setIsPresetModalOpen(true)} className="px-4 bg-[#12161A] text-slate-400 hover:text-[#D4A381] border border-[#2A353D] rounded-xl transition-colors h-12 flex items-center justify-center shrink-0 shadow-sm" title="Edit Presets">
+                  <Edit size={18} />
                 </button>
               </div>
 
-              <div className="flex gap-2 w-full col-span-2 lg:col-span-1 lg:w-auto">
-                <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9`}/>
-                <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9 disabled:opacity-50`}/>
+              {/* Custom Time Overrides - Bigger */}
+              <div className="md:col-span-3 flex gap-2 w-full">
+                <div className="relative flex-1">
+                    <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
+                    <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
+                </div>
+                <div className="relative flex-1">
+                    <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Out</span>
+                    <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner disabled:opacity-50`}/>
+                </div>
               </div>
-              <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full col-span-2 lg:col-span-1 lg:w-auto ${T.btn} py-1.5 px-3 text-xs h-9 disabled:opacity-50 flex items-center justify-center`}>Assign ({assignDates.length})</button>
+
+              {/* Assign Button */}
+              <div className="md:col-span-2">
+                  <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full ${T.btn} py-2.5 px-4 text-sm h-12 disabled:opacity-50 flex items-center justify-center shadow-lg`}>Assign ({assignDates.length})</button>
+              </div>
+
             </div>
-            <div className="flex w-full lg:w-auto gap-2 items-center">
-              <div className="hidden lg:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-3 py-1 rounded-lg">
-                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
-                <span className="text-emerald-400 font-black text-sm">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            
+            {/* Action Row */}
+            <div className="flex w-full lg:w-auto gap-2 items-center pt-3 lg:pt-0 border-t lg:border-t-0 border-[#2A353D]">
+              <div className="hidden xl:flex flex-col items-end mr-3 bg-[#12161A] border border-[#2A353D] px-4 py-1.5 rounded-xl">
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
+                <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-              <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-1.5 text-xs h-9 flex items-center justify-center`}>Publish</button>
-              <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 text-xs h-9 flex items-center justify-center`}>+ Event</button>
+              <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
+              <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
 
