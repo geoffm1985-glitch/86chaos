@@ -1102,8 +1102,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, db, storage, Modal, T, getToday, getMonthStr, getDaysInMonth, formatDisplayDate, formatShortTime, getHoliday, logAudit }) => {
-  const [subTab, setSubTab] = useState('schedule'); 
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {  const [subTab, setSubTab] = useState('schedule'); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
   const [presetShift, setPresetShift] = useState('Custom'); 
