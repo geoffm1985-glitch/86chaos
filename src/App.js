@@ -61,7 +61,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '7.5.0';
+const CURRENT_VERSION = '8.0.0';
 
 
 // --- Helpers ---
@@ -2221,6 +2221,10 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [searchTerm, setSearchTerm] = useState(''); 
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
+  // Fetch invoices securely directly inside this tab
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId);
+  const [viewInvoice, setViewInvoice] = useState(null);
+
   // Inventory Form
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
   const [editItem, setEditItem] = useState(null); 
@@ -2231,13 +2235,20 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [vName, setVName] = useState(''); const [vRep, setVRep] = useState(''); const [vPhone, setVPhone] = useState(''); const [vEmail, setVEmail] = useState(''); const [vDays, setVDays] = useState([]); const [vTime, setVTime] = useState('');
   const [editVendor, setEditVendor] = useState(null);
 
-  // Waste Form
-  const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
+  // Waste Form States
+  const [wItemId, setWItemId] = useState(''); 
+  const [wQty, setWQty] = useState(''); 
+  const [wReason, setWReason] = useState('Dropped / Spilled');
   const [editWaste, setEditWaste] = useState(null);
+  const [wSearchTerm, setWSearchTerm] = useState(''); // Search filter for selecting items to burn
+  const [wasteSearch, setWasteSearch] = useState(''); // Search filter for looking up past burn logs
 
   // AI Invoice Scanner State
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
   const [scannedInvoice, setScannedInvoice] = useState(null);
+
+  // Master Permission Check for Inventory Tabs
+  const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
 
   // --- LOGIC ---
   const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
@@ -2256,7 +2267,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     const stockDeduction = qtyNum / yieldDivider; const costLost = ((item.price || 0) / yieldDivider) * qtyNum; 
     await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString(), restaurantId: appUser.restaurantId });
     await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, item.currentStock - stockDeduction) });
-    setWItemId(''); setWQty(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
+    setWItemId(''); setWQty(''); setWSearchTerm(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
   };
 
   const handleDeleteWaste = async (log) => {
@@ -2317,11 +2328,11 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       addToast('Exported', 'Order downloaded as Spreadsheet.');
     } else if (method === 'email') {
       const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
-      if (emailUrl.length > 2000) { addToast('Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
+      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
       else { window.location.href = emailUrl; }
     } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
-      if (smsUrl.length > 2000) { addToast('Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
+      if (smsUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
       else { window.location.href = smsUrl; }
     } else {
       addToast('Copied', 'Order list copied to clipboard!');
@@ -2389,7 +2400,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     e.target.value = ''; 
   };
 
-  // --- AI INVOICE SCANNER ENGINE ---
+  // --- AI INVOICE SCANNER ENGINE (WITH RECONCILIATION) ---
   const handleScanInvoice = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2400,7 +2411,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     }
 
     setIsScanningInvoice(true);
-    addToast('Scanning Invoice', 'Extracting line items and totals...');
+    addToast('Scanning Invoice', 'Extracting line items and checking stock...');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -2418,8 +2429,19 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         if (!response.ok) throw new Error('Failed to scan invoice. Check backend logs.');
 
         const data = await response.json();
-        setScannedInvoice(data);
-        addToast('Success', 'Invoice extracted! Please review line items.');
+        
+        // AUTO-MATCHING LOGIC
+        const reconciledItems = (data.lineItems || []).map(item => {
+           // Attempt to find a direct match in the database by name or code
+           const match = inventoryItems.find(inv => 
+              inv.name.toLowerCase() === item.itemName.toLowerCase() || 
+              (inv.pfgCode && item.itemName.includes(inv.pfgCode))
+           );
+           return { ...item, matchedItemId: match ? match.id : "" };
+        });
+
+        setScannedInvoice({ ...data, lineItems: reconciledItems });
+        addToast('Success', 'Invoice extracted! Please verify matched items.');
       } catch (err) {
         addToast('Error', err.message);
       } finally {
@@ -2431,30 +2453,80 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
   const handleApproveInvoice = async () => {
      try {
+       // 1. Log the invoice record for history
        await addDoc(collection(db, "invoices"), {
          ...scannedInvoice,
          restaurantId: appUser.restaurantId,
          processedAt: new Date().toISOString(),
          processedBy: appUser.name
        });
-       addToast('Invoice Approved', `Logged ${scannedInvoice.vendorName} invoice for $${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}`);
+
+       // 2. Resolve Vendor (Auto-Create if Missing)
+       let vId = '';
+       let existingVendor = vendors.find(v => v.name.toLowerCase() === (scannedInvoice.vendorName || '').toLowerCase());
+       
+       if (existingVendor) {
+          vId = existingVendor.id;
+       } else if (scannedInvoice.vendorName) {
+          const newVRef = await addDoc(collection(db, "vendors"), { 
+            name: scannedInvoice.vendorName, 
+            rep: "", email: "", phone: "", 
+            restaurantId: appUser.restaurantId 
+          });
+          vId = newVRef.id;
+       }
+
+       // 3. Loop through and apply stock updates OR create new items
+       let updateCount = 0;
+       let newCount = 0;
+       
+       for (const item of scannedInvoice.lineItems) {
+          if (item.matchedItemId === 'CREATE_NEW') {
+             // Create a brand new item in inventory
+             await addDoc(collection(db, "inventoryItems"), {
+                name: item.itemName,
+                category: 'Other', 
+                pfgCode: '', 
+                supplierId: vId,
+                packSize: item.packSize || '1 CS',
+                yieldQty: 1, 
+                price: parseFloat(item.unitPrice) || 0,
+                parLevel: 0,
+                currentStock: parseFloat(item.quantity) || 0,
+                pendingQty: 0,
+                isStarred: false,
+                lastOrderedDate: null,
+                restaurantId: appUser.restaurantId
+             });
+             newCount++;
+          } else if (item.matchedItemId) {
+             // Update existing item
+             const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
+             if (invItem) {
+                const addedStock = parseFloat(item.quantity) || 0;
+                await updateDoc(doc(db, "inventoryItems", invItem.id), { 
+                   currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
+                });
+                updateCount++;
+             }
+          }
+       }
+
+       addToast('Invoice Processed', `Updated ${updateCount} items and added ${newCount} new items.`);
        setScannedInvoice(null);
      } catch(e) {
-       addToast('Error', 'Failed to save invoice.');
+       addToast('Error', 'Failed to process invoice updates.');
      }
   };
 
   const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { const cat = item.category || 'Uncategorized'; if (!acc[cat]) acc[cat] = []; acc[cat].push(item); return acc; }, {});
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
 
-  // Master Permission Check for Inventory Tabs
-  const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
-
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
       
-      {/* INVOICE REVIEW MODAL */}
-      <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Invoice Review">
+      {/* INVOICE RECONCILIATION MODAL */}
+      <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Reconcile & Approve Invoice">
         {scannedInvoice && (
           <div className="space-y-4">
             <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
@@ -2465,21 +2537,73 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
               <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
             </div>
             
-            <div className="max-h-60 overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest text-center mt-2 mb-1">Stock Matcher</p>
+            <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
               {(scannedInvoice.lineItems || []).map((item, idx) => (
+                <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-bold text-white text-sm">{item.itemName}</div>
+                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
+                        {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
+                      </div>
+                    </div>
+                    <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
+                  </div>
+                  
+                  {/* RECONCILIATION DROPDOWN */}
+                  <select 
+                    value={item.matchedItemId} 
+                    onChange={(e) => {
+                       const newItems = [...scannedInvoice.lineItems];
+                       newItems[idx].matchedItemId = e.target.value;
+                       setScannedInvoice({...scannedInvoice, lineItems: newItems});
+                    }}
+                    className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
+                  >
+                    <option value="">-- Do Not Import / Skip --</option>
+                    <option value="CREATE_NEW">➕ Add as New Item</option>
+                    {inventoryItems.map(inv => (
+                      <option key={inv.id} value={inv.id}>{inv.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Update Stock</button>
+          </div>
+        )}
+      </Modal>
+
+      {/* VIEW PAST INVOICE DETAILS MODAL */}
+      <Modal isOpen={!!viewInvoice} onClose={() => setViewInvoice(null)} title="Invoice Details">
+        {viewInvoice && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+              <div>
+                <div className="font-black text-white text-lg">{viewInvoice.vendorName}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{viewInvoice.invoiceDate}</div>
+              </div>
+              <div className="text-xl font-black text-emerald-400">${Number(viewInvoice.invoiceTotal || 0).toFixed(2)}</div>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {(viewInvoice.lineItems || []).map((item, idx) => (
                 <div key={idx} className="p-2.5 bg-[#1A2126] flex justify-between items-center">
                   <div>
                     <div className="font-bold text-white text-sm">{item.itemName}</div>
-                    <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
+                    <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
                       {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
                     </div>
+                    {item.matchedItemId && item.matchedItemId !== 'CREATE_NEW' && <div className="text-[8px] text-emerald-500 font-black uppercase mt-1">Matched to Inventory</div>}
+                    {item.matchedItemId === 'CREATE_NEW' && <div className="text-[8px] text-blue-400 font-black uppercase mt-1">Added as New Item</div>}
                   </div>
                   <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
                 </div>
               ))}
             </div>
-
-            <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Log Invoice</button>
+            <button onClick={() => setViewInvoice(null)} className={`w-full ${T.btnAlt} py-3`}>Close</button>
           </div>
         )}
       </Modal>
@@ -2522,7 +2646,8 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
-          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>Burn Log</button>
+          {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
+          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🚨 Burn Log</button>
         </div>
       </div>
 
@@ -2608,16 +2733,26 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-            <label className={`w-full flex items-center justify-center gap-2 bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all cursor-pointer ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
-              {isScanningInvoice ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
-              <span>Scan Invoice (Photo/PDF)</span>
-              <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
-            </label>
-            <label className={`w-full flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all cursor-pointer`}>
-              <span><Package size={16} /> Import from CSV</span>
+          <div className="flex flex-col gap-3 mb-6">
+            
+            {/* INVOICE SCANNER: Split Camera & Upload */}
+            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
+               <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
+                  {isScanningInvoice ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
+                  <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+               </label>
+               <label className="flex-1 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381] font-black uppercase tracking-widest text-[11px] sm:text-xs" title="Upload Photo or PDF">
+                  <span>📄 Scan Invoice (PDF/Photo)</span>
+                  <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+               </label>
+            </div>
+
+            {/* CSV IMPORT */}
+            <label className={`flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>
+              <span className="text-[11px] sm:text-xs">📊 Import CSV</span>
               <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
             </label>
+
           </div>
 
           <form onSubmit={handleAddItem} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
@@ -2630,8 +2765,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
               <select value={newItemSupplier} onChange={e=>setNewItemSupplier(e.target.value)} className={T.input} required><option value="">Select Vendor...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className={T.label}>Case Price ($)</label><input type="number"
- step="0.01" placeholder="Ex: 24.50" value={newItemPrice} onChange={e=>setNewItemPrice(e.target.value)} className={T.input}/></div>
+              <div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" placeholder="Ex: 24.50" value={newItemPrice} onChange={e=>setNewItemPrice(e.target.value)} className={T.input}/></div>
               <div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" placeholder="Ex: 12" value={newItemYield} onChange={e=>setNewItemYield(e.target.value)} className={T.input} required/></div>
             </div>
             <button type="submit" className={`w-full ${T.btn} py-2`}><Plus size={18} className="inline mr-2"/> Add Item to Master List</button>
@@ -2655,6 +2789,36 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         </div>
       )}
 
+      {hasInvPerms && invTab === 'invoices' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className="font-black text-sm text-white flex items-center gap-2">Invoice History</h3>
+              <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{invoices.length} Total</span>
+            </div>
+            <div className={`divide-y ${T.border} max-h-[60vh] overflow-y-auto custom-scrollbar`}>
+              {invoices.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 font-bold">No invoices logged yet.</div>
+              ) : (
+                invoices.sort((a,b) => new Date(b.processedAt || 0) - new Date(a.processedAt || 0)).map(inv => (
+                  <div key={inv.id} className={`${T.row} flex justify-between items-center p-4`}>
+                    <div>
+                      <div className="font-black text-white text-base">{inv.vendorName}</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Inv Date: {inv.invoiceDate}</div>
+                      <div className="text-[9px] text-slate-500 mt-1">Processed by {inv.processedBy} on {new Date(inv.processedAt).toLocaleDateString()}</div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-emerald-400 font-black text-lg">${Number(inv.invoiceTotal || 0).toFixed(2)}</div>
+                      <button onClick={() => setViewInvoice(inv)} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">View</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {invTab === 'waste' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
@@ -2672,22 +2836,50 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           </Modal>
 
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
-            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">The Burn Log</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required><option value="">Select Item to Burn...</option>{inventoryItems.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
-              <div><input type="number" min="1" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/><span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span></div>
-              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}><option>Dropped / Spilled</option><option>Expired / Bad Quality</option><option>Cooked Incorrectly</option><option>Comped</option></select>
+            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🚨 The Burn Log</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+              
+              {/* THE FILTERABLE DROPDOWN */}
+              <div className="space-y-2">
+                <input type="text" placeholder="Type to filter inventory..." value={wSearchTerm} onChange={e=>setWSearchTerm(e.target.value)} className={`${T.input} py-2 text-xs border-red-900/30 focus:border-red-500`} />
+                <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required>
+                  <option value="">Select Item to Burn...</option>
+                  {inventoryItems
+                    .filter(i => (i.name||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()) || (i.pfgCode||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()))
+                    .map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <input type="number" min="0" step="any" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
+                <span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span>
+              </div>
+              
+              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}>
+                <option>Dropped / Spilled</option>
+                <option>Expired / Bad Quality</option>
+                <option>Cooked Incorrectly</option>
+                <option>Comped</option>
+              </select>
             </div>
-            <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors`}>Log Waste & Deduct Stock</button>
+            <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors mt-2`}>
+              Log Waste & Deduct Stock
+            </button>
           </form>
           
+          {/* SEARCH BAR */}
+          <div className="relative w-full mb-4">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-red-400" size={20}/>
+            <input type="text" placeholder="Search logs by item, reason, person, or date..." value={wasteSearch} onChange={(e)=>setWasteSearch(e.target.value)} className={`${T.input} pl-12 border-red-900/30 focus:border-red-500/50`}/>
+          </div>
+
           <div className={`${T.card} divide-y ${T.border}`}>
-            <div className={T.th}><span>Today's Burn</span></div>
-            {wasteLogs.filter(w=>w.date===getToday()).map(w => (
+            <div className={T.th}><span>{wasteSearch ? 'Search Results' : "Today's Burn"}</span></div>
+            {wasteLogs.filter(w => wasteSearch ? (w.itemName+w.reason+w.loggedBy+w.date).toLowerCase().includes(wasteSearch.toLowerCase()) : w.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).map(w => (
               <div key={w.id} className={`${T.row} flex justify-between items-center`}>
                 <div className="flex-1"> 
                   <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span>
-                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.reason}   By {w.loggedBy}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.date} • {w.reason}   By {w.loggedBy}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div>
@@ -2698,7 +2890,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                 </div>
               </div>
             ))}
-            {wasteLogs.filter(w=>w.date===getToday()).length === 0 && <div className="p-4 text-center text-slate-400 font-bold text-sm">No waste logged today.</div>}
+            {wasteLogs.filter(w => wasteSearch ? (w.itemName+w.reason+w.loggedBy+w.date).toLowerCase().includes(wasteSearch.toLowerCase()) : w.date === getToday()).length === 0 && <div className="p-4 text-center text-slate-400 font-bold text-sm">No waste logs found.</div>}
           </div>
         </div>
       )}
@@ -3802,7 +3994,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [userCounts, setUserCounts] = useState({});
-  const [totalInstalls, setTotalInstalls] = useState(0); // NEW: Tracks the install count
+  const [totalInstalls, setTotalInstalls] = useState(0); 
 
   // Form States
   const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
@@ -3811,6 +4003,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [forgeRecipeTitle, setForgeRecipeTitle] = useState(''); const [forgeRecipeBody, setForgeRecipeBody] = useState('');
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
+
+  // Nuke Security States
+  const [nukeTarget, setNukeTarget] = useState(null);
+  const [nukePassword, setNukePassword] = useState('');
+  const [isNuking, setIsNuking] = useState(false);
 
   // Fetch Global Intelligence
   useEffect(() => {
@@ -3826,8 +4023,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
        setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
-       
-       // NEW: Count the total number of installs ever recorded globally
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
     });
     return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
@@ -3860,11 +4055,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     await deleteDoc(doc(db, "restaurants", id)); addToast('Deleted', `${name} has been erased from existence.`);
   };
 
-  const handleWipeSandbox = async () => {
-    if (prompt(`Type "WIPE" to confirm clearing sandbox data for ${editingRest.name}:`) !== 'WIPE') return addToast('Canceled', 'Sandbox wipe aborted.');
-    try { const cols = ['shifts', 'sales', 'wasteLogs', 'timeOffRequests', 'shiftSwaps']; for (const c of cols) { const snap = await getDocs(query(collection(db, c), where('restaurantId', '==', editingRest.id))); snap.forEach(d => deleteDoc(doc(db, c, d.id))); } addToast('Clean Slate', `Sandbox data deleted.`); } catch (e) { addToast('Error', e.message); }
-  };
-
   const handleExportData = async (rest) => {
     addToast('Compiling Data', 'Building CSV payload...');
     const uSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', rest.id)));
@@ -3875,7 +4065,50 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     addToast('Export Complete', 'Data delivered to downloads folder.');
   };
 
-// --- 2. SYSTEM OPERATIONS & FORGE ---
+  // --- OBLITERATION ENGINE ---
+  const handleNukeData = async (e) => {
+    e.preventDefault();
+    if (!nukePassword) return addToast('Error', 'Password required.');
+    setIsNuking(true);
+    
+    try {
+      // Re-authenticate using the master admin's password as a security lock
+      await signInWithEmailAndPassword(auth, appUser.email, nukePassword);
+      
+      let cols = [];
+      if (nukeTarget.type === 'inventory') cols = ['inventoryItems', 'vendors', 'invoices'];
+      else if (nukeTarget.type === 'schedule') cols = ['shifts', 'timeOffRequests', 'shiftSwaps'];
+      else if (nukeTarget.type === 'recipes') cols = ['recipes'];
+      else if (nukeTarget.type === 'events') cols = ['events'];
+      else if (nukeTarget.type === 'users') cols = ['users'];
+      else if (nukeTarget.type === 'everything') cols = ['inventoryItems', 'vendors', 'invoices', 'users', 'recipes', 'shifts', 'timeOffRequests', 'shiftSwaps', 'events', 'wasteLogs', 'sales'];
+
+      let totalDeleted = 0;
+      for (const c of cols) {
+        const snap = await getDocs(query(collection(db, c), where("restaurantId", "==", nukeTarget.rest.id)));
+        const deletePromises = [];
+        
+        snap.forEach(d => {
+           // HARD SAFETY LOCK: Never delete the global admin user requesting the wipe
+           if (c === 'users' && d.id === appUser.id) return;
+           deletePromises.push(deleteDoc(doc(db, c, d.id)));
+        });
+        
+        await Promise.all(deletePromises);
+        totalDeleted += deletePromises.length;
+      }
+
+      addToast('Obliterated', `Deleted ${totalDeleted} documents for ${nukeTarget.rest.name}.`);
+      setNukeTarget(null);
+      setNukePassword('');
+      setEditingRest(null); 
+    } catch (err) {
+      addToast('Error', 'Authentication failed or deletion error. Check your password.');
+    }
+    setIsNuking(false);
+  };
+
+  // --- 2. SYSTEM OPERATIONS & FORGE ---
   const handleMegaphone = async (e) => {
     e.preventDefault(); 
     if(!broadcastMsg.trim()) return; 
@@ -3941,7 +4174,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   };
 
   const handleForceRefresh = async () => {
-    if (!window.confirm("? CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
+    if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
     addToast('Executing', 'Sending refresh signal...');
     const stamp = new Date().toISOString();
     let count = 0;
@@ -3997,12 +4230,43 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
 
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
-            <div className="pt-4 border-t border-red-900/50 mt-4 space-y-2">
-              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">? Download CSV Export</button>
-              <button type="button" onClick={handleWipeSandbox} className="w-full bg-red-900/10 text-red-500 font-black py-2 rounded-xl border border-red-900/50 hover:bg-red-900/30 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Trash2 size={14}/> Wipe Sandbox Data</button>
+
+            {/* DANGER ZONE */}
+            <div className="pt-4 border-t border-red-900/50 mt-4 space-y-3">
+              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">
+                <ClipboardList size={14}/> Download CSV Export
+              </button>
+
+              <div>
+                <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center mt-4">Danger Zone (Data Wipes)</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'inventory', label: 'Inventory & Vendors' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Inventory</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'schedule', label: 'Schedule & Time Off' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Schedule</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'recipes', label: 'All Recipes' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Recipes</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'events', label: 'Events & Messages' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Events/Msgs</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'users', label: 'All Users/Staff' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Users</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'everything', label: 'ABSOLUTELY EVERYTHING' })} className="w-full bg-red-600/20 text-red-500 font-black py-2 rounded-lg border border-red-500/50 hover:bg-red-600 hover:text-white transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> NUKE ALL</button>
+                </div>
+              </div>
             </div>
+
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={!!nukeTarget} onClose={() => { setNukeTarget(null); setNukePassword(''); }} title={`⚠️ CRITICAL: Nuke ${nukeTarget?.label}`}>
+        <form onSubmit={handleNukeData} className="space-y-4">
+          <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-xl text-red-200 text-xs font-bold leading-relaxed">
+            You are about to permanently delete <strong>{nukeTarget?.label}</strong> for <strong>{nukeTarget?.rest?.name}</strong>. This action cannot be undone.
+          </div>
+          <div>
+            <label className={T.label}>Enter Your Master Admin Password</label>
+            <input type="password" value={nukePassword} onChange={e => setNukePassword(e.target.value)} className={T.input} required placeholder="Authenticate to confirm..." disabled={isNuking} />
+          </div>
+          <button type="submit" disabled={isNuking} className={`w-full ${T.btn} bg-red-600 hover:bg-red-700 text-white flex justify-center items-center gap-2`}>
+            {isNuking ? <Loader2 className="animate-spin" size={18} /> : <><Trash2 size={18} /> Permanently Delete Data</>}
+          </button>
+        </form>
       </Modal>
 
       {/* --- TAB: OVERVIEW --- */}
@@ -4063,7 +4327,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
                     <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1">? Possess</button>
+                    <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
                     <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors shadow-sm">Manage</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
@@ -4093,7 +4357,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
                     <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName}</div>
                   </div>
                   <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
-                    ? Possess
+                    <Moon size={14} /> Possess
                   </button>
                 </div>
               )
@@ -4166,7 +4430,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-white text-sm">{log.userName}</span>
-                    {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">? Ghost Action</span>}
+                    {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">👻 Ghost Action</span>}
                     <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{log.action}</span>
                   </div>
                   <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.timestamp).toLocaleString()}</span>
@@ -4521,7 +4785,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 7.5.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.0.0</span>
       </div>
     </div>
   );
