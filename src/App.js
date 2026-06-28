@@ -1489,12 +1489,9 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
-            <div>
+         <div>
               <label className={T.label}>Time (Optional)</label>
-              <select value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}>
-                <option value="">-- Select Time --</option>
-                {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
-              </select>
+              <input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/>
             </div>
           </div>
         <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
@@ -1641,19 +1638,15 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                 </button>
               </div>
 
-              {/* Custom Time Dropdowns */}
+        {/* Custom Time Overrides */}
               <div className="flex gap-2 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
                 <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
-                    <select value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}>
-                      {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
-                    </select>
+                    <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
                 </div>
                 <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Out</span>
-                    <select value={endTime} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}>
-                      {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
-                    </select>
+                    <input type="time" value={endTime} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
                 </div>
               </div>
 
@@ -3393,9 +3386,15 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
                 Partial Day Only?
               </label>
               {isPartial && (
-                <div className={`grid grid-cols-2 gap-2 p-3 bg-[#12161A] rounded-xl border ${T.border}`}>
-                  <div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required/></div>
-                  <div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required/></div>
+              <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={T.label}>Start Time</label>
+                        <input type="time" value={newPresetStart} onChange={e=>setNewPresetStart(e.target.value)} className={T.input} required />
+                    </div>
+                    <div>
+                        <label className={T.label}>End Time</label>
+                        <input type="time" value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required />
+                    </div>
                 </div>
               )}
               <button type="submit" disabled={selectedDates.length === 0} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button>
