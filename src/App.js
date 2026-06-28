@@ -4004,8 +4004,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
 
-  // Nuke Inventory Security States
-  const [nukeInvRest, setNukeInvRest] = useState(null);
+  // Nuke Security States
+  const [nukeTarget, setNukeTarget] = useState(null);
   const [nukePassword, setNukePassword] = useState('');
   const [isNuking, setIsNuking] = useState(false);
 
@@ -4055,34 +4055,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     await deleteDoc(doc(db, "restaurants", id)); addToast('Deleted', `${name} has been erased from existence.`);
   };
 
-  const handleWipeSandbox = async () => {
-    if (prompt(`Type "WIPE" to confirm clearing sandbox data for ${editingRest.name}:`) !== 'WIPE') return addToast('Canceled', 'Sandbox wipe aborted.');
-    try { const cols = ['shifts', 'sales', 'wasteLogs', 'timeOffRequests', 'shiftSwaps']; for (const c of cols) { const snap = await getDocs(query(collection(db, c), where('restaurantId', '==', editingRest.id))); snap.forEach(d => deleteDoc(doc(db, c, d.id))); } addToast('Clean Slate', `Sandbox data deleted.`); } catch (e) { addToast('Error', e.message); }
-  };
-
-  const handleNukeInventory = async (e) => {
-    e.preventDefault();
-    if (!nukePassword) return addToast('Error', 'Password required.');
-    setIsNuking(true);
-    try {
-      // Re-authenticate using the master admin's password as a security lock
-      await signInWithEmailAndPassword(auth, appUser.email, nukePassword);
-      
-      const snap = await getDocs(query(collection(db, "inventoryItems"), where("restaurantId", "==", nukeInvRest.id)));
-      const deletePromises = [];
-      snap.forEach(d => deletePromises.push(deleteDoc(doc(db, "inventoryItems", d.id))));
-      await Promise.all(deletePromises);
-      
-      addToast('Obliterated', `Deleted ${snap.size} inventory items for ${nukeInvRest.name}.`);
-      setNukeInvRest(null);
-      setNukePassword('');
-      setEditingRest(null); 
-    } catch (err) {
-      addToast('Error', 'Authentication failed or deletion error. Check your password.');
-    }
-    setIsNuking(false);
-  };
-
   const handleExportData = async (rest) => {
     addToast('Compiling Data', 'Building CSV payload...');
     const uSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', rest.id)));
@@ -4093,7 +4065,50 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     addToast('Export Complete', 'Data delivered to downloads folder.');
   };
 
-// --- 2. SYSTEM OPERATIONS & FORGE ---
+  // --- OBLITERATION ENGINE ---
+  const handleNukeData = async (e) => {
+    e.preventDefault();
+    if (!nukePassword) return addToast('Error', 'Password required.');
+    setIsNuking(true);
+    
+    try {
+      // Re-authenticate using the master admin's password as a security lock
+      await signInWithEmailAndPassword(auth, appUser.email, nukePassword);
+      
+      let cols = [];
+      if (nukeTarget.type === 'inventory') cols = ['inventoryItems', 'vendors', 'invoices'];
+      else if (nukeTarget.type === 'schedule') cols = ['shifts', 'timeOffRequests', 'shiftSwaps'];
+      else if (nukeTarget.type === 'recipes') cols = ['recipes'];
+      else if (nukeTarget.type === 'events') cols = ['events'];
+      else if (nukeTarget.type === 'users') cols = ['users'];
+      else if (nukeTarget.type === 'everything') cols = ['inventoryItems', 'vendors', 'invoices', 'users', 'recipes', 'shifts', 'timeOffRequests', 'shiftSwaps', 'events', 'wasteLogs', 'sales'];
+
+      let totalDeleted = 0;
+      for (const c of cols) {
+        const snap = await getDocs(query(collection(db, c), where("restaurantId", "==", nukeTarget.rest.id)));
+        const deletePromises = [];
+        
+        snap.forEach(d => {
+           // HARD SAFETY LOCK: Never delete the global admin user requesting the wipe
+           if (c === 'users' && d.id === appUser.id) return;
+           deletePromises.push(deleteDoc(doc(db, c, d.id)));
+        });
+        
+        await Promise.all(deletePromises);
+        totalDeleted += deletePromises.length;
+      }
+
+      addToast('Obliterated', `Deleted ${totalDeleted} documents for ${nukeTarget.rest.name}.`);
+      setNukeTarget(null);
+      setNukePassword('');
+      setEditingRest(null); 
+    } catch (err) {
+      addToast('Error', 'Authentication failed or deletion error. Check your password.');
+    }
+    setIsNuking(false);
+  };
+
+  // --- 2. SYSTEM OPERATIONS & FORGE ---
   const handleMegaphone = async (e) => {
     e.preventDefault(); 
     if(!broadcastMsg.trim()) return; 
@@ -4215,26 +4230,39 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
 
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
-            <div className="pt-4 border-t border-red-900/50 mt-4 space-y-2">
+
+            {/* DANGER ZONE */}
+            <div className="pt-4 border-t border-red-900/50 mt-4 space-y-3">
               <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2"><Package size={14}/> Download CSV Export</button>
-              <button type="button" onClick={handleWipeSandbox} className="w-full bg-red-900/10 text-red-500 font-black py-2 rounded-xl border border-red-900/50 hover:bg-red-900/30 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Trash2 size={14}/> Wipe Sandbox Data</button>
-              <button type="button" onClick={() => setNukeInvRest(editingRest)} className="w-full bg-red-900/10 text-red-500 font-black py-2 rounded-xl border border-red-900/50 hover:bg-red-900/30 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Trash2 size={14}/> Delete All Inventory</button>
+
+              <div>
+                <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center mt-4">Danger Zone (Data Wipes)</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'inventory', label: 'Inventory & Vendors' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Inventory</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'schedule', label: 'Schedule & Time Off' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Schedule</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'recipes', label: 'All Recipes' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Recipes</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'events', label: 'Events & Messages' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Events/Msgs</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'users', label: 'All Users/Staff' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Users</button>
+                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'everything', label: 'ABSOLUTELY EVERYTHING' })} className="w-full bg-red-600/20 text-red-500 font-black py-2 rounded-lg border border-red-500/50 hover:bg-red-600 hover:text-white transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1">☢️ NUKE ALL</button>
+                </div>
+              </div>
             </div>
+
           </div>
         )}
       </Modal>
 
-      <Modal isOpen={!!nukeInvRest} onClose={() => { setNukeInvRest(null); setNukePassword(''); }} title="⚠️ CRITICAL: Nuke Inventory">
-        <form onSubmit={handleNukeInventory} className="space-y-4">
+      <Modal isOpen={!!nukeTarget} onClose={() => { setNukeTarget(null); setNukePassword(''); }} title={`⚠️ CRITICAL: Nuke ${nukeTarget?.label}`}>
+        <form onSubmit={handleNukeData} className="space-y-4">
           <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-xl text-red-200 text-xs font-bold leading-relaxed">
-            You are about to permanently delete EVERY inventory item in the master catalog for <strong>{nukeInvRest?.name}</strong>. This action cannot be undone.
+            You are about to permanently delete <strong>{nukeTarget?.label}</strong> for <strong>{nukeTarget?.rest?.name}</strong>. This action cannot be undone.
           </div>
           <div>
             <label className={T.label}>Enter Your Master Admin Password</label>
             <input type="password" value={nukePassword} onChange={e => setNukePassword(e.target.value)} className={T.input} required placeholder="Authenticate to confirm..." disabled={isNuking} />
           </div>
-          <button type="submit" disabled={isNuking} className={`w-full ${T.btn} bg-red-600 hover:bg-red-700 text-white flex justify-center items-center`}>
-            {isNuking ? <Loader2 className="animate-spin" size={18} /> : 'Permanently Delete Inventory'}
+          <button type="submit" disabled={isNuking} className={`w-full ${T.btn} bg-red-600 hover:bg-red-700 text-white flex justify-center items-center gap-2`}>
+            {isNuking ? <Loader2 className="animate-spin" size={18} /> : <><Trash2 size={18} /> Permanently Delete Data</>}
           </button>
         </form>
       </Modal>
