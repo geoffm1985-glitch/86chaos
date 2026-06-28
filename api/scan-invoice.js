@@ -30,8 +30,8 @@ export default async function handler(req, res) {
           parts: [
             { text: prompt },
             {
-              inlineData: {
-                mimeType: mimeType || "application/pdf",
+              inline_data: {
+                mime_type: mimeType || "application/pdf",
                 data: base64Data
               }
             }
