@@ -2236,8 +2236,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [editVendor, setEditVendor] = useState(null);
 
   // Waste Form
-  const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
-  const [editWaste, setEditWaste] = useState(null);
+const [wSearchTerm, setWSearchTerm] = useState(''); // Filters the dropdown  const [editWaste, setEditWaste] = useState(null);
   const [wasteSearch, setWasteSearch] = useState(''); // Search state for the burn log
 
   // AI Invoice Scanner State
@@ -2832,14 +2831,36 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
             )}
           </Modal>
 
-          <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+<form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🚨 The Burn Log</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required><option value="">Select Item to Burn...</option>{inventoryItems.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
-              <div><input type="number" min="1" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/><span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span></div>
-              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}><option>Dropped / Spilled</option><option>Expired / Bad Quality</option><option>Cooked Incorrectly</option><option>Comped</option></select>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+              
+              {/* THE FILTERABLE DROPDOWN */}
+              <div className="space-y-2">
+                <input type="text" placeholder="Type to filter inventory..." value={wSearchTerm} onChange={e=>setWSearchTerm(e.target.value)} className={`${T.input} py-2 text-xs border-red-900/30 focus:border-red-500`} />
+                <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required>
+                  <option value="">Select Item to Burn...</option>
+                  {inventoryItems
+                    .filter(i => (i.name||'').toLowerCase().includes(wSearchTerm.toLowerCase()) || (i.pfgCode||'').toLowerCase().includes(wSearchTerm.toLowerCase()))
+                    .map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <input type="number" min="0" step="any" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
+                <span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span>
+              </div>
+              
+              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}>
+                <option>Dropped / Spilled</option>
+                <option>Expired / Bad Quality</option>
+                <option>Cooked Incorrectly</option>
+                <option>Comped</option>
+              </select>
             </div>
-            <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors`}>Log Waste & Deduct Stock</button>
+            <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors mt-2`}>
+              Log Waste & Deduct Stock
+            </button>
           </form>
           
           {/* SEARCH BAR */}
