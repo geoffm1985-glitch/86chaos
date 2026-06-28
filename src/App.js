@@ -75,6 +75,7 @@ const useLiveCollection = (coll, restId) => {
   }, [coll, restId]);
   return data;
 };
+
 const formatDate = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 const getToday = () => formatDate(new Date());
 const getMonthStr = (d) => (d || getToday()).substring(0, 7);
@@ -349,7 +350,7 @@ export default function App() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
         {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} db={db} storage={storage} Modal={Modal} T={T} getToday={getToday} getMonthStr={getMonthStr} getDaysInMonth={getDaysInMonth} formatDisplayDate={formatDisplayDate} formatShortTime={formatShortTime} getHoliday={getHoliday} logAudit={logAudit} />}
-        {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} db={db} Modal={Modal} T={T} getToday={getToday} getMonthStr={getMonthStr} formatDisplayDate={formatDisplayDate} formatShortTime={formatShortTime} />}
+        {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} db={db} Modal={Modal} T={T} getToday={getToday} getMonthStr={getMonthStr} formatDisplayDate={formatDisplayDate} formatShortTime={formatShortTime} getDaysInMonth={getDaysInMonth} formatDisplayMonth={formatDisplayMonth} getHoliday={getHoliday} />}
         {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} db={db} T={T} getToday={getToday} />}
         {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} db={db} T={T} storage={storage} />}
         {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} tasks={tasks} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} db={db} T={T} useLiveCollection={useLiveCollection} formatDate={formatDate} getToday={getToday} addToast={addToast} />}
@@ -357,7 +358,7 @@ export default function App() {
         {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} db={db} Modal={Modal} T={T} getToday={getToday} useLiveCollection={useLiveCollection} />}
         {activeTabState === 'team' && <TabTeam users={users} appUser={liveAppUser} addToast={addToast} db={db} auth={auth} firebaseConfig={firebaseConfig} T={T} useLiveCollection={useLiveCollection} getAvatar={getAvatar} />}
         {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} db={db} auth={auth} T={T} useLiveCollection={useLiveCollection} getAvatar={getAvatar} logAudit={logAudit} MASTER_ADMIN_EMAIL={MASTER_ADMIN_EMAIL} />}
-        {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} db={db} auth={auth} Modal={Modal} T={T} getToday={getToday} generateTempPass={generateTempPass} firebaseConfig={firebaseConfig} CURRENT_VERSION={CURRENT_VERSION} />}
+        {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} db={db} auth={auth} Modal={Modal} T={T} getToday={getToday} generateTempPass={generateTempPass} firebaseConfig={firebaseConfig} CURRENT_VERSION={CURRENT_VERSION} logAudit={logAudit} />}
         {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} useLiveCollection={useLiveCollection} T={T} />}
         {activeTabState === 'month' && <TabMonth currentDate={currentDate} users={users} shifts={shifts} T={T} getMonthStr={getMonthStr} getDaysInMonth={getDaysInMonth} formatDisplayMonth={formatDisplayMonth} formatShortTime={formatShortTime} />}
         {activeTabState === 'time-off' && <TabTimeOff timeOffRequests={timeOffRequests} appUser={liveAppUser} users={users} addToast={addToast} events={events} db={db} T={T} getToday={getToday} getDaysInMonth={getDaysInMonth} formatDisplayDate={formatDisplayDate} formatShortTime={formatShortTime} getHoliday={getHoliday} formatDisplayMonth={formatDisplayMonth} />}
