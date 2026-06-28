@@ -2239,6 +2239,11 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
   const [editWaste, setEditWaste] = useState(null);
 
+  // Waste Form
+  const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
+  const [editWaste, setEditWaste] = useState(null);
+  const [wasteSearch, setWasteSearch] = useState('');
+
   // AI Invoice Scanner State
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
   const [scannedInvoice, setScannedInvoice] = useState(null);
@@ -2815,7 +2820,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         </div>
       )}
 
-      {invTab === 'waste' && (
+{invTab === 'waste' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
           <Modal isOpen={!!editWaste} onClose={() => setEditWaste(null)} title="Edit Burn Log">
@@ -2829,6 +2834,48 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                 <button type="submit" className={`w-full ${T.btn} mt-2`}>Update & Adjust Stock</button>
               </form>
             )}
+          </Modal>
+
+          <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🚨 The Burn Log</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required><option value="">Select Item to Burn...</option>{inventoryItems.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
+              <div><input type="number" min="1" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/><span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span></div>
+              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}><option>Dropped / Spilled</option><option>Expired / Bad Quality</option><option>Cooked Incorrectly</option><option>Comped</option></select>
+            </div>
+            <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors`}>Log Waste & Deduct Stock</button>
+          </form>
+          
+          {/* SEARCH BAR */}
+          <div className="relative w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-red-400" size={20}/>
+            <input type="text" placeholder="Search logs by item, reason, person, or date..." value={wasteSearch} onChange={(e)=>setWasteSearch(e.target.value)} className={`${T.input} pl-12 border-red-900/30 focus:border-red-500/50`}/>
+          </div>
+
+          <div className={`${T.card} divide-y ${T.border}`}>
+            <div className={T.th}><span>{wasteSearch ? 'Search Results' : "Today's Burn"}</span></div>
+            {wasteLogs.filter(w => wasteSearch ? (w.itemName+w.reason+w.loggedBy+w.date).toLowerCase().includes(wasteSearch.toLowerCase()) : w.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).map(w => (
+              <div key={w.id} className={`${T.row} flex justify-between items-center`}>
+                <div className="flex-1"> 
+                  <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.date} • {w.reason}   By {w.loggedBy}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div>
+                  <div className="flex gap-1 border-l border-[#2A353D] pl-3 ml-1">
+                    <button onClick={() => setEditWaste({...w})} className="p-1.5 text-slate-400 hover:text-white transition-colors"><Edit size={14}/></button>
+                    <button onClick={() => handleDeleteWaste(w)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {wasteLogs.filter(w => wasteSearch ? (w.itemName+w.reason+w.loggedBy+w.date).toLowerCase().includes(wasteSearch.toLowerCase()) : w.date === getToday()).length === 0 && <div className="p-4 text-center text-slate-400 font-bold text-sm">No waste logs found.</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
           </Modal>
 
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
