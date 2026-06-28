@@ -2235,6 +2235,10 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [wItemId, setWItemId] = useState(''); const [wQty, setWQty] = useState(''); const [wReason, setWReason] = useState('Dropped / Spilled');
   const [editWaste, setEditWaste] = useState(null);
 
+  // AI Invoice Scanner State
+  const [isScanningInvoice, setIsScanningInvoice] = useState(false);
+  const [scannedInvoice, setScannedInvoice] = useState(null);
+
   // --- LOGIC ---
   const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
   const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category || 'Other', pfgCode: (editItem.pfgCode || '').trim(), supplierId: editItem.supplierId, packSize: editItem.packSize, yieldQty: parseInt(editItem.yieldQty) || 1, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
@@ -2301,7 +2305,6 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const executeOrder = async (method) => {
     const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
     
-    // Clean text format for reps (No Prices, Quantity First)
     let bodyText = items.map(i => `${i.orderQty}x ${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize})`).join('%0D%0A');
     let fullText = `Order via 86chaos%0D%0A%0D%0A${bodyText}`;
 
@@ -2314,11 +2317,11 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       addToast('Exported', 'Order downloaded as Spreadsheet.');
     } else if (method === 'email') {
       const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
-      if (emailUrl.length > 2000) { addToast('? Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
+      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
       else { window.location.href = emailUrl; }
     } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
-      if (smsUrl.length > 2000) { addToast('? Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
+      if (smsUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
       else { window.location.href = smsUrl; }
     } else {
       addToast('Copied', 'Order list copied to clipboard!');
@@ -2328,8 +2331,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
   };
 
-  const handleReceiveDelivery
- = async (vendorId) => {
+  const handleReceiveDelivery = async (vendorId) => {
     const itemsToReceive = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
     for (const item of itemsToReceive) {
       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 });
@@ -2337,6 +2339,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     addToast('Delivery Accepted', `Stock automatically updated for ${itemsToReceive.length} items.`);
   };
 
+  // --- CSV INVENTORY UPLOAD ---
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2347,9 +2350,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       try {
         const text = event.target.result;
         const rows = text.split('\n').filter(row => row.trim());
-        
         let addedCount = 0;
-        // Start at index 1 to skip the header row
         for (let i = 1; i < rows.length; i++) {
           const cols = rows[i].split(/(?!\B"[^"]*),(?![^"]*"\B)/).map(c => c.trim().replace(/^"|"$/g, ''));
           if (cols.length < 2) continue; 
@@ -2388,6 +2389,61 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     e.target.value = ''; 
   };
 
+  // --- AI INVOICE SCANNER ENGINE ---
+  const handleScanInvoice = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+       addToast('Error', 'File too large. Please keep images or PDFs under 5MB.');
+       return;
+    }
+
+    setIsScanningInvoice(true);
+    addToast('Scanning Invoice', 'Extracting line items and totals...');
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async (event) => {
+      const base64String = event.target.result;
+      const mimeType = file.type;
+
+      try {
+        const response = await fetch('/api/scan-invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileBase64: base64String, mimeType })
+        });
+
+        if (!response.ok) throw new Error('Failed to scan invoice.');
+
+        const data = await response.json();
+        setScannedInvoice(data);
+        addToast('Success', 'Invoice extracted! Please review line items.');
+      } catch (err) {
+        addToast('Error', err.message);
+      } finally {
+        setIsScanningInvoice(false);
+      }
+    };
+    e.target.value = '';
+  };
+
+  const handleApproveInvoice = async () => {
+     try {
+       await addDoc(collection(db, "invoices"), {
+         ...scannedInvoice,
+         restaurantId: appUser.restaurantId,
+         processedAt: new Date().toISOString(),
+         processedBy: appUser.name
+       });
+       addToast('Invoice Approved', `Logged ${scannedInvoice.vendorName} invoice for $${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}`);
+       setScannedInvoice(null);
+     } catch(e) {
+       addToast('Error', 'Failed to save invoice.');
+     }
+  };
+
   const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { const cat = item.category || 'Uncategorized'; if (!acc[cat]) acc[cat] = []; acc[cat].push(item); return acc; }, {});
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
 
@@ -2396,15 +2452,47 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
+      
+      {/* INVOICE REVIEW MODAL */}
+      <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Invoice Review">
+        {scannedInvoice && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+              <div>
+                <div className="font-black text-white text-lg">{scannedInvoice.vendorName}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate}</div>
+              </div>
+              <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {(scannedInvoice.lineItems || []).map((item, idx) => (
+                <div key={idx} className="p-2.5 bg-[#1A2126] flex justify-between items-center">
+                  <div>
+                    <div className="font-bold text-white text-sm">{item.itemName}</div>
+                    <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
+                      {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
+                    </div>
+                  </div>
+                  <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Log Invoice</button>
+          </div>
+        )}
+      </Modal>
+
       <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`}>
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
            <div className="grid grid-cols-2 gap-2">
-             <button onClick={() => executeOrder('email')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}>?? Email</button>
-             <button onClick={() => executeOrder('sms')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}>? Text</button>
-             <button onClick={() => executeOrder('csv')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}>? CSV Export</button>
-             <button onClick={() => executeOrder('copy')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}>? Copy List</button>
+             <button onClick={() => executeOrder('email')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}><Send size={16}/> Email</button>
+             <button onClick={() => executeOrder('sms')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}><MessageSquare size={16}/> Text</button>
+             <button onClick={() => executeOrder('csv')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}><Package size={16}/> CSV Export</button>
+             <button onClick={() => executeOrder('copy')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}><ClipboardList size={16}/> Copy List</button>
            </div>
          </div>
       </Modal>
@@ -2434,7 +2522,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
-          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>? Burn Log</button>
+          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🚨 Burn Log</button>
         </div>
       </div>
 
@@ -2483,7 +2571,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                        ))}
                      </div>
                      <div className={`p-4 bg-[#12161A] border-t ${T.border}`}>
-                       <button onClick={() => handleReceiveDelivery(vendor.id)} className={`w-full bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-emerald-400 hover:text-white font-black py-2 rounded-xl transition-colors`}>? Accept & Add to Inventory</button>
+                       <button onClick={() => handleReceiveDelivery(vendor.id)} className={`w-full bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-emerald-400 hover:text-white font-black py-2 rounded-xl transition-colors`}>✅ Accept & Add to Inventory</button>
                      </div>
                    </div>
                  )
@@ -2520,9 +2608,14 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
 
-          <div className="flex gap-2 mb-4">
-            <label className={`w-full flex items-center justify-center gap-2 bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all cursor-pointer`}>
-              <span><Package size={14} /> Import Inventory from CSV Spreadsheet</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+            <label className={`w-full flex items-center justify-center gap-2 bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all cursor-pointer ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
+              {isScanningInvoice ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
+              <span>Scan Invoice (Photo/PDF)</span>
+              <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+            </label>
+            <label className={`w-full flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl shadow-lg transition-all cursor-pointer`}>
+              <span><Package size={16} /> Import from CSV</span>
               <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
             </label>
           </div>
@@ -2579,7 +2672,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           </Modal>
 
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
-            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">? The Burn Log</h3>
+            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🚨 The Burn Log</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required><option value="">Select Item to Burn...</option>{inventoryItems.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>
               <div><input type="number" min="1" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/><span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span></div>
