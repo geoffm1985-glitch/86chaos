@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { Package, Trash2, Moon, Search, Calendar, BookOpen, Bug, Bell, Shield, Loader2, ClipboardList } from 'lucide-react';
 
-const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, getToday, generateTempPass, firebaseConfig, CURRENT_VERSION }) => {
+const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, getToday, generateTempPass, firebaseConfig, CURRENT_VERSION, logAudit }) => {
   const [subTab, setSubTab] = useState('overview');
   
   // Master Data States
@@ -46,7 +46,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
     });
     return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
-  }, []);
+  }, [db]);
 
   // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
   const handleDeployTenant = async (e) => {
@@ -65,8 +65,15 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
 
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features
- || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
+    await updateDoc(doc(db, "restaurants", editingRest.id), { 
+      name: editingRest.name, 
+      isActive: editingRest.isActive, 
+      isReadOnly: editingRest.isReadOnly || false, 
+      features: editingRest.features || {}, 
+      labs: editingRest.labs || {}, 
+      planType: editingRest.planType || 'Pro', 
+      billingStatus: editingRest.billingStatus || 'Paid' 
+    });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
 
@@ -234,8 +241,17 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
                 <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
                 <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
               </div>
-              <div className="pt-2 border-t border-[#2A353D]"><label className={T.label}>Module Access</label><div className="grid grid-cols-2 gap-2 mt-2">{['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales'].map(feat => (<label key={feat}
- className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]"><input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" /><span className="text-xs font-bold text-slate-300 capitalize">{feat}</span></label>))}</div></div>
+              <div className="pt-2 border-t border-[#2A353D]">
+                <label className={T.label}>Module Access</label>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales'].map(feat => (
+                    <label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]">
+                      <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] !== false : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
+                      <span className="text-xs font-bold text-slate-300 capitalize">{feat}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
               
               {/* LABS / CANARY ROLLOUT */}
               <div className="pt-2 border-t border-[#2A353D]">
@@ -473,8 +489,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2
- gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className={`${T.card} p-5 border-emerald-900/30`}>
               <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
