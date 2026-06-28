@@ -3270,7 +3270,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const [startTime, setStartTime] = useState('09:00'); 
   const [endTime, setEndTime] = useState('17:00');
 
-  // Filter requests specific to the logged-in user
   const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(a.date) - new Date(b.date)); 
   const myFutureRequests = myRequests.filter(r => r.date >= getToday());
   const allFutureRequests = timeOffRequests.filter(r => r.date >= getToday()).sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -3278,7 +3277,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
 
-  // Pull in the events for the current calendar month
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(calMonth));
 
   const changeMonth = (offset) => { 
@@ -3288,7 +3286,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const handleToggleDate = (d) => { 
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.'); 
     
-    // Check if they already requested this day
     const existingReq = myRequests.find(r => r.date === d); 
     if (existingReq) { 
       if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) {
@@ -3306,9 +3303,15 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
     if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.'); 
     if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); 
     
+    const currentMonth = getToday().substring(0, 7);
+
     for (const d of selectedDates) { 
+      const reqMonth = d.substring(0, 7);
+      const needsApproval = reqMonth <= currentMonth;
+
       await addDoc(collection(db, "timeOffRequests"), { 
-        userId: appUser.id, userName: appUser.name, date: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, submittedAt: new Date().toISOString(), restaurantId: appUser.restaurantId 
+        userId: appUser.id, userName: appUser.name, date: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, submittedAt: new Date().toISOString(), restaurantId: appUser.restaurantId,
+        status: needsApproval ? 'pending' : 'approved'
       }); 
     } 
     addToast('Recorded', `Logged ${selectedDates.length} days off.`); 
@@ -3322,7 +3325,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
         <div className={`${T.card} overflow-hidden mb-6`}>
           <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
             <h3 className="font-black text-sm text-white flex items-center gap-2"><Shield size={14} className="text-red-500"/> Master Override Log</h3>
-            <span className={`text-[10px] font-bold ${T.muted}`}>Delete a record to allow scheduling.</span>
+            <span className={`text-[10px] font-bold ${T.muted}`}>Approve or delete requests.</span>
           </div>
           <div className={`max-h-48 overflow-y-auto custom-scrollbar divide-y ${T.border}`}>
             {allFutureRequests.length === 0 && <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No upcoming time off for any staff.</div>}
@@ -3330,9 +3333,17 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
               <div key={r.id} className={T.row}>
                 <div className="flex-1">
                   <div className="font-black text-sm text-white leading-tight">{r.userName}</div>
-                  <div className={`text-[10px] font-bold ${T.muted} mt-0.5`}>{formatDisplayDate(r.date)} {r.isPartial && <span className={`ml-1 text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}</div>
+                  <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex items-center gap-2`}>
+                    {formatDisplayDate(r.date)} {r.isPartial && <span className={`text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}
+                    {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1.5 py-0.5 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                  </div>
                 </div>
-                <button onClick={() => { if(window.confirm("Force delete this request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-400 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                <div className="flex items-center gap-2">
+                  {r.status === 'pending' && (
+                    <button onClick={() => updateDoc(doc(db, "timeOffRequests", r.id), { status: 'approved' })} className="text-slate-400 hover:text-emerald-500 p-1.5 bg-[#12161A] border border-[#2A353D] rounded"><Check size={14}/></button>
+                  )}
+                  <button onClick={() => { if(window.confirm("Force delete this request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-400 hover:text-red-500 p-1.5 bg-[#12161A] border border-[#2A353D] rounded"><Trash2 size={14}/></button>
+                </div>
               </div>
             ))}
           </div>
@@ -3344,8 +3355,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
           <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
             <button onClick={() => changeMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button>
             <h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3>
-            <button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight
- size={16}/></button>
+            <button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button>
           </div>
           <div className={`grid grid-cols-7 border-t ${T.border}`}>
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`py-1.5 text-center text-[9px] font-black ${T.copper} uppercase border-b border-[#2A353D] bg-[#12161A]`}>{d}</div>)}
@@ -3368,7 +3378,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
                     </span>
                   ))}
 
-                  {existingReq && <span className="text-[7px] font-black uppercase text-red-500 mt-auto mb-1">Off</span>}
+                  {existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}
                   {isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}
                 </div>
               )
@@ -3389,18 +3399,17 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
               <div className="grid grid-cols-2 gap-3">
                     <div>
                         <label className={T.label}>Start Time</label>
-                        <input type="time" value={newPresetStart} onChange={e=>setNewPresetStart(e.target.value)} className={T.input} required />
+                        <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required />
                     </div>
                     <div>
                         <label className={T.label}>End Time</label>
-                        <input type="time" value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required />
+                        <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required />
                     </div>
                 </div>
               )}
               <button type="submit" disabled={selectedDates.length === 0} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button>
             </form>
 
-            {/* --- NEW SECTION: MY PENDING REQUESTS --- */}
             <div className="mt-6 pt-6 border-t border-[#2A353D]">
               <h3 className="font-black text-sm text-white mb-3">My Pending Requests</h3>
               <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
@@ -3408,7 +3417,10 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
                 {myFutureRequests.map(r => (
                   <div key={r.id} className="flex items-center justify-between bg-[#12161A] p-2.5 rounded-xl border border-[#2A353D] hover:border-[#D4A381]/50 transition-colors">
                     <div>
-                      <div className="text-xs font-bold text-white">{formatDisplayDate(r.date)}</div>
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        {formatDisplayDate(r.date)}
+                        {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                      </div>
                       {r.isPartial ? (
                         <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-wider mt-0.5">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</div>
                       ) : (
