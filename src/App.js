@@ -1102,7 +1102,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {  const [subTab, setSubTab] = useState('schedule'); 
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
+  const [subTab, setSubTab] = useState('schedule'); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
   const [presetShift, setPresetShift] = useState('Custom'); 
@@ -1122,14 +1123,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
-
-  // --- CUSTOM DROPDOWN TIME GENERATOR ---
-  const TIME_OPTIONS = [];
-  for (let i = 0; i < 24; i++) {
-    for (let j = 0; j < 60; j += 15) {
-      TIME_OPTIONS.push(`${String(i).padStart(2, '0')}:${String(j).padStart(2, '0')}`);
-    }
-  }
 
   // --- CUSTOM SHIFT PRESETS LOGIC ---
   const [customPresets, setCustomPresets] = useState([]);
@@ -1485,16 +1478,13 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
   return (
     <div className="space-y-4 pb-12 w-full">
-      <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title={editingEventId ? "Edit Special Event" : "Add Special Event"} T={T}>
+      <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title={editingEventId ? "Edit Special Event" : "Add Special Event"}>
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
             <div>
               <label className={T.label}>Time (Optional)</label>
-              <select value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}>
-                <option value="">-- Select Time --</option>
-                {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
-              </select>
+              <input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/>
             </div>
           </div>
         <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
@@ -1528,7 +1518,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </form>
       </Modal>
 
-      <Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={`Edit Punch: ${editingPunch?.employeeName}`} T={T}>
+      <Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={`Edit Punch: ${editingPunch?.employeeName}`}>
         <form onSubmit={handleSavePunchEdit} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -1559,7 +1549,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       </Modal>
 
       {/* --- PRESET MANAGER MODAL --- */}
-      <Modal isOpen={isPresetModalOpen} onClose={() => { setIsPresetModalOpen(false); cancelPresetEdit(); }} title="Manage Custom Shifts" T={T}>
+      <Modal isOpen={isPresetModalOpen} onClose={() => { setIsPresetModalOpen(false); cancelPresetEdit(); }} title="Manage Custom Shifts">
         <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
             <form onSubmit={handleSavePreset} className="space-y-3 p-4 bg-[#1A2126] border border-[#2A353D] rounded-xl">
                 <div className="flex justify-between items-center">
@@ -1573,16 +1563,11 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                 <div className="grid grid-cols-2 gap-3">
                     <div>
                         <label className={T.label}>Start Time</label>
-                        <select value={newPresetStart} onChange={e=>setNewPresetStart(e.target.value)} className={T.input} required>
-                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
-                        </select>
+                        <input type="time" value={newPresetStart} onChange={e=>setNewPresetStart(e.target.value)} className={T.input} required />
                     </div>
                     <div>
                         <label className={T.label}>End Time</label>
-                        <select value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required>
-                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
-                          <option value="CLOSE">Close</option>
-                        </select>
+                        <input type="time" value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required />
                     </div>
                 </div>
                 <button type="submit" className={`w-full ${T.btn} py-3 text-sm flex items-center justify-center`}><Plus size={18} className="inline mr-2"/> {editingPresetId ? 'Update Preset' : 'Save Custom Time'}</button>
@@ -1646,16 +1631,11 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
               <div className="flex gap-2 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
                 <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
-                    <select value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}>
-                      {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
-                    </select>
+                    <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
                 </div>
                 <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Out</span>
-                    <select value={presetShift.includes('close')?'CLOSE':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner disabled:opacity-50`}>
-                      {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
-                      <option value="CLOSE">Close</option>
-                    </select>
+                    <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner disabled:opacity-50`}/>
                 </div>
               </div>
 
