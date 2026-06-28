@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { Bell, Calendar, Repeat } from 'lucide-react';
+import { Bell, Calendar, Repeat, Clock } from 'lucide-react';
+import TabMonth from './TabMonth';
+import TabTimeOff from './TabTimeOff';
 
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, events, addToast, db, Modal, T, getToday, getMonthStr, formatDisplayDate, formatShortTime }) => {
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, db, Modal, T, getToday, getMonthStr, formatDisplayDate, formatShortTime, getDaysInMonth, formatDisplayMonth, getHoliday }) => {
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
   
@@ -94,6 +96,10 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ev
     .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
     .sort((a,b) => a.date.localeCompare(b.date))[0];
 
+  const activeMonthShifts = shifts
+    .filter(s => s.date.startsWith(monthStr) && s.isPublished)
+    .sort((a,b) => a.date.localeCompare(b.date));
+
   const handleOfferSwap = async (shift) => {
     if (!window.confirm(`Offer your ${formatDisplayDate(shift.date)} shift to the Trade Board?`)) return;
     await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
@@ -144,7 +150,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ev
       </Modal>
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['my-schedule', 'trade-board'].map((tab) => (
+        {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {tab.replace('-', ' ')}
           </button>
@@ -197,7 +203,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ev
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
             </button>
-            <button onClick={() => alert("Request Off module moving to Schedule Maker tab.")} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
+            <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
               <Calendar size={24} className={T.copper}/>
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>
             </button>
@@ -283,6 +289,48 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ev
           </div>
         </div>
       )}
+
+      {subTab === 'full-schedule' && (
+        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
+          <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex justify-between items-center">
+            <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
+            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{formatDisplayMonth(monthStr)}</span>
+          </div>
+          <div className="divide-y divide-[#2A353D]">
+            {activeMonthShifts.map((shift, index) => {
+               const emp = users.find(u => u.id === shift.employeeId);
+               const showDivider = index === 0 || shift.date !== activeMonthShifts[index - 1].date;
+               
+               return (
+                 <React.Fragment key={shift.id}>
+                   {showDivider && (
+                     <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
+                       <span>{formatDisplayDate(shift.date)}</span>
+                       {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
+                     </div>
+                   )}
+                   <div className={`${T.row} hover:bg-[#12161A]`}>
+                     <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                         <div className="w-8 h-8 rounded-full border border-[#2A353D] bg-[#12161A] flex items-center justify-center text-xs font-black text-white uppercase">{emp?.name ? emp.name.charAt(0) : '?'}</div>
+                         <div>
+                           <div className="text-sm font-bold text-white">{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div>
+                           <div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div>
+                         </div>
+                       </div>
+                       <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                     </div>
+                   </div>
+                 </React.Fragment>
+               )
+            })}
+            {activeMonthShifts.length === 0 && <div className={`p-6 text-center text-xs font-bold ${T.muted}`}>No shifts published for this period.</div>}
+          </div>
+        </div>
+      )}
+
+      {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} T={T} getMonthStr={getMonthStr} getDaysInMonth={getDaysInMonth} formatDisplayMonth={formatDisplayMonth} formatShortTime={formatShortTime} /></div>}
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} db={db} T={T} getToday={getToday} getDaysInMonth={getDaysInMonth} formatDisplayDate={formatDisplayDate} formatShortTime={formatShortTime} getHoliday={getHoliday} formatDisplayMonth={formatDisplayMonth} /></div>}  
     </div>
   );
 };
