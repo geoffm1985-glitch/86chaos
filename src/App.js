@@ -3811,7 +3811,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [userCounts, setUserCounts] = useState({});
-  const [totalInstalls, setTotalInstalls] = useState(0); // NEW: Tracks the install count
+  const [totalInstalls, setTotalInstalls] = useState(0); 
 
   // Form States
   const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
@@ -3820,6 +3820,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [forgeRecipeTitle, setForgeRecipeTitle] = useState(''); const [forgeRecipeBody, setForgeRecipeBody] = useState('');
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
+
+  // Nuke Inventory Security States
+  const [nukeInvRest, setNukeInvRest] = useState(null);
+  const [nukePassword, setNukePassword] = useState('');
+  const [isNuking, setIsNuking] = useState(false);
 
   // Fetch Global Intelligence
   useEffect(() => {
@@ -3835,8 +3840,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
        setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
-       
-       // NEW: Count the total number of installs ever recorded globally
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
     });
     return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
@@ -3872,6 +3875,29 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const handleWipeSandbox = async () => {
     if (prompt(`Type "WIPE" to confirm clearing sandbox data for ${editingRest.name}:`) !== 'WIPE') return addToast('Canceled', 'Sandbox wipe aborted.');
     try { const cols = ['shifts', 'sales', 'wasteLogs', 'timeOffRequests', 'shiftSwaps']; for (const c of cols) { const snap = await getDocs(query(collection(db, c), where('restaurantId', '==', editingRest.id))); snap.forEach(d => deleteDoc(doc(db, c, d.id))); } addToast('Clean Slate', `Sandbox data deleted.`); } catch (e) { addToast('Error', e.message); }
+  };
+
+  const handleNukeInventory = async (e) => {
+    e.preventDefault();
+    if (!nukePassword) return addToast('Error', 'Password required.');
+    setIsNuking(true);
+    try {
+      // Re-authenticate using the master admin's password as a security lock
+      await signInWithEmailAndPassword(auth, appUser.email, nukePassword);
+      
+      const snap = await getDocs(query(collection(db, "inventoryItems"), where("restaurantId", "==", nukeInvRest.id)));
+      const deletePromises = [];
+      snap.forEach(d => deletePromises.push(deleteDoc(doc(db, "inventoryItems", d.id))));
+      await Promise.all(deletePromises);
+      
+      addToast('Obliterated', `Deleted ${snap.size} inventory items for ${nukeInvRest.name}.`);
+      setNukeInvRest(null);
+      setNukePassword('');
+      setEditingRest(null); 
+    } catch (err) {
+      addToast('Error', 'Authentication failed or deletion error. Check your password.');
+    }
+    setIsNuking(false);
   };
 
   const handleExportData = async (rest) => {
@@ -3950,7 +3976,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   };
 
   const handleForceRefresh = async () => {
-    if (!window.confirm("? CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
+    if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
     addToast('Executing', 'Sending refresh signal...');
     const stamp = new Date().toISOString();
     let count = 0;
@@ -4007,11 +4033,27 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
             <div className="pt-4 border-t border-red-900/50 mt-4 space-y-2">
-              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">? Download CSV Export</button>
+              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2"><Package size={14}/> Download CSV Export</button>
               <button type="button" onClick={handleWipeSandbox} className="w-full bg-red-900/10 text-red-500 font-black py-2 rounded-xl border border-red-900/50 hover:bg-red-900/30 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Trash2 size={14}/> Wipe Sandbox Data</button>
+              <button type="button" onClick={() => setNukeInvRest(editingRest)} className="w-full bg-red-900/10 text-red-500 font-black py-2 rounded-xl border border-red-900/50 hover:bg-red-900/30 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Trash2 size={14}/> Delete All Inventory</button>
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={!!nukeInvRest} onClose={() => { setNukeInvRest(null); setNukePassword(''); }} title="⚠️ CRITICAL: Nuke Inventory">
+        <form onSubmit={handleNukeInventory} className="space-y-4">
+          <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-xl text-red-200 text-xs font-bold leading-relaxed">
+            You are about to permanently delete EVERY inventory item in the master catalog for <strong>{nukeInvRest?.name}</strong>. This action cannot be undone.
+          </div>
+          <div>
+            <label className={T.label}>Enter Your Master Admin Password</label>
+            <input type="password" value={nukePassword} onChange={e => setNukePassword(e.target.value)} className={T.input} required placeholder="Authenticate to confirm..." disabled={isNuking} />
+          </div>
+          <button type="submit" disabled={isNuking} className={`w-full ${T.btn} bg-red-600 hover:bg-red-700 text-white flex justify-center items-center`}>
+            {isNuking ? <Loader2 className="animate-spin" size={18} /> : 'Permanently Delete Inventory'}
+          </button>
+        </form>
       </Modal>
 
       {/* --- TAB: OVERVIEW --- */}
@@ -4072,7 +4114,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
                     <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1">? Possess</button>
+                    <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
                     <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors shadow-sm">Manage</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
@@ -4102,7 +4144,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
                     <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName}</div>
                   </div>
                   <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
-                    ? Possess
+                    <Moon size={14} /> Possess
                   </button>
                 </div>
               )
@@ -4175,7 +4217,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-white text-sm">{log.userName}</span>
-                    {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">? Ghost Action</span>}
+                    {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">👻 Ghost Action</span>}
                     <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{log.action}</span>
                   </div>
                   <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.timestamp).toLocaleString()}</span>
