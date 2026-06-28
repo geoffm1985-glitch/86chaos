@@ -312,7 +312,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
       
       {/* INVOICE RECONCILIATION MODAL */}
-      <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Reconcile & Approve Invoice">
+      <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Reconcile & Approve Invoice" T={T}>
         {scannedInvoice && (
           <div className="space-y-4">
             <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
@@ -363,7 +363,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       </Modal>
 
       {/* VIEW PAST INVOICE DETAILS MODAL */}
-      <Modal isOpen={!!viewInvoice} onClose={() => setViewInvoice(null)} title="Invoice Details">
+      <Modal isOpen={!!viewInvoice} onClose={() => setViewInvoice(null)} title="Invoice Details" T={T}>
         {viewInvoice && (
           <div className="space-y-4">
             <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
@@ -394,7 +394,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         )}
       </Modal>
 
-      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`}>
+      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`} T={T}>
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
@@ -407,7 +407,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
          </div>
       </Modal>
 
-      <Modal isOpen={!!editVendor} onClose={() => setEditVendor(null)} title="Edit Vendor">
+      <Modal isOpen={!!editVendor} onClose={() => setEditVendor(null)} title="Edit Vendor" T={T}>
         {editVendor && (
           <form onSubmit={handleSaveVendorEdit} className="space-y-3">
             <div className="grid grid-cols-2 gap-3"><input type="text" value={editVendor.name} onChange={e=>setEditVendor({...editVendor, name: e.target.value})} className={T.input} required placeholder="Company Name"/><input type="text" value={editVendor.rep || ''} onChange={e=>setEditVendor({...editVendor, rep: e.target.value})} className={T.input} placeholder="Rep Name"/></div>
@@ -517,7 +517,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
       {hasInvPerms && invTab === 'manage' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
+          <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item" T={T}>{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
 
           <div className="flex flex-col gap-3 mb-6">
             
@@ -608,7 +608,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       {invTab === 'waste' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
-          <Modal isOpen={!!editWaste} onClose={() => setEditWaste(null)} title="Edit Burn Log">
+          <Modal isOpen={!!editWaste} onClose={() => setEditWaste(null)} title="Edit Burn Log" T={T}>
             {editWaste && (
               <form onSubmit={handleSaveWasteEdit} className="space-y-3">
                 <div><label className={T.label}>Item</label><input type="text" value={editWaste.itemName} disabled className={`${T.input} opacity-50 cursor-not-allowed`} /></div>
