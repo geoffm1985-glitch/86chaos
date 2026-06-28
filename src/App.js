@@ -2389,7 +2389,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     e.target.value = ''; 
   };
 
-  // --- AI INVOICE SCANNER ENGINE ---
+  // --- AI INVOICE SCANNER ENGINE (WITH RECONCILIATION) ---
   const handleScanInvoice = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2400,7 +2400,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
     }
 
     setIsScanningInvoice(true);
-    addToast('Scanning Invoice', 'Extracting line items and totals...');
+    addToast('Scanning Invoice', 'Extracting line items and checking stock...');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -2418,8 +2418,19 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         if (!response.ok) throw new Error('Failed to scan invoice. Check backend logs.');
 
         const data = await response.json();
-        setScannedInvoice(data);
-        addToast('Success', 'Invoice extracted! Please review line items.');
+        
+        // AUTO-MATCHING LOGIC
+        const reconciledItems = (data.lineItems || []).map(item => {
+           // Attempt to find a direct match in the database by name or code
+           const match = inventoryItems.find(inv => 
+              inv.name.toLowerCase() === item.itemName.toLowerCase() || 
+              (inv.pfgCode && item.itemName.includes(inv.pfgCode))
+           );
+           return { ...item, matchedItemId: match ? match.id : "" };
+        });
+
+        setScannedInvoice({ ...data, lineItems: reconciledItems });
+        addToast('Success', 'Invoice extracted! Please verify matched items.');
       } catch (err) {
         addToast('Error', err.message);
       } finally {
@@ -2431,16 +2442,33 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
   const handleApproveInvoice = async () => {
      try {
+       // 1. Log the invoice record for history
        await addDoc(collection(db, "invoices"), {
          ...scannedInvoice,
          restaurantId: appUser.restaurantId,
          processedAt: new Date().toISOString(),
          processedBy: appUser.name
        });
-       addToast('Invoice Approved', `Logged ${scannedInvoice.vendorName} invoice for $${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}`);
+
+       // 2. Loop through and apply stock updates ONLY to matched items
+       let updateCount = 0;
+       for (const item of scannedInvoice.lineItems) {
+          if (item.matchedItemId) {
+             const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
+             if (invItem) {
+                const addedStock = parseFloat(item.quantity) || 0;
+                await updateDoc(doc(db, "inventoryItems", invItem.id), { 
+                   currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
+                });
+                updateCount++;
+             }
+          }
+       }
+
+       addToast('Invoice Processed', `Logged invoice and updated stock for ${updateCount} items.`);
        setScannedInvoice(null);
      } catch(e) {
-       addToast('Error', 'Failed to save invoice.');
+       addToast('Error', 'Failed to process invoice updates.');
      }
   };
 
@@ -2453,8 +2481,8 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
       
-      {/* INVOICE REVIEW MODAL */}
-      <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Invoice Review">
+      {/* INVOICE RECONCILIATION MODAL */}
+      <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Reconcile & Approve Invoice">
         {scannedInvoice && (
           <div className="space-y-4">
             <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
@@ -2465,21 +2493,40 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
               <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
             </div>
             
-            <div className="max-h-60 overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest text-center mt-2 mb-1">Stock Matcher</p>
+            <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
               {(scannedInvoice.lineItems || []).map((item, idx) => (
-                <div key={idx} className="p-2.5 bg-[#1A2126] flex justify-between items-center">
-                  <div>
-                    <div className="font-bold text-white text-sm">{item.itemName}</div>
-                    <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
-                      {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
+                <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-bold text-white text-sm">{item.itemName}</div>
+                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
+                        {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
+                      </div>
                     </div>
+                    <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
                   </div>
-                  <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
+                  
+                  {/* RECONCILIATION DROPDOWN */}
+                  <select 
+                    value={item.matchedItemId} 
+                    onChange={(e) => {
+                       const newItems = [...scannedInvoice.lineItems];
+                       newItems[idx].matchedItemId = e.target.value;
+                       setScannedInvoice({...scannedInvoice, lineItems: newItems});
+                    }}
+                    className={`${T.input} py-2 text-xs font-bold ${item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
+                  >
+                    <option value="">-- Do Not Import / Skip --</option>
+                    {inventoryItems.map(inv => (
+                      <option key={inv.id} value={inv.id}>{inv.name}</option>
+                    ))}
+                  </select>
                 </div>
               ))}
             </div>
 
-            <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Log Invoice</button>
+            <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Update Stock</button>
           </div>
         )}
       </Modal>
@@ -2608,10 +2655,10 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
 
-<div className="flex flex-col gap-3 mb-6">
+          <div className="flex flex-col md:flex-row gap-2 mb-4">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
-            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className={`flex flex-1 bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
                <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
                   {isScanningInvoice ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
                   <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
@@ -2623,7 +2670,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
             </div>
 
             {/* CSV IMPORT */}
-            <label className={`flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>
+            <label className={`flex-1 flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>
               <span className="text-[11px] sm:text-xs">📊 Import CSV</span>
               <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
             </label>
