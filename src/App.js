@@ -61,7 +61,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.1.0';
+const CURRENT_VERSION = '8.1.1';
 
 
 // --- Helpers ---
@@ -1549,7 +1549,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </form>
       </Modal>
 
-      {/* --- PRESET MANAGER MODAL --- */}
+{/* --- PRESET MANAGER MODAL --- */}
       <Modal isOpen={isPresetModalOpen} onClose={() => { setIsPresetModalOpen(false); cancelPresetEdit(); }} title="Manage Custom Shifts">
         <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2 pb-10">
             <form id="preset-modal-form" onSubmit={handleSavePreset} className="space-y-3 p-4 bg-[#1A2126] border border-[#2A353D] rounded-xl">
@@ -1568,12 +1568,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                     </div>
                     <div>
                         <label className={T.label}>End Time</label>
-                        <div className="flex gap-2 items-center">
-                          <input type="time" value={newPresetEnd === 'CLOSE' ? '' : newPresetEnd} disabled={newPresetEnd === 'CLOSE'} onChange={e=>setNewPresetEnd(e.target.value)} className={`${T.input} ${newPresetEnd === 'CLOSE' ? 'opacity-50 cursor-not-allowed' : ''} flex-1`} required={newPresetEnd !== 'CLOSE'} />
-                          <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-white whitespace-nowrap bg-[#12161A] p-3 rounded-xl border border-[#2A353D] shadow-inner">
-                            <input type="checkbox" checked={newPresetEnd === 'CLOSE'} onChange={e => setNewPresetEnd(e.target.checked ? 'CLOSE' : '21:00')} className="accent-[#8F6040] w-4 h-4 cursor-pointer" /> Close
-                          </label>
-                        </div>
+                        <input type="time" value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required />
                     </div>
                 </div>
                 <button type="submit" className={`w-full ${T.btn} py-3 text-sm flex items-center justify-center`}><Plus size={18} className="inline mr-2"/> {editingPresetId ? 'Update Preset' : 'Save Custom Time'}</button>
@@ -4749,7 +4744,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.1.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.1.1</span>
       </div>
     </div>
   );
