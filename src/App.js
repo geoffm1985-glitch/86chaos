@@ -61,7 +61,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.0.0';
+const CURRENT_VERSION = '8.1.0';
 
 
 // --- Helpers ---
@@ -1102,8 +1102,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser
- }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
   const [subTab, setSubTab] = useState('schedule'); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -1116,7 +1115,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [eventTime, setEventTime] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventNotes, setEventNotes] = useState('');
-const [editingEventId, setEditingEventId] = useState(null);
+  const [editingEventId, setEditingEventId] = useState(null);
   const [eventImageFile, setEventImageFile] = useState(null);
   const [isEventUploading, setIsEventUploading] = useState(false);
   
@@ -1125,11 +1124,61 @@ const [editingEventId, setEditingEventId] = useState(null);
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
-  // --- NEW STATE: CUSTOM PAYROLL DATE RANGE ---
+  // --- CUSTOM SHIFT PRESETS LOGIC ---
+  const customPresets = useLiveCollection('shiftPresets', appUser?.restaurantId);
+  const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
+  const [newPresetLabel, setNewPresetLabel] = useState('');
+  const [newPresetStart, setNewPresetStart] = useState('');
+  const [newPresetEnd, setNewPresetEnd] = useState('');
+
+  const DEFAULT_PRESETS = [ 
+    { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, 
+    { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, 
+    { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, 
+    { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" } 
+  ];
+
+  const SHIFT_PRESETS = [
+    ...DEFAULT_PRESETS,
+    ...customPresets.sort((a,b) => a.start.localeCompare(b.start)),
+    { label: "Custom", start: "", end: "" }
+  ];
+
+  const handlePresetChange = (e) => { 
+    const val = e.target.value; 
+    setPresetShift(val); 
+    const p = SHIFT_PRESETS.find(x => x.label === val); 
+    if (p && val !== 'Custom') { 
+      setStartTime(p.start); 
+      if (p.end !== 'CLOSE') setEndTime(p.end); 
+    } 
+  };
+
+  const handleAddPreset = async (e) => {
+    e.preventDefault();
+    if (!newPresetLabel || !newPresetStart || !newPresetEnd) return;
+    try {
+      await addDoc(collection(db, "shiftPresets"), {
+        label: newPresetLabel.trim(),
+        start: newPresetStart,
+        end: newPresetEnd,
+        restaurantId: appUser.restaurantId
+      });
+      setNewPresetLabel(''); setNewPresetStart(''); setNewPresetEnd('');
+      addToast('Saved', 'Custom shift time added.');
+    } catch(err) { addToast('Error', err.message); }
+  };
+
+  const handleDeletePreset = async (id) => {
+    if(window.confirm('Delete this custom preset?')) {
+      await deleteDoc(doc(db, "shiftPresets", id));
+    }
+  };
+
+  // --- PAYROLL DATE RANGE ---
   const [periodStart, setPeriodStart] = useState(`${monthStr}-01`);
   const [periodEnd, setPeriodEnd] = useState(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
 
-  // Auto-sync the date pickers if they use the master calendar dropdown
   useEffect(() => {
     setPeriodStart(`${monthStr}-01`);
     setPeriodEnd(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
@@ -1165,9 +1214,6 @@ const [editingEventId, setEditingEventId] = useState(null);
     return 'bg-[#D4A381] text-slate-900'; 
   };
 
-  const SHIFT_PRESETS = [ { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" }, { label: "Custom", start: "", end: "" } ];
-  const handlePresetChange = (e) => { const val = e.target.value; setPresetShift(val); const p = SHIFT_PRESETS.find(x => x.label === val); if (p && val !== 'Custom') { setStartTime(p.start); if (p.end !== 'CLOSE') setEndTime(p.end); } };
-
   const handleCellClick = (d, empId) => {
     if (d < getToday()) return addToast("Locked", "Cannot edit past dates.");
     const existing = monthShifts.find(s => s.date === d && s.employeeId === empId);
@@ -1178,7 +1224,7 @@ const [editingEventId, setEditingEventId] = useState(null);
   const handleAssign = async () => {
     if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
     const sTime = startTime; const eTime = presetShift.includes('close') ? '23:59' : endTime;
-const validDates = [];
+    const validDates = [];
     for (const d of assignDates) { 
       const existingShift = monthShifts.find(s => s.date === d && s.employeeId === emp.id);
       if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
@@ -1196,7 +1242,7 @@ const validDates = [];
 
   const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
   
-const handleAddEvent = async (e) => { 
+  const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
     setIsEventUploading(true);
@@ -1215,7 +1261,7 @@ const handleAddEvent = async (e) => {
     }
 
     const eventData = { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() };
-    if (photoUrl) eventData.imageUrl = photoUrl; // Only overwrite image if a new one is uploaded
+    if (photoUrl) eventData.imageUrl = photoUrl; 
 
     if (editingEventId) {
       await updateDoc(doc(db, "events", editingEventId), eventData);
@@ -1261,7 +1307,6 @@ const handleAddEvent = async (e) => {
     }
   });
 
-  // --- NEW TIMESHEET & OT ENGINE (TIED TO CUSTOM PERIOD) ---
   const periodPunches = timePunches.filter(p => p.date >= periodStart && p.date <= periodEnd).sort((a,b) => new Date(a.clockInTime || 0) - new Date(b.clockInTime || 0));
   
   const calculatePunchHours = (inTime, outTime, breakMins = 0) => {
@@ -1270,7 +1315,7 @@ const handleAddEvent = async (e) => {
       return Math.max(0, (rawMins - breakMins) / 60);
   };
 
-const getWeekStart = (dateString) => {
+  const getWeekStart = (dateString) => {
       const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
       const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
       let d = new Date(dateString + 'T12:00:00');
@@ -1287,38 +1332,21 @@ const getWeekStart = (dateString) => {
       const emp = users.find(u => u.id === p.employeeId);
       if (!payrollSummary[p.employeeId]) {
           payrollSummary[p.employeeId] = {
-              name: p.employeeName || 'Unknown',
-              regHours: 0,
-              otHours: 0,
-              cashTips: 0,
-              creditTips: 0,
-              rate: emp?.wage || 0,
-              pay: 0
+              name: p.employeeName || 'Unknown', regHours: 0, otHours: 0, cashTips: 0, creditTips: 0, rate: emp?.wage || 0, pay: 0
           };
       }
       
       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
-    const prevWeeklyHours = weeklyHours[weekKey] || 0;
+      const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
+      const prevWeeklyHours = weeklyHours[weekKey] || 0;
       const newWeeklyHours = prevWeeklyHours + hours;
       
       let reg = 0; let ot = 0;
-      if (prevWeeklyHours >= OT_THRESHOLD) {
-          ot = hours;
-      } else if (newWeeklyHours > OT_THRESHOLD) {
-          reg = OT_THRESHOLD - prevWeeklyHours;
-          ot = newWeeklyHours - OT_THRESHOLD;
-      } else {
-          reg = hours;
-      }
+      if (prevWeeklyHours >= OT_THRESHOLD) { ot = hours; } else if (newWeeklyHours > OT_THRESHOLD) { reg = OT_THRESHOLD - prevWeeklyHours; ot = newWeeklyHours - OT_THRESHOLD; } else { reg = hours; }
       
       weeklyHours[weekKey] = newWeeklyHours;
-      
-      payrollSummary[p.employeeId].regHours += reg;
-      payrollSummary[p.employeeId].otHours += ot;
-      payrollSummary[p.employeeId].cashTips += (parseFloat(p.cashTips)
- || 0);
-      payrollSummary[p.employeeId].creditTips += (parseFloat(p.creditTips) || 0);
+      payrollSummary[p.employeeId].regHours += reg; payrollSummary[p.employeeId].otHours += ot;
+      payrollSummary[p.employeeId].cashTips += (parseFloat(p.cashTips) || 0); payrollSummary[p.employeeId].creditTips += (parseFloat(p.creditTips) || 0);
       
       const rate = emp?.wage || 0;
       payrollSummary[p.employeeId].pay += (reg * rate) + (ot * rate * 1.5);
@@ -1339,7 +1367,6 @@ const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
       addToast('Deleted', 'Time punch removed.');
   };
 
-  // --- EDIT PUNCH ENGINE ---
   const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
   const [editingPunch, setEditingPunch] = useState(null);
   const [editPunchIn, setEditPunchIn] = useState('');
@@ -1368,99 +1395,47 @@ const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
     e.preventDefault();
     if (!editingPunch || !editPunchIn) return;
     try {
-      const updateData = { 
-          clockInTime: new Date(editPunchIn).toISOString(),
-          breakMinutes: parseFloat(editBreakMins) || 0,
-          cashTips: parseFloat(editCash) || 0,
-          creditTips: parseFloat(editCredit) || 0
-      };
-      if (editPunchOut) {
-        updateData.clockOutTime = new Date(editPunchOut).toISOString();
-        updateData.status = 'clocked_out';
-      } else {
-        updateData.clockOutTime = null;
-        updateData.status = 'clocked_in';
-      }
+      const updateData = { clockInTime: new Date(editPunchIn).toISOString(), breakMinutes: parseFloat(editBreakMins) || 0, cashTips: parseFloat(editCash) || 0, creditTips: parseFloat(editCredit) || 0 };
+      if (editPunchOut) { updateData.clockOutTime = new Date(editPunchOut).toISOString(); updateData.status = 'clocked_out'; } else { updateData.clockOutTime = null; updateData.status = 'clocked_in'; }
       await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
       addToast('Updated', 'Time punch modified successfully.');
-      setIsPunchModalOpen(false);
-      setEditingPunch(null);
-    } catch (err) {
-      addToast('Error', err.message);
-    }
+      setIsPunchModalOpen(false); setEditingPunch(null);
+    } catch (err) { addToast('Error', err.message); }
   };
 
-  // --- EXPORT TIMESHEETS ENGINE ---
   const handleExportTimesheets = () => {
     if (periodPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
-    
     const pStartStr = new Date(periodStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const pEndStr = new Date(periodEnd + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
-    let csv = `"--- PAYROLL SUMMARY ---"\n`;
-    csv += `"Pay Period: ${pStartStr} - ${pEndStr}"\n\n`;
-    csv += '"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n';
+    let csv = `"--- PAYROLL SUMMARY ---"\n"Pay Period: ${pStartStr} - ${pEndStr}"\n\n"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n`;
+    summaryList.forEach(s => { csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`; });
+    csv += '\n"--- INDIVIDUAL PUNCHES ---"\n"Employee Name","Date","Clock In","Clock Out","Break (Mins)","Total Hours","Hourly Rate","Total Pay","Cash Tips","Credit Tips"\n';
     
-    summaryList.forEach(s => {
-       csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`;
-    });
-    
-    csv += '\n"--- INDIVIDUAL PUNCHES ---"\n';
-    csv += '"Employee Name","Date","Clock In","Clock Out","Break (Mins)","Total Hours","Hourly Rate","Total Pay","Cash Tips","Credit Tips"\n';
-    
-    // Sort reverse chronological for the individual punch view
     const sortedPunches = [...periodPunches].sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
-    
     sortedPunches.forEach(p => {
-       const emp = users.find(u => u.id === p.employeeId);
-       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-       const rate = emp?.wage || 0;
-       const estCost = hours * rate; 
-       
+       const emp = users.find(u => u.id === p.employeeId); const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0); const rate = emp?.wage || 0; const estCost = hours * rate; 
        const inStr = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown';
        const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown');
-       
        csv += `"${p.employeeName || 'Unknown'}","${p.date || 'Unknown'}","${inStr}","${outStr}","${p.breakMinutes||0}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${estCost.toFixed(2)}","$${parseFloat(p.cashTips||0).toFixed(2)}","$${parseFloat(p.creditTips||0).toFixed(2)}"\n`;
     });
 
-    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement("a"); 
-    link.setAttribute("href", url); 
-    link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
-    document.body.appendChild(link); 
-    link.click(); 
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-addToast('Exported', 'Spreadsheet generated.');
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); addToast('Exported', 'Spreadsheet generated.');
   };
 
-// --- WEEKLY HOURS TRACKER ENGINE ---
   const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
   const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
   const endDayInt = startDayInt === 0 ? 6 : startDayInt - 1;
 
-  const weeksInMonth = [];
-  let currentWeek = [];
-  monthDays.forEach(d => {
-      currentWeek.push(d);
-      if (new Date(d+'T12:00').getDay() === endDayInt) {
-          weeksInMonth.push(currentWeek);
-          currentWeek = [];
-      }
-  });
+  const weeksInMonth = []; let currentWeek = [];
+  monthDays.forEach(d => { currentWeek.push(d); if (new Date(d+'T12:00').getDay() === endDayInt) { weeksInMonth.push(currentWeek); currentWeek = []; } });
   if (currentWeek.length > 0) weeksInMonth.push(currentWeek);
 
   const scheduledHours = displayUsers.map(u => {
      const userShifts = monthShifts.filter(s => s.employeeId === u.id);
-     const weekly = weeksInMonth.map(weekDaysArr => {
-        return weekDaysArr.reduce((sum, d) => {
-           const shift = userShifts.find(s => s.date === d);
-           return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0);
-        }, 0);
-     });
+     const weekly = weeksInMonth.map(weekDaysArr => { return weekDaysArr.reduce((sum, d) => { const shift = userShifts.find(s => s.date === d); return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0); }, 0); });
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
 
@@ -1484,7 +1459,7 @@ addToast('Exported', 'Spreadsheet generated.');
               </div>
             )}
             
-<div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
               <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                  <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
                     <Camera size={20} />
@@ -1533,7 +1508,47 @@ addToast('Exported', 'Spreadsheet generated.');
         </form>
       </Modal>
 
-{/* TOP NAVIGATION TOGGLE */}
+      {/* --- PRESET MANAGER MODAL --- */}
+      <Modal isOpen={isPresetModalOpen} onClose={() => setIsPresetModalOpen(false)} title="Manage Custom Shifts">
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+            <form onSubmit={handleAddPreset} className="space-y-3 p-3 bg-[#1A2126] border border-[#2A353D] rounded-xl">
+                <h4 className="text-xs font-black text-[#D4A381] uppercase tracking-widest">Add New Preset</h4>
+                <div>
+                    <label className={T.label}>Label (e.g., "Mid Shift 12p-5p")</label>
+                    <input type="text" value={newPresetLabel} onChange={e=>setNewPresetLabel(e.target.value)} className={T.input} required />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={T.label}>Start Time</label>
+                        <input type="time" value={newPresetStart} onChange={e=>setNewPresetStart(e.target.value)} className={T.input} required />
+                    </div>
+                    <div>
+                        <label className={T.label}>End Time</label>
+                        <input type="time" value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required />
+                    </div>
+                </div>
+                <button type="submit" className={`w-full ${T.btn} py-2 text-xs`}><Plus size={16} className="inline mr-1"/> Add Custom Time</button>
+            </form>
+
+            <div className="space-y-2">
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-[#2A353D] pb-1">Your Custom Shifts</h4>
+                {customPresets.length === 0 && <p className="text-xs font-bold text-slate-500 text-center p-4">No custom times added yet.</p>}
+                {customPresets.map(preset => (
+                    <div key={preset.id} className="flex justify-between items-center bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">
+                        <div>
+                            <div className="font-bold text-sm text-white">{preset.label}</div>
+                            <div className="text-[10px] font-mono text-[#D4A381]">{formatShortTime(preset.start)} - {formatShortTime(preset.end)}</div>
+                        </div>
+                        <button onClick={() => handleDeletePreset(preset.id)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors bg-[#1A2126] rounded border border-[#2A353D]">
+                            <Trash2 size={14}/>
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </div>
+      </Modal>
+
+      {/* TOP NAVIGATION TOGGLE */}
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-2">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
         <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
@@ -1546,9 +1561,20 @@ addToast('Exported', 'Spreadsheet generated.');
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-2 sm:p-3 flex flex-col lg:flex-row gap-2 items-center justify-between`}>
             <div className="grid grid-cols-2 lg:flex lg:flex-nowrap gap-2 w-full lg:w-auto items-center">
-              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}><option value="">?
- Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
-              <select value={presetShift} onChange={handlePresetChange} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
+              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>
+                <option value="">-- Select Staff --</option>
+                {displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              
+              <div className="col-span-1 flex gap-1 items-center">
+                <select value={presetShift} onChange={handlePresetChange} className={`${T.input} w-full py-1.5 px-2 text-[11px] sm:text-xs h-9`}>
+                  {SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}
+                </select>
+                <button onClick={() => setIsPresetModalOpen(true)} className="p-2 bg-[#12161A] text-slate-400 hover:text-[#D4A381] border border-[#2A353D] rounded-lg transition-colors h-9 flex items-center justify-center shrink-0" title="Edit Presets">
+                  <Edit size={14}/>
+                </button>
+              </div>
+
               <div className="flex gap-2 w-full col-span-2 lg:col-span-1 lg:w-auto">
                 <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9`}/>
                 <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9 disabled:opacity-50`}/>
@@ -1598,7 +1624,7 @@ addToast('Exported', 'Spreadsheet generated.');
                     )})}
                   </tr>
                 </thead>
-             <tbody className="divide-y divide-[#2A353D]">
+              <tbody className="divide-y divide-[#2A353D]">
                   {sortedRoles.map(role => (
                     <React.Fragment key={`role-group-${role}`}>
                       <tr className="bg-[#1A2126]">
@@ -1641,7 +1667,7 @@ addToast('Exported', 'Spreadsheet generated.');
             </div>
           </div>
           
-<div className={`${T.card} overflow-hidden mt-6`}>
+          <div className={`${T.card} overflow-hidden mt-6`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className={`font-black text-sm flex items-center gap-2 ${T.copper}`}><Clock className={T.copper} size={16}/> Scheduled Hours Tracker</h3>
               <span className={`text-[9px] font-bold ${T.muted} uppercase tracking-widest`}>OT Threshold: {appUser?.systemSettings?.overtime || 40}h</span>
@@ -1730,7 +1756,7 @@ addToast('Exported', 'Spreadsheet generated.');
             </div>
             
             <div className="flex items-center gap-3">
-              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">? Export CSV</button>
+              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📋 Export CSV</button>
               <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
                 <span className="text-emerald-400 font-black text-sm">${actualPeriodLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
@@ -4785,7 +4811,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.1.0</span>
       </div>
     </div>
   );
