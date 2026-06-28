@@ -3893,10 +3893,14 @@ const handleSavePrefs = async (e) => {
     </div>
   );
 };
+
 // --- AUDIT LOGS TAB (Master Admin Only) ---
 const TabAuditLog = ({ appUser }) => {
   const logs = useLiveCollection('auditLogs', appUser?.restaurantId);
-  const sortedLogs = [...logs].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const isGeoff = appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com';
+  const sortedLogs = [...logs]
+    .filter(log => isGeoff ? true : log.action !== 'APP_INSTALLED')
+    .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
@@ -4395,8 +4399,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
-          </div>
+{appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
+              <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
+            )}          </div>
 
           {/* STALE ACCOUNT ALERTS */}
           {staleTenants.length > 0 && (
