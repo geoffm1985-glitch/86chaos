@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { ClipboardList, Plus, Check, Repeat, Trash2, X } from 'lucide-react';
 
-const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint, db, T, useLiveCollection, addToast, formatDate, getToday }) => {
+const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint, db, T, dbPrepCats = [], formatDate, getToday, addToast }) => {
   const [subTab, setSubTab] = useState('prep');
   const [prepDate, setPrepDate] = useState(currentDate);
 
@@ -11,7 +11,6 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   const [selectedPreps, setSelectedPreps] = useState([]);
   const [text, setText] = useState(''); 
   const [station, setStation] = useState('Grill'); 
-  const dbPrepCats = useLiveCollection('prepCategories', appUser?.restaurantId); 
   const displayStations = dbPrepCats.length > 0 ? dbPrepCats.map(c => c.name).sort() : ['Grill', 'Fry', 'Salad/Cold', 'Expo', 'Prep Table'];
   const [isMaster, setIsMaster] = useState(true);
   
