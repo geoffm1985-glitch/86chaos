@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getMessaging, getToken } from 'firebase/messaging';
 
@@ -61,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.0.0';
+const CURRENT_VERSION = '8.1.1';
 
 
 // --- Helpers ---
@@ -1102,8 +1104,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser
- }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
   const [subTab, setSubTab] = useState('schedule'); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -1116,7 +1117,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [eventTime, setEventTime] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventNotes, setEventNotes] = useState('');
-const [editingEventId, setEditingEventId] = useState(null);
+  const [editingEventId, setEditingEventId] = useState(null);
   const [eventImageFile, setEventImageFile] = useState(null);
   const [isEventUploading, setIsEventUploading] = useState(false);
   
@@ -1125,11 +1126,106 @@ const [editingEventId, setEditingEventId] = useState(null);
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
-  // --- NEW STATE: CUSTOM PAYROLL DATE RANGE ---
+  // --- CUSTOM DROPDOWN TIME GENERATOR ---
+  const TIME_OPTIONS = [];
+  for (let i = 0; i < 24; i++) {
+    for (let j = 0; j < 60; j += 15) {
+      TIME_OPTIONS.push(`${String(i).padStart(2, '0')}:${String(j).padStart(2, '0')}`);
+    }
+  }
+
+  // --- CUSTOM SHIFT PRESETS LOGIC ---
+  const [customPresets, setCustomPresets] = useState([]);
+  const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
+  const [editingPresetId, setEditingPresetId] = useState(null);
+  const [newPresetLabel, setNewPresetLabel] = useState('');
+  const [newPresetStart, setNewPresetStart] = useState('16:00');
+  const [newPresetEnd, setNewPresetEnd] = useState('21:00');
+
+  useEffect(() => {
+    const saved = localStorage.getItem(`customPresets_${appUser?.restaurantId}`);
+    if (saved) {
+      setCustomPresets(JSON.parse(saved));
+    } else {
+      const seed = [ 
+        { id: '1', label: "9a-3p", start: "09:00", end: "15:00" }, { id: '2', label: "10a-4p", start: "10:00", end: "16:00" }, 
+        { id: '3', label: "10a-9p", start: "10:00", end: "21:00" }, { id: '4', label: "11a-3p", start: "11:00", end: "15:00" }, 
+        { id: '5', label: "11a-4p", start: "11:00", end: "16:00" }, { id: '6', label: "4p-9p", start: "16:00", end: "21:00" }
+      ];
+      setCustomPresets(seed);
+      localStorage.setItem(`customPresets_${appUser?.restaurantId}`, JSON.stringify(seed));
+    }
+  }, [appUser?.restaurantId]);
+
+  const saveCustomPresetsLocally = (newPresets) => {
+    setCustomPresets(newPresets);
+    localStorage.setItem(`customPresets_${appUser?.restaurantId}`, JSON.stringify(newPresets));
+  };
+
+  const SHIFT_PRESETS = [
+    ...[...customPresets].sort((a,b) => a.start.localeCompare(b.start)),
+    { id: 'custom', label: "Custom", start: "", end: "" }
+  ];
+
+  const handlePresetChange = (e) => { 
+    const val = e.target.value; 
+    setPresetShift(val); 
+    const p = SHIFT_PRESETS.find(x => x.label === val); 
+    if (p && val !== 'Custom') { 
+      setStartTime(p.start); 
+      setEndTime(p.end); 
+    } 
+  };
+
+  const handleSavePreset = (e) => {
+    e.preventDefault();
+    if (!newPresetLabel || !newPresetStart || !newPresetEnd) return;
+    
+    if (editingPresetId) {
+      const updated = customPresets.map(p => 
+        p.id === editingPresetId ? { ...p, label: newPresetLabel.trim(), start: newPresetStart, end: newPresetEnd } : p
+      );
+      saveCustomPresetsLocally(updated);
+      addToast('Updated', 'Shift preset updated.');
+    } else {
+      const newPreset = {
+        id: Date.now().toString(),
+        label: newPresetLabel.trim(),
+        start: newPresetStart,
+        end: newPresetEnd
+      };
+      saveCustomPresetsLocally([...customPresets, newPreset]);
+      addToast('Saved', 'New shift preset added.');
+    }
+    cancelPresetEdit();
+  };
+
+  const handleEditPreset = (preset) => {
+    setNewPresetLabel(preset.label);
+    setNewPresetStart(preset.start);
+    setNewPresetEnd(preset.end);
+    setEditingPresetId(preset.id);
+    document.getElementById('preset-modal-form')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const cancelPresetEdit = () => {
+    setNewPresetLabel('');
+    setNewPresetStart('16:00');
+    setNewPresetEnd('21:00');
+    setEditingPresetId(null);
+  };
+
+  const handleDeletePreset = (id) => {
+    if(window.confirm('Delete this preset?')) {
+      const filtered = customPresets.filter(p => p.id !== id);
+      saveCustomPresetsLocally(filtered);
+    }
+  };
+
+  // --- PAYROLL DATE RANGE ---
   const [periodStart, setPeriodStart] = useState(`${monthStr}-01`);
   const [periodEnd, setPeriodEnd] = useState(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
 
-  // Auto-sync the date pickers if they use the master calendar dropdown
   useEffect(() => {
     setPeriodStart(`${monthStr}-01`);
     setPeriodEnd(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
@@ -1165,9 +1261,6 @@ const [editingEventId, setEditingEventId] = useState(null);
     return 'bg-[#D4A381] text-slate-900'; 
   };
 
-  const SHIFT_PRESETS = [ { label: "9a-3p", start: "09:00", end: "15:00" }, { label: "10a-4p", start: "10:00", end: "16:00" }, { label: "10a-9p", start: "10:00", end: "21:00" }, { label: "11a-3p", start: "11:00", end: "15:00" }, { label: "11a-4p", start: "11:00", end: "16:00" }, { label: "4p-9p", start: "16:00", end: "21:00" }, { label: "7p-close", start: "19:00", end: "CLOSE" }, { label: "9p-close", start: "21:00", end: "CLOSE" }, { label: "Custom", start: "", end: "" } ];
-  const handlePresetChange = (e) => { const val = e.target.value; setPresetShift(val); const p = SHIFT_PRESETS.find(x => x.label === val); if (p && val !== 'Custom') { setStartTime(p.start); if (p.end !== 'CLOSE') setEndTime(p.end); } };
-
   const handleCellClick = (d, empId) => {
     if (d < getToday()) return addToast("Locked", "Cannot edit past dates.");
     const existing = monthShifts.find(s => s.date === d && s.employeeId === empId);
@@ -1177,8 +1270,7 @@ const [editingEventId, setEditingEventId] = useState(null);
 
   const handleAssign = async () => {
     if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
-    const sTime = startTime; const eTime = presetShift.includes('close') ? '23:59' : endTime;
-const validDates = [];
+    const validDates = [];
     for (const d of assignDates) { 
       const existingShift = monthShifts.find(s => s.date === d && s.employeeId === emp.id);
       if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
@@ -1186,17 +1278,17 @@ const validDates = [];
       const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id);
       if (req) {
         if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
-        else { const reqEnd = req.endTime || '23:59'; if ((sTime < reqEnd) && (eTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
+        else { const reqEnd = req.endTime || '23:59'; if ((startTime < reqEnd) && (endTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
       }
       validDates.push(d);
     }
-    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role || 'Unassigned', startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
+    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role || 'Unassigned', startTime: startTime, endTime: endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
   const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
   
-const handleAddEvent = async (e) => { 
+  const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
     setIsEventUploading(true);
@@ -1215,7 +1307,7 @@ const handleAddEvent = async (e) => {
     }
 
     const eventData = { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() };
-    if (photoUrl) eventData.imageUrl = photoUrl; // Only overwrite image if a new one is uploaded
+    if (photoUrl) eventData.imageUrl = photoUrl; 
 
     if (editingEventId) {
       await updateDoc(doc(db, "events", editingEventId), eventData);
@@ -1239,7 +1331,7 @@ const handleAddEvent = async (e) => {
   const calculateShiftHours = (start, end) => {
     if (!start || !end) return 0;
     let sH = parseInt(start.split(':')[0]), sM = parseInt(start.split(':')[1]) / 60;
-    let eH = end === 'CLOSE' ? 23 : parseInt(end.split(':')[0]), eM = end === 'CLOSE' ? 59 / 60 : parseInt(end.split(':')[1]) / 60;
+    let eH = parseInt(end.split(':')[0]), eM = parseInt(end.split(':')[1]) / 60;
     let total = (eH + eM) - (sH + sM);
     if (total < 0) total += 24; 
     return total;
@@ -1261,7 +1353,6 @@ const handleAddEvent = async (e) => {
     }
   });
 
-  // --- NEW TIMESHEET & OT ENGINE (TIED TO CUSTOM PERIOD) ---
   const periodPunches = timePunches.filter(p => p.date >= periodStart && p.date <= periodEnd).sort((a,b) => new Date(a.clockInTime || 0) - new Date(b.clockInTime || 0));
   
   const calculatePunchHours = (inTime, outTime, breakMins = 0) => {
@@ -1270,7 +1361,7 @@ const handleAddEvent = async (e) => {
       return Math.max(0, (rawMins - breakMins) / 60);
   };
 
-const getWeekStart = (dateString) => {
+  const getWeekStart = (dateString) => {
       const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
       const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
       let d = new Date(dateString + 'T12:00:00');
@@ -1287,38 +1378,21 @@ const getWeekStart = (dateString) => {
       const emp = users.find(u => u.id === p.employeeId);
       if (!payrollSummary[p.employeeId]) {
           payrollSummary[p.employeeId] = {
-              name: p.employeeName || 'Unknown',
-              regHours: 0,
-              otHours: 0,
-              cashTips: 0,
-              creditTips: 0,
-              rate: emp?.wage || 0,
-              pay: 0
+              name: p.employeeName || 'Unknown', regHours: 0, otHours: 0, cashTips: 0, creditTips: 0, rate: emp?.wage || 0, pay: 0
           };
       }
       
       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
-    const prevWeeklyHours = weeklyHours[weekKey] || 0;
+      const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
+      const prevWeeklyHours = weeklyHours[weekKey] || 0;
       const newWeeklyHours = prevWeeklyHours + hours;
       
       let reg = 0; let ot = 0;
-      if (prevWeeklyHours >= OT_THRESHOLD) {
-          ot = hours;
-      } else if (newWeeklyHours > OT_THRESHOLD) {
-          reg = OT_THRESHOLD - prevWeeklyHours;
-          ot = newWeeklyHours - OT_THRESHOLD;
-      } else {
-          reg = hours;
-      }
+      if (prevWeeklyHours >= OT_THRESHOLD) { ot = hours; } else if (newWeeklyHours > OT_THRESHOLD) { reg = OT_THRESHOLD - prevWeeklyHours; ot = newWeeklyHours - OT_THRESHOLD; } else { reg = hours; }
       
       weeklyHours[weekKey] = newWeeklyHours;
-      
-      payrollSummary[p.employeeId].regHours += reg;
-      payrollSummary[p.employeeId].otHours += ot;
-      payrollSummary[p.employeeId].cashTips += (parseFloat(p.cashTips)
- || 0);
-      payrollSummary[p.employeeId].creditTips += (parseFloat(p.creditTips) || 0);
+      payrollSummary[p.employeeId].regHours += reg; payrollSummary[p.employeeId].otHours += ot;
+      payrollSummary[p.employeeId].cashTips += (parseFloat(p.cashTips) || 0); payrollSummary[p.employeeId].creditTips += (parseFloat(p.creditTips) || 0);
       
       const rate = emp?.wage || 0;
       payrollSummary[p.employeeId].pay += (reg * rate) + (ot * rate * 1.5);
@@ -1339,7 +1413,6 @@ const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
       addToast('Deleted', 'Time punch removed.');
   };
 
-  // --- EDIT PUNCH ENGINE ---
   const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
   const [editingPunch, setEditingPunch] = useState(null);
   const [editPunchIn, setEditPunchIn] = useState('');
@@ -1368,99 +1441,47 @@ const weekKey = `${p.employeeId}_${getWeekStart(p.date)}`;
     e.preventDefault();
     if (!editingPunch || !editPunchIn) return;
     try {
-      const updateData = { 
-          clockInTime: new Date(editPunchIn).toISOString(),
-          breakMinutes: parseFloat(editBreakMins) || 0,
-          cashTips: parseFloat(editCash) || 0,
-          creditTips: parseFloat(editCredit) || 0
-      };
-      if (editPunchOut) {
-        updateData.clockOutTime = new Date(editPunchOut).toISOString();
-        updateData.status = 'clocked_out';
-      } else {
-        updateData.clockOutTime = null;
-        updateData.status = 'clocked_in';
-      }
+      const updateData = { clockInTime: new Date(editPunchIn).toISOString(), breakMinutes: parseFloat(editBreakMins) || 0, cashTips: parseFloat(editCash) || 0, creditTips: parseFloat(editCredit) || 0 };
+      if (editPunchOut) { updateData.clockOutTime = new Date(editPunchOut).toISOString(); updateData.status = 'clocked_out'; } else { updateData.clockOutTime = null; updateData.status = 'clocked_in'; }
       await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
       addToast('Updated', 'Time punch modified successfully.');
-      setIsPunchModalOpen(false);
-      setEditingPunch(null);
-    } catch (err) {
-      addToast('Error', err.message);
-    }
+      setIsPunchModalOpen(false); setEditingPunch(null);
+    } catch (err) { addToast('Error', err.message); }
   };
 
-  // --- EXPORT TIMESHEETS ENGINE ---
   const handleExportTimesheets = () => {
     if (periodPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
-    
     const pStartStr = new Date(periodStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const pEndStr = new Date(periodEnd + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
-    let csv = `"--- PAYROLL SUMMARY ---"\n`;
-    csv += `"Pay Period: ${pStartStr} - ${pEndStr}"\n\n`;
-    csv += '"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n';
+    let csv = `"--- PAYROLL SUMMARY ---"\n"Pay Period: ${pStartStr} - ${pEndStr}"\n\n"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n`;
+    summaryList.forEach(s => { csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`; });
+    csv += '\n"--- INDIVIDUAL PUNCHES ---"\n"Employee Name","Date","Clock In","Clock Out","Break (Mins)","Total Hours","Hourly Rate","Total Pay","Cash Tips","Credit Tips"\n';
     
-    summaryList.forEach(s => {
-       csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`;
-    });
-    
-    csv += '\n"--- INDIVIDUAL PUNCHES ---"\n';
-    csv += '"Employee Name","Date","Clock In","Clock Out","Break (Mins)","Total Hours","Hourly Rate","Total Pay","Cash Tips","Credit Tips"\n';
-    
-    // Sort reverse chronological for the individual punch view
     const sortedPunches = [...periodPunches].sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
-    
     sortedPunches.forEach(p => {
-       const emp = users.find(u => u.id === p.employeeId);
-       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-       const rate = emp?.wage || 0;
-       const estCost = hours * rate; 
-       
+       const emp = users.find(u => u.id === p.employeeId); const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0); const rate = emp?.wage || 0; const estCost = hours * rate; 
        const inStr = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown';
        const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown');
-       
        csv += `"${p.employeeName || 'Unknown'}","${p.date || 'Unknown'}","${inStr}","${outStr}","${p.breakMinutes||0}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${estCost.toFixed(2)}","$${parseFloat(p.cashTips||0).toFixed(2)}","$${parseFloat(p.creditTips||0).toFixed(2)}"\n`;
     });
 
-    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement("a"); 
-    link.setAttribute("href", url); 
-    link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
-    document.body.appendChild(link); 
-    link.click(); 
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-addToast('Exported', 'Spreadsheet generated.');
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); addToast('Exported', 'Spreadsheet generated.');
   };
 
-// --- WEEKLY HOURS TRACKER ENGINE ---
   const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
   const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
   const endDayInt = startDayInt === 0 ? 6 : startDayInt - 1;
 
-  const weeksInMonth = [];
-  let currentWeek = [];
-  monthDays.forEach(d => {
-      currentWeek.push(d);
-      if (new Date(d+'T12:00').getDay() === endDayInt) {
-          weeksInMonth.push(currentWeek);
-          currentWeek = [];
-      }
-  });
+  const weeksInMonth = []; let currentWeek = [];
+  monthDays.forEach(d => { currentWeek.push(d); if (new Date(d+'T12:00').getDay() === endDayInt) { weeksInMonth.push(currentWeek); currentWeek = []; } });
   if (currentWeek.length > 0) weeksInMonth.push(currentWeek);
 
   const scheduledHours = displayUsers.map(u => {
      const userShifts = monthShifts.filter(s => s.employeeId === u.id);
-     const weekly = weeksInMonth.map(weekDaysArr => {
-        return weekDaysArr.reduce((sum, d) => {
-           const shift = userShifts.find(s => s.date === d);
-           return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0);
-        }, 0);
-     });
+     const weekly = weeksInMonth.map(weekDaysArr => { return weekDaysArr.reduce((sum, d) => { const shift = userShifts.find(s => s.date === d); return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0); }, 0); });
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
 
@@ -1470,7 +1491,10 @@ addToast('Exported', 'Spreadsheet generated.');
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
-            <div><label className={T.label}>Time (Optional)</label><input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/></div>
+         <div>
+              <label className={T.label}>Time (Optional)</label>
+              <input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/>
+            </div>
           </div>
         <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
           <div>
@@ -1484,7 +1508,7 @@ addToast('Exported', 'Spreadsheet generated.');
               </div>
             )}
             
-<div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
               <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                  <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
                     <Camera size={20} />
@@ -1533,8 +1557,60 @@ addToast('Exported', 'Spreadsheet generated.');
         </form>
       </Modal>
 
-{/* TOP NAVIGATION TOGGLE */}
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-2">
+      {/* --- PRESET MANAGER MODAL --- */}
+      <Modal isOpen={isPresetModalOpen} onClose={() => { setIsPresetModalOpen(false); cancelPresetEdit(); }} title="Manage Custom Shifts">
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2 pb-10">
+            <form id="preset-modal-form" onSubmit={handleSavePreset} className="space-y-3 p-4 bg-[#1A2126] border border-[#2A353D] rounded-xl">
+                <div className="flex justify-between items-center">
+                    <h4 className="text-sm font-black text-[#D4A381] uppercase tracking-widest">{editingPresetId ? 'Edit Preset' : 'Add New Preset'}</h4>
+                    {editingPresetId && <button type="button" onClick={cancelPresetEdit} className="text-xs font-bold text-slate-400 hover:text-white transition-colors">Cancel ✖</button>}
+                </div>
+                <div>
+                    <label className={T.label}>Label (e.g., "Mid Shift 12p-5p")</label>
+                    <input type="text" value={newPresetLabel} onChange={e=>setNewPresetLabel(e.target.value)} className={T.input} required />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={T.label}>Start Time</label>
+                        <select value={newPresetStart} onChange={e=>setNewPresetStart(e.target.value)} className={T.input} required>
+                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className={T.label}>End Time</label>
+                        <select value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required>
+                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatShortTime(t)}</option>)}
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" className={`w-full ${T.btn} py-3 text-sm flex items-center justify-center`}><Plus size={18} className="inline mr-2"/> {editingPresetId ? 'Update Preset' : 'Save Custom Time'}</button>
+            </form>
+
+            <div className="space-y-2 pt-2">
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-[#2A353D] pb-2">Your Custom Shifts</h4>
+                {customPresets.length === 0 && <p className="text-xs font-bold text-slate-500 text-center p-4 border border-dashed border-[#2A353D] rounded-xl">No custom times added yet.</p>}
+                {customPresets.map(preset => (
+                    <div key={preset.id} className="flex justify-between items-center bg-[#12161A] p-3 rounded-lg border border-[#2A353D]">
+                        <div>
+                            <div className="font-bold text-base text-white">{preset.label}</div>
+                            <div className="text-xs font-mono font-bold text-[#D4A381]">{formatShortTime(preset.start)} - {formatShortTime(preset.end)}</div>
+                        </div>
+                        <div className="flex items-center gap-1 border-l border-[#2A353D] pl-2 ml-2">
+                            <button type="button" onClick={() => handleEditPreset(preset)} className="p-2 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#1A2126] rounded border border-[#2A353D]">
+                                <Edit size={16}/>
+                            </button>
+                            <button type="button" onClick={() => handleDeletePreset(preset.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#1A2126] rounded border border-[#2A353D]">
+                                <Trash2 size={16}/>
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+      </Modal>
+
+      {/* TOP NAVIGATION TOGGLE */}
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
         <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
         {appUser?.isAdmin && (
@@ -1544,24 +1620,51 @@ addToast('Exported', 'Spreadsheet generated.');
 
       {subTab === 'schedule' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className={`${T.card} p-2 sm:p-3 flex flex-col lg:flex-row gap-2 items-center justify-between`}>
-            <div className="grid grid-cols-2 lg:flex lg:flex-nowrap gap-2 w-full lg:w-auto items-center">
-              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}><option value="">?
- Select Staff</option>{displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select>
-              <select value={presetShift} onChange={handlePresetChange} className={`${T.input} col-span-1 py-1.5 px-2 text-[11px] sm:text-xs h-9`}>{SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}</select>
-              <div className="flex gap-2 w-full col-span-2 lg:col-span-1 lg:w-auto">
-                <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9`}/>
-                <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-1/2 lg:w-auto py-1.5 px-2 text-[11px] sm:text-xs h-9 disabled:opacity-50`}/>
+          
+          <div className={`${T.card} p-3 sm:p-4 flex flex-col 2xl:flex-row gap-3 items-center justify-between`}>
+            <div className="flex flex-wrap xl:flex-nowrap gap-3 w-full 2xl:w-auto items-center">
+              
+              {/* Staff Selector */}
+              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} w-full sm:w-auto sm:flex-1 xl:w-40 py-2.5 px-3 text-sm font-bold h-12 shadow-inner shrink-0`}>
+                <option value="">-- Select Staff --</option>
+                {displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              
+              {/* Preset Selector & Edit Button */}
+              <div className="flex gap-2 items-center w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
+                <select value={presetShift} onChange={handlePresetChange} className={`${T.input} w-full py-2.5 px-3 text-sm font-bold h-12 shadow-inner`}>
+                  {SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}
+                </select>
+                <button onClick={() => setIsPresetModalOpen(true)} className="px-4 bg-[#12161A] text-slate-400 hover:text-[#D4A381] border border-[#2A353D] rounded-xl transition-colors h-12 flex items-center justify-center shrink-0 shadow-sm" title="Edit Presets">
+                  <Edit size={18} />
+                </button>
               </div>
-              <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full col-span-2 lg:col-span-1 lg:w-auto ${T.btn} py-1.5 px-3 text-xs h-9 disabled:opacity-50 flex items-center justify-center`}>Assign ({assignDates.length})</button>
+
+        {/* Custom Time Overrides */}
+              <div className="flex gap-2 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
+                <div className="relative flex-1 xl:w-32">
+                    <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
+                    <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
+                </div>
+                <div className="relative flex-1 xl:w-32">
+                    <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Out</span>
+                    <input type="time" value={endTime} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
+                </div>
+              </div>
+
+              {/* Assign Button */}
+              <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full xl:w-auto ${T.btn} py-2.5 px-6 text-sm h-12 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>Assign ({assignDates.length})</button>
+
             </div>
-            <div className="flex w-full lg:w-auto gap-2 items-center">
-              <div className="hidden lg:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-3 py-1 rounded-lg">
-                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
-                <span className="text-emerald-400 font-black text-sm">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            
+            {/* Action Row */}
+            <div className="flex w-full 2xl:w-auto gap-2 items-center pt-3 2xl:pt-0 border-t 2xl:border-t-0 border-[#2A353D]">
+              <div className="hidden sm:flex flex-col items-end mr-3 bg-[#12161A] border border-[#2A353D] px-4 py-1.5 rounded-xl">
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
+                <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-              <button onClick={handlePublish} className={`flex-1 lg:flex-none ${T.btnAlt} py-1.5 text-xs h-9 flex items-center justify-center`}>Publish</button>
-              <button onClick={openNewEventModal} className={`flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 text-xs h-9 flex items-center justify-center`}>+ Event</button>
+              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
+              <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
 
@@ -1598,7 +1701,7 @@ addToast('Exported', 'Spreadsheet generated.');
                     )})}
                   </tr>
                 </thead>
-             <tbody className="divide-y divide-[#2A353D]">
+              <tbody className="divide-y divide-[#2A353D]">
                   {sortedRoles.map(role => (
                     <React.Fragment key={`role-group-${role}`}>
                       <tr className="bg-[#1A2126]">
@@ -1641,7 +1744,7 @@ addToast('Exported', 'Spreadsheet generated.');
             </div>
           </div>
           
-<div className={`${T.card} overflow-hidden mt-6`}>
+          <div className={`${T.card} overflow-hidden mt-6`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className={`font-black text-sm flex items-center gap-2 ${T.copper}`}><Clock className={T.copper} size={16}/> Scheduled Hours Tracker</h3>
               <span className={`text-[9px] font-bold ${T.muted} uppercase tracking-widest`}>OT Threshold: {appUser?.systemSettings?.overtime || 40}h</span>
@@ -1730,7 +1833,7 @@ addToast('Exported', 'Spreadsheet generated.');
             </div>
             
             <div className="flex items-center gap-3">
-              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">? Export CSV</button>
+              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📋 Export CSV</button>
               <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
                 <span className="text-emerald-400 font-black text-sm">${actualPeriodLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
@@ -1808,7 +1911,6 @@ addToast('Exported', 'Spreadsheet generated.');
     </div>
   );
 };
-
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
@@ -3170,7 +3272,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const [startTime, setStartTime] = useState('09:00'); 
   const [endTime, setEndTime] = useState('17:00');
 
-  // Filter requests specific to the logged-in user
   const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(a.date) - new Date(b.date)); 
   const myFutureRequests = myRequests.filter(r => r.date >= getToday());
   const allFutureRequests = timeOffRequests.filter(r => r.date >= getToday()).sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -3178,9 +3279,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
 
-  // Pull in the events for the current calendar month
-  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(calMonth));
-
+const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
   const changeMonth = (offset) => { 
     const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); 
   };
@@ -3188,7 +3287,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const handleToggleDate = (d) => { 
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.'); 
     
-    // Check if they already requested this day
     const existingReq = myRequests.find(r => r.date === d); 
     if (existingReq) { 
       if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) {
@@ -3206,9 +3304,15 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
     if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.'); 
     if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); 
     
+    const currentMonth = getToday().substring(0, 7);
+
     for (const d of selectedDates) { 
+      const reqMonth = d.substring(0, 7);
+      const needsApproval = reqMonth <= currentMonth;
+
       await addDoc(collection(db, "timeOffRequests"), { 
-        userId: appUser.id, userName: appUser.name, date: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, submittedAt: new Date().toISOString(), restaurantId: appUser.restaurantId 
+        userId: appUser.id, userName: appUser.name, date: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, submittedAt: new Date().toISOString(), restaurantId: appUser.restaurantId,
+        status: needsApproval ? 'pending' : 'approved'
       }); 
     } 
     addToast('Recorded', `Logged ${selectedDates.length} days off.`); 
@@ -3222,7 +3326,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
         <div className={`${T.card} overflow-hidden mb-6`}>
           <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
             <h3 className="font-black text-sm text-white flex items-center gap-2"><Shield size={14} className="text-red-500"/> Master Override Log</h3>
-            <span className={`text-[10px] font-bold ${T.muted}`}>Delete a record to allow scheduling.</span>
+            <span className={`text-[10px] font-bold ${T.muted}`}>Approve or delete requests.</span>
           </div>
           <div className={`max-h-48 overflow-y-auto custom-scrollbar divide-y ${T.border}`}>
             {allFutureRequests.length === 0 && <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No upcoming time off for any staff.</div>}
@@ -3230,9 +3334,17 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
               <div key={r.id} className={T.row}>
                 <div className="flex-1">
                   <div className="font-black text-sm text-white leading-tight">{r.userName}</div>
-                  <div className={`text-[10px] font-bold ${T.muted} mt-0.5`}>{formatDisplayDate(r.date)} {r.isPartial && <span className={`ml-1 text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}</div>
+                  <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex items-center gap-2`}>
+                    {formatDisplayDate(r.date)} {r.isPartial && <span className={`text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}
+                    {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1.5 py-0.5 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                  </div>
                 </div>
-                <button onClick={() => { if(window.confirm("Force delete this request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-400 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                <div className="flex items-center gap-2">
+                  {r.status === 'pending' && (
+                    <button onClick={() => updateDoc(doc(db, "timeOffRequests", r.id), { status: 'approved' })} className="text-slate-400 hover:text-emerald-500 p-1.5 bg-[#12161A] border border-[#2A353D] rounded"><Check size={14}/></button>
+                  )}
+                  <button onClick={() => { if(window.confirm("Force delete this request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-400 hover:text-red-500 p-1.5 bg-[#12161A] border border-[#2A353D] rounded"><Trash2 size={14}/></button>
+                </div>
               </div>
             ))}
           </div>
@@ -3244,8 +3356,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
           <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
             <button onClick={() => changeMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button>
             <h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3>
-            <button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight
- size={16}/></button>
+            <button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button>
           </div>
           <div className={`grid grid-cols-7 border-t ${T.border}`}>
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`py-1.5 text-center text-[9px] font-black ${T.copper} uppercase border-b border-[#2A353D] bg-[#12161A]`}>{d}</div>)}
@@ -3268,7 +3379,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
                     </span>
                   ))}
 
-                  {existingReq && <span className="text-[7px] font-black uppercase text-red-500 mt-auto mb-1">Off</span>}
+                  {existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}
                   {isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}
                 </div>
               )
@@ -3286,15 +3397,20 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
                 Partial Day Only?
               </label>
               {isPartial && (
-                <div className={`grid grid-cols-2 gap-2 p-3 bg-[#12161A] rounded-xl border ${T.border}`}>
-                  <div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required/></div>
-                  <div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required/></div>
+              <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={T.label}>Start Time</label>
+                        <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required />
+                    </div>
+                    <div>
+                        <label className={T.label}>End Time</label>
+                        <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required />
+                    </div>
                 </div>
               )}
               <button type="submit" disabled={selectedDates.length === 0} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button>
             </form>
 
-            {/* --- NEW SECTION: MY PENDING REQUESTS --- */}
             <div className="mt-6 pt-6 border-t border-[#2A353D]">
               <h3 className="font-black text-sm text-white mb-3">My Pending Requests</h3>
               <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
@@ -3302,7 +3418,10 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
                 {myFutureRequests.map(r => (
                   <div key={r.id} className="flex items-center justify-between bg-[#12161A] p-2.5 rounded-xl border border-[#2A353D] hover:border-[#D4A381]/50 transition-colors">
                     <div>
-                      <div className="text-xs font-bold text-white">{formatDisplayDate(r.date)}</div>
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        {formatDisplayDate(r.date)}
+                        {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                      </div>
                       {r.isPartial ? (
                         <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-wider mt-0.5">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</div>
                       ) : (
@@ -3774,10 +3893,14 @@ const handleSavePrefs = async (e) => {
     </div>
   );
 };
+
 // --- AUDIT LOGS TAB (Master Admin Only) ---
 const TabAuditLog = ({ appUser }) => {
   const logs = useLiveCollection('auditLogs', appUser?.restaurantId);
-  const sortedLogs = [...logs].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const isGeoff = appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com';
+  const sortedLogs = [...logs]
+    .filter(log => isGeoff ? true : log.action !== 'APP_INSTALLED')
+    .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
@@ -4276,8 +4399,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
-          </div>
+{appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
+              <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
+            )}          </div>
 
           {/* STALE ACCOUNT ALERTS */}
           {staleTenants.length > 0 && (
@@ -4667,11 +4791,11 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
   return (
     <div className={`min-h-screen font-sans flex flex-col ${T.bg}`}>
       
-      {/* GHOST MODE BANNER */}
+{/* GHOST MODE BANNER */}
       {ghostTenant && (
         <div className="bg-gradient-to-r from-purple-900 to-fuchsia-900 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[99999] shadow-2xl uppercase tracking-wider border-b border-fuchsia-500/50">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex-shrink-0 animate-pulse text-sm">?</span>
+            <Moon size={16} className="flex-shrink-0 animate-pulse text-fuchsia-300" />
             <span className="truncate">GHOST MODE OVERRIDE: {ghostTenant.name}</span>
           </div>
           <button onClick={() => { setGhostTenant(null); window.history.pushState({ tab: 'godmode' }, '', '?tab=godmode'); setActiveTabState('godmode'); }} className="bg-white text-purple-900 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3">
@@ -4679,6 +4803,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
           </button>
         </div>
       )}
+      
       <style>{`
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -4691,11 +4816,11 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
-{/* UPDATE ALERT BANNER */}
+      {/* UPDATE ALERT BANNER */}
       {showUpdateBanner && (
         <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex-shrink-0 animate-pulse text-sm">?</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 animate-pulse text-white"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
             <span className="truncate">System update available. Refresh to prevent database desync.</span>
           </div>
           <button 
@@ -4785,7 +4910,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.1.1</span>
       </div>
     </div>
   );
