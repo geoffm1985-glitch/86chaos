@@ -1589,22 +1589,17 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         )}
       </div>
 
-      {subTab === 'schedule' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          
-          <div className={`${T.card} p-3 sm:p-4 flex flex-col lg:flex-row gap-3 items-center justify-between`}>
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 w-full lg:w-auto items-center">
+<div className={`${T.card} p-3 sm:p-4 flex flex-col 2xl:flex-row gap-3 items-center justify-between`}>
+            <div className="flex flex-wrap xl:flex-nowrap gap-3 w-full 2xl:w-auto items-center">
               
-              {/* Staff Selector - Big */}
-              <div className="md:col-span-3">
-                  <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} w-full py-2.5 px-3 text-sm font-bold h-12 shadow-inner`}>
-                    <option value="">-- Select Staff --</option>
-                    {displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-              </div>
+              {/* Staff Selector */}
+              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} w-full sm:w-auto sm:flex-1 xl:w-40 py-2.5 px-3 text-sm font-bold h-12 shadow-inner shrink-0`}>
+                <option value="">-- Select Staff --</option>
+                {displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
               
-              {/* Preset Selector & Edit Button - Bigger */}
-              <div className="md:col-span-4 flex gap-2 items-center">
+              {/* Preset Selector & Edit Button */}
+              <div className="flex gap-2 items-center w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
                 <select value={presetShift} onChange={handlePresetChange} className={`${T.input} w-full py-2.5 px-3 text-sm font-bold h-12 shadow-inner`}>
                   {SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}
                 </select>
@@ -1613,24 +1608,33 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                 </button>
               </div>
 
-              {/* Custom Time Overrides - Bigger */}
-              <div className="md:col-span-3 flex gap-2 w-full">
-                <div className="relative flex-1">
+              {/* Custom Time Overrides */}
+              <div className="flex gap-2 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
+                <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
                     <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
                 </div>
-                <div className="relative flex-1">
+                <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Out</span>
                     <input type="time" value={presetShift.includes('close')?'':endTime} disabled={presetShift.includes('close')} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner disabled:opacity-50`}/>
                 </div>
               </div>
 
               {/* Assign Button */}
-              <div className="md:col-span-2">
-                  <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full ${T.btn} py-2.5 px-4 text-sm h-12 disabled:opacity-50 flex items-center justify-center shadow-lg`}>Assign ({assignDates.length})</button>
-              </div>
+              <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full xl:w-auto ${T.btn} py-2.5 px-6 text-sm h-12 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>Assign ({assignDates.length})</button>
 
             </div>
+            
+            {/* Action Row */}
+            <div className="flex w-full 2xl:w-auto gap-2 items-center pt-3 2xl:pt-0 border-t 2xl:border-t-0 border-[#2A353D]">
+              <div className="hidden sm:flex flex-col items-end mr-3 bg-[#12161A] border border-[#2A353D] px-4 py-1.5 rounded-xl">
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
+                <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+              </div>
+              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
+              <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
+            </div>
+          </div>
             
             {/* Action Row */}
             <div className="flex w-full lg:w-auto gap-2 items-center pt-3 lg:pt-0 border-t lg:border-t-0 border-[#2A353D]">
