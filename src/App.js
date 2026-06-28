@@ -1102,7 +1102,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, db, storage, Modal, T, getToday, getMonthStr, getDaysInMonth, formatDisplayDate, formatShortTime, getHoliday, logAudit }) => {
   const [subTab, setSubTab] = useState('schedule'); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -1133,7 +1133,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [newPresetEnd, setNewPresetEnd] = useState('21:00');
 
   useEffect(() => {
-    const saved = localStorage.getItem(`customPresets_${appUser?.restaurantId}`);
+    if (!appUser?.restaurantId) return;
+    const saved = localStorage.getItem(`customPresets_${appUser.restaurantId}`);
     if (saved) {
       setCustomPresets(JSON.parse(saved));
     } else {
@@ -1144,7 +1145,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         { id: '7', label: "7p-close", start: "19:00", end: "CLOSE" }, { id: '8', label: "9p-close", start: "21:00", end: "CLOSE" } 
       ];
       setCustomPresets(seed);
-      localStorage.setItem(`customPresets_${appUser?.restaurantId}`, JSON.stringify(seed));
+      localStorage.setItem(`customPresets_${appUser.restaurantId}`, JSON.stringify(seed));
     }
   }, [appUser?.restaurantId]);
 
@@ -1196,6 +1197,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     setNewPresetStart(preset.start);
     setNewPresetEnd(preset.end);
     setEditingPresetId(preset.id);
+    document.getElementById('preset-modal-form')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const cancelPresetEdit = () => {
@@ -1260,7 +1262,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
   const handleAssign = async () => {
     if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
-    const sTime = startTime; const eTime = presetShift.includes('close') ? '23:59' : endTime;
+    const sTime = startTime; const eTime = presetShift.includes('close') || endTime === 'CLOSE' ? 'CLOSE' : endTime;
     const validDates = [];
     for (const d of assignDates) { 
       const existingShift = monthShifts.find(s => s.date === d && s.employeeId === emp.id);
@@ -1269,11 +1271,11 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id);
       if (req) {
         if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
-        else { const reqEnd = req.endTime || '23:59'; if ((sTime < reqEnd) && (eTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
+        else { const reqEnd = req.endTime || '23:59'; if ((sTime < reqEnd) && (eTime > req.startTime || eTime === 'CLOSE')) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
       }
       validDates.push(d);
     }
-    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role || 'Unassigned', startTime: sTime, endTime: presetShift.includes('close')?'CLOSE':endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
+    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role || 'Unassigned', startTime: sTime, endTime: eTime, isPublished: false, restaurantId: appUser.restaurantId }); }
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
@@ -1491,14 +1493,14 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
           <div>
             <label className={T.label}>Notes & Photo (Optional)</label>
             <textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={`${T.input} mb-2`} placeholder="Extra details..."/>
-            
+
             {eventImageFile && (
               <div className="text-xs text-emerald-400 font-bold bg-emerald-900/20 p-2 rounded-lg border border-emerald-900/50 flex justify-between items-center mb-2">
                 <span className="truncate pr-2">📷 {eventImageFile.name} attached</span>
                 <button type="button" onClick={()=>setEventImageFile(null)} className="text-red-400 hover:text-red-300 p-1"><X size={14}/></button>
               </div>
             )}
-            
+
             <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
               <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                  <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
@@ -1550,8 +1552,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
       {/* --- PRESET MANAGER MODAL --- */}
       <Modal isOpen={isPresetModalOpen} onClose={() => { setIsPresetModalOpen(false); cancelPresetEdit(); }} title="Manage Custom Shifts">
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-            <form onSubmit={handleSavePreset} className="space-y-3 p-4 bg-[#1A2126] border border-[#2A353D] rounded-xl">
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2 pb-10">
+            <form id="preset-modal-form" onSubmit={handleSavePreset} className="space-y-3 p-4 bg-[#1A2126] border border-[#2A353D] rounded-xl">
                 <div className="flex justify-between items-center">
                     <h4 className="text-sm font-black text-[#D4A381] uppercase tracking-widest">{editingPresetId ? 'Edit Preset' : 'Add New Preset'}</h4>
                     {editingPresetId && <button type="button" onClick={cancelPresetEdit} className="text-xs font-bold text-slate-400 hover:text-white transition-colors">Cancel ✖</button>}
@@ -1567,7 +1569,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                     </div>
                     <div>
                         <label className={T.label}>End Time</label>
-                        <input type="time" value={newPresetEnd} onChange={e=>setNewPresetEnd(e.target.value)} className={T.input} required />
+                        <div className="flex gap-2 items-center">
+                          <input type="time" value={newPresetEnd === 'CLOSE' ? '' : newPresetEnd} disabled={newPresetEnd === 'CLOSE'} onChange={e=>setNewPresetEnd(e.target.value)} className={`${T.input} ${newPresetEnd === 'CLOSE' ? 'opacity-50 cursor-not-allowed' : ''} flex-1`} required={newPresetEnd !== 'CLOSE'} />
+                          <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-white whitespace-nowrap bg-[#12161A] p-3 rounded-xl border border-[#2A353D] shadow-inner">
+                            <input type="checkbox" checked={newPresetEnd === 'CLOSE'} onChange={e => setNewPresetEnd(e.target.checked ? 'CLOSE' : '21:00')} className="accent-[#8F6040] w-4 h-4 cursor-pointer" /> Close
+                          </label>
+                        </div>
                     </div>
                 </div>
                 <button type="submit" className={`w-full ${T.btn} py-3 text-sm flex items-center justify-center`}><Plus size={18} className="inline mr-2"/> {editingPresetId ? 'Update Preset' : 'Save Custom Time'}</button>
@@ -1627,7 +1634,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                 </button>
               </div>
 
-              {/* Custom Time Dropdowns */}
+              {/* Custom Time Overrides */}
               <div className="flex gap-2 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
                 <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
@@ -1764,140 +1771,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
           </div>
         </div>
       )}
-
-      {/* --- THE NEW EVENTS LEDGER SUB-TAB --- */}
-      {subTab === 'events' && (
-        <div className="animate-[slideIn_0.2s_ease-out] space-y-4">
-          <div className="flex gap-2">
-             <button onClick={openNewEventModal} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={16}/> Add Special Event</button>
-          </div>
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
-            </div>
-            <div className={`divide-y ${T.border}`}>
-              {monthEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
-              {monthEvents.map(ev => (
-                <div key={ev.id} className={`${T.row} flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
-                  <div className="flex items-start sm:items-center gap-4">
-                    <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
-                      <div className="text-[10px] uppercase">{new Date(ev.date+'T12:00').toLocaleDateString('en-US',{month:'short'})}</div><div className="text-lg leading-tight">{parseInt(ev.date.split('-')[2])}</div>
-                    </div>
-                  <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
-                      {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D] whitespace-pre-wrap">{ev.notes}</p>}
-                      {ev.imageUrl && (
-                        <div className="mt-2 overflow-hidden rounded-xl border border-[#2A353D] shadow-inner bg-[#0B0E11] max-w-sm">
-                          <img src={ev.imageUrl} alt="Attached" className="w-full max-h-48 object-contain" />
-                        </div>
-                      )}
-                      <span className={`text-[10px] font-bold ${T.muted} block mt-1`}>Added by {ev.addedBy}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 sm:self-end self-start">
-                    <button onClick={() => openEditEventModal(ev)} className="p-2 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Edit size={14}/></button>
-                    <button onClick={() => { if(window.confirm("Delete event?")) deleteDoc(doc(db,"events",ev.id)); }} className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
-      {subTab === 'timesheets' && appUser?.isAdmin && (
-        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
-            <div className="flex items-center gap-4 flex-wrap">
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Payroll</h3>
-              <div className="flex items-center gap-2 bg-[#1A2126] border border-[#2A353D] p-1.5 rounded-lg shadow-inner">
-                 <input type="date" value={periodStart} onChange={e=>setPeriodStart(e.target.value)} className="bg-transparent text-[#D4A381] text-xs font-bold outline-none cursor-pointer" />
-                 <span className="text-slate-500 font-black text-[10px] uppercase">to</span>
-                 <input type="date" value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)} className="bg-transparent text-[#D4A381] text-xs font-bold outline-none cursor-pointer" />
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📋 Export CSV</button>
-              <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
-                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
-                <span className="text-emerald-400 font-black text-sm">${actualPeriodLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-              </div>
-            </div>
-          </div>
-
-          {summaryList.length > 0 && (
-            <div className="p-4 border-b border-[#2A353D] bg-[#0B0E11]">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Payroll Summary</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {summaryList.map(s => (
-                  <div key={s.name} className="bg-[#1A2126] p-3 rounded-xl border border-[#2A353D] flex justify-between items-center shadow-sm hover:border-[#D4A381]/50 transition-colors">
-                    <div>
-                      <div className="font-bold text-white text-sm">{s.name}</div>
-                      <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest mt-0.5">
-                        REG: {s.regHours.toFixed(2)}h | OT: {s.otHours.toFixed(2)}h
-                      </div>
-                      <div className="text-[9px] font-black uppercase text-emerald-500 tracking-widest mt-0.5">
-                        TIPS: ${(s.cashTips + s.creditTips).toFixed(2)}
-                      </div>
-                    </div>
-                    <div className="text-[#D4A381] font-black text-lg">${s.pay.toFixed(2)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className={`divide-y ${T.border}`}>
-            {periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
-            
-            {periodPunches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0)).map(p => {
-               const emp = users.find(u => u.id === p.employeeId);
-               const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-               const cost = hours * (emp?.wage || 0);
-               const isClockedIn = p.status === 'clocked_in' || p.status === 'on_break';
-               
-               const safeIn = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR';
-               const safeOut = isClockedIn ? '---' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR');
-               
-               return (
-                 <div key={p.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
-                   <div>
-                     <div className="font-bold text-white text-base">{p.employeeName || 'Unknown'}</div>
-                     <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
-                       {p.date ? formatDisplayDate(p.date) : 'Unknown Date'}
-                     </div>
-                   </div>
-                   <div className="flex items-center gap-6">
-                     <div className="text-right">
-                       <div className="text-xs font-mono text-slate-300">
-                         <span className="text-emerald-400">IN:</span> {safeIn}
-                       </div>
-                       <div className="text-xs font-mono text-slate-300">
-                         <span className="text-red-400">OUT:</span> {safeOut}
-                       </div>
-                     </div>
-                     <div className="text-right border-l border-[#2A353D] pl-6 w-24">
-                       <div className={`text-sm font-black ${isClockedIn ? 'text-amber-400 animate-pulse' : 'text-white'}`}>{isClockedIn ? 'ON CLOCK' : `${hours.toFixed(2)} hrs`}</div>
-                       <div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest">${cost.toFixed(2)}</div>
-                     </div>
-                     <div className="flex gap-2 border-l border-[#2A353D] pl-4">
-                       {isClockedIn && <button onClick={() => handleForceClockOut(p)} className="px-3 py-1 bg-red-900/20 text-red-500 text-[10px] font-black uppercase rounded-lg border border-red-900/50 hover:bg-red-900/40 transition-colors">Force Out</button>}
-                       <button onClick={() => openEditPunchModal(p)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
-                       <button onClick={() => handleDeletePunch(p.id)} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
-                     </div>
-                   </div>
-                 </div>
-               )
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
