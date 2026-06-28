@@ -2221,6 +2221,10 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const [searchTerm, setSearchTerm] = useState(''); 
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
+  // Fetch invoices securely directly inside this tab
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId);
+  const [viewInvoice, setViewInvoice] = useState(null);
+
   // Inventory Form
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
   const [editItem, setEditItem] = useState(null); 
@@ -2238,6 +2242,9 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   // AI Invoice Scanner State
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
   const [scannedInvoice, setScannedInvoice] = useState(null);
+
+  // Master Permission Check for Inventory Tabs
+  const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
 
   // --- LOGIC ---
   const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
@@ -2511,9 +2518,6 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
   const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { const cat = item.category || 'Uncategorized'; if (!acc[cat]) acc[cat] = []; acc[cat].push(item); return acc; }, {});
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
 
-  // Master Permission Check for Inventory Tabs
-  const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
-
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
       
@@ -2568,6 +2572,38 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
         )}
       </Modal>
 
+      {/* VIEW PAST INVOICE DETAILS MODAL */}
+      <Modal isOpen={!!viewInvoice} onClose={() => setViewInvoice(null)} title="Invoice Details">
+        {viewInvoice && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+              <div>
+                <div className="font-black text-white text-lg">{viewInvoice.vendorName}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{viewInvoice.invoiceDate}</div>
+              </div>
+              <div className="text-xl font-black text-emerald-400">${Number(viewInvoice.invoiceTotal || 0).toFixed(2)}</div>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {(viewInvoice.lineItems || []).map((item, idx) => (
+                <div key={idx} className="p-2.5 bg-[#1A2126] flex justify-between items-center">
+                  <div>
+                    <div className="font-bold text-white text-sm">{item.itemName}</div>
+                    <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                      {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
+                    </div>
+                    {item.matchedItemId && item.matchedItemId !== 'CREATE_NEW' && <div className="text-[8px] text-emerald-500 font-black uppercase mt-1">Matched to Inventory</div>}
+                    {item.matchedItemId === 'CREATE_NEW' && <div className="text-[8px] text-blue-400 font-black uppercase mt-1">Added as New Item</div>}
+                  </div>
+                  <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setViewInvoice(null)} className={`w-full ${T.btnAlt} py-3`}>Close</button>
+          </div>
+        )}
+      </Modal>
+
       <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`}>
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
@@ -2606,6 +2642,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
           <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🚨 Burn Log</button>
         </div>
       </div>
@@ -2745,6 +2782,36 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
             <button type="submit" className={`w-full ${T.btn} py-2`}>Save Vendor</button>
           </form>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><div className="flex justify-between items-start"><h4 className="font-black text-white text-lg">{v.name}</h4><button onClick={()=>setEditVendor(v)} className="text-slate-400 hover:text-white"><Edit size={14}/></button></div><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p><p className="text-[#D4A381] mt-2">Cut-Off: {v.cutOffDays?.length > 0 ? v.cutOffDays.join(', ') : 'None'} {v.cutOffTime ? `@ ${v.cutOffTime}` : ''}</p></div><button onClick={()=>deleteDoc(doc(db,"vendors",v.id))} className="mt-4 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
+        </div>
+      )}
+
+      {hasInvPerms && invTab === 'invoices' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className="font-black text-sm text-white flex items-center gap-2">Invoice History</h3>
+              <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{invoices.length} Total</span>
+            </div>
+            <div className={`divide-y ${T.border} max-h-[60vh] overflow-y-auto custom-scrollbar`}>
+              {invoices.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 font-bold">No invoices logged yet.</div>
+              ) : (
+                invoices.sort((a,b) => new Date(b.processedAt || 0) - new Date(a.processedAt || 0)).map(inv => (
+                  <div key={inv.id} className={`${T.row} flex justify-between items-center p-4`}>
+                    <div>
+                      <div className="font-black text-white text-base">{inv.vendorName}</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Inv Date: {inv.invoiceDate}</div>
+                      <div className="text-[9px] text-slate-500 mt-1">Processed by {inv.processedBy} on {new Date(inv.processedAt).toLocaleDateString()}</div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-emerald-400 font-black text-lg">${Number(inv.invoiceTotal || 0).toFixed(2)}</div>
+                      <button onClick={() => setViewInvoice(inv)} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">View</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
 
