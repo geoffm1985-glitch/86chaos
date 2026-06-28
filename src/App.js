@@ -1102,7 +1102,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, db, storage, Modal, T, getToday, getMonthStr, getDaysInMonth, formatDisplayDate, formatShortTime, getHoliday, logAudit }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
   const [subTab, setSubTab] = useState('schedule'); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -1133,8 +1133,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [newPresetEnd, setNewPresetEnd] = useState('21:00');
 
   useEffect(() => {
-    if (!appUser?.restaurantId) return;
-    const saved = localStorage.getItem(`customPresets_${appUser.restaurantId}`);
+    const saved = localStorage.getItem(`customPresets_${appUser?.restaurantId}`);
     if (saved) {
       setCustomPresets(JSON.parse(saved));
     } else {
@@ -1145,7 +1144,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         { id: '7', label: "7p-close", start: "19:00", end: "CLOSE" }, { id: '8', label: "9p-close", start: "21:00", end: "CLOSE" } 
       ];
       setCustomPresets(seed);
-      localStorage.setItem(`customPresets_${appUser.restaurantId}`, JSON.stringify(seed));
+      localStorage.setItem(`customPresets_${appUser?.restaurantId}`, JSON.stringify(seed));
     }
   }, [appUser?.restaurantId]);
 
@@ -1208,7 +1207,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   };
 
   const handleDeletePreset = (id) => {
-    if(window.confirm('Delete this preset?')) {
+    if(window.confirm('Delete this custom preset?')) {
       const filtered = customPresets.filter(p => p.id !== id);
       saveCustomPresetsLocally(filtered);
     }
@@ -1493,14 +1492,14 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
           <div>
             <label className={T.label}>Notes & Photo (Optional)</label>
             <textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={`${T.input} mb-2`} placeholder="Extra details..."/>
-
+            
             {eventImageFile && (
               <div className="text-xs text-emerald-400 font-bold bg-emerald-900/20 p-2 rounded-lg border border-emerald-900/50 flex justify-between items-center mb-2">
                 <span className="truncate pr-2">📷 {eventImageFile.name} attached</span>
                 <button type="button" onClick={()=>setEventImageFile(null)} className="text-red-400 hover:text-red-300 p-1"><X size={14}/></button>
               </div>
             )}
-
+            
             <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
               <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isEventUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                  <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
@@ -1771,6 +1770,9 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
           </div>
         </div>
       )}
+    </div>
+  );
+};
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
