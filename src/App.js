@@ -1490,15 +1490,17 @@ const handlePublish = async () => {
       addToast('Deleted', 'Time punch removed.');
   };
 
-  const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
+const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
   const [editingPunch, setEditingPunch] = useState(null);
+  const [punchEmployeeId, setPunchEmployeeId] = useState('');
+  const [punchSearch, setPunchSearch] = useState('');
   const [editPunchIn, setEditPunchIn] = useState('');
   const [editPunchOut, setEditPunchOut] = useState('');
   const [editBreakMins, setEditBreakMins] = useState('');
   const [editCash, setEditCash] = useState('');
   const [editCredit, setEditCredit] = useState('');
 
-  const openEditPunchModal = (punch) => {
+const openEditPunchModal = (punch = null) => {
     setEditingPunch(punch);
     const formatForInput = (iso) => {
       if (!iso) return '';
@@ -1506,22 +1508,41 @@ const handlePublish = async () => {
       const tzOffset = d.getTimezoneOffset() * 60000;
       return new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
     };
-    setEditPunchIn(formatForInput(punch.clockInTime));
-    setEditPunchOut(punch.clockOutTime && punch.status === 'clocked_out' ? formatForInput(punch.clockOutTime) : '');
-    setEditBreakMins(punch.breakMinutes || 0);
-    setEditCash(punch.cashTips || 0);
-    setEditCredit(punch.creditTips || 0);
+    if (punch) {
+      setPunchEmployeeId(punch.employeeId);
+      setEditPunchIn(formatForInput(punch.clockInTime));
+      setEditPunchOut(punch.clockOutTime && punch.status === 'clocked_out' ? formatForInput(punch.clockOutTime) : '');
+      setEditBreakMins(punch.breakMinutes || 0);
+      setEditCash(punch.cashTips || 0);
+      setEditCredit(punch.creditTips || 0);
+    } else {
+      setPunchEmployeeId('');
+      setEditPunchIn('');
+      setEditPunchOut('');
+      setEditBreakMins(0);
+      setEditCash(0);
+      setEditCredit(0);
+    }
     setIsPunchModalOpen(true);
   };
 
   const handleSavePunchEdit = async (e) => {
     e.preventDefault();
-    if (!editingPunch || !editPunchIn) return;
+    if (!editPunchIn || (!editingPunch && !punchEmployeeId)) return;
     try {
-      const updateData = { clockInTime: new Date(editPunchIn).toISOString(), breakMinutes: parseFloat(editBreakMins) || 0, cashTips: parseFloat(editCash) || 0, creditTips: parseFloat(editCredit) || 0 };
+      const inTime = new Date(editPunchIn).toISOString();
+      const dateStr = inTime.split('T')[0];
+      const updateData = { clockInTime: inTime, breakMinutes: parseFloat(editBreakMins) || 0, cashTips: parseFloat(editCash) || 0, creditTips: parseFloat(editCredit) || 0, date: dateStr };
       if (editPunchOut) { updateData.clockOutTime = new Date(editPunchOut).toISOString(); updateData.status = 'clocked_out'; } else { updateData.clockOutTime = null; updateData.status = 'clocked_in'; }
-      await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
-      addToast('Updated', 'Time punch modified successfully.');
+      
+      if (editingPunch) {
+        await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
+        addToast('Updated', 'Time punch modified successfully.');
+      } else {
+        const emp = users.find(u => u.id === punchEmployeeId);
+        await addDoc(collection(db, "timePunches"), { ...updateData, employeeId: emp.id, employeeName: emp.name, restaurantId: appUser.restaurantId });
+        addToast('Added', `Missing punch added for ${emp.name}.`);
+      }
       setIsPunchModalOpen(false); setEditingPunch(null);
     } catch (err) { addToast('Error', err.message); }
   };
@@ -1636,8 +1657,19 @@ const handlePublish = async () => {
         </form>
       </Modal>
 
-      <Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={`Edit Punch: ${editingPunch?.employeeName}`}>
+<Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={editingPunch ? `Edit Punch: ${editingPunch?.employeeName}` : "Add Missing Time Punch"}>
         <form onSubmit={handleSavePunchEdit} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+          {!editingPunch && (
+            <div>
+              <label className={T.label}>Employee</label>
+              <select value={punchEmployeeId} onChange={e=>setPunchEmployeeId(e.target.value)} className={T.input} required>
+                <option value="">-- Select Staff --</option>
+                {users.filter(u => u.isActive).sort((a,b) => a.name.localeCompare(b.name)).map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={T.label}>Clock In Time</label>
@@ -1957,7 +1989,14 @@ const handlePublish = async () => {
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
+<div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 md:flex-none">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
+                <input type="text" placeholder="Search staff..." value={punchSearch} onChange={e=>setPunchSearch(e.target.value)} className="w-full md:w-40 bg-[#0B0E11] border border-[#2A353D] text-white text-xs font-bold pl-8 pr-3 py-1.5 rounded-lg outline-none focus:border-[#D4A381] transition-colors" />
+              </div>
+              <button onClick={() => openEditPunchModal(null)} className="bg-emerald-900/20 border border-emerald-500/50 text-emerald-400 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-emerald-900/40 transition-colors flex items-center gap-2">
+                <Plus size={14}/> Add Punch
+              </button>
               <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📋 Export CSV</button>
               <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
@@ -1989,9 +2028,12 @@ const handlePublish = async () => {
           )}
 
           <div className={`divide-y ${T.border}`}>
-            {periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
+{periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
             
-            {periodPunches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0)).map(p => {
+            {periodPunches
+              .filter(p => !punchSearch || (p.employeeName || '').toLowerCase().includes(punchSearch.toLowerCase()))
+              .sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0))
+              .map(p => {
                const emp = users.find(u => u.id === p.employeeId);
                const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
                const cost = hours * (emp?.wage || 0);
