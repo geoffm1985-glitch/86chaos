@@ -1500,7 +1500,7 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
   const [editCash, setEditCash] = useState('');
   const [editCredit, setEditCredit] = useState('');
 
-  const openEditPunchModal = (punch = null) => {
+const openEditPunchModal = (punch = null) => {
     setEditingPunch(punch);
     const formatForInput = (iso) => {
       if (!iso) return '';
@@ -1657,28 +1657,65 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
         </form>
       </Modal>
 
-<Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={editingPunch ? `Edit Punch: ${editingPunch?.employeeName}` : "Add Missing Time Punch"}>
-        <form onSubmit={handleSavePunchEdit} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
-          {!editingPunch && (
-            <div>
-              <label className={T.label}>Employee</label>
-<select value={punchEmployeeId} onChange={e=>setPunchEmployeeId(e.target.value)} className={T.input} required>
-                <option value="">-- Select Staff --</option>
-                {users.filter(u => u.isActive !== false).sort((a,b) => (a.name || '').localeCompare(b.name || '')).map(u => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
+{/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
+      {subTab === 'timesheets' && appUser?.isAdmin && (
+        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
+          
+          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+            <div className="flex items-center gap-4 flex-wrap">
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Payroll</h3>
+              <div className="flex items-center gap-2 bg-[#1A2126] border border-[#2A353D] p-1.5 rounded-lg shadow-inner">
+                 <input type="date" value={periodStart} onChange={e=>setPeriodStart(e.target.value)} className="bg-transparent text-[#D4A381] text-xs font-bold outline-none cursor-pointer" />
+                 <span className="text-slate-500 font-black text-[10px] uppercase">to</span>
+                 <input type="date" value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)} className="bg-transparent text-[#D4A381] text-xs font-bold outline-none cursor-pointer" />
+              </div>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 md:flex-none">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
+                <input type="text" placeholder="Search staff..." value={punchSearch} onChange={e=>setPunchSearch(e.target.value)} className="w-full md:w-40 bg-[#0B0E11] border border-[#2A353D] text-white text-xs font-bold pl-8 pr-3 py-1.5 rounded-lg outline-none focus:border-[#D4A381] transition-colors" />
+              </div>
+              <button onClick={() => openEditPunchModal(null)} className="bg-emerald-900/20 border border-emerald-500/50 text-emerald-400 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-emerald-900/40 transition-colors flex items-center gap-2">
+                <Plus size={14}/> Add Punch
+              </button>
+              <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📋 Export CSV</button>
+              <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
+                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
+                <span className="text-emerald-400 font-black text-sm">${actualPeriodLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+              </div>
+            </div>
+          </div>
+
+          {summaryList.length > 0 && (
+            <div className="p-4 border-b border-[#2A353D] bg-[#0B0E11]">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Payroll Summary</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {summaryList.map(s => (
+                  <div key={s.name} className="bg-[#1A2126] p-3 rounded-xl border border-[#2A353D] flex justify-between items-center shadow-sm hover:border-[#D4A381]/50 transition-colors">
+                    <div>
+                      <div className="font-bold text-white text-sm">{s.name}</div>
+                      <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest mt-0.5">
+                        REG: {s.regHours.toFixed(2)}h | OT: {s.otHours.toFixed(2)}h
+                      </div>
+                      <div className="text-[9px] font-black uppercase text-emerald-500 tracking-widest mt-0.5">
+                        TIPS: ${(s.cashTips + s.creditTips).toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="text-[#D4A381] font-black text-lg">${s.pay.toFixed(2)}</div>
+                  </div>
                 ))}
-              </select>
+              </div>
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={T.label}>Clock In Time</label>
-              <input type="datetime-local" value={editPunchIn} onChange={e=>setEditPunchIn(e.target.value)} className={T.input} required/>
-            </div>
-            <div>
-              <label className={T.label}>Clock Out Time (Leave blank if currently on clock)</label>
-              <input type="datetime-local" value={editPunchOut} onChange={e=>setEditPunchOut(e.target.value)} className={T.input}/>
-            </div>
+
+          <div className={`divide-y ${T.border}`}>
+            {periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
+            
+            {periodPunches
+              .filter(p => !punchSearch || (p.employeeName || users.find(u => u.id === p.employeeId)?.name || '').toLowerCase().includes(punchSearch.toLowerCase()))
+              .sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0))
+              .map(p => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
