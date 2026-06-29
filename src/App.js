@@ -1120,6 +1120,10 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [editingEventId, setEditingEventId] = useState(null);
   const [eventImageFile, setEventImageFile] = useState(null);
   const [isEventUploading, setIsEventUploading] = useState(false);
+
+  // --- AUTO-POPULATE STATE ---
+  const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
+  const [autoPopSourceMonth, setAutoPopSourceMonth] = useState('');
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
@@ -1275,7 +1279,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       const existingShift = monthShifts.find(s => s.date === d && s.employeeId === emp.id);
       if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
       
-      const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id);
+      const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id && r.status !== 'pending');
       if (req) {
         if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
         else { const reqEnd = req.endTime || '23:59'; if ((startTime < reqEnd) && (endTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
@@ -1325,6 +1329,53 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
   const openNewEventModal = () => {
     setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventModalOpen(true);
+  };
+
+  // --- AUTO-POPULATE SCHEDULE ENGINE ---
+  const handleAutoPopulate = async () => {
+    if (!autoPopSourceMonth) return addToast('Error', 'Please select a source month.');
+    const sourceShifts = shifts.filter(s => s.date.startsWith(autoPopSourceMonth));
+    if (sourceShifts.length === 0) return addToast('Empty', 'No shifts found in the selected month.');
+
+    const targetMonth = getMonthStr(currentDate);
+    if (autoPopSourceMonth === targetMonth) return addToast('Error', 'Cannot copy to the exact same month.');
+
+    // Calculate Day Offset to cleanly align days of the week (Monday to Monday)
+    let sMon = new Date(autoPopSourceMonth + '-01T12:00:00');
+    while(sMon.getDay() !== 1) sMon.setDate(sMon.getDate() + 1);
+
+    let tMon = new Date(targetMonth + '-01T12:00:00');
+    while(tMon.getDay() !== 1) tMon.setDate(tMon.getDate() + 1);
+
+    const dayOffset = Math.round((tMon - sMon) / (1000 * 60 * 60 * 24));
+
+    let addedCount = 0;
+    for (const s of sourceShifts) {
+      const sDate = new Date(s.date + 'T12:00:00');
+      sDate.setDate(sDate.getDate() + dayOffset);
+      const newDateStr = sDate.toISOString().split('T')[0];
+
+      if (newDateStr.startsWith(targetMonth)) {
+        // Prevent exact duplicates 
+        const exists = shifts.find(existing => existing.date === newDateStr && existing.employeeId === s.employeeId && existing.role === s.role && existing.startTime === s.startTime && existing.endTime === s.endTime);
+        
+        if (!exists) {
+          await addDoc(collection(db, "shifts"), { 
+            date: newDateStr, 
+            employeeId: s.employeeId, 
+            role: s.role, 
+            startTime: s.startTime, 
+            endTime: s.endTime, 
+            isPublished: false, 
+            restaurantId: appUser.restaurantId 
+          });
+          addedCount++;
+        }
+      }
+    }
+    setIsAutoPopulateModalOpen(false);
+    setAutoPopSourceMonth('');
+    addToast('Populated', `Drafted ${addedCount} shifts. Conflicts are highlighted in red.`);
   };
 
   // --- LABOR PROJECTION ENGINE ---
@@ -1487,6 +1538,21 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
   return (
     <div className="space-y-4 pb-12 w-full">
+      {/* --- AUTO POPULATE MODAL --- */}
+      <Modal isOpen={isAutoPopulateModalOpen} onClose={() => setIsAutoPopulateModalOpen(false)} title="Auto-Populate Schedule">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-300 font-bold leading-relaxed">
+            Select a previous month to copy shifts from. <br/><br/>
+            <span className="text-[#D4A381]">Smart Mapping:</span> Days will automatically align to match the correct day of the week (e.g. 1st Monday to 1st Monday). All copied shifts will be added as unpublished drafts.
+          </p>
+          <div>
+            <label className={T.label}>Source Month</label>
+            <input type="month" value={autoPopSourceMonth} onChange={e=>setAutoPopSourceMonth(e.target.value)} className={T.input} />
+          </div>
+          <button onClick={handleAutoPopulate} className={`w-full ${T.btn} py-3`}>Copy Schedule</button>
+        </div>
+      </Modal>
+
       <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title={editingEventId ? "Edit Special Event" : "Add Special Event"}>
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -1663,6 +1729,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
+              <button onClick={() => setIsAutoPopulateModalOpen(true)} className={`flex-1 2xl:flex-none ${T.btnAlt} border-blue-900/50 text-blue-400 py-2.5 h-12 flex items-center justify-center font-black`}><Repeat size={16} className="mr-1"/> Auto-Fill</button>
               <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
@@ -1714,14 +1781,29 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                           <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
                           {monthDays.map(d => {
                             const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                            const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                            const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id && r.status !== 'pending'); 
                             const sel = assignDates.includes(d) && selectedEmp===u.id;
+
+                            // Conflict Check: Alert if a shift overlaps with ANY time-off request (pending or approved)
+                            const allUserReqs = timeOffRequests.filter(r => r.date === d && r.userId === u.id);
+                            const hasConflict = shift && allUserReqs.some(r => {
+                               if (!r.isPartial) return true; // Full day off conflict
+                               return (shift.startTime < (r.endTime || '23:59')) && (shift.endTime > (r.startTime || '00:00'));
+                            });
+
                             return (
                             <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
                               {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
                               {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                              {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
+                              {shift && (
+                                <div 
+                                  className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${hasConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
+                                  title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${hasConflict ? '(CONFLICT DETECTED)' : ''}`}
+                                >
+                                  {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
+                                </div>
+                              )}
                             </div>
                           </td>)
                           })}
