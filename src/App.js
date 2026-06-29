@@ -2231,7 +2231,6 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
             <div className={`divide-y ${T.border}`}>
               {filteredLineChecks.length === 0 && <div className="p-6 text-center font-bold text-slate-500 text-sm">No items configured for line check.</div>}
               {filteredLineChecks.map(item => {
-                // Find latest log for this item TODAY
                 const todaysLogs = tempLogs.filter(l => l.itemId === item.id && l.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
                 const latestLog = todaysLogs.length > 0 ? todaysLogs[0] : null;
 
