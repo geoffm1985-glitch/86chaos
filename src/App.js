@@ -899,6 +899,7 @@ const handleDeactivate = async (u) => {
     await deleteDoc(doc(db, "users", u.id)); 
     addToast('Terminated', `${u.name}'s account has been completely erased.`); 
   };
+
   const handlePasswordReset = async (u) => {
     if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
     try {
