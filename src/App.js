@@ -1292,8 +1292,29 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
-  const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
-  
+const handlePublish = async () => { 
+    if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
+    
+    // 1. Target ALL unpublished shifts across all months, not just the currently viewed month
+    const unpub = shifts.filter(s => !s.isPublished); 
+    
+    if (unpub.length === 0) {
+      addToast('Notice', 'No unpublished shifts found.');
+      return;
+    }
+    
+    addToast('Publishing...', `Pushing ${unpub.length} shifts live. Please wait.`);
+    
+    try {
+      // 2. Blast them all to Firebase simultaneously to prevent throttling and timeouts
+      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true })));
+      
+      addToast("Published", "Schedule is live."); 
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live.`); 
+    } catch (err) {
+      addToast("Error", "Some shifts failed to publish. Check connection and try again.");
+    }
+  };  
   const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
