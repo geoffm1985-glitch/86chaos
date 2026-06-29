@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.2.0';
+const CURRENT_VERSION = '8.2.1';
 
 
 // --- Helpers ---
@@ -1500,7 +1500,7 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
   const [editCash, setEditCash] = useState('');
   const [editCredit, setEditCredit] = useState('');
 
-const openEditPunchModal = (punch = null) => {
+  const openEditPunchModal = (punch = null) => {
     setEditingPunch(punch);
     const formatForInput = (iso) => {
       if (!iso) return '';
@@ -1664,7 +1664,7 @@ const openEditPunchModal = (punch = null) => {
               <label className={T.label}>Employee</label>
               <select value={punchEmployeeId} onChange={e=>setPunchEmployeeId(e.target.value)} className={T.input} required>
                 <option value="">-- Select Staff --</option>
-                {users.filter(u => u.isActive).sort((a,b) => a.name.localeCompare(b.name)).map(u => (
+                {users.filter(u => u.isActive).sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
@@ -1694,7 +1694,7 @@ const openEditPunchModal = (punch = null) => {
               <input type="number" step="0.01" min="0" value={editCredit} onChange={e=>setEditCredit(e.target.value)} className={T.input}/>
             </div>
           </div>
-          <button type="submit" className={`w-full ${T.btn}`}>Save Time Punch</button>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingPunch ? 'Save Time Punch' : 'Add Time Punch'}</button>
         </form>
       </Modal>
 
@@ -1975,7 +1975,7 @@ const openEditPunchModal = (punch = null) => {
         </div>
       )}
 
-      {/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
+{/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
       {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           
@@ -1989,7 +1989,7 @@ const openEditPunchModal = (punch = null) => {
               </div>
             </div>
             
-<div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="relative flex-1 md:flex-none">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
                 <input type="text" placeholder="Search staff..." value={punchSearch} onChange={e=>setPunchSearch(e.target.value)} className="w-full md:w-40 bg-[#0B0E11] border border-[#2A353D] text-white text-xs font-bold pl-8 pr-3 py-1.5 rounded-lg outline-none focus:border-[#D4A381] transition-colors" />
@@ -2028,10 +2028,10 @@ const openEditPunchModal = (punch = null) => {
           )}
 
           <div className={`divide-y ${T.border}`}>
-{periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
+            {periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
             
             {periodPunches
-              .filter(p => !punchSearch || (p.employeeName || '').toLowerCase().includes(punchSearch.toLowerCase()))
+              .filter(p => !punchSearch || (p.employeeName || users.find(u => u.id === p.employeeId)?.name || '').toLowerCase().includes(punchSearch.toLowerCase()))
               .sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0))
               .map(p => {
                const emp = users.find(u => u.id === p.employeeId);
@@ -2045,7 +2045,7 @@ const openEditPunchModal = (punch = null) => {
                return (
                  <div key={p.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
                    <div>
-                     <div className="font-bold text-white text-base">{p.employeeName || 'Unknown'}</div>
+                     <div className="font-bold text-white text-base">{p.employeeName || emp?.name || 'Unknown'}</div>
                      <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
                        {p.date ? formatDisplayDate(p.date) : 'Unknown Date'}
                      </div>
@@ -2075,9 +2075,6 @@ const openEditPunchModal = (punch = null) => {
           </div>
         </div>
       )}
-    </div>
-  );
-};
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
@@ -5268,7 +5265,7 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.1</span>
       </div>
     </div>
   );
