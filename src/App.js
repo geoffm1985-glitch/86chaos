@@ -209,7 +209,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Stock & Orders', icon: <Package size={18}/> });  
   
   // --- 3. Management ---
-  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert }); 
+  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert });
+  if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
+  
   // --- 4. System & Security ---
   if (isGod) tabs.push({ id: 'godmode', label: 'Master Control', icon: <Shield size={18}/> });
   if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
@@ -236,7 +239,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                  <div className="flex items-center gap-3">
                    <div className="relative">
                      <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
-                     {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+                     {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
                    </div>
                    {tab.label}
                  </div>
@@ -245,11 +248,11 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
           </div>
           <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
            <button 
-  onClick={() => { window.location.href = "mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A"; }} 
-  className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
->
-  <Bug size={16} /> Report a Bug / Error
-</button>
+              onClick={() => { window.location.href = "mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A"; }} 
+              className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
+            >
+              <Bug size={16} /> Report a Bug / Error
+            </button>
             <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
           </div>
        </div>
@@ -5019,18 +5022,21 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
 
 
 // --- NOTIFICATION DOT LOGIC ---
-  // 1. Unread Messages
-  const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => Math.max(max, new Date(n.date).getTime()), 0);
+  // 1. Unread Messages (with NaN safety fallback)
+  const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => {
+     const dTime = new Date(n.date || 0).getTime();
+     return isNaN(dTime) ? max : Math.max(max, dTime);
+  }, 0);
   const lastReadMsg = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadMsg`) || '0') : 0;
   const hasUnreadMessages = latestNoteDate > lastReadMsg && activeTabState !== 'messages';
 
   // 2. Shift Swaps (Available on the board, ignoring your own)
   const hasAvailableSwaps = shiftSwaps.some(s => s.status === 'available' && s.date >= getToday() && s.originalEmployeeId !== liveAppUser?.id);
 
-  // 3. Manager Alerts (Pending Time Off requests for the current month)
-  const currentMonthStr = getMonthStr(currentDate);
-  const hasPendingTimeOff = timeOffRequests.some(r => r.status === 'pending' && r.date.startsWith(currentMonthStr));
-  const isManagerAlert = (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && hasPendingTimeOff;
+  // 3. Manager Alerts (Pending Time Off requests for the real-world current month)
+  const realCurrentMonthStr = getToday().substring(0, 7);
+  const hasPendingTimeOff = timeOffRequests.some(r => r.status === 'pending' && r.date?.startsWith(realCurrentMonthStr));
+  const isManagerAlert = !!(liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && hasPendingTimeOff;
 
   // Consolidated Alerts
   const hasMyShiftAlert = hasAvailableSwaps || isManagerAlert; // Dot on 'My Shift'
@@ -5132,13 +5138,13 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
           </div>
         )}
 
-<button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
+        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
           {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
         </button>
       </header>
 
-<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} />    {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} />   {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
           {activeTabState === 'sales' ? (
             <div className="w-full text-center">
@@ -5150,7 +5156,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
               <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381]">
                 {activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
               </h2>
-              <button onClick={activeTabState === 'prep' ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>
+              <button onClick={activeTabState === 'prep' ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>>
             </>
           )}
         </div>
