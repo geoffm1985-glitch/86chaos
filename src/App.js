@@ -841,17 +841,10 @@ const TabTeam = ({ users, appUser, addToast }) => {
   };
 
 const handleDeactivate = async (u) => { 
-    if (!window.confirm(`WARNING: Terminate ${u.name}? This will permanently delete their global user account and instantly remove them from all search lists. (Their historical shifts will remain intact).`)) return; 
-    
-    try {
-      // 1. Permanently delete the user's global profile document
-      await deleteDoc(doc(db, "users", u.id)); 
-      addToast('Terminated', `${u.name}'s global account has been purged.`); 
-    } catch (err) {
-      addToast('Error', 'Failed to remove user from global directory: ' + err.message);
-    }
+    if (!window.confirm(`Terminate ${u.name}? This will permanently delete their global account from the entire system.`)) return; 
+    await deleteDoc(doc(db, "users", u.id)); 
+    addToast('Terminated', `${u.name}'s account has been completely erased.`); 
   };
-
   const handlePasswordReset = async (u) => {
     if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
     try {
@@ -4813,8 +4806,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
             <input type="text" placeholder="Search any user by name, email, role, or ID..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
           </div>
           <div className={`divide-y ${T.border} ${T.card} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-            {allUsers.filter(u => (u.name+u.email+u.role+u.id).toLowerCase().includes(userSearch.toLowerCase())).slice(0, 50).map(u => {
-              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
+{allUsers.filter(u => {
+  const restName = restaurants.find(r => r.id === u.restaurantId)?.name || '';
+  return (u.name + u.email + u.role + u.id + restName).toLowerCase().includes(userSearch.toLowerCase());
+}).slice(0, 50).map(u => {              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
               return (
                 <div key={u.id} className={`${T.row} flex justify-between items-center`}>
 <div>
