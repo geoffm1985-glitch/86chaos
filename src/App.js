@@ -2145,31 +2145,6 @@ const dayShifts = shifts
   );
 };
 
-// --- PREP & TASKS COMMAND CENTER ---
-const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
-  const [subTab, setSubTab] = useState('prep');
-  const [prepDate, setPrepDate] = useState(currentDate);
-
-  // Sync internal prepDate with global currentDate if user uses the top header arrows
-  useEffect(() => { setPrepDate(currentDate); }, [currentDate]);
-
-  // Local selection state (Fixes checkboxes staying checked across days)
-  const [selectedPreps, setSelectedPreps] = useState([]);
-
-  // Prep Form State
-  const [text, setText] = useState(''); 
-  const [station, setStation] = useState('Grill'); 
-  const dbPrepCats = useLiveCollection('prepCategories', appUser?.restaurantId); 
-  const displayStations = dbPrepCats.length > 0 ? dbPrepCats.map(c => c.name).sort() : ['Grill', 'Fry', 'Salad/Cold', 'Expo', 'Prep Table'];
-  const [isMaster, setIsMaster] = useState(true);
-  
-  // Task Form State
-  const [taskText, setTaskText] = useState(''); 
-  const [taskCat, setTaskCat] = useState('Cleaning'); 
-  const [taskFreq, setTaskFreq] = useState('daily');
-  const [taskTargetDay, setTaskTargetDay] = useState('Monday'); 
-  const [taskTargetDate, setTaskTargetDate] = useState('1');
-  const [editingTaskId, setEditingTaskId] = useState(null);
 
 // --- PREP, LINE CHECKS & TASKS COMMAND CENTER ---
 const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
