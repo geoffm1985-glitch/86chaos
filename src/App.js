@@ -1564,6 +1564,23 @@ const handlePublish = async () => {
 
   return (
     <div className="space-y-4 pb-12 w-full">
+
+{/* MANAGER EXPLANATION BANNER */}
+      {timeOffRequests.filter(r => r.status === 'pending' && r.date.startsWith(monthStr)).length > 0 && (
+        <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center justify-between gap-4 shadow-lg animate-[slideIn_0.2s_ease-out]">
+          <div className="flex items-center gap-3">
+            <Shield className="text-red-500 flex-shrink-0 animate-pulse" size={24} />
+            <div>
+              <h3 className="text-red-400 font-black text-sm uppercase tracking-widest">Action Required</h3>
+              <p className="text-xs text-red-200/80 font-medium mt-0.5">
+                You have pending time-off requests this month. Go to <strong className="text-white">My Shift {'->'} Request Off</strong> to approve them in the Master Override Log.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+    
       {/* --- AUTO POPULATE MODAL --- */}
       <Modal isOpen={isAutoPopulateModalOpen} onClose={() => setIsAutoPopulateModalOpen(false)} title="Auto-Populate Schedule">
         <div className="space-y-4">
@@ -5021,7 +5038,7 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
 
-// --- NOTIFICATION DOT LOGIC ---
+// --- NOTIFICATION DOT LOGIC (WITH READ RECEIPTS) ---
   // 1. Unread Messages (with NaN safety fallback)
   const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => {
      const dTime = new Date(n.date || 0).getTime();
@@ -5030,26 +5047,29 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
   const lastReadMsg = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadMsg`) || '0') : 0;
   const hasUnreadMessages = latestNoteDate > lastReadMsg && activeTabState !== 'messages';
 
-  // 2. Shift Swaps (Available on the board, ignoring your own)
-  const hasAvailableSwaps = shiftSwaps.some(s => s.status === 'available' && s.date >= getToday() && s.originalEmployeeId !== liveAppUser?.id);
+  // 2. Shift Swaps (Clear dot when they visit My Shift / Trade Board)
+  const latestSwap = shiftSwaps.filter(s => s.status === 'available' && s.originalEmployeeId !== liveAppUser?.id).reduce((max, s) => Math.max(max, new Date(s.date).getTime()), 0);
+  const lastReadSwaps = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadSwaps`) || '0') : 0;
+  const hasAvailableSwaps = latestSwap > lastReadSwaps && activeTabState !== 'published'; 
 
-  // 3. Manager Alerts (Pending Time Off requests for the real-world current month)
+  // 3. Manager Alerts (Clear dot when they visit Schedule Builder)
   const realCurrentMonthStr = getToday().substring(0, 7);
-  const hasPendingTimeOff = timeOffRequests.some(r => r.status === 'pending' && r.date?.startsWith(realCurrentMonthStr));
-  const isManagerAlert = !!(liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && hasPendingTimeOff;
+  const latestTimeOffReq = timeOffRequests.filter(r => r.status === 'pending' && r.date?.startsWith(realCurrentMonthStr)).reduce((max, r) => Math.max(max, new Date(r.submittedAt || 0).getTime()), 0);
+  const lastReadTimeOff = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadTimeOff`) || '0') : 0;
+  const isManagerAlert = !!(liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && (latestTimeOffReq > lastReadTimeOff) && activeTabState !== 'schedule';
 
   // Consolidated Alerts
-  const hasMyShiftAlert = hasAvailableSwaps || isManagerAlert; // Dot on 'My Shift'
-  const hasScheduleBuilderAlert = isManagerAlert; // Dot on 'Schedule Builder'
-  const hasAnyMenuAlert = hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert; // Dot on Hamburger Menu
+  const hasMyShiftAlert = hasAvailableSwaps; 
+  const hasScheduleBuilderAlert = isManagerAlert; 
+  const hasAnyMenuAlert = hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert; 
 
+  // The "Read Receipt" Engine - Clears the dots instantly when tabs are opened
   useEffect(() => {
-    if (activeTabState === 'messages' && liveAppUser) {
-      localStorage.setItem(`${liveAppUser.id}_lastReadMsg`, Date.now().toString());
-    }
-  }, [activeTabState, events, liveAppUser]);
-
- 
+    if (!liveAppUser) return;
+    if (activeTabState === 'messages') localStorage.setItem(`${liveAppUser.id}_lastReadMsg`, Date.now().toString());
+    if (activeTabState === 'published') localStorage.setItem(`${liveAppUser.id}_lastReadSwaps`, Date.now().toString());
+    if (activeTabState === 'schedule') localStorage.setItem(`${liveAppUser.id}_lastReadTimeOff`, Date.now().toString());
+  }, [activeTabState, events, shiftSwaps, timeOffRequests, liveAppUser]);
 
   const addToast = (title, message) => {
     const id = Date.now();
@@ -5062,17 +5082,16 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
   const nextMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() + 1); setCurrentDate(formatDate(d)); };
 
-  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items}
- prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
+  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
 
-if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
+  if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
 
   // BILLING LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
   if (clientData?.billingStatus === 'Past Due' && !ghostTenant) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">
-          <span className="text-6xl mb-4 block">?</span>
+          <span className="text-6xl mb-4 block">🚫</span>
           <h1 className="text-2xl font-black text-white mb-2">Subscription Past Due</h1>
           <p className="text-slate-400 font-medium mb-6">Access to 86 Chaos has been temporarily suspended for {clientData.name || 'this workspace'}. Please contact your management team or 86 Chaos Support to renew your plan.</p>
           <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
@@ -5084,7 +5103,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
   return (
     <div className={`min-h-screen font-sans flex flex-col ${T.bg}`}>
       
-{/* GHOST MODE BANNER */}
+      {/* GHOST MODE BANNER */}
       {ghostTenant && (
         <div className="bg-gradient-to-r from-purple-900 to-fuchsia-900 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[99999] shadow-2xl uppercase tracking-wider border-b border-fuchsia-500/50">
           <div className="flex items-center gap-2 min-w-0">
@@ -5125,8 +5144,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         </div>
       )}
 
-
-<header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
+      <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo />
 
         {/* DYNAMIC RESTAURANT NAME */}
@@ -5144,19 +5162,25 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         </button>
       </header>
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} />   {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
-        <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} />
+    
+      {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+        <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {activeTabState === 'sales' ? (
             <div className="w-full text-center">
               <h2 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase">Sales & Trends</h2>
             </div>
           ) : (
             <>
-              <button onClick={activeTabState === 'prep' ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronLeft size={20} /></button>
-              <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381]">
-                {activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
-              </h2>
-              <button onClick={activeTabState === 'prep' ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>>
+              <button onClick={activeTabState === 'prep' ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381] relative z-10"><ChevronLeft size={20} /></button>
+              
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381] pointer-events-auto">
+                  {activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+                </h2>
+              </div>
+
+              <button onClick={activeTabState === 'prep' ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381] relative z-10"><ChevronRight size={20} /></button>
             </>
           )}
         </div>
