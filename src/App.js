@@ -2171,6 +2171,63 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   const [taskTargetDate, setTaskTargetDate] = useState('1');
   const [editingTaskId, setEditingTaskId] = useState(null);
 
+// --- PREP, LINE CHECKS & TASKS COMMAND CENTER ---
+const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
+  const [subTab, setSubTab] = useState('prep');
+  const [prepDate, setPrepDate] = useState(currentDate);
+
+  // --- USDA Food Safety Standards Engine ---
+  const USDA_CATEGORIES = {
+    'Cold Holding (≤ 41°F)': { max: 41 },
+    'Hot Holding (≥ 135°F)': { min: 135 },
+    'Poultry / Reheat (≥ 165°F)': { min: 165 },
+    'Ground Meats (≥ 155°F)': { min: 155 },
+    'Whole Meats / Fish (≥ 145°F)': { min: 145 }
+  };
+
+  const evaluateTemp = (temp, cat) => {
+    const rules = USDA_CATEGORIES[cat];
+    if (!rules) return 'Unknown';
+    const t = parseFloat(temp);
+    if (rules.max && t > rules.max) return 'Danger';
+    if (rules.min && t < rules.min) return 'Danger';
+    return 'Safe';
+  };
+
+  // Sync internal prepDate with global currentDate
+  useEffect(() => { setPrepDate(currentDate); }, [currentDate]);
+
+  // Permissions
+  const canManageLineChecks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
+
+  // Local selection state (Fixes checkboxes staying checked across days)
+  const [selectedPreps, setSelectedPreps] = useState([]);
+
+  // Prep Form State
+  const [text, setText] = useState(''); 
+  const [station, setStation] = useState('Grill'); 
+  const dbPrepCats = useLiveCollection('prepCategories', appUser?.restaurantId); 
+  const displayStations = dbPrepCats.length > 0 ? dbPrepCats.map(c => c.name).sort() : ['Grill', 'Fry', 'Salad/Cold', 'Expo', 'Prep Table'];
+  const [isMaster, setIsMaster] = useState(true);
+  
+  // Task Form State
+  const [taskText, setTaskText] = useState(''); 
+  const [taskCat, setTaskCat] = useState('Cleaning'); 
+  const [taskFreq, setTaskFreq] = useState('daily');
+  const [taskTargetDay, setTaskTargetDay] = useState('Monday'); 
+  const [taskTargetDate, setTaskTargetDate] = useState('1');
+  const [editingTaskId, setEditingTaskId] = useState(null);
+
+  // Line Check State
+  const lineChecks = useLiveCollection('lineCheckItems', appUser?.restaurantId);
+  const tempLogs = useLiveCollection('tempLogs', appUser?.restaurantId);
+  
+  const [lcSearch, setLcSearch] = useState('');
+  const [lcName, setLcName] = useState('');
+  const [lcCat, setLcCat] = useState('Cold Holding (≤ 41°F)');
+  const [temps, setTemps] = useState({});
+  const [editLineCheckItem, setEditLineCheckItem] = useState(null);
+
   // --- PREP LOGIC ---
   const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
   
@@ -2199,7 +2256,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     if (item.isMaster) { 
       const dts = {...(item.completedDates||{})}; 
       if (dts[prepDate]) {
-        delete dts[prepDate]; // Cleanly removes completion for this specific date
+        delete dts[prepDate]; 
       } else {
         dts[prepDate] = appUser.name;
       }
@@ -2210,6 +2267,53 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   };
   
   const groupedPrep = activePrep.reduce((acc, i) => { const s = i.station || 'General'; if(!acc[s]) acc[s]=[]; acc[s].push(i); return acc; }, {});
+
+  // --- LINE CHECK LOGIC ---
+  const handleAddLineCheck = async (e) => {
+    e.preventDefault();
+    if(lcName.trim()) {
+      await addDoc(collection(db, "lineCheckItems"), {
+        name: lcName.trim(),
+        category: lcCat,
+        restaurantId: appUser.restaurantId
+      });
+      setLcName('');
+    }
+  };
+
+  const handleSaveLineCheckEdit = async (e) => {
+    e.preventDefault();
+    await updateDoc(doc(db, "lineCheckItems", editLineCheckItem.id), {
+      name: editLineCheckItem.name.trim(),
+      category: editLineCheckItem.category
+    });
+    setEditLineCheckItem(null);
+  };
+
+  const handleLogTemp = async (item) => {
+    const val = temps[item.id];
+    if (!val) return;
+    
+    const status = evaluateTemp(val, item.category);
+    
+    await addDoc(collection(db, "tempLogs"), {
+      itemId: item.id,
+      itemName: item.name,
+      category: item.category,
+      temp: parseFloat(val),
+      status: status,
+      loggedBy: appUser.name,
+      date: getToday(),
+      timestamp: new Date().toISOString(),
+      restaurantId: appUser.restaurantId
+    });
+    
+    setTemps({...temps, [item.id]: ''});
+  };
+
+  const filteredLineChecks = lineChecks
+    .filter(lc => (lc.name || '').toLowerCase().includes(lcSearch.toLowerCase()))
+    .sort((a, b) => a.category.localeCompare(b.category));
 
   // --- TASK LOGIC ---
   const handleAddTask = async (e) => { 
@@ -2240,7 +2344,6 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     setEditingTaskId(null);
   };
   
-  // FIX: Anchor Tasks to prepDate, not global currentDate
   const getTaskPeriodKey = (freq) => {
     if (freq === 'daily') return prepDate;
     if (freq === 'weekly') { 
@@ -2263,16 +2366,14 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
   };
 
-const renderTasks = (freqFilter) => {
+  const renderTasks = (freqFilter) => {
     const filteredTasks = tasks.filter(t => t.frequency === freqFilter);
     const grouped = filteredTasks.reduce((acc, t) => { if(!acc[t.category]) acc[t.category]=[]; acc[t.category].push(t); return acc; }, { 'Cleaning': [], 'General': [] });
     const periodKey = getTaskPeriodKey(freqFilter);
     
-    // GIVES TEAM MANAGERS ACCESS TO TASKS
-const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
     return (
       <div className="space-y-4 mt-4">
-        {canManageTasks && (
+        {canManageLineChecks && (
           <form onSubmit={handleAddTask} className={`${T.card} p-3 flex flex-col md:flex-row gap-2 items-center bg-[#1A2126]`}>
             {editingTaskId && <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest px-2 whitespace-nowrap">Editing Task</div>}
             <input type="text" value={taskText} onChange={e=>setTaskText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-sm font-medium text-white" placeholder={`New ${freqFilter} task...`} required/>
@@ -2307,8 +2408,8 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
-                        {canManageTasks && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
-                        {canManageTasks && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
+                        {canManageLineChecks && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
+                        {canManageLineChecks && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                       </div>
                     </div>
                   )
@@ -2322,12 +2423,103 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4 pb-40">
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['prep', 'daily', 'weekly', 'monthly'].map((tab) => (
-          <button key={tab} onClick={() => { setSubTab(tab); setTaskFreq(tab); }} className={`px-2 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{tab === 'prep' ? 'Food Prep' : `${tab} Tasks`}</button>
+    <div className="max-w-4xl mx-auto space-y-4 pb-40">
+      
+      {/* EDIT LINE CHECK MODAL */}
+      <Modal isOpen={!!editLineCheckItem} onClose={() => setEditLineCheckItem(null)} title="Edit Line Check">
+        {editLineCheckItem && (
+          <form onSubmit={handleSaveLineCheckEdit} className="space-y-4">
+            <div>
+              <label className={T.label}>Item / Cooler Name</label>
+              <input type="text" value={editLineCheckItem.name} onChange={e=>setEditLineCheckItem({...editLineCheckItem, name: e.target.value})} className={T.input} required />
+            </div>
+            <div>
+              <label className={T.label}>USDA Safe Temp Rule</label>
+              <select value={editLineCheckItem.category} onChange={e=>setEditLineCheckItem({...editLineCheckItem, category: e.target.value})} className={T.input}>
+                {Object.keys(USDA_CATEGORIES).map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
+          </form>
+        )}
+      </Modal>
+
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
+        {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => (
+          <button key={tab} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {tab === 'prep' ? 'Food Prep' : tab === 'line-check' ? 'Line Check' : `${tab} Tasks`}
+          </button>
         ))}
       </div>
+
+      {subTab === 'line-check' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+              <input type="text" placeholder="Search logs & coolers..." value={lcSearch} onChange={e=>setLcSearch(e.target.value)} className={`${T.input} pl-10`} />
+            </div>
+          </div>
+
+          {canManageLineChecks && (
+            <form onSubmit={handleAddLineCheck} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
+              <input type="text" value={lcName} onChange={e=>setLcName(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add cooler or food item..." required/>
+              <div className="flex w-full sm:w-auto gap-2 items-center">
+                <select value={lcCat} onChange={e=>setLcCat(e.target.value)} className="w-full sm:w-48 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-[#D4A381]">
+                  {Object.keys(USDA_CATEGORIES).map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+                <button type="submit" className={`${T.btn} py-2 px-4 flex-shrink-0`}><Plus size={18}/></button>
+              </div>
+            </form>
+          )}
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>USDA Safety & Temp Log (Today)</div>
+            <div className={`divide-y ${T.border}`}>
+              {filteredLineChecks.length === 0 && <div className="p-6 text-center font-bold text-slate-500 text-sm">No items configured for line check.</div>}
+              {filteredLineChecks.map(item => {
+                // Find latest log for this item TODAY
+                const todaysLogs = tempLogs.filter(l => l.itemId === item.id && l.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const latestLog = todaysLogs.length > 0 ? todaysLogs[0] : null;
+
+                return (
+                  <div key={item.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                    <div className="flex-1">
+                      <div className="font-bold text-white text-base">{item.name}</div>
+                      <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">{item.category}</div>
+                      
+                      {latestLog ? (
+                        <div className={`text-[10px] font-black mt-2 inline-flex items-center gap-2 px-2 py-1 rounded-md border ${latestLog.status === 'Safe' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>
+                          <span className="text-sm">{latestLog.temp}°F</span> 
+                          <span>({latestLog.status})</span>
+                          <span className="opacity-70 font-bold border-l border-current pl-2 ml-1">By {latestLog.loggedBy} at {new Date(latestLog.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-slate-500 font-bold mt-2 uppercase tracking-widest">Not logged yet today</div>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-3 md:self-end">
+                      <div className="flex items-center gap-1 bg-[#12161A] p-1 rounded-lg border border-[#2A353D]">
+                        <input type="number" step="0.1" value={temps[item.id] || ''} onChange={e=>setTemps({...temps, [item.id]: e.target.value})} placeholder="°F" className="w-16 bg-transparent text-white font-black text-center text-sm outline-none" />
+                        <button onClick={() => handleLogTemp(item)} disabled={!temps[item.id]} className="bg-slate-800 text-white disabled:opacity-50 px-3 py-1.5 rounded text-xs font-black uppercase hover:bg-slate-700 transition-colors">Log</button>
+                      </div>
+                      
+                      {canManageLineChecks && (
+                        <div className="flex gap-1 border-l border-[#2A353D] pl-3">
+                          <button onClick={() => setEditLineCheckItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button>
+                          <button onClick={() => { if(window.confirm(`Delete ${item.name}?`)) deleteDoc(doc(db,"lineCheckItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {subTab === 'prep' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
@@ -2338,7 +2530,8 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
           <form onSubmit={handleAddPrep} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
             <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add prep item..." required/>
             <div className="flex w-full sm:w-auto gap-3 items-center">
-<select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select>              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
+              <select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select> 
+              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
               <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
             </div>
           </form>
@@ -2357,7 +2550,7 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
                     return (
                     <div key={i.id} className={`${T.row} ${isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
-                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>? {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
+                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
@@ -2398,7 +2591,7 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
       </div>
       )}
 
-      {subTab !== 'prep' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
+      {subTab !== 'prep' && subTab !== 'line-check' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
     </div>
   );
 };
