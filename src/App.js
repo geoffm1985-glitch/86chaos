@@ -464,19 +464,81 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     return () => unsub();
   }, [appUser?.id]);
 
+// --- GEOFENCE MATH ENGINE ---
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3; 
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; 
+  };
+
+// --- GEOFENCE MATH ENGINE ---
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3; 
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; 
+  };
+
   const handleClockIn = async () => {
-    try {
-      await addDoc(collection(db, "timePunches"), { 
-        employeeId: appUser.id, 
-        employeeName: appUser.name, 
-        clockInTime: new Date().toISOString(), 
-        status: 'clocked_in', 
-        restaurantId: appUser.restaurantId, 
-        date: getToday(),
-        breakMinutes: 0
-      });
-      addToast('Clocked In', 'Shift started successfully.');
-    } catch (e) { addToast('Error', e.message); }
+    const executePunch = async () => {
+      try {
+        await addDoc(collection(db, "timePunches"), { 
+          employeeId: appUser.id, employeeName: appUser.name, clockInTime: new Date().toISOString(), 
+          status: 'clocked_in', restaurantId: appUser.restaurantId, date: getToday(), breakMinutes: 0
+        });
+        addToast('Clocked In', 'Shift started successfully.');
+      } catch (e) { addToast('Error', e.message); }
+    };
+
+    if (appUser?.systemSettings?.geofence) {
+      if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
+      
+      // EXACT COORDINATES FOR CHEERS (26 N State St, Chilton, WI)
+      const CHEERS_LAT = 44.0300; 
+      const CHEERS_LON = -88.1630; 
+      const ALLOWED_RADIUS_METERS = 100; // 100 meters (approx 330 feet radius)
+      
+      addToast('Locating...', 'Verifying GPS coordinates. Hold still.');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const dist = calculateDistance(CHEERS_LAT, CHEERS_LON, pos.coords.latitude, pos.coords.longitude);
+          if (dist <= ALLOWED_RADIUS_METERS) executePunch();
+          else addToast('Access Denied', `Too far away. Move closer to the restaurant. (${Math.round(dist)} meters away)`);
+        },
+        (err) => addToast('Location Error', err.code === 1 ? 'Location access denied. Please allow location access in your browser to clock in.' : 'Could not lock GPS. Step outside the walk-in and try again.'),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      executePunch();
+    }
+  };
+
+    if (appUser?.systemSettings?.geofence) {
+      if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
+      
+      // CHEERS EXACT COORDINATES
+      const CHEERS_LAT = 44.0297; 
+      const CHEERS_LON = -88.1634; 
+      const ALLOWED_RADIUS_METERS = 100; 
+      
+      addToast('Locating...', 'Verifying GPS coordinates. Hold still.');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const dist = calculateDistance(CHEERS_LAT, CHEERS_LON, pos.coords.latitude, pos.coords.longitude);
+          if (dist <= ALLOWED_RADIUS_METERS) executePunch();
+          else addToast('Access Denied', `Too far away. Move closer to the restaurant. (${Math.round(dist)} meters away)`);
+        },
+        (err) => addToast('Location Error', err.code === 1 ? 'Location access denied. Please allow location access in your browser to clock in.' : 'Could not lock GPS. Step outside the walk-in and try again.'),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      executePunch();
+    }
   };
 
   const handleStartBreak = async () => {
