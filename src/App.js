@@ -927,10 +927,11 @@ return (
                 </div>
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
-                  <div className="flex items-center gap-2 mt-0.5">
+<div className="flex items-center gap-2 mt-0.5">
                     <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {appUser?.isAdmin && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
+                    {appUser?.isAdmin && <span className={`text-[8px] font-black uppercase tracking-widest ml-1 ${(!u.lastActive || Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) > 1) ? 'text-red-500' : 'text-emerald-500'}`}>{!u.lastActive ? 'Never' : Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) === 0 ? 'Active Today' : `Inactive ${Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000)} days`}</span>}
                   </div>
                 </div>
               </div>
@@ -4727,10 +4728,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
               return (
                 <div key={u.id} className={`${T.row} flex justify-between items-center`}>
-                  <div>
+<div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
-                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName}</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName} <span className="mx-1">|</span> <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span></div>
                   </div>
                   <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
                     <Moon size={14} /> Possess
@@ -4956,13 +4957,14 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
       }
     });
 
-    // 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
-    if (!ghostTenant) {
+// 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
+    if (!ghostTenant && appUser?.id) {
       const today = new Date().toDateString();
-      const lastPing = localStorage.getItem(`ping_${rId}`);
+      const lastPing = localStorage.getItem(`ping_user_${appUser.id}`);
       if (lastPing !== today) {
         updateDoc(doc(db, 'restaurants', rId), { lastActive: new Date().toISOString() }).catch(()=>{});
-        localStorage.setItem(`ping_${rId}`, today);
+        updateDoc(doc(db, 'users', appUser.id), { lastActive: new Date().toISOString() }).catch(()=>{});
+        localStorage.setItem(`ping_user_${appUser.id}`, today);
       }
     }
 
