@@ -190,7 +190,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {} }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, clientFeatures = {} }) => {
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
@@ -199,8 +199,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups like Cheers)
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
-// --- 1. The Daily Hub ---
-  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'My Shift', icon: <Clock size={18}/> }); 
+  // --- 1. The Daily Hub ---
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'My Shift', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'The Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   
   // --- 2. Back of House (Kitchen) ---
@@ -209,9 +209,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Stock & Orders', icon: <Package size={18}/> });  
   
   // --- 3. Management ---
-  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/> });
-if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
-  
+  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert }); 
   // --- 4. System & Security ---
   if (isGod) tabs.push({ id: 'godmode', label: 'Master Control', icon: <Shield size={18}/> });
   if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
@@ -4999,10 +4997,24 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
 
-  // Unread messages logic
+// --- NOTIFICATION DOT LOGIC ---
+  // 1. Unread Messages
   const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => Math.max(max, new Date(n.date).getTime()), 0);
   const lastReadMsg = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadMsg`) || '0') : 0;
   const hasUnreadMessages = latestNoteDate > lastReadMsg && activeTabState !== 'messages';
+
+  // 2. Shift Swaps (Available on the board, ignoring your own)
+  const hasAvailableSwaps = shiftSwaps.some(s => s.status === 'available' && s.date >= getToday() && s.originalEmployeeId !== liveAppUser?.id);
+
+  // 3. Manager Alerts (Pending Time Off requests for the current month)
+  const currentMonthStr = getMonthStr(currentDate);
+  const hasPendingTimeOff = timeOffRequests.some(r => r.status === 'pending' && r.date.startsWith(currentMonthStr));
+  const isManagerAlert = (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && hasPendingTimeOff;
+
+  // Consolidated Alerts
+  const hasMyShiftAlert = hasAvailableSwaps || isManagerAlert; // Dot on 'My Shift'
+  const hasScheduleBuilderAlert = isManagerAlert; // Dot on 'Schedule Builder'
+  const hasAnyMenuAlert = hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert; // Dot on Hamburger Menu
 
   useEffect(() => {
     if (activeTabState === 'messages' && liveAppUser) {
@@ -5099,14 +5111,13 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
           </div>
         )}
 
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
+<button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
-          {hasUnreadMessages && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+          {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
         </button>
       </header>
 
-<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} clientFeatures={clientFeatures} />
-    {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} />    {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
           {activeTabState === 'sales' ? (
             <div className="w-full text-center">
