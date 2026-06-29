@@ -489,35 +489,9 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
     if (appUser?.systemSettings?.geofence) {
       if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
-      
-      // EXACT COORDINATES FOR CHEERS (26 N State St, Chilton, WI)
       const CHEERS_LAT = 44.0300; 
       const CHEERS_LON = -88.1630; 
-      const ALLOWED_RADIUS_METERS = 100; // 100 meters (approx 330 feet radius)
-      
-      addToast('Locating...', 'Verifying GPS coordinates. Hold still.');
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const dist = calculateDistance(CHEERS_LAT, CHEERS_LON, pos.coords.latitude, pos.coords.longitude);
-          if (dist <= ALLOWED_RADIUS_METERS) executePunch();
-          else addToast('Access Denied', `Too far away. Move closer to the restaurant. (${Math.round(dist)} meters away)`);
-        },
-        (err) => addToast('Location Error', err.code === 1 ? 'Location access denied. Please allow location access in your browser to clock in.' : 'Could not lock GPS. Step outside the walk-in and try again.'),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } else {
-      executePunch();
-    }
-  };
-
-    if (appUser?.systemSettings?.geofence) {
-      if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
-      
-      // CHEERS EXACT COORDINATES
-      const CHEERS_LAT = 44.0297; 
-      const CHEERS_LON = -88.1634; 
       const ALLOWED_RADIUS_METERS = 100; 
-      
       addToast('Locating...', 'Verifying GPS coordinates. Hold still.');
       navigator.geolocation.getCurrentPosition(
         (pos) => {
