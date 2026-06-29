@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.2.1';
+const CURRENT_VERSION = '8.2.2';
 
 
 // --- Helpers ---
@@ -840,12 +840,11 @@ const TabTeam = ({ users, appUser, addToast }) => {
     } 
   };
 
-  const handleDeactivate = async (u) => { 
-    if (!window.confirm(`Terminate ${u.name}? They will be removed from the active roster but their historical schedule data will be preserved.`)) return; 
-    await updateDoc(doc(db, "users", u.id), { isActive: false }); 
-    addToast('Terminated', `${u.name} deactivated.`); 
+const handleDeactivate = async (u) => { 
+    if (!window.confirm(`Terminate ${u.name}? This will permanently delete their global account from the entire system.`)) return; 
+    await deleteDoc(doc(db, "users", u.id)); 
+    addToast('Terminated', `${u.name}'s account has been completely erased.`); 
   };
-
   const handlePasswordReset = async (u) => {
     if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
     try {
@@ -4807,8 +4806,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
             <input type="text" placeholder="Search any user by name, email, role, or ID..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
           </div>
           <div className={`divide-y ${T.border} ${T.card} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-            {allUsers.filter(u => (u.name+u.email+u.role+u.id).toLowerCase().includes(userSearch.toLowerCase())).slice(0, 50).map(u => {
-              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
+{allUsers.filter(u => {
+  const restName = restaurants.find(r => r.id === u.restaurantId)?.name || '';
+  return (u.name + u.email + u.role + u.id + restName).toLowerCase().includes(userSearch.toLowerCase());
+}).slice(0, 50).map(u => {              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
               return (
                 <div key={u.id} className={`${T.row} flex justify-between items-center`}>
 <div>
@@ -5270,7 +5271,7 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.2</span>
       </div>
     </div>
   );
