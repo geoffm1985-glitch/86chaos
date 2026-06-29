@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.2.0';
+const CURRENT_VERSION = '8.2.1';
 
 
 // --- Helpers ---
@@ -1490,8 +1490,9 @@ const handlePublish = async () => {
       addToast('Deleted', 'Time punch removed.');
   };
 
-  const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
+const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
   const [editingPunch, setEditingPunch] = useState(null);
+  const [editPunchEmpId, setEditPunchEmpId] = useState(''); // NEW: For creating punches
   const [editPunchIn, setEditPunchIn] = useState('');
   const [editPunchOut, setEditPunchOut] = useState('');
   const [editBreakMins, setEditBreakMins] = useState('');
@@ -1514,15 +1515,46 @@ const handlePublish = async () => {
     setIsPunchModalOpen(true);
   };
 
+  const openAddPunchModal = () => {
+    setEditingPunch(null);
+    setEditPunchEmpId('');
+    setEditPunchIn('');
+    setEditPunchOut('');
+    setEditBreakMins('0');
+    setEditCash('0');
+    setEditCredit('0');
+    setIsPunchModalOpen(true);
+  };
+
   const handleSavePunchEdit = async (e) => {
     e.preventDefault();
-    if (!editingPunch || !editPunchIn) return;
     try {
-      const updateData = { clockInTime: new Date(editPunchIn).toISOString(), breakMinutes: parseFloat(editBreakMins) || 0, cashTips: parseFloat(editCash) || 0, creditTips: parseFloat(editCredit) || 0 };
-      if (editPunchOut) { updateData.clockOutTime = new Date(editPunchOut).toISOString(); updateData.status = 'clocked_out'; } else { updateData.clockOutTime = null; updateData.status = 'clocked_in'; }
-      await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
-      addToast('Updated', 'Time punch modified successfully.');
-      setIsPunchModalOpen(false); setEditingPunch(null);
+      if (editingPunch) {
+        if (!editPunchIn) return;
+        const updateData = { clockInTime: new Date(editPunchIn).toISOString(), breakMinutes: parseFloat(editBreakMins) || 0, cashTips: parseFloat(editCash) || 0, creditTips: parseFloat(editCredit) || 0 };
+        if (editPunchOut) { updateData.clockOutTime = new Date(editPunchOut).toISOString(); updateData.status = 'clocked_out'; } else { updateData.clockOutTime = null; updateData.status = 'clocked_in'; }
+        await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
+        addToast('Updated', 'Time punch modified successfully.');
+      } else {
+        if (!editPunchEmpId || !editPunchIn) return addToast('Error', 'Employee and Clock In Time required.');
+        const emp = users.find(u => u.id === editPunchEmpId);
+        const newData = {
+          employeeId: emp.id,
+          employeeName: emp.name,
+          clockInTime: new Date(editPunchIn).toISOString(),
+          breakMinutes: parseFloat(editBreakMins) || 0,
+          cashTips: parseFloat(editCash) || 0,
+          creditTips: parseFloat(editCredit) || 0,
+          date: editPunchIn.split('T')[0], // Extract YYYY-MM-DD
+          restaurantId: appUser.restaurantId
+        };
+        if (editPunchOut) { newData.clockOutTime = new Date(editPunchOut).toISOString(); newData.status = 'clocked_out'; } 
+        else { newData.clockOutTime = null; newData.status = 'clocked_in'; }
+        await addDoc(collection(db, "timePunches"), newData);
+        addToast('Added', 'Missing time punch created.');
+      }
+      setIsPunchModalOpen(false);
+      setEditingPunch(null);
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -1636,8 +1668,19 @@ const handlePublish = async () => {
         </form>
       </Modal>
 
-      <Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={`Edit Punch: ${editingPunch?.employeeName}`}>
+<Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={editingPunch ? `Edit Punch: ${editingPunch?.employeeName}` : "Add Missing Time Punch"}>
         <form onSubmit={handleSavePunchEdit} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+          {!editingPunch && (
+            <div>
+              <label className={T.label}>Select Employee</label>
+              <select value={editPunchEmpId} onChange={e=>setEditPunchEmpId(e.target.value)} className={T.input} required>
+                <option value="">-- Select Staff Member --</option>
+                {users.filter(u => u.isActive !== false).sort((a,b) => a.name.localeCompare(b.name)).map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={T.label}>Clock In Time</label>
@@ -1662,7 +1705,7 @@ const handlePublish = async () => {
               <input type="number" step="0.01" min="0" value={editCredit} onChange={e=>setEditCredit(e.target.value)} className={T.input}/>
             </div>
           </div>
-          <button type="submit" className={`w-full ${T.btn}`}>Save Time Punch</button>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingPunch ? 'Save Changes' : 'Create Time Punch'}</button>
         </form>
       </Modal>
 
@@ -1947,7 +1990,7 @@ const handlePublish = async () => {
       {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+<div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
             <div className="flex items-center gap-4 flex-wrap">
               <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Payroll</h3>
               <div className="flex items-center gap-2 bg-[#1A2126] border border-[#2A353D] p-1.5 rounded-lg shadow-inner">
@@ -1958,6 +2001,7 @@ const handlePublish = async () => {
             </div>
             
             <div className="flex items-center gap-3">
+              <button onClick={openAddPunchModal} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-[#D4A381] transition-colors flex items-center gap-2"><Plus size={14}/> Add Punch</button>
               <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📋 Export CSV</button>
               <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
@@ -5226,7 +5270,7 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.1</span>
       </div>
     </div>
   );
