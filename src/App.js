@@ -1662,9 +1662,9 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
           {!editingPunch && (
             <div>
               <label className={T.label}>Employee</label>
-              <select value={punchEmployeeId} onChange={e=>setPunchEmployeeId(e.target.value)} className={T.input} required>
+<select value={punchEmployeeId} onChange={e=>setPunchEmployeeId(e.target.value)} className={T.input} required>
                 <option value="">-- Select Staff --</option>
-                {users.filter(u => u.isActive).sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
+                {users.filter(u => u.isActive !== false).sort((a,b) => (a.name || '').localeCompare(b.name || '')).map(u => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
