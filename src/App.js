@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.1.1';
+const CURRENT_VERSION = '8.2.0';
 
 
 // --- Helpers ---
@@ -190,7 +190,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {} }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, clientFeatures = {} }) => {
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
@@ -199,20 +199,24 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups like Cheers)
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
-  // Dynamic Module Checks
-if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time Clock', icon: <Clock size={18}/> });  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+  // --- 1. The Daily Hub ---
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'My Shift', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'The Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   
-  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
-  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen'
- || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
-if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
+  // --- 2. Back of House (Kitchen) ---
+  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
+  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Spec Book', icon: <BookOpen size={18}/> });
+  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Stock & Orders', icon: <Package size={18}/> });  
   
-  // Core UI (Always active)
-  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
-  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
+  // --- 3. Management ---
+  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert });
+  if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
-if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size={18}/> });
-  if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
+  // --- 4. System & Security ---
+  if (isGod) tabs.push({ id: 'godmode', label: 'Master Control', icon: <Shield size={18}/> });
+  if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+  tabs.push({ id: 'settings', label: 'Preferences', icon: <Settings size={18}/> });
 
   return (
      <div className="fixed inset-0 z-[70] flex justify-end">
@@ -235,7 +239,7 @@ if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size
                  <div className="flex items-center gap-3">
                    <div className="relative">
                      <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
-                     {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+                     {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
                    </div>
                    {tab.label}
                  </div>
@@ -244,11 +248,11 @@ if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size
           </div>
           <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
            <button 
-  onClick={() => { window.location.href = "mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A"; }} 
-  className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
->
-  <Bug size={16} /> Report a Bug / Error
-</button>
+              onClick={() => { window.location.href = "mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A"; }} 
+              className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
+            >
+              <Bug size={16} /> Report a Bug / Error
+            </button>
             <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
           </div>
        </div>
@@ -924,10 +928,11 @@ return (
                 </div>
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
-                  <div className="flex items-center gap-2 mt-0.5">
+<div className="flex items-center gap-2 mt-0.5">
                     <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {appUser?.isAdmin && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
+                    {appUser?.isAdmin && <span className={`text-[8px] font-black uppercase tracking-widest ml-1 ${(!u.lastActive || Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) > 1) ? 'text-red-500' : 'text-emerald-500'}`}>{!u.lastActive ? 'Never' : Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) === 0 ? 'Active Today' : `Inactive ${Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000)} days`}</span>}
                   </div>
                 </div>
               </div>
@@ -1120,6 +1125,10 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [editingEventId, setEditingEventId] = useState(null);
   const [eventImageFile, setEventImageFile] = useState(null);
   const [isEventUploading, setIsEventUploading] = useState(false);
+
+  // --- AUTO-POPULATE STATE ---
+  const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
+  const [autoPopSourceMonth, setAutoPopSourceMonth] = useState('');
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
@@ -1275,7 +1284,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       const existingShift = monthShifts.find(s => s.date === d && s.employeeId === emp.id);
       if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
       
-      const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id);
+      const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id && r.status !== 'pending');
       if (req) {
         if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
         else { const reqEnd = req.endTime || '23:59'; if ((startTime < reqEnd) && (endTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
@@ -1286,8 +1295,29 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
-  const handlePublish = async () => { if(!window.confirm("Publish schedule? Notifications will be sent.")) return; const unpub = monthShifts.filter(s => !s.isPublished); for(const s of unpub) await updateDoc(doc(db, "shifts", s.id), {isPublished:true}); addToast("Published", "Schedule is live."); logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', 'Pushed a new schedule live.'); };
-  
+const handlePublish = async () => { 
+    if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
+    
+    // 1. Target ALL unpublished shifts across all months, not just the currently viewed month
+    const unpub = shifts.filter(s => !s.isPublished); 
+    
+    if (unpub.length === 0) {
+      addToast('Notice', 'No unpublished shifts found.');
+      return;
+    }
+    
+    addToast('Publishing...', `Pushing ${unpub.length} shifts live. Please wait.`);
+    
+    try {
+      // 2. Blast them all to Firebase simultaneously to prevent throttling and timeouts
+      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true })));
+      
+      addToast("Published", "Schedule is live."); 
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live.`); 
+    } catch (err) {
+      addToast("Error", "Some shifts failed to publish. Check connection and try again.");
+    }
+  };  
   const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
@@ -1325,6 +1355,53 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
   const openNewEventModal = () => {
     setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventModalOpen(true);
+  };
+
+  // --- AUTO-POPULATE SCHEDULE ENGINE ---
+  const handleAutoPopulate = async () => {
+    if (!autoPopSourceMonth) return addToast('Error', 'Please select a source month.');
+    const sourceShifts = shifts.filter(s => s.date.startsWith(autoPopSourceMonth));
+    if (sourceShifts.length === 0) return addToast('Empty', 'No shifts found in the selected month.');
+
+    const targetMonth = getMonthStr(currentDate);
+    if (autoPopSourceMonth === targetMonth) return addToast('Error', 'Cannot copy to the exact same month.');
+
+    // Calculate Day Offset to cleanly align days of the week (Monday to Monday)
+    let sMon = new Date(autoPopSourceMonth + '-01T12:00:00');
+    while(sMon.getDay() !== 1) sMon.setDate(sMon.getDate() + 1);
+
+    let tMon = new Date(targetMonth + '-01T12:00:00');
+    while(tMon.getDay() !== 1) tMon.setDate(tMon.getDate() + 1);
+
+    const dayOffset = Math.round((tMon - sMon) / (1000 * 60 * 60 * 24));
+
+    let addedCount = 0;
+    for (const s of sourceShifts) {
+      const sDate = new Date(s.date + 'T12:00:00');
+      sDate.setDate(sDate.getDate() + dayOffset);
+      const newDateStr = sDate.toISOString().split('T')[0];
+
+      if (newDateStr.startsWith(targetMonth)) {
+        // Prevent exact duplicates 
+        const exists = shifts.find(existing => existing.date === newDateStr && existing.employeeId === s.employeeId && existing.role === s.role && existing.startTime === s.startTime && existing.endTime === s.endTime);
+        
+        if (!exists) {
+          await addDoc(collection(db, "shifts"), { 
+            date: newDateStr, 
+            employeeId: s.employeeId, 
+            role: s.role, 
+            startTime: s.startTime, 
+            endTime: s.endTime, 
+            isPublished: false, 
+            restaurantId: appUser.restaurantId 
+          });
+          addedCount++;
+        }
+      }
+    }
+    setIsAutoPopulateModalOpen(false);
+    setAutoPopSourceMonth('');
+    addToast('Populated', `Drafted ${addedCount} shifts. Conflicts are highlighted in red.`);
   };
 
   // --- LABOR PROJECTION ENGINE ---
@@ -1487,6 +1564,38 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
   return (
     <div className="space-y-4 pb-12 w-full">
+
+{/* MANAGER EXPLANATION BANNER */}
+      {timeOffRequests.filter(r => r.status === 'pending' && r.date.startsWith(monthStr)).length > 0 && (
+        <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center justify-between gap-4 shadow-lg animate-[slideIn_0.2s_ease-out]">
+          <div className="flex items-center gap-3">
+            <Shield className="text-red-500 flex-shrink-0 animate-pulse" size={24} />
+            <div>
+              <h3 className="text-red-400 font-black text-sm uppercase tracking-widest">Action Required</h3>
+              <p className="text-xs text-red-200/80 font-medium mt-0.5">
+                You have pending time-off requests this month. Go to <strong className="text-white">My Shift {'->'} Request Off</strong> to approve them in the Master Override Log.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+    
+      {/* --- AUTO POPULATE MODAL --- */}
+      <Modal isOpen={isAutoPopulateModalOpen} onClose={() => setIsAutoPopulateModalOpen(false)} title="Auto-Populate Schedule">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-300 font-bold leading-relaxed">
+            Select a previous month to copy shifts from. <br/><br/>
+            <span className="text-[#D4A381]">Smart Mapping:</span> Days will automatically align to match the correct day of the week (e.g. 1st Monday to 1st Monday). All copied shifts will be added as unpublished drafts.
+          </p>
+          <div>
+            <label className={T.label}>Source Month</label>
+            <input type="month" value={autoPopSourceMonth} onChange={e=>setAutoPopSourceMonth(e.target.value)} className={T.input} />
+          </div>
+          <button onClick={handleAutoPopulate} className={`w-full ${T.btn} py-3`}>Copy Schedule</button>
+        </div>
+      </Modal>
+
       <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title={editingEventId ? "Edit Special Event" : "Add Special Event"}>
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -1663,6 +1772,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
+              <button onClick={() => setIsAutoPopulateModalOpen(true)} className={`flex-1 2xl:flex-none ${T.btnAlt} border-blue-900/50 text-blue-400 py-2.5 h-12 flex items-center justify-center font-black`}><Repeat size={16} className="mr-1"/> Auto-Fill</button>
               <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
@@ -1714,14 +1824,29 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                           <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
                           {monthDays.map(d => {
                             const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                            const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id); 
+                            const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id && r.status !== 'pending'); 
                             const sel = assignDates.includes(d) && selectedEmp===u.id;
+
+                            // Conflict Check: Alert if a shift overlaps with ANY time-off request (pending or approved)
+                            const allUserReqs = timeOffRequests.filter(r => r.date === d && r.userId === u.id);
+                            const hasConflict = shift && allUserReqs.some(r => {
+                               if (!r.isPartial) return true; // Full day off conflict
+                               return (shift.startTime < (r.endTime || '23:59')) && (shift.endTime > (r.startTime || '00:00'));
+                            });
+
                             return (
                             <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
                               {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
                               {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                              {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
+                              {shift && (
+                                <div 
+                                  className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${hasConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
+                                  title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${hasConflict ? '(CONFLICT DETECTED)' : ''}`}
+                                >
+                                  {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
+                                </div>
+                              )}
                             </div>
                           </td>)
                           })}
@@ -2059,13 +2184,35 @@ const dayShifts = shifts
   );
 };
 
-// --- PREP & TASKS COMMAND CENTER ---
+
+// --- PREP, LINE CHECKS & TASKS COMMAND CENTER ---
 const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
   const [subTab, setSubTab] = useState('prep');
   const [prepDate, setPrepDate] = useState(currentDate);
 
-  // Sync internal prepDate with global currentDate if user uses the top header arrows
+  // --- USDA Food Safety Standards Engine ---
+  const USDA_CATEGORIES = {
+    'Cold Holding (≤ 41°F)': { max: 41 },
+    'Hot Holding (≥ 135°F)': { min: 135 },
+    'Poultry / Reheat (≥ 165°F)': { min: 165 },
+    'Ground Meats (≥ 155°F)': { min: 155 },
+    'Whole Meats / Fish (≥ 145°F)': { min: 145 }
+  };
+
+  const evaluateTemp = (temp, cat) => {
+    const rules = USDA_CATEGORIES[cat];
+    if (!rules) return 'Unknown';
+    const t = parseFloat(temp);
+    if (rules.max && t > rules.max) return 'Danger';
+    if (rules.min && t < rules.min) return 'Danger';
+    return 'Safe';
+  };
+
+  // Sync internal prepDate with global currentDate
   useEffect(() => { setPrepDate(currentDate); }, [currentDate]);
+
+  // Permissions
+  const canManageLineChecks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
 
   // Local selection state (Fixes checkboxes staying checked across days)
   const [selectedPreps, setSelectedPreps] = useState([]);
@@ -2084,6 +2231,16 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   const [taskTargetDay, setTaskTargetDay] = useState('Monday'); 
   const [taskTargetDate, setTaskTargetDate] = useState('1');
   const [editingTaskId, setEditingTaskId] = useState(null);
+
+  // Line Check State
+  const lineChecks = useLiveCollection('lineCheckItems', appUser?.restaurantId);
+  const tempLogs = useLiveCollection('tempLogs', appUser?.restaurantId);
+  
+  const [lcSearch, setLcSearch] = useState('');
+  const [lcName, setLcName] = useState('');
+  const [lcCat, setLcCat] = useState('Cold Holding (≤ 41°F)');
+  const [temps, setTemps] = useState({});
+  const [editLineCheckItem, setEditLineCheckItem] = useState(null);
 
   // --- PREP LOGIC ---
   const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
@@ -2113,7 +2270,7 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     if (item.isMaster) { 
       const dts = {...(item.completedDates||{})}; 
       if (dts[prepDate]) {
-        delete dts[prepDate]; // Cleanly removes completion for this specific date
+        delete dts[prepDate]; 
       } else {
         dts[prepDate] = appUser.name;
       }
@@ -2124,6 +2281,53 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
   };
   
   const groupedPrep = activePrep.reduce((acc, i) => { const s = i.station || 'General'; if(!acc[s]) acc[s]=[]; acc[s].push(i); return acc; }, {});
+
+  // --- LINE CHECK LOGIC ---
+  const handleAddLineCheck = async (e) => {
+    e.preventDefault();
+    if(lcName.trim()) {
+      await addDoc(collection(db, "lineCheckItems"), {
+        name: lcName.trim(),
+        category: lcCat,
+        restaurantId: appUser.restaurantId
+      });
+      setLcName('');
+    }
+  };
+
+  const handleSaveLineCheckEdit = async (e) => {
+    e.preventDefault();
+    await updateDoc(doc(db, "lineCheckItems", editLineCheckItem.id), {
+      name: editLineCheckItem.name.trim(),
+      category: editLineCheckItem.category
+    });
+    setEditLineCheckItem(null);
+  };
+
+  const handleLogTemp = async (item) => {
+    const val = temps[item.id];
+    if (!val) return;
+    
+    const status = evaluateTemp(val, item.category);
+    
+    await addDoc(collection(db, "tempLogs"), {
+      itemId: item.id,
+      itemName: item.name,
+      category: item.category,
+      temp: parseFloat(val),
+      status: status,
+      loggedBy: appUser.name,
+      date: getToday(),
+      timestamp: new Date().toISOString(),
+      restaurantId: appUser.restaurantId
+    });
+    
+    setTemps({...temps, [item.id]: ''});
+  };
+
+  const filteredLineChecks = lineChecks
+    .filter(lc => (lc.name || '').toLowerCase().includes(lcSearch.toLowerCase()))
+    .sort((a, b) => a.category.localeCompare(b.category));
 
   // --- TASK LOGIC ---
   const handleAddTask = async (e) => { 
@@ -2154,7 +2358,6 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     setEditingTaskId(null);
   };
   
-  // FIX: Anchor Tasks to prepDate, not global currentDate
   const getTaskPeriodKey = (freq) => {
     if (freq === 'daily') return prepDate;
     if (freq === 'weekly') { 
@@ -2177,16 +2380,14 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
   };
 
-const renderTasks = (freqFilter) => {
+  const renderTasks = (freqFilter) => {
     const filteredTasks = tasks.filter(t => t.frequency === freqFilter);
     const grouped = filteredTasks.reduce((acc, t) => { if(!acc[t.category]) acc[t.category]=[]; acc[t.category].push(t); return acc; }, { 'Cleaning': [], 'General': [] });
     const periodKey = getTaskPeriodKey(freqFilter);
     
-    // GIVES TEAM MANAGERS ACCESS TO TASKS
-const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
     return (
       <div className="space-y-4 mt-4">
-        {canManageTasks && (
+        {canManageLineChecks && (
           <form onSubmit={handleAddTask} className={`${T.card} p-3 flex flex-col md:flex-row gap-2 items-center bg-[#1A2126]`}>
             {editingTaskId && <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest px-2 whitespace-nowrap">Editing Task</div>}
             <input type="text" value={taskText} onChange={e=>setTaskText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-sm font-medium text-white" placeholder={`New ${freqFilter} task...`} required/>
@@ -2221,8 +2422,8 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
-                        {canManageTasks && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
-                        {canManageTasks && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
+                        {canManageLineChecks && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
+                        {canManageLineChecks && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                       </div>
                     </div>
                   )
@@ -2236,12 +2437,103 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4 pb-40">
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['prep', 'daily', 'weekly', 'monthly'].map((tab) => (
-          <button key={tab} onClick={() => { setSubTab(tab); setTaskFreq(tab); }} className={`px-2 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{tab === 'prep' ? 'Food Prep' : `${tab} Tasks`}</button>
+    <div className="max-w-4xl mx-auto space-y-4 pb-40">
+      
+      {/* EDIT LINE CHECK MODAL */}
+      <Modal isOpen={!!editLineCheckItem} onClose={() => setEditLineCheckItem(null)} title="Edit Line Check">
+        {editLineCheckItem && (
+          <form onSubmit={handleSaveLineCheckEdit} className="space-y-4">
+            <div>
+              <label className={T.label}>Item / Cooler Name</label>
+              <input type="text" value={editLineCheckItem.name} onChange={e=>setEditLineCheckItem({...editLineCheckItem, name: e.target.value})} className={T.input} required />
+            </div>
+            <div>
+              <label className={T.label}>USDA Safe Temp Rule</label>
+              <select value={editLineCheckItem.category} onChange={e=>setEditLineCheckItem({...editLineCheckItem, category: e.target.value})} className={T.input}>
+                {Object.keys(USDA_CATEGORIES).map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
+          </form>
+        )}
+      </Modal>
+
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
+        {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => (
+          <button key={tab} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {tab === 'prep' ? 'Food Prep' : tab === 'line-check' ? 'Line Check' : `${tab} Tasks`}
+          </button>
         ))}
       </div>
+
+      {subTab === 'line-check' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+              <input type="text" placeholder="Search logs & coolers..." value={lcSearch} onChange={e=>setLcSearch(e.target.value)} className={`${T.input} pl-10`} />
+            </div>
+          </div>
+
+          {canManageLineChecks && (
+            <form onSubmit={handleAddLineCheck} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
+              <input type="text" value={lcName} onChange={e=>setLcName(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add cooler or food item..." required/>
+              <div className="flex w-full sm:w-auto gap-2 items-center">
+                <select value={lcCat} onChange={e=>setLcCat(e.target.value)} className="w-full sm:w-48 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-[#D4A381]">
+                  {Object.keys(USDA_CATEGORIES).map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+                <button type="submit" className={`${T.btn} py-2 px-4 flex-shrink-0`}><Plus size={18}/></button>
+              </div>
+            </form>
+          )}
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>USDA Safety & Temp Log (Today)</div>
+            <div className={`divide-y ${T.border}`}>
+              {filteredLineChecks.length === 0 && <div className="p-6 text-center font-bold text-slate-500 text-sm">No items configured for line check.</div>}
+              {filteredLineChecks.map(item => {
+                // Find latest log for this item TODAY
+                const todaysLogs = tempLogs.filter(l => l.itemId === item.id && l.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const latestLog = todaysLogs.length > 0 ? todaysLogs[0] : null;
+
+                return (
+                  <div key={item.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                    <div className="flex-1">
+                      <div className="font-bold text-white text-base">{item.name}</div>
+                      <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">{item.category}</div>
+                      
+                      {latestLog ? (
+                        <div className={`text-[10px] font-black mt-2 inline-flex items-center gap-2 px-2 py-1 rounded-md border ${latestLog.status === 'Safe' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>
+                          <span className="text-sm">{latestLog.temp}°F</span> 
+                          <span>({latestLog.status})</span>
+                          <span className="opacity-70 font-bold border-l border-current pl-2 ml-1">By {latestLog.loggedBy} at {new Date(latestLog.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-slate-500 font-bold mt-2 uppercase tracking-widest">Not logged yet today</div>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-3 md:self-end">
+                      <div className="flex items-center gap-1 bg-[#12161A] p-1 rounded-lg border border-[#2A353D]">
+                        <input type="number" step="0.1" value={temps[item.id] || ''} onChange={e=>setTemps({...temps, [item.id]: e.target.value})} placeholder="°F" className="w-16 bg-transparent text-white font-black text-center text-sm outline-none" />
+                        <button onClick={() => handleLogTemp(item)} disabled={!temps[item.id]} className="bg-slate-800 text-white disabled:opacity-50 px-3 py-1.5 rounded text-xs font-black uppercase hover:bg-slate-700 transition-colors">Log</button>
+                      </div>
+                      
+                      {canManageLineChecks && (
+                        <div className="flex gap-1 border-l border-[#2A353D] pl-3">
+                          <button onClick={() => setEditLineCheckItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button>
+                          <button onClick={() => { if(window.confirm(`Delete ${item.name}?`)) deleteDoc(doc(db,"lineCheckItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {subTab === 'prep' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
@@ -2252,7 +2544,8 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
           <form onSubmit={handleAddPrep} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
             <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add prep item..." required/>
             <div className="flex w-full sm:w-auto gap-3 items-center">
-<select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select>              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
+              <select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select> 
+              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
               <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
             </div>
           </form>
@@ -2271,7 +2564,7 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
                     return (
                     <div key={i.id} className={`${T.row} ${isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
-                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>? {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
+                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
@@ -2312,7 +2605,7 @@ const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser
       </div>
       )}
 
-      {subTab !== 'prep' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
+      {subTab !== 'prep' && subTab !== 'line-check' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
     </div>
   );
 };
@@ -4337,8 +4630,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
                 <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
                 <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
               </div>
-              <div className="pt-2 border-t border-[#2A353D]"><label className={T.label}>Module Access</label><div className="grid grid-cols-2 gap-2 mt-2">{['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales'].map(feat => (<label key={feat}
- className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]"><input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" /><span className="text-xs font-bold text-slate-300 capitalize">{feat}</span></label>))}</div></div>
+<div className="pt-2 border-t border-[#2A353D]"><label className={T.label}>Module Access</label><div className="grid grid-cols-2 gap-2 mt-2">{['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team'].map(feat => (<label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]"><input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" /><span className="text-xs font-bold text-slate-300 capitalize">{feat}</span></label>))}</div></div>
               
               {/* LABS / CANARY ROLLOUT */}
               <div className="pt-2 border-t border-[#2A353D]">
@@ -4475,10 +4767,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
               return (
                 <div key={u.id} className={`${T.row} flex justify-between items-center`}>
-                  <div>
+<div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
-                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName}</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName} <span className="mx-1">|</span> <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span></div>
                   </div>
                   <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
                     <Moon size={14} /> Possess
@@ -4704,13 +4996,14 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
       }
     });
 
-    // 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
-    if (!ghostTenant) {
+// 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
+    if (!ghostTenant && appUser?.id) {
       const today = new Date().toDateString();
-      const lastPing = localStorage.getItem(`ping_${rId}`);
+      const lastPing = localStorage.getItem(`ping_user_${appUser.id}`);
       if (lastPing !== today) {
         updateDoc(doc(db, 'restaurants', rId), { lastActive: new Date().toISOString() }).catch(()=>{});
-        localStorage.setItem(`ping_${rId}`, today);
+        updateDoc(doc(db, 'users', appUser.id), { lastActive: new Date().toISOString() }).catch(()=>{});
+        localStorage.setItem(`ping_user_${appUser.id}`, today);
       }
     }
 
@@ -4745,18 +5038,38 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
 
-  // Unread messages logic
-  const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => Math.max(max, new Date(n.date).getTime()), 0);
+// --- NOTIFICATION DOT LOGIC (WITH READ RECEIPTS) ---
+  // 1. Unread Messages (with NaN safety fallback)
+  const latestNoteDate = events.filter(e => e.type === 'note').reduce((max, n) => {
+     const dTime = new Date(n.date || 0).getTime();
+     return isNaN(dTime) ? max : Math.max(max, dTime);
+  }, 0);
   const lastReadMsg = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadMsg`) || '0') : 0;
   const hasUnreadMessages = latestNoteDate > lastReadMsg && activeTabState !== 'messages';
 
-  useEffect(() => {
-    if (activeTabState === 'messages' && liveAppUser) {
-      localStorage.setItem(`${liveAppUser.id}_lastReadMsg`, Date.now().toString());
-    }
-  }, [activeTabState, events, liveAppUser]);
+  // 2. Shift Swaps (Clear dot when they visit My Shift / Trade Board)
+  const latestSwap = shiftSwaps.filter(s => s.status === 'available' && s.originalEmployeeId !== liveAppUser?.id).reduce((max, s) => Math.max(max, new Date(s.date).getTime()), 0);
+  const lastReadSwaps = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadSwaps`) || '0') : 0;
+  const hasAvailableSwaps = latestSwap > lastReadSwaps && activeTabState !== 'published'; 
 
- 
+  // 3. Manager Alerts (Clear dot when they visit Schedule Builder)
+  const realCurrentMonthStr = getToday().substring(0, 7);
+  const latestTimeOffReq = timeOffRequests.filter(r => r.status === 'pending' && r.date?.startsWith(realCurrentMonthStr)).reduce((max, r) => Math.max(max, new Date(r.submittedAt || 0).getTime()), 0);
+  const lastReadTimeOff = liveAppUser ? parseInt(localStorage.getItem(`${liveAppUser.id}_lastReadTimeOff`) || '0') : 0;
+  const isManagerAlert = !!(liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && (latestTimeOffReq > lastReadTimeOff) && activeTabState !== 'schedule';
+
+  // Consolidated Alerts
+  const hasMyShiftAlert = hasAvailableSwaps; 
+  const hasScheduleBuilderAlert = isManagerAlert; 
+  const hasAnyMenuAlert = hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert; 
+
+  // The "Read Receipt" Engine - Clears the dots instantly when tabs are opened
+  useEffect(() => {
+    if (!liveAppUser) return;
+    if (activeTabState === 'messages') localStorage.setItem(`${liveAppUser.id}_lastReadMsg`, Date.now().toString());
+    if (activeTabState === 'published') localStorage.setItem(`${liveAppUser.id}_lastReadSwaps`, Date.now().toString());
+    if (activeTabState === 'schedule') localStorage.setItem(`${liveAppUser.id}_lastReadTimeOff`, Date.now().toString());
+  }, [activeTabState, events, shiftSwaps, timeOffRequests, liveAppUser]);
 
   const addToast = (title, message) => {
     const id = Date.now();
@@ -4769,17 +5082,16 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
   const nextMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() + 1); setCurrentDate(formatDate(d)); };
 
-  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items}
- prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
+  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
 
-if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
+  if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
 
   // BILLING LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
   if (clientData?.billingStatus === 'Past Due' && !ghostTenant) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">
-          <span className="text-6xl mb-4 block">?</span>
+          <span className="text-6xl mb-4 block">🚫</span>
           <h1 className="text-2xl font-black text-white mb-2">Subscription Past Due</h1>
           <p className="text-slate-400 font-medium mb-6">Access to 86 Chaos has been temporarily suspended for {clientData.name || 'this workspace'}. Please contact your management team or 86 Chaos Support to renew your plan.</p>
           <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
@@ -4791,7 +5103,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
   return (
     <div className={`min-h-screen font-sans flex flex-col ${T.bg}`}>
       
-{/* GHOST MODE BANNER */}
+      {/* GHOST MODE BANNER */}
       {ghostTenant && (
         <div className="bg-gradient-to-r from-purple-900 to-fuchsia-900 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[99999] shadow-2xl uppercase tracking-wider border-b border-fuchsia-500/50">
           <div className="flex items-center gap-2 min-w-0">
@@ -4832,8 +5144,7 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
         </div>
       )}
 
-
-<header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
+      <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo />
 
         {/* DYNAMIC RESTAURANT NAME */}
@@ -4847,24 +5158,29 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
 
         <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
-          {hasUnreadMessages && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+          {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
         </button>
       </header>
 
-<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} clientFeatures={clientFeatures} />
-    {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
-        <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D]">
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} />
+    
+      {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+        <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {activeTabState === 'sales' ? (
             <div className="w-full text-center">
               <h2 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase">Sales & Trends</h2>
             </div>
           ) : (
             <>
-              <button onClick={activeTabState === 'prep' ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronLeft size={20} /></button>
-              <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381]">
-                {activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
-              </h2>
-              <button onClick={activeTabState === 'prep' ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381]"><ChevronRight size={20} /></button>
+              <button onClick={activeTabState === 'prep' ? prevDay : prevMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381] relative z-10"><ChevronLeft size={20} /></button>
+              
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381] pointer-events-auto">
+                  {activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+                </h2>
+              </div>
+
+              <button onClick={activeTabState === 'prep' ? nextDay : nextMonth} className="p-2 border rounded-xl transition-colors bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-[#D4A381] relative z-10"><ChevronRight size={20} /></button>
             </>
           )}
         </div>
@@ -4910,9 +5226,8 @@ if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addT
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.1.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.0</span>
       </div>
     </div>
   );
 }
-
