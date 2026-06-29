@@ -2032,7 +2032,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                )
             })}
           </div>
-        </div>
+ 
       )}
     </div>
   );
