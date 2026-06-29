@@ -199,20 +199,24 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups like Cheers)
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
-  // Dynamic Module Checks
-if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time Clock', icon: <Clock size={18}/> });  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+// --- 1. The Daily Hub ---
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'My Shift', icon: <Clock size={18}/> }); 
+  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'The Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   
-  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Maker', icon: <Calendar size={18}/> });
-  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen'
- || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
-if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
+  // --- 2. Back of House (Kitchen) ---
+  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
+  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Spec Book', icon: <BookOpen size={18}/> });
+  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Stock & Orders', icon: <Package size={18}/> });  
   
-  // Core UI (Always active)
-  tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
-  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
+  // --- 3. Management ---
+  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/> });
+  tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
-if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size={18}/> });
-  if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
+  // --- 4. System & Security ---
+  if (isGod) tabs.push({ id: 'godmode', label: 'Master Control', icon: <Shield size={18}/> });
+  if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+  tabs.push({ id: 'settings', label: 'Preferences', icon: <Settings size={18}/> });
 
   return (
      <div className="fixed inset-0 z-[70] flex justify-end">
