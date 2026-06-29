@@ -840,10 +840,16 @@ const TabTeam = ({ users, appUser, addToast }) => {
     } 
   };
 
-  const handleDeactivate = async (u) => { 
-    if (!window.confirm(`Terminate ${u.name}? They will be removed from the active roster but their historical schedule data will be preserved.`)) return; 
-    await updateDoc(doc(db, "users", u.id), { isActive: false }); 
-    addToast('Terminated', `${u.name} deactivated.`); 
+const handleDeactivate = async (u) => { 
+    if (!window.confirm(`WARNING: Terminate ${u.name}? This will permanently delete their global user account and instantly remove them from all search lists. (Their historical shifts will remain intact).`)) return; 
+    
+    try {
+      // 1. Permanently delete the user's global profile document
+      await deleteDoc(doc(db, "users", u.id)); 
+      addToast('Terminated', `${u.name}'s global account has been purged.`); 
+    } catch (err) {
+      addToast('Error', 'Failed to remove user from global directory: ' + err.message);
+    }
   };
 
   const handlePasswordReset = async (u) => {
