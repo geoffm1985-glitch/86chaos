@@ -1295,7 +1295,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
-  const handlePublish = async () => { 
+const handlePublish = async () => { 
     if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
     
     // 1. Target ALL unpublished shifts across all months, not just the currently viewed month
@@ -1318,7 +1318,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       addToast("Error", "Some shifts failed to publish. Check connection and try again.");
     }
   };  
-
   const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
@@ -1446,7 +1445,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       while (d.getDay() !== startDayInt) { d.setDate(d.getDate() - 1); }
       return d.toISOString().split('T')[0];
   };
-  
   const payrollSummary = {};
   const weeklyHours = {}; 
   const OT_THRESHOLD = parseFloat(appUser?.systemSettings?.overtime || 40);
@@ -1492,17 +1490,16 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       addToast('Deleted', 'Time punch removed.');
   };
 
-  const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
+const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
   const [editingPunch, setEditingPunch] = useState(null);
-  const [punchEmployeeId, setPunchEmployeeId] = useState('');
-  const [punchSearch, setPunchSearch] = useState('');
+  const [editPunchEmpId, setEditPunchEmpId] = useState(''); // NEW: For creating punches
   const [editPunchIn, setEditPunchIn] = useState('');
   const [editPunchOut, setEditPunchOut] = useState('');
   const [editBreakMins, setEditBreakMins] = useState('');
   const [editCash, setEditCash] = useState('');
   const [editCredit, setEditCredit] = useState('');
 
-  const openEditPunchModal = (punch = null) => {
+  const openEditPunchModal = (punch) => {
     setEditingPunch(punch);
     const formatForInput = (iso) => {
       if (!iso) return '';
@@ -1510,42 +1507,54 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       const tzOffset = d.getTimezoneOffset() * 60000;
       return new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
     };
-    if (punch) {
-      setPunchEmployeeId(punch.employeeId);
-      setEditPunchIn(formatForInput(punch.clockInTime));
-      setEditPunchOut(punch.clockOutTime && punch.status === 'clocked_out' ? formatForInput(punch.clockOutTime) : '');
-      setEditBreakMins(punch.breakMinutes || 0);
-      setEditCash(punch.cashTips || 0);
-      setEditCredit(punch.creditTips || 0);
-    } else {
-      setPunchEmployeeId('');
-      setEditPunchIn('');
-      setEditPunchOut('');
-      setEditBreakMins(0);
-      setEditCash(0);
-      setEditCredit(0);
-    }
+    setEditPunchIn(formatForInput(punch.clockInTime));
+    setEditPunchOut(punch.clockOutTime && punch.status === 'clocked_out' ? formatForInput(punch.clockOutTime) : '');
+    setEditBreakMins(punch.breakMinutes || 0);
+    setEditCash(punch.cashTips || 0);
+    setEditCredit(punch.creditTips || 0);
+    setIsPunchModalOpen(true);
+  };
+
+  const openAddPunchModal = () => {
+    setEditingPunch(null);
+    setEditPunchEmpId('');
+    setEditPunchIn('');
+    setEditPunchOut('');
+    setEditBreakMins('0');
+    setEditCash('0');
+    setEditCredit('0');
     setIsPunchModalOpen(true);
   };
 
   const handleSavePunchEdit = async (e) => {
     e.preventDefault();
-    if (!editPunchIn || (!editingPunch && !punchEmployeeId)) return;
     try {
-      const inTime = new Date(editPunchIn).toISOString();
-      const dateStr = inTime.split('T')[0];
-      const updateData = { clockInTime: inTime, breakMinutes: parseFloat(editBreakMins) || 0, cashTips: parseFloat(editCash) || 0, creditTips: parseFloat(editCredit) || 0, date: dateStr };
-      if (editPunchOut) { updateData.clockOutTime = new Date(editPunchOut).toISOString(); updateData.status = 'clocked_out'; } else { updateData.clockOutTime = null; updateData.status = 'clocked_in'; }
-      
       if (editingPunch) {
+        if (!editPunchIn) return;
+        const updateData = { clockInTime: new Date(editPunchIn).toISOString(), breakMinutes: parseFloat(editBreakMins) || 0, cashTips: parseFloat(editCash) || 0, creditTips: parseFloat(editCredit) || 0 };
+        if (editPunchOut) { updateData.clockOutTime = new Date(editPunchOut).toISOString(); updateData.status = 'clocked_out'; } else { updateData.clockOutTime = null; updateData.status = 'clocked_in'; }
         await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
         addToast('Updated', 'Time punch modified successfully.');
       } else {
-        const emp = users.find(u => u.id === punchEmployeeId);
-        await addDoc(collection(db, "timePunches"), { ...updateData, employeeId: emp.id, employeeName: emp.name, restaurantId: appUser.restaurantId });
-        addToast('Added', `Missing punch added for ${emp.name}.`);
+        if (!editPunchEmpId || !editPunchIn) return addToast('Error', 'Employee and Clock In Time required.');
+        const emp = users.find(u => u.id === editPunchEmpId);
+        const newData = {
+          employeeId: emp.id,
+          employeeName: emp.name,
+          clockInTime: new Date(editPunchIn).toISOString(),
+          breakMinutes: parseFloat(editBreakMins) || 0,
+          cashTips: parseFloat(editCash) || 0,
+          creditTips: parseFloat(editCredit) || 0,
+          date: editPunchIn.split('T')[0], // Extract YYYY-MM-DD
+          restaurantId: appUser.restaurantId
+        };
+        if (editPunchOut) { newData.clockOutTime = new Date(editPunchOut).toISOString(); newData.status = 'clocked_out'; } 
+        else { newData.clockOutTime = null; newData.status = 'clocked_in'; }
+        await addDoc(collection(db, "timePunches"), newData);
+        addToast('Added', 'Missing time punch created.');
       }
-      setIsPunchModalOpen(false); setEditingPunch(null);
+      setIsPunchModalOpen(false);
+      setEditingPunch(null);
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -1571,9 +1580,24 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); addToast('Exported', 'Spreadsheet generated.');
   };
 
+  const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+  const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
+  const endDayInt = startDayInt === 0 ? 6 : startDayInt - 1;
+
+  const weeksInMonth = []; let currentWeek = [];
+  monthDays.forEach(d => { currentWeek.push(d); if (new Date(d+'T12:00').getDay() === endDayInt) { weeksInMonth.push(currentWeek); currentWeek = []; } });
+  if (currentWeek.length > 0) weeksInMonth.push(currentWeek);
+
+  const scheduledHours = displayUsers.map(u => {
+     const userShifts = monthShifts.filter(s => s.employeeId === u.id);
+     const weekly = weeksInMonth.map(weekDaysArr => { return weekDaysArr.reduce((sum, d) => { const shift = userShifts.find(s => s.date === d); return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0); }, 0); });
+     return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
+  }).filter(u => u.total > 0);
+
   return (
     <div className="space-y-4 pb-12 w-full">
-      {/* MANAGER EXPLANATION BANNER */}
+
+{/* MANAGER EXPLANATION BANNER */}
       {timeOffRequests.filter(r => r.status === 'pending' && r.date.startsWith(monthStr)).length > 0 && (
         <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center justify-between gap-4 shadow-lg animate-[slideIn_0.2s_ease-out]">
           <div className="flex items-center gap-3">
@@ -1588,6 +1612,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </div>
       )}
 
+    
       {/* --- AUTO POPULATE MODAL --- */}
       <Modal isOpen={isAutoPopulateModalOpen} onClose={() => setIsAutoPopulateModalOpen(false)} title="Auto-Populate Schedule">
         <div className="space-y-4">
@@ -1607,12 +1632,12 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
-            <div>
+         <div>
               <label className={T.label}>Time (Optional)</label>
               <input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/>
             </div>
           </div>
-          <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
+        <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
           <div>
             <label className={T.label}>Notes & Photo (Optional)</label>
             <textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={`${T.input} mb-2`} placeholder="Extra details..."/>
@@ -1643,14 +1668,14 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
         </form>
       </Modal>
 
-      <Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={editingPunch ? `Edit Punch: ${editingPunch?.employeeName}` : "Add Missing Time Punch"}>
+<Modal isOpen={isPunchModalOpen} onClose={()=>setIsPunchModalOpen(false)} title={editingPunch ? `Edit Punch: ${editingPunch?.employeeName}` : "Add Missing Time Punch"}>
         <form onSubmit={handleSavePunchEdit} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
           {!editingPunch && (
             <div>
-              <label className={T.label}>Employee</label>
-              <select value={punchEmployeeId} onChange={e=>setPunchEmployeeId(e.target.value)} className={T.input} required>
-                <option value="">-- Select Staff --</option>
-                {users.filter(u => u.isActive !== false).sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
+              <label className={T.label}>Select Employee</label>
+              <select value={editPunchEmpId} onChange={e=>setEditPunchEmpId(e.target.value)} className={T.input} required>
+                <option value="">-- Select Staff Member --</option>
+                {users.filter(u => u.isActive !== false).sort((a,b) => a.name.localeCompare(b.name)).map(u => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
@@ -1680,7 +1705,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
               <input type="number" step="0.01" min="0" value={editCredit} onChange={e=>setEditCredit(e.target.value)} className={T.input}/>
             </div>
           </div>
-          <button type="submit" className={`w-full ${T.btn}`}>{editingPunch ? 'Save Time Punch' : 'Add Time Punch'}</button>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingPunch ? 'Save Changes' : 'Create Time Punch'}</button>
         </form>
       </Modal>
 
@@ -1767,7 +1792,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                 </button>
               </div>
 
-              {/* Custom Time Overrides */}
+        {/* Custom Time Overrides */}
               <div className="flex gap-2 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
                 <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
@@ -1965,7 +1990,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
       {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+<div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
             <div className="flex items-center gap-4 flex-wrap">
               <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Payroll</h3>
               <div className="flex items-center gap-2 bg-[#1A2126] border border-[#2A353D] p-1.5 rounded-lg shadow-inner">
@@ -1975,14 +2000,8 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
               </div>
             </div>
             
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 md:flex-none">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
-                <input type="text" placeholder="Search staff..." value={punchSearch} onChange={e=>setPunchSearch(e.target.value)} className="w-full md:w-40 bg-[#0B0E11] border border-[#2A353D] text-white text-xs font-bold pl-8 pr-3 py-1.5 rounded-lg outline-none focus:border-[#D4A381] transition-colors" />
-              </div>
-              <button onClick={() => openEditPunchModal(null)} className="bg-emerald-900/20 border border-emerald-500/50 text-emerald-400 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-emerald-900/40 transition-colors flex items-center gap-2">
-                <Plus size={14}/> Add Punch
-              </button>
+            <div className="flex items-center gap-3">
+              <button onClick={openAddPunchModal} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-[#D4A381] transition-colors flex items-center gap-2"><Plus size={14}/> Add Punch</button>
               <button onClick={handleExportTimesheets} className="bg-[#1A2126] border border-[#2A353D] text-slate-300 font-bold px-3 py-1.5 rounded-lg text-xs hover:text-emerald-400 transition-colors flex items-center gap-2">📋 Export CSV</button>
               <div className="bg-[#1A2126] border border-[#2A353D] px-3 py-1.5 rounded-lg flex flex-col items-end shadow-sm">
                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Period Labor</span>
@@ -2016,19 +2035,51 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
           <div className={`divide-y ${T.border}`}>
             {periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
             
-            {periodPunches
-              .filter(p => !punchSearch || (p.employeeName || users.find(u => u.id === p.employeeId)?.name || '').toLowerCase().includes(punchSearch.toLowerCase()))
-              .sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0))
-              .map(p => {
+            {periodPunches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0)).map(p => {
                const emp = users.find(u => u.id === p.employeeId);
                const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
                const cost = hours * (emp?.wage || 0);
                const isClockedIn = p.status === 'clocked_in' || p.status === 'on_break';
                
-               const safeIn = p.clockInTime ? new Date(p.
-
-
-
+               const safeIn = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR';
+               const safeOut = isClockedIn ? '---' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR');
+               
+               return (
+                 <div key={p.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                   <div>
+                     <div className="font-bold text-white text-base">{p.employeeName || 'Unknown'}</div>
+                     <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
+                       {p.date ? formatDisplayDate(p.date) : 'Unknown Date'}
+                     </div>
+                   </div>
+                   <div className="flex items-center gap-6">
+                     <div className="text-right">
+                       <div className="text-xs font-mono text-slate-300">
+                         <span className="text-emerald-400">IN:</span> {safeIn}
+                       </div>
+                       <div className="text-xs font-mono text-slate-300">
+                         <span className="text-red-400">OUT:</span> {safeOut}
+                       </div>
+                     </div>
+                     <div className="text-right border-l border-[#2A353D] pl-6 w-24">
+                       <div className={`text-sm font-black ${isClockedIn ? 'text-amber-400 animate-pulse' : 'text-white'}`}>{isClockedIn ? 'ON CLOCK' : `${hours.toFixed(2)} hrs`}</div>
+                       <div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest">${cost.toFixed(2)}</div>
+                     </div>
+                     <div className="flex gap-2 border-l border-[#2A353D] pl-4">
+                       {isClockedIn && <button onClick={() => handleForceClockOut(p)} className="px-3 py-1 bg-red-900/20 text-red-500 text-[10px] font-black uppercase rounded-lg border border-red-900/50 hover:bg-red-900/40 transition-colors">Force Out</button>}
+                       <button onClick={() => openEditPunchModal(p)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
+                       <button onClick={() => handleDeletePunch(p.id)} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+                     </div>
+                   </div>
+                 </div>
+               )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // --- COMPACT MONTH VIEW ---
 const TabMonth = ({ currentDate, users, shifts }) => {
