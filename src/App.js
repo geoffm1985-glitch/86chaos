@@ -3840,12 +3840,14 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
   const [notifReminders, setNotifReminders] = useState(prefs.notifReminders ?? false);
   const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); 
 
-  // --- System Config State (Admin Only) ---
+// --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
-const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
-      const [sysLat, setSysLat] = useState(sys.lat || '');
-      const [sysLon, setSysLon] = useState(sys.lon || '');
-const [sysRadius, setSysRadius] = useState(sys.geofenceRadius || '300');      const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false);
+  const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
+  const [sysAddress, setSysAddress] = useState(sys.address || '');
+  const [sysLat, setSysLat] = useState(sys.lat || '');
+  const [sysLon, setSysLon] = useState(sys.lon || '');
+  const [sysRadius, setSysRadius] = useState(sys.geofenceRadius || '300');
+  const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false); 
   const [sysTips, setSysTips] = useState(sys.tips ?? true);
   const [sysTrades, setSysTrades] = useState(sys.trades ?? true);
   const [sysAutoApprove, setSysAutoApprove] = useState(sys.autoApprove ?? false);
@@ -3854,14 +3856,22 @@ const [sysRadius, setSysRadius] = useState(sys.geofenceRadius || '300');      co
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
   const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
 
-  // --- Role Management State (Admin Only) ---
-  const [newRoleName, setNewRoleName] = useState('');
-  const [newPrepCat, setNewPrepCat] = useState('');
-  const dbPrepCats = useLiveCollection('prepCategories', appUser?.restaurantId);
-  const [editingRoleId, setEditingRoleId] = useState(null);
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
-  const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
-  
+  const handleGeocodeAddress = async () => {
+    if (!sysAddress.trim()) return addToast('Error', 'Please enter a full address first.');
+    addToast('Locating...', 'Searching map database...');
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(sysAddress)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        setSysLat(parseFloat(data[0].lat).toFixed(4));
+        setSysLon(parseFloat(data[0].lon).toFixed(4));
+        addToast('Found', 'Coordinates locked in.');
+      } else {
+        addToast('Error', 'Address not found. Try adding city and state.');
+      }
+    } catch (err) { addToast('Error', 'Failed to reach map service.'); }
+  };
+
   // FIX: Unpacked the arrays into a new array [...dbRoles] before sorting to prevent the frozen data crash
   const displayRoles = dbRoles.length > 0 
     ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
