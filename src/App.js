@@ -3034,10 +3034,21 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                 <div className="font-black text-white text-lg">{scannedInvoice.vendorName}</div>
                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate}</div>
               </div>
-              <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
+<div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
             </div>
             
-            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest text-center mt-2 mb-1">Stock Matcher</p>
+            <div className="flex justify-between items-center mt-2 mb-1">
+              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest pl-1">Stock Matcher</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { const newItems = scannedInvoice.lineItems.map(i => ({...i, matchedItemId: ''})); setScannedInvoice({...scannedInvoice, lineItems: newItems}); }} className="text-[9px] bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white px-2 py-1 rounded font-black uppercase tracking-widest transition-colors shadow-sm">
+                  Clear All
+                </button>
+                <button type="button" onClick={() => { const newItems = scannedInvoice.lineItems.map(i => ({...i, matchedItemId: i.matchedItemId || 'CREATE_NEW'})); setScannedInvoice({...scannedInvoice, lineItems: newItems}); }} className="text-[9px] bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 px-2 py-1 rounded font-black uppercase tracking-widest transition-colors shadow-sm">
+                  Mark Unmatched as New
+                </button>
+              </div>
+            </div>
+
             <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
               {(scannedInvoice.lineItems || []).map((item, idx) => (
                 <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
