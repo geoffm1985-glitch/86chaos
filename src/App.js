@@ -555,25 +555,18 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     } catch (err) { addToast('Error', err.message); }
   };
 
-  // --- SHIFT LOGIC ---
+// --- SHIFT LOGIC ---
   const myMonthShifts = shifts
     .filter(s => s.employeeId === appUser.id && s.date.startsWith(monthStr) && s.isPublished)
-    .sort((a,b) => a.date.localeCompare(b.date));
+    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts
     .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
-    .sort((a,b) => a.date.localeCompare(b.date))[0];
+    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date))[0];
 
   const activeMonthShifts = shifts
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
-    .sort((a,b) => a.date.localeCompare(b.date));
-
-  const handleOfferSwap = async (shift) => {
-    if (!window.confirm(`Offer your ${formatDisplayDate(shift.date)} shift to the Trade Board?`)) return;
-    await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
-    addToast('Posted', 'Shift sent to trade board.');
-  };
+    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   // --- TRADE BOARD LOGIC ---
   const availableSwaps = shiftSwaps
