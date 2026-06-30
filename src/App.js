@@ -2271,7 +2271,9 @@ const dayShifts = shifts
 
 
 // --- PREP, LINE CHECKS & TASKS COMMAND CENTER ---
-const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
+const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
+  const prepItems = useLiveCollection('prepItems', appUser?.restaurantId);
+  const tasks = useLiveCollection('tasks', appUser?.restaurantId);
   const [subTab, setSubTab] = useState('prep');
   const [prepDate, setPrepDate] = useState(currentDate);
 
@@ -2696,8 +2698,11 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
 };
 
 // --- INVENTORY, VENDORS, & WASTE TRACKER ---
-const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
-  const [invTab, setInvTab] = useState('count'); 
+const TabInventory = ({ addToast, appUser }) => {
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId);
+  const vendors = useLiveCollection('vendors', appUser?.restaurantId);
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId);
+  const [invTab, setInvTab] = useState('count');
   const [searchTerm, setSearchTerm] = useState(''); 
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
@@ -3453,8 +3458,9 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 };
 
 // --- RECIPE BOOK ---
-const TabRecipes = ({ recipes, appUser, addToast }) => {
-  const [searchTerm, setSearchTerm] = useState(''); 
+const TabRecipes = ({ appUser, addToast }) => {
+  const recipes = useLiveCollection('recipes', appUser?.restaurantId);
+  const [searchTerm, setSearchTerm] = useState('');
   const [filterCat, setFilterCat] = useState('All'); 
   const [isFormOpen, setIsFormOpen] = useState(false); 
   const [activeRecipe, setActiveRecipe] = useState(null); 
@@ -5275,19 +5281,13 @@ export default function App() {
     return () => window.removeEventListener('appinstalled', handleAppInstall);
   }, []);
 
-  // --- DATABASE IMPORTS ---
+// --- DATABASE IMPORTS (Optimized) ---
   const users = useLiveCollection('users', rId);
   const shifts = useLiveCollection('shifts', rId);
-  const prepItems = useLiveCollection('prepItems', rId);
-  const inventoryItems = useLiveCollection('inventoryItems', rId);
   const shiftSwaps = useLiveCollection('shiftSwaps', rId);
   const events = useLiveCollection('events', rId);
   const sales = useLiveCollection('sales', rId);
-  const recipes = useLiveCollection('recipes', rId);
   const timeOffRequests = useLiveCollection('timeOffRequests', rId);
-  const tasks = useLiveCollection('tasks', rId);
-  const vendors = useLiveCollection('vendors', rId);
-const wasteLogs = useLiveCollection('wasteLogs', rId);
   const timePunches = useLiveCollection('timePunches', rId);
   
 // --- LIVE APP USER LOGIC ---
@@ -5541,9 +5541,9 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
     <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
 {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
 {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} tasks={tasks} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
-        {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
+{activeTabState === 'prep' && <TabPrep currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
+        {activeTabState === 'recipes' && <TabRecipes appUser={liveAppUser} addToast={addToast} />}
+        {activeTabState === 'inventory' && <TabInventory addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
 {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
         {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
