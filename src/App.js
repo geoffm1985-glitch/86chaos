@@ -476,7 +476,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     return R * c; 
   };
 
-  const handleClockIn = async () => {
+const handleClockIn = async () => {
     const executePunch = async () => {
       try {
         await addDoc(collection(db, "timePunches"), { 
@@ -489,14 +489,18 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
     if (appUser?.systemSettings?.geofence) {
       if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
-      const CHEERS_LAT = 44.0300; 
-      const CHEERS_LON = -88.1630; 
-      const ALLOWED_RADIUS_METERS = 100; 
+      
+      const targetLat = parseFloat(appUser.systemSettings.lat);
+      const targetLon = parseFloat(appUser.systemSettings.lon);
+      const allowedRadius = parseInt(appUser.systemSettings.geofenceRadius) || 100;
+      
+      if (!targetLat || !targetLon) return addToast('Geofence Error', 'Location coordinates are not set in Workspace settings yet.');
+      
       addToast('Locating...', 'Verifying GPS coordinates. Hold still.');
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const dist = calculateDistance(CHEERS_LAT, CHEERS_LON, pos.coords.latitude, pos.coords.longitude);
-          if (dist <= ALLOWED_RADIUS_METERS) executePunch();
+          const dist = calculateDistance(targetLat, targetLon, pos.coords.latitude, pos.coords.longitude);
+          if (dist <= allowedRadius) executePunch();
           else addToast('Access Denied', `Too far away. Move closer to the restaurant. (${Math.round(dist)} meters away)`);
         },
         (err) => addToast('Location Error', err.code === 1 ? 'Location access denied. Please allow location access in your browser to clock in.' : 'Could not lock GPS. Step outside the walk-in and try again.'),
@@ -3838,8 +3842,11 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
 
   // --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
-  const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
-  const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false); 
+const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
+      const [sysLat, setSysLat] = useState(sys.lat || '');
+      const [sysLon, setSysLon] = useState(sys.lon || '');
+      const [sysRadius, setSysRadius] = useState(sys.geofenceRadius || '100');
+      const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false);
   const [sysTips, setSysTips] = useState(sys.tips ?? true);
   const [sysTrades, setSysTrades] = useState(sys.trades ?? true);
   const [sysAutoApprove, setSysAutoApprove] = useState(sys.autoApprove ?? false);
@@ -3907,9 +3914,12 @@ const handleSavePrefs = async (e) => {
     e.preventDefault();
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
-      await setDoc(doc(db, "restaurants", targetId), {
-        systemSettings: { geofence: sysGeofence, breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime }
-      }, { merge: true });
+await setDoc(doc(db, "restaurants", targetId), {
+            systemSettings: { 
+              geofence: sysGeofence, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 100,
+              breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime 
+            }
+          }, { merge: true });
       addToast('System Saved', 'Global workspace configurations updated.');
       logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
     } catch (err) { addToast('Error', err.message); }
@@ -4187,7 +4197,14 @@ const handleSavePrefs = async (e) => {
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
-               <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
+<Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
+               {sysGeofence && (
+                 <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-3 animate-[slideIn_0.2s_ease-out] ml-4">
+                   <div><label className={T.label}>Latitude</label><input type="number" step="any" value={sysLat} onChange={e=>setSysLat(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 44.0300"/></div>
+                   <div><label className={T.label}>Longitude</label><input type="number" step="any" value={sysLon} onChange={e=>setSysLon(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. -88.1630"/></div>
+                   <div><label className={T.label}>Radius (Meters)</label><input type="number" min="10" value={sysRadius} onChange={e=>setSysRadius(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 100"/></div>
+                 </div>
+               )}
                <Toggle label="Unpaid Break Tracking" desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} />
                <Toggle label="Block Early Clock-Ins" desc="Prevent staff from punching in before their grace period begins." checked={sysBlockEarly} onChange={e => setSysBlockEarly(e.target.checked)} />
                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
