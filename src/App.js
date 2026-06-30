@@ -2986,10 +2986,10 @@ const TabInventory = ({ addToast, appUser }) => {
        let newCount = 0;
        
 for (const item of scannedInvoice.lineItems) {
-          const incomingCode = item.productCode || item.pfgCode || item.code || item.itemCode || '';
+          // Catch every possible key name the AI might use for the SKU/Product Code
+          const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
 
           if (item.matchedItemId === 'CREATE_NEW') {
-             // Create a brand new item in inventory
              await addDoc(collection(db, "inventoryItems"), {
                 name: item.itemName,
                 category: 'Other', 
@@ -3007,7 +3007,6 @@ for (const item of scannedInvoice.lineItems) {
              });
              newCount++;
           } else if (item.matchedItemId) {
-             // Update existing item
              const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
              if (invItem) {
                 const addedStock = parseFloat(item.quantity) || 0;
@@ -3015,7 +3014,7 @@ for (const item of scannedInvoice.lineItems) {
                    currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
                 };
                 
-                // If the item didn't have a product code before, but the invoice found one, save it
+                // If the item doesn't have a product code yet, but the invoice found one, save it
                 if (!invItem.pfgCode && incomingCode) {
                    updates.pfgCode = incomingCode;
                 }
