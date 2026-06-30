@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.5.0';
+const CURRENT_VERSION = '8.6.0';
 
 
 // --- Helpers ---
@@ -300,7 +300,8 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 const LoginScreen = ({ setAppUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
+const [loginError, setLoginError] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   
   // New state to hold the user temporarily if they need to change their password
   const [pendingUser, setPendingUser] = useState(null);
@@ -325,6 +326,7 @@ const LoginScreen = ({ setAppUser }) => {
         if (userData.forcePasswordChange) {
           setPendingUser(userData);
         } else {
+          localStorage.setItem('chaosRememberMe', rememberMe);
           setAppUser(userData); // Let them into the OS
         }
       } else {
@@ -353,6 +355,7 @@ const LoginScreen = ({ setAppUser }) => {
       });
       
       // 3. Unlock the system
+      localStorage.setItem('chaosRememberMe', rememberMe);
       setAppUser({ ...pendingUser, forcePasswordChange: false, password: newPass });
       
     } catch (error) {
@@ -415,14 +418,18 @@ const LoginScreen = ({ setAppUser }) => {
             <div>
               <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
-            <div>
+     <div>
               <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
+
+            <label className="flex items-center justify-center gap-2 cursor-pointer mt-2">
+              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 accent-[#D4A381] bg-[#0B0E11] border border-[#2A353D] rounded cursor-pointer" />
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Remember Me</span>
+            </label>
             
-            <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2">
+            <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
               Unlock System
             </button>
-
             <div className="pt-3 text-center">
               <button type="button" onClick={handleForgotCredentials} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">
                 Forgot Password or Username?
@@ -555,25 +562,18 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     } catch (err) { addToast('Error', err.message); }
   };
 
-  // --- SHIFT LOGIC ---
+// --- SHIFT LOGIC ---
   const myMonthShifts = shifts
     .filter(s => s.employeeId === appUser.id && s.date.startsWith(monthStr) && s.isPublished)
-    .sort((a,b) => a.date.localeCompare(b.date));
+    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts
     .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
-    .sort((a,b) => a.date.localeCompare(b.date))[0];
+    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date))[0];
 
   const activeMonthShifts = shifts
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
-    .sort((a,b) => a.date.localeCompare(b.date));
-
-  const handleOfferSwap = async (shift) => {
-    if (!window.confirm(`Offer your ${formatDisplayDate(shift.date)} shift to the Trade Board?`)) return;
-    await addDoc(collection(db, "shiftSwaps"), { shiftId: shift.id, date: shift.date, originalEmployeeId: shift.employeeId, role: shift.role, startTime: shift.startTime, endTime: shift.endTime, status: 'available', restaurantId: appUser.restaurantId });
-    await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `🚨 Shift Available! ${appUser.name.split(' ')[0]} needs cover for a ${shift.role} shift on ${formatDisplayDate(shift.date)} (${formatShortTime(shift.startTime)}).`, type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId });
-    addToast('Posted', 'Shift sent to trade board.');
-  };
+    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   // --- TRADE BOARD LOGIC ---
   const availableSwaps = shiftSwaps
@@ -2278,7 +2278,9 @@ const dayShifts = shifts
 
 
 // --- PREP, LINE CHECKS & TASKS COMMAND CENTER ---
-const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint }) => {
+const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
+  const prepItems = useLiveCollection('prepItems', appUser?.restaurantId);
+  const tasks = useLiveCollection('tasks', appUser?.restaurantId);
   const [subTab, setSubTab] = useState('prep');
   const [prepDate, setPrepDate] = useState(currentDate);
 
@@ -2703,8 +2705,11 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
 };
 
 // --- INVENTORY, VENDORS, & WASTE TRACKER ---
-const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales, addToast, appUser }) => {
-  const [invTab, setInvTab] = useState('count'); 
+const TabInventory = ({ addToast, appUser }) => {
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId);
+  const vendors = useLiveCollection('vendors', appUser?.restaurantId);
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId);
+  const [invTab, setInvTab] = useState('count');
   const [searchTerm, setSearchTerm] = useState(''); 
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
@@ -2835,6 +2840,19 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 });
     }
     addToast('Delivery Accepted', `Stock automatically updated for ${itemsToReceive.length} items.`);
+  };
+
+  const handleUpdatePendingQty = async (itemId, newQty) => {
+    await updateDoc(doc(db, "inventoryItems", itemId), { pendingQty: Math.max(0, parseInt(newQty) || 0) });
+  };
+
+  const handleCancelDelivery = async (vendorId) => {
+    if (!window.confirm("Cancel this dispatched order? This will clear all pending incoming stock for this vendor.")) return;
+    const itemsToCancel = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
+    for (const item of itemsToCancel) {
+      await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: 0 });
+    }
+    addToast('Order Canceled', 'Pending quantities cleared.');
   };
 
   // --- CSV INVENTORY UPLOAD ---
@@ -2973,7 +2991,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
              await addDoc(collection(db, "inventoryItems"), {
                 name: item.itemName,
                 category: 'Other', 
-                pfgCode: '', 
+                pfgCode: item.productCode || '', 
                 supplierId: vId,
                 packSize: item.packSize || '1 CS',
                 yieldQty: 1, 
@@ -3021,10 +3039,21 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                 <div className="font-black text-white text-lg">{scannedInvoice.vendorName}</div>
                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate}</div>
               </div>
-              <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
+<div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
             </div>
             
-            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest text-center mt-2 mb-1">Stock Matcher</p>
+            <div className="flex justify-between items-center mt-2 mb-1">
+              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest pl-1">Stock Matcher</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { const newItems = scannedInvoice.lineItems.map(i => ({...i, matchedItemId: ''})); setScannedInvoice({...scannedInvoice, lineItems: newItems}); }} className="text-[9px] bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white px-2 py-1 rounded font-black uppercase tracking-widest transition-colors shadow-sm">
+                  Clear All
+                </button>
+                <button type="button" onClick={() => { const newItems = scannedInvoice.lineItems.map(i => ({...i, matchedItemId: i.matchedItemId || 'CREATE_NEW'})); setScannedInvoice({...scannedInvoice, lineItems: newItems}); }} className="text-[9px] bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 px-2 py-1 rounded font-black uppercase tracking-widest transition-colors shadow-sm">
+                  Mark Unmatched as New
+                </button>
+              </div>
+            </div>
+
             <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
               {(scannedInvoice.lineItems || []).map((item, idx) => (
                 <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
@@ -3128,13 +3157,13 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
       <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b ${T.border} pb-3`}>
         <h2 className="text-2xl font-black flex items-center gap-2 text-white"><ClipboardList size={24} className={T.copper}/> Inventory</h2>
-        <div className={`bg-[#12161A] p-1 rounded-xl flex border ${T.border} overflow-x-auto w-full sm:w-auto no-scrollbar`}>
-          <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
-          {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
-          {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
-          {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
-          {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
-          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center gap-1 ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🚨 Burn Log</button>
+        <div className={`bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
+          <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
+          {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
+          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🚨 Burn Log</button>
         </div>
       </div>
 
@@ -3146,8 +3175,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
-                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted}
- uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
+                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>
@@ -3178,12 +3206,16 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                        {vItems.map(item => (
                           <div key={item.id} className="flex justify-between items-center text-sm font-bold text-slate-300">
                             <span className="truncate pr-4">{item.name} <span className="text-[10px] text-slate-500 font-normal">({item.packSize})</span></span>
-                            <span className="text-emerald-400 font-black">+{item.pendingQty}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-400 font-black">+</span>
+                              <input type="number" min="0" value={item.pendingQty} onChange={(e) => handleUpdatePendingQty(item.id, e.target.value)} className="w-16 bg-[#1A2126] border border-[#2A353D] text-emerald-400 font-black text-center py-1 rounded outline-none" />
+                            </div>
                           </div>
                        ))}
                      </div>
-                     <div className={`p-4 bg-[#12161A] border-t ${T.border}`}>
-                       <button onClick={() => handleReceiveDelivery(vendor.id)} className={`w-full bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-emerald-400 hover:text-white font-black py-2 rounded-xl transition-colors`}>✅ Accept & Add to Inventory</button>
+                     <div className={`p-4 bg-[#12161A] border-t ${T.border} flex gap-2`}>
+                       <button onClick={() => handleReceiveDelivery(vendor.id)} className={`flex-1 bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-emerald-400 hover:text-white font-black py-2 rounded-xl transition-colors`}>✅ Accept & Add</button>
+                       <button onClick={() => handleCancelDelivery(vendor.id)} className={`px-4 bg-red-900/20 hover:bg-red-900 border border-red-500/50 text-red-400 hover:text-white font-black py-2 rounded-xl transition-colors`} title="Cancel Order"><X size={18}/></button>
                      </div>
                    </div>
                  )
@@ -3218,7 +3250,48 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
       {hasInvPerms && invTab === 'manage' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">{editItem && (<form onSubmit={handleSaveEdit} className="space-y-3"><div><label className={T.label}>Name</label><input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required /></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Category</label><select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Vendor</label><select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required><option value="">Select...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div></div><div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} /></div><div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required /></div></div><button type="submit" className={`w-full ${T.btn}`}>Save Changes</button></form>)}</Modal>
+          <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">
+             {editItem && (
+               <form onSubmit={handleSaveEdit} className="space-y-3">
+                 <div className="grid grid-cols-2 gap-3">
+                   <div className="col-span-2 sm:col-span-1">
+                     <label className={T.label}>Product Number / SKU</label>
+                     <input type="text" value={editItem.pfgCode || ''} onChange={e => setEditItem({...editItem, pfgCode: e.target.value})} className={T.input} />
+                   </div>
+                   <div className="col-span-2 sm:col-span-1">
+                     <label className={T.label}>Name</label>
+                     <input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required />
+                   </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div>
+                     <label className={T.label}>Category</label>
+                     <select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>
+                       {['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}
+                     </select>
+                   </div>
+                   <div>
+                     <label className={T.label}>Vendor</label>
+                     <select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required>
+                       <option value="">Select...</option>
+                       {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                     </select>
+                   </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div>
+                     <label className={T.label}>Case Price ($)</label>
+                     <input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} />
+                   </div>
+                   <div>
+                     <label className={T.label}>Units per Case (Yield)</label>
+                     <input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required />
+                   </div>
+                 </div>
+                 <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
+               </form>
+             )}
+          </Modal>
 
           <div className="flex flex-col gap-3 mb-6">
             
@@ -3244,20 +3317,26 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 
           <form onSubmit={handleAddItem} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add New Item</h3>
-            <div className="grid grid-cols-1 gap-3">
-              <input type="text" placeholder="Item Name..." value={newItemName} onChange={e=>setNewItemName(e.target.value)} className={T.input} required/>
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+              <input type="text" placeholder="Prod # / SKU" value={newItemCode} onChange={e=>setNewItemCode(e.target.value)} className={`${T.input} col-span-2 sm:col-span-1 py-1.5 text-xs`} />
+              <input type="text" placeholder="Item Name..." value={newItemName} onChange={e=>setNewItemName(e.target.value)} className={`${T.input} col-span-2 py-1.5 text-xs`} required/>
+              <select value={newItemCat} onChange={e=>setNewItemCat(e.target.value)} className={`${T.input} col-span-2 sm:col-span-1 py-1.5 text-xs`}><option disabled value="">Category...</option>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select>
+              <select value={newItemSupplier} onChange={e=>setNewItemSupplier(e.target.value)} className={`${T.input} col-span-2 sm:col-span-1 py-1.5 text-xs`} required><option value="">Vendor...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>
+              <input type="number" step="0.01" placeholder="Case $" value={newItemPrice} onChange={e=>setNewItemPrice(e.target.value)} className={`${T.input} col-span-1 py-1.5 text-xs`}/>
+              <input type="number" min="1" placeholder="Yield" value={newItemYield} onChange={e=>setNewItemYield(e.target.value)} className={`${T.input} col-span-1 py-1.5 text-xs`} required/>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <select value={newItemCat} onChange={e=>setNewItemCat(e.target.value)} className={T.input}><option disabled value="">Category...</option>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select>
-              <select value={newItemSupplier} onChange={e=>setNewItemSupplier(e.target.value)} className={T.input} required><option value="">Select Vendor...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>
+            <div className="flex justify-end mt-2">
+              <button type="submit" className={`w-full sm:w-auto ${T.btn} py-2 px-6`}><Plus size={18} className="inline mr-2"/> Add to Master List</button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className={T.label}>Case Price ($)</label><input type="number" step="0.01" placeholder="Ex: 24.50" value={newItemPrice} onChange={e=>setNewItemPrice(e.target.value)} className={T.input}/></div>
-              <div><label className={T.label}>Units per Case (Yield)</label><input type="number" min="1" placeholder="Ex: 12" value={newItemYield} onChange={e=>setNewItemYield(e.target.value)} className={T.input} required/></div>
-            </div>
-            <button type="submit" className={`w-full ${T.btn} py-2`}><Plus size={18} className="inline mr-2"/> Add Item to Master List</button>
           </form>
-          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">[{item.pfgCode}]</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+
+          {/* SEARCH BAR */}
+          <div className="relative w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/>
+            <input type="text" placeholder="Search master list by name or product number..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
+          </div>
+
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
         </div>
       )}
 
@@ -3386,8 +3465,9 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
 };
 
 // --- RECIPE BOOK ---
-const TabRecipes = ({ recipes, appUser, addToast }) => {
-  const [searchTerm, setSearchTerm] = useState(''); 
+const TabRecipes = ({ appUser, addToast }) => {
+  const recipes = useLiveCollection('recipes', appUser?.restaurantId);
+  const [searchTerm, setSearchTerm] = useState('');
   const [filterCat, setFilterCat] = useState('All'); 
   const [isFormOpen, setIsFormOpen] = useState(false); 
   const [activeRecipe, setActiveRecipe] = useState(null); 
@@ -5170,7 +5250,11 @@ const handleForceRefresh = async () => {
 
 
 export default function App() {
-  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('86chaosUser'); return saved ? JSON.parse(saved) : null; });
+  const [appUser, setAppUser] = useState(() => { 
+    const savedLocal = localStorage.getItem('86chaosUser'); 
+    const savedSession = sessionStorage.getItem('86chaosUser');
+    return savedLocal ? JSON.parse(savedLocal) : (savedSession ? JSON.parse(savedSession) : null); 
+  });
   // --- GHOST MODE & ROUTING STATE ---
   const [ghostTenant, setGhostTenant] = useState(null);
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
@@ -5208,19 +5292,13 @@ export default function App() {
     return () => window.removeEventListener('appinstalled', handleAppInstall);
   }, []);
 
-  // --- DATABASE IMPORTS ---
+// --- DATABASE IMPORTS (Optimized) ---
   const users = useLiveCollection('users', rId);
   const shifts = useLiveCollection('shifts', rId);
-  const prepItems = useLiveCollection('prepItems', rId);
-  const inventoryItems = useLiveCollection('inventoryItems', rId);
   const shiftSwaps = useLiveCollection('shiftSwaps', rId);
   const events = useLiveCollection('events', rId);
   const sales = useLiveCollection('sales', rId);
-  const recipes = useLiveCollection('recipes', rId);
   const timeOffRequests = useLiveCollection('timeOffRequests', rId);
-  const tasks = useLiveCollection('tasks', rId);
-  const vendors = useLiveCollection('vendors', rId);
-const wasteLogs = useLiveCollection('wasteLogs', rId);
   const timePunches = useLiveCollection('timePunches', rId);
   
 // --- LIVE APP USER LOGIC ---
@@ -5293,11 +5371,48 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
 
   const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
 
-  useEffect(() => {
-    if (appUser) localStorage.setItem('86chaosUser', JSON.stringify(appUser));
-    else localStorage.removeItem('86chaosUser');
+useEffect(() => {
+    const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
+    if (appUser) {
+      if (shouldRemember) {
+        localStorage.setItem('86chaosUser', JSON.stringify(appUser));
+        sessionStorage.removeItem('86chaosUser');
+      } else {
+        sessionStorage.setItem('86chaosUser', JSON.stringify(appUser));
+        localStorage.removeItem('86chaosUser');
+      }
+    } else {
+      localStorage.removeItem('86chaosUser');
+      sessionStorage.removeItem('86chaosUser');
+    }
   }, [appUser]);
 
+  // --- AUTO-LOGOUT INACTIVITY TIMER (30 MINUTES) ---
+  useEffect(() => {
+    if (!appUser) return;
+    let timeoutId;
+    
+    const logoutUser = () => {
+      setAppUser(null);
+      alert("You have been automatically logged out due to inactivity.");
+    };
+    
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      // Change the 30 below to whatever minute threshold you prefer
+      timeoutId = setTimeout(logoutUser, 30 * 60 * 1000); 
+    };
+    
+    // Listen for any kind of interaction
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(e => document.addEventListener(e, resetTimer));
+    resetTimer();
+    
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach(e => document.removeEventListener(e, resetTimer));
+    };
+  }, [appUser]);
   
 
   const [currentDate, setCurrentDate] = useState(getToday());
@@ -5474,9 +5589,9 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
     <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
 {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
 {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'prep' && <TabPrep currentDate={currentDate} prepItems={prepItems} tasks={tasks} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
-        {activeTabState === 'recipes' && <TabRecipes recipes={recipes} appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'inventory' && <TabInventory inventoryItems={inventoryItems} vendors={vendors} wasteLogs={wasteLogs} sales={sales} addToast={addToast} appUser={liveAppUser} />}
+{activeTabState === 'prep' && <TabPrep currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
+        {activeTabState === 'recipes' && <TabRecipes appUser={liveAppUser} addToast={addToast} />}
+        {activeTabState === 'inventory' && <TabInventory addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
 {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
         {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
@@ -5492,9 +5607,10 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
         ))}
       </div>
       
-      <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
+<div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.5.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.6.0</span>
+        <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
       </div>
     </div>
   );
