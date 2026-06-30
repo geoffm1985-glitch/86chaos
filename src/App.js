@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.5.1';
+const CURRENT_VERSION = '8.6.0';
 
 
 // --- Helpers ---
@@ -300,7 +300,8 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 const LoginScreen = ({ setAppUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
+const [loginError, setLoginError] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   
   // New state to hold the user temporarily if they need to change their password
   const [pendingUser, setPendingUser] = useState(null);
@@ -325,6 +326,7 @@ const LoginScreen = ({ setAppUser }) => {
         if (userData.forcePasswordChange) {
           setPendingUser(userData);
         } else {
+          localStorage.setItem('chaosRememberMe', rememberMe);
           setAppUser(userData); // Let them into the OS
         }
       } else {
@@ -353,6 +355,7 @@ const LoginScreen = ({ setAppUser }) => {
       });
       
       // 3. Unlock the system
+      localStorage.setItem('chaosRememberMe', rememberMe);
       setAppUser({ ...pendingUser, forcePasswordChange: false, password: newPass });
       
     } catch (error) {
@@ -415,14 +418,18 @@ const LoginScreen = ({ setAppUser }) => {
             <div>
               <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
-            <div>
+     <div>
               <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
+
+            <label className="flex items-center justify-center gap-2 cursor-pointer mt-2">
+              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 accent-[#D4A381] bg-[#0B0E11] border border-[#2A353D] rounded cursor-pointer" />
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Remember Me</span>
+            </label>
             
-            <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2">
+            <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
               Unlock System
             </button>
-
             <div className="pt-3 text-center">
               <button type="button" onClick={handleForgotCredentials} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">
                 Forgot Password or Username?
@@ -5243,7 +5250,11 @@ const handleForceRefresh = async () => {
 
 
 export default function App() {
-  const [appUser, setAppUser] = useState(() => { const saved = localStorage.getItem('86chaosUser'); return saved ? JSON.parse(saved) : null; });
+  const [appUser, setAppUser] = useState(() => { 
+    const savedLocal = localStorage.getItem('86chaosUser'); 
+    const savedSession = sessionStorage.getItem('86chaosUser');
+    return savedLocal ? JSON.parse(savedLocal) : (savedSession ? JSON.parse(savedSession) : null); 
+  });
   // --- GHOST MODE & ROUTING STATE ---
   const [ghostTenant, setGhostTenant] = useState(null);
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
@@ -5360,11 +5371,48 @@ export default function App() {
 
   const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
 
-  useEffect(() => {
-    if (appUser) localStorage.setItem('86chaosUser', JSON.stringify(appUser));
-    else localStorage.removeItem('86chaosUser');
+useEffect(() => {
+    const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
+    if (appUser) {
+      if (shouldRemember) {
+        localStorage.setItem('86chaosUser', JSON.stringify(appUser));
+        sessionStorage.removeItem('86chaosUser');
+      } else {
+        sessionStorage.setItem('86chaosUser', JSON.stringify(appUser));
+        localStorage.removeItem('86chaosUser');
+      }
+    } else {
+      localStorage.removeItem('86chaosUser');
+      sessionStorage.removeItem('86chaosUser');
+    }
   }, [appUser]);
 
+  // --- AUTO-LOGOUT INACTIVITY TIMER (30 MINUTES) ---
+  useEffect(() => {
+    if (!appUser) return;
+    let timeoutId;
+    
+    const logoutUser = () => {
+      setAppUser(null);
+      alert("You have been automatically logged out due to inactivity.");
+    };
+    
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      // Change the 30 below to whatever minute threshold you prefer
+      timeoutId = setTimeout(logoutUser, 30 * 60 * 1000); 
+    };
+    
+    // Listen for any kind of interaction
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(e => document.addEventListener(e, resetTimer));
+    resetTimer();
+    
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach(e => document.removeEventListener(e, resetTimer));
+    };
+  }, [appUser]);
   
 
   const [currentDate, setCurrentDate] = useState(getToday());
@@ -5561,7 +5609,7 @@ export default function App() {
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.5.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.6.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
       </div>
     </div>
