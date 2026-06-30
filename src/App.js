@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.2.2';
+const CURRENT_VERSION = '8.5.0';
 
 
 // --- Helpers ---
@@ -464,19 +464,51 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     return () => unsub();
   }, [appUser?.id]);
 
+
+
+// --- GEOFENCE MATH ENGINE ---
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return (R * c) * 3.28084; // Convert final result to feet
+  };
+
   const handleClockIn = async () => {
-    try {
-      await addDoc(collection(db, "timePunches"), { 
-        employeeId: appUser.id, 
-        employeeName: appUser.name, 
-        clockInTime: new Date().toISOString(), 
-        status: 'clocked_in', 
-        restaurantId: appUser.restaurantId, 
-        date: getToday(),
-        breakMinutes: 0
-      });
-      addToast('Clocked In', 'Shift started successfully.');
-    } catch (e) { addToast('Error', e.message); }
+    const executePunch = async () => {
+      try {
+        await addDoc(collection(db, "timePunches"), { 
+          employeeId: appUser.id, employeeName: appUser.name, clockInTime: new Date().toISOString(), 
+          status: 'clocked_in', restaurantId: appUser.restaurantId, date: getToday(), breakMinutes: 0
+        });
+        addToast('Clocked In', 'Shift started successfully.');
+      } catch (e) { addToast('Error', e.message); }
+    };
+
+    if (appUser?.systemSettings?.geofence) {
+      if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
+      
+      const targetLat = parseFloat(appUser.systemSettings.lat);
+      const targetLon = parseFloat(appUser.systemSettings.lon);
+      const allowedRadius = parseInt(appUser.systemSettings.geofenceRadius) || 300; // Default to 300 feet
+      
+      if (!targetLat || !targetLon) return addToast('Geofence Error', 'Location coordinates are not set in Workspace settings yet.');
+      
+      addToast('Locating...', 'Verifying GPS coordinates. Hold still.');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const dist = calculateDistance(targetLat, targetLon, pos.coords.latitude, pos.coords.longitude);
+          if (dist <= allowedRadius) executePunch();
+          else addToast('Access Denied', `Too far away. Move closer to the restaurant. (${Math.round(dist)} feet away)`);
+        },
+        (err) => addToast('Location Error', err.code === 1 ? 'Location access denied. Please allow location access in your browser to clock in.' : 'Could not lock GPS. Step outside the walk-in and try again.'),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      executePunch();
+    }
   };
 
   const handleStartBreak = async () => {
@@ -845,6 +877,7 @@ const handleDeactivate = async (u) => {
     await deleteDoc(doc(db, "users", u.id)); 
     addToast('Terminated', `${u.name}'s account has been completely erased.`); 
   };
+
   const handlePasswordReset = async (u) => {
     if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
     try {
@@ -1557,26 +1590,42 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
     } catch (err) { addToast('Error', err.message); }
   };
 
-  const handleExportTimesheets = () => {
+const handleExportTimesheets = () => {
     if (periodPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
     const pStartStr = new Date(periodStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const pEndStr = new Date(periodEnd + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
+    // Header for the Payroll Summary
     let csv = `"--- PAYROLL SUMMARY ---"\n"Pay Period: ${pStartStr} - ${pEndStr}"\n\n"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n`;
-    summaryList.forEach(s => { csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`; });
+    summaryList.forEach(s => { 
+      csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`; 
+    });
+    
+    // Header for Individual Punches
     csv += '\n"--- INDIVIDUAL PUNCHES ---"\n"Employee Name","Date","Clock In","Clock Out","Break (Mins)","Total Hours","Hourly Rate","Total Pay","Cash Tips","Credit Tips"\n';
     
     const sortedPunches = [...periodPunches].sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
     sortedPunches.forEach(p => {
-       const emp = users.find(u => u.id === p.employeeId); const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0); const rate = emp?.wage || 0; const estCost = hours * rate; 
+       const emp = users.find(u => u.id === p.employeeId); 
+       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0); 
+       const rate = emp?.wage || 0; 
+       const estCost = hours * rate; 
        const inStr = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown';
        const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown');
+       
        csv += `"${p.employeeName || 'Unknown'}","${p.date || 'Unknown'}","${inStr}","${outStr}","${p.breakMinutes||0}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${estCost.toFixed(2)}","$${parseFloat(p.cashTips||0).toFixed(2)}","$${parseFloat(p.creditTips||0).toFixed(2)}"\n`;
     });
 
-    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob);
-    const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); addToast('Exported', 'Spreadsheet generated.');
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' }); 
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); 
+    link.setAttribute("href", url); 
+    link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
+    document.body.appendChild(link); 
+    link.click(); 
+    document.body.removeChild(link); 
+    URL.revokeObjectURL(url); 
+    addToast('Exported', 'Spreadsheet generated.');
   };
 
   const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
@@ -1985,11 +2034,11 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
         </div>
       )}
 
-      {/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
+{/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
       {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           
-<div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
             <div className="flex items-center gap-4 flex-wrap">
               <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Payroll</h3>
               <div className="flex items-center gap-2 bg-[#1A2126] border border-[#2A353D] p-1.5 rounded-lg shadow-inner">
@@ -3343,8 +3392,37 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
   const [isFormOpen, setIsFormOpen] = useState(false); 
   const [activeRecipe, setActiveRecipe] = useState(null); 
   const [yieldMult, setYieldMult] = useState(1);
-  const [editingRecipeId, setEditingRecipeId] = useState(null);
+const [editingRecipeId, setEditingRecipeId] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+
+  // --- SCREEN WAKE LOCK ENGINE ---
+  const [isAwake, setIsAwake] = useState(false);
+  const [wakeLock, setWakeLock] = useState(null);
+
+  const toggleWakeLock = async () => {
+    if (!isAwake) {
+      try {
+        if ('wakeLock' in navigator) {
+          const lock = await navigator.wakeLock.request('screen');
+          setWakeLock(lock);
+          setIsAwake(true);
+          addToast('Screen Awake', 'Screen will stay on. Perfect for messy hands.');
+          
+          // Browsers automatically release the lock if the user switches tabs/minimizes
+          lock.addEventListener('release', () => { setIsAwake(false); setWakeLock(null); });
+        } else {
+          addToast('Error', 'Screen Wake Lock is not supported on this device/browser.');
+        }
+      } catch (err) { addToast('Error', err.message); }
+    } else {
+      if (wakeLock) {
+        await wakeLock.release();
+        setWakeLock(null);
+      }
+      setIsAwake(false);
+      addToast('Screen Normal', 'Screen sleep timeout restored.');
+    }
+  };
 
   const handleScanRecipe = async (e) => {
     const file = e.target.files[0];
@@ -3514,9 +3592,14 @@ return (
           </select>
         </div>
 
-        {/* Bottom Row: Action Buttons */}
+{/* Bottom Row: Action Buttons */}
         <div className="flex flex-wrap gap-2 justify-end w-full">
           
+          <button onClick={toggleWakeLock} className={`bg-[#12161A] border border-[#2A353D] font-bold rounded-xl transition-all px-4 py-2 text-xs flex items-center justify-center gap-2 ${isAwake ? 'text-amber-400 border-amber-900/50 bg-amber-900/10' : 'text-slate-300 hover:text-amber-400'}`} title="Keep Screen On">
+            <Sun size={16} className={isAwake ? 'animate-pulse' : ''} />
+            {isAwake ? 'Screen Locked On' : 'Keep Screen On'}
+          </button>
+
           {/* ONLY GEOFF CAN SEE THIS BUTTON */}
           {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
             <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-xs flex items-center justify-center gap-2`} title="Inject Card Recipes"><Package size={16} /> Import</button>
@@ -3807,9 +3890,13 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
   const [notifReminders, setNotifReminders] = useState(prefs.notifReminders ?? false);
   const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); 
 
-  // --- System Config State (Admin Only) ---
+// --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
+  const [sysAddress, setSysAddress] = useState(sys.address || '');
+  const [sysLat, setSysLat] = useState(sys.lat || '');
+  const [sysLon, setSysLon] = useState(sys.lon || '');
+  const [sysRadius, setSysRadius] = useState(sys.geofenceRadius || '300');
   const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false); 
   const [sysTips, setSysTips] = useState(sys.tips ?? true);
   const [sysTrades, setSysTrades] = useState(sys.trades ?? true);
@@ -3818,6 +3905,22 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
   const [sysBlockEarly, setSysBlockEarly] = useState(sys.blockEarly ?? true);
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
   const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
+
+  const handleGeocodeAddress = async () => {
+    if (!sysAddress.trim()) return addToast('Error', 'Please enter a full address first.');
+    addToast('Locating...', 'Searching map database...');
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(sysAddress)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        setSysLat(parseFloat(data[0].lat).toFixed(4));
+        setSysLon(parseFloat(data[0].lon).toFixed(4));
+        addToast('Found', 'Coordinates locked in.');
+      } else {
+        addToast('Error', 'Address not found. Try adding city and state.');
+      }
+    } catch (err) { addToast('Error', 'Failed to reach map service.'); }
+  };
 
   // --- Role Management State (Admin Only) ---
   const [newRoleName, setNewRoleName] = useState('');
@@ -3874,12 +3977,15 @@ const handleSavePrefs = async (e) => {
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
   };
 
-  const handleSaveSystem = async (e) => {
+const handleSaveSystem = async (e) => {
     e.preventDefault();
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
       await setDoc(doc(db, "restaurants", targetId), {
-        systemSettings: { geofence: sysGeofence, breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime }
+        systemSettings: { 
+          geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
+          breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime 
+        }
       }, { merge: true });
       addToast('System Saved', 'Global workspace configurations updated.');
       logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
@@ -4158,7 +4264,23 @@ const handleSavePrefs = async (e) => {
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
-               <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
+<Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
+              {sysGeofence && (
+                 <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
+                   <div>
+                     <label className={T.label}>Street Address (To auto-find coordinates)</label>
+                     <div className="flex gap-2">
+                       <input type="text" value={sysAddress} onChange={e=>setSysAddress(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 26 N State St, Chilton, WI"/>
+                       <button type="button" onClick={handleGeocodeAddress} className={`${T.btn} py-1.5 px-4 text-xs whitespace-nowrap`}>Find GPS</button>
+                     </div>
+                   </div>
+                   <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[#2A353D]">
+                     <div><label className={T.label}>Latitude</label><input type="number" step="any" value={sysLat} onChange={e=>setSysLat(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 44.0300"/></div>
+                     <div><label className={T.label}>Longitude</label><input type="number" step="any" value={sysLon} onChange={e=>setSysLon(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. -88.1630"/></div>
+                     <div><label className={T.label}>Radius (Feet)</label><input type="number" min="10" value={sysRadius} onChange={e=>setSysRadius(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 300"/></div>
+                   </div>
+                 </div>
+               )}
                <Toggle label="Unpaid Break Tracking" desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} />
                <Toggle label="Block Early Clock-Ins" desc="Prevent staff from punching in before their grace period begins." checked={sysBlockEarly} onChange={e => setSysBlockEarly(e.target.checked)} />
                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
@@ -4514,7 +4636,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     await deleteDoc(doc(db, "restaurants", id)); addToast('Deleted', `${name} has been erased from existence.`);
   };
 
-  const handleExportData = async (rest) => {
+const handleExportData = async (rest) => {
     addToast('Compiling Data', 'Building CSV payload...');
     const uSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', rest.id)));
     let csv = "ID,Name,Email,Role,Phone,Status\n";
@@ -4522,6 +4644,62 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     const link = document.createElement("a"); link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csv)); link.setAttribute("download", `${rest.name.replace(/\s+/g, '_')}_Users_Export.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     addToast('Export Complete', 'Data delivered to downloads folder.');
+  };
+
+  // --- DATABASE SNAPSHOT ENGINE (BACKUP & RESTORE) ---
+  const handleCreateBackup = async (rest) => {
+    addToast('Backing Up', `Compiling database snapshot for ${rest.name}...`);
+    const collectionsToBackup = ['users', 'shifts', 'recipes', 'inventoryItems', 'vendors', 'invoices', 'timePunches', 'sales', 'events', 'tasks', 'wasteLogs', 'timeOffRequests', 'prepCategories', 'roles', 'shiftSwaps'];
+    const snapshot = { metadata: { restaurantId: rest.id, restaurantName: rest.name, timestamp: new Date().toISOString() }, data: {} };
+
+    try {
+      for (const colName of collectionsToBackup) {
+        const q = query(collection(db, colName), where("restaurantId", "==", rest.id));
+        const snap = await getDocs(q);
+        snapshot.data[colName] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      }
+      
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `86chaos_Backup_${rest.name.replace(/\s+/g, '_')}_${getToday()}.json`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      addToast('Backup Complete', 'JSON snapshot downloaded successfully.');
+    } catch (err) { addToast('Backup Failed', err.message); }
+  };
+
+  const handleRestoreBackup = async (e, rest) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (prompt(`CRITICAL: Type "RESTORE" to inject this backup file into ${rest.name}'s database.`) !== 'RESTORE') {
+      e.target.value = '';
+      return addToast('Aborted', 'Restore canceled.');
+    }
+
+    addToast('Restoring', 'Injecting data. Do not close your browser...');
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const backup = JSON.parse(event.target.result);
+        if (backup.metadata.restaurantId !== rest.id) return addToast('Error', 'Tenant ID mismatch. You cannot restore a backup from a different workspace.');
+
+        let restoredCount = 0;
+        for (const [colName, docs] of Object.entries(backup.data)) {
+          const promises = docs.map(d => {
+             const { id, ...data } = d;
+             return setDoc(doc(db, colName, id), data);
+          });
+          await Promise.all(promises);
+          restoredCount += docs.length;
+        }
+        addToast('Restore Complete', `Successfully injected ${restoredCount} documents.`);
+      } catch (err) { addToast('Error', 'Invalid backup file or upload failed.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   // --- OBLITERATION ENGINE ---
@@ -4632,7 +4810,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
   };
 
-  const handleForceRefresh = async () => {
+const handleForceRefresh = async () => {
     if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
     addToast('Executing', 'Sending refresh signal...');
     const stamp = new Date().toISOString();
@@ -4641,6 +4819,28 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
        try { await updateDoc(doc(db, "restaurants", r.id), { forceRefresh: stamp }); count++; } catch(e){}
     }
     addToast('Refresh Broadcast', `Hard reload signal sent to ${count} databases.`);
+  };
+
+  const handleGlobalLockdown = async (lock) => {
+    if (lock) {
+        if (prompt('CRITICAL: This will instantly lock out EVERY client workspace (except yours) by triggering the billing lock screen. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
+        addToast('Executing', 'Initiating global lockdown...');
+    } else {
+        if (!window.confirm('Restore access to all suspended workspaces?')) return;
+        addToast('Executing', 'Lifting lockdown...');
+    }
+    
+    let count = 0;
+    for (const r of restaurants) {
+      // SAFEGUARD: Never lock the workspace the Admin is currently using
+      if (r.id !== appUser.restaurantId) {
+        try { 
+            await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); 
+            count++; 
+        } catch(e){}
+      }
+    }
+    addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'suspended' : 'restored'}.`);
   };
 
   const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Administrator access given.'); };
@@ -4689,14 +4889,27 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
 
+{/* BACKUP & RESTORE */}
+            <div className="pt-4 border-t border-[#2A353D] mt-4 space-y-3">
+              <h4 className="text-[10px] uppercase tracking-widest text-emerald-500 font-black mb-2">Database Backup & Recovery</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => handleCreateBackup(editingRest)} className="w-full bg-emerald-900/20 text-emerald-400 font-bold py-2.5 rounded-lg border border-emerald-900/50 hover:bg-emerald-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
+                  💾 Download JSON
+                </button>
+                <label className="w-full bg-blue-900/20 text-blue-400 font-bold py-2.5 rounded-lg border border-blue-900/50 hover:bg-blue-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
+                  <span>🔄 Upload Restore</span>
+                  <input type="file" accept=".json" onChange={(e) => handleRestoreBackup(e, editingRest)} className="hidden" />
+                </label>
+              </div>
+              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2 mt-2">
+                <ClipboardList size={14}/> Download CSV User Export
+              </button>
+            </div>
+
             {/* DANGER ZONE */}
             <div className="pt-4 border-t border-red-900/50 mt-4 space-y-3">
-              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">
-                <ClipboardList size={14}/> Download CSV Export
-              </button>
-
               <div>
-                <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center mt-4">Danger Zone (Data Wipes)</h4>
+                <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center">Danger Zone (Data Wipes)</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'inventory', label: 'Inventory & Vendors' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Inventory</button>
                   <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'schedule', label: 'Schedule & Time Off' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Schedule</button>
@@ -4921,11 +5134,21 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
               <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
             </div>
-            <div className={`${T.card} p-5 border-blue-900/30`}>
+ <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
             </div>
+            
+            <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
+              <h3 className="font-black text-white mb-1">Global Lockdown</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly suspends every tenant by triggering the Past Due billing lock. Bypasses your own workspace to prevent self-lockout.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => handleGlobalLockdown(true)} className="w-full bg-red-900/20 text-red-500 border border-red-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors flex items-center justify-center gap-2"><Shield size={16}/> Lock All</button>
+                <button onClick={() => handleGlobalLockdown(false)} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2">Unlock All</button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
@@ -5271,7 +5494,7 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.2</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.5.0</span>
       </div>
     </div>
   );
