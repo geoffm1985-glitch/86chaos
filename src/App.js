@@ -468,15 +468,15 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
 // --- GEOFENCE MATH ENGINE ---
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3; 
+    const R = 6371e3; // Earth's radius in meters
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; 
+    return (R * c) * 3.28084; // Convert final result to feet
   };
 
-const handleClockIn = async () => {
+  const handleClockIn = async () => {
     const executePunch = async () => {
       try {
         await addDoc(collection(db, "timePunches"), { 
@@ -492,7 +492,7 @@ const handleClockIn = async () => {
       
       const targetLat = parseFloat(appUser.systemSettings.lat);
       const targetLon = parseFloat(appUser.systemSettings.lon);
-      const allowedRadius = parseInt(appUser.systemSettings.geofenceRadius) || 100;
+      const allowedRadius = parseInt(appUser.systemSettings.geofenceRadius) || 300; // Default to 300 feet
       
       if (!targetLat || !targetLon) return addToast('Geofence Error', 'Location coordinates are not set in Workspace settings yet.');
       
@@ -501,7 +501,7 @@ const handleClockIn = async () => {
         (pos) => {
           const dist = calculateDistance(targetLat, targetLon, pos.coords.latitude, pos.coords.longitude);
           if (dist <= allowedRadius) executePunch();
-          else addToast('Access Denied', `Too far away. Move closer to the restaurant. (${Math.round(dist)} meters away)`);
+          else addToast('Access Denied', `Too far away. Move closer to the restaurant. (${Math.round(dist)} feet away)`);
         },
         (err) => addToast('Location Error', err.code === 1 ? 'Location access denied. Please allow location access in your browser to clock in.' : 'Could not lock GPS. Step outside the walk-in and try again.'),
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -3845,8 +3845,7 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
 const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
       const [sysLat, setSysLat] = useState(sys.lat || '');
       const [sysLon, setSysLon] = useState(sys.lon || '');
-      const [sysRadius, setSysRadius] = useState(sys.geofenceRadius || '100');
-      const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false);
+const [sysRadius, setSysRadius] = useState(sys.geofenceRadius || '300');      const [sysBreaks, setSysBreaks] = useState(sys.breaks ?? false);
   const [sysTips, setSysTips] = useState(sys.tips ?? true);
   const [sysTrades, setSysTrades] = useState(sys.trades ?? true);
   const [sysAutoApprove, setSysAutoApprove] = useState(sys.autoApprove ?? false);
@@ -4198,11 +4197,20 @@ await setDoc(doc(db, "restaurants", targetId), {
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
 <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
-               {sysGeofence && (
-                 <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-3 animate-[slideIn_0.2s_ease-out] ml-4">
-                   <div><label className={T.label}>Latitude</label><input type="number" step="any" value={sysLat} onChange={e=>setSysLat(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 44.0300"/></div>
-                   <div><label className={T.label}>Longitude</label><input type="number" step="any" value={sysLon} onChange={e=>setSysLon(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. -88.1630"/></div>
-                   <div><label className={T.label}>Radius (Meters)</label><input type="number" min="10" value={sysRadius} onChange={e=>setSysRadius(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 100"/></div>
+              {sysGeofence && (
+                 <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
+                   <div>
+                     <label className={T.label}>Street Address (To auto-find coordinates)</label>
+                     <div className="flex gap-2">
+                       <input type="text" value={sysAddress} onChange={e=>setSysAddress(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 26 N State St, Chilton, WI"/>
+                       <button type="button" onClick={handleGeocodeAddress} className={`${T.btn} py-1.5 px-4 text-xs whitespace-nowrap`}>Find GPS</button>
+                     </div>
+                   </div>
+                   <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[#2A353D]">
+                     <div><label className={T.label}>Latitude</label><input type="number" step="any" value={sysLat} onChange={e=>setSysLat(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 44.0300"/></div>
+                     <div><label className={T.label}>Longitude</label><input type="number" step="any" value={sysLon} onChange={e=>setSysLon(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. -88.1630"/></div>
+                     <div><label className={T.label}>Radius (Feet)</label><input type="number" min="10" value={sysRadius} onChange={e=>setSysRadius(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 300"/></div>
+                   </div>
                  </div>
                )}
                <Toggle label="Unpaid Break Tracking" desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} />
