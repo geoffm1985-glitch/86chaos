@@ -1,59 +1,78 @@
-// Force Vercel to run strictly in the US (Washington D.C.)
-export const config = {
-  regions: ['iad1'],
-};
+const { onRequest } = require("firebase-functions/v2/https");
+const { GoogleGenerativeAI, SchemaType } = require("@google/generative-ai");
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed. Use POST.' });
-  }
+// Initialize Gemini SDK
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+exports.scanInvoice = onRequest({ cors: true, maxInstances: 10 }, async (req, res) => {
   try {
     const { fileBase64, mimeType } = req.body;
+    if (!fileBase64 || !mimeType) return res.status(400).json({ error: "Missing file data." });
+
+    // Isolate base64 data string
+    const base64Data = fileBase64.split(",")[1] || fileBase64;
+
+    // Strict JSON Schema forces the AI to output these exact fields
+    const schema = {
+      type: SchemaType.OBJECT,
+      properties: {
+        vendorName: { type: SchemaType.STRING },
+        invoiceDate: { type: SchemaType.STRING },
+        invoiceTotal: { type: SchemaType.NUMBER },
+        lineItems: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              itemName: { type: SchemaType.STRING },
+              productCode: { type: SchemaType.STRING, description: "The isolated SKU or Product Code." },
+              quantity: { type: SchemaType.NUMBER },
+              packSize: { type: SchemaType.STRING },
+              unitPrice: { type: SchemaType.NUMBER },
+              totalPrice: { type: SchemaType.NUMBER }
+            },
+            // productCode is strictly required
+            required: ["itemName", "productCode", "quantity", "unitPrice", "totalPrice"]
+          }
+        }
+      },
+      required: ["vendorName", "invoiceTotal", "lineItems"]
+    };
+
+    // The System Instruction that fixes the PFG formatting and the math
+    const systemInstruction = `
+    You are an expert restaurant inventory accounting engine extracting data from supplier invoices.
     
-    // Clean the API key
-    const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/['"]/g, '');
+    CRITICAL RULES FOR PRODUCT CODES (SKUs):
+    1. You MUST extract a product code for EVERY item and return it in the "productCode" field.
+    2. For PFG / Performance Foodservice documents, the code is usually a 5-to-6 character string (e.g., VF480, EK598, GW640, 13206) found on the line IMMEDIATELY BELOW the main item description, just before the brand name. 
+    3. Isolate this code completely. Do not merge it into the item name. If no code exists at all, return an empty string.
+    
+    CRITICAL RULES FOR MATH & TOTALS:
+    1. Calculate the line item total yourself: quantity * unitPrice = totalPrice.
+    2. Calculate the exact "invoiceTotal" by summing up all the line item totalPrices you extracted. Documents often contain multiple separate orders appended together. Your invoiceTotal MUST equal the exact sum of your extracted line items.
+    `;
 
-    if (!apiKey) throw new Error("API Key is missing from Vercel.");
-
-    // Strip the data URL prefix (e.g., "data:application/pdf;base64,")
-    const base64Data = fileBase64.split(',')[1] || fileBase64;
-
-    // Strict accounting prompt
-    const prompt = `You are an expert restaurant accountant. Extract the data from this invoice and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\nRequired keys:\n- "vendorName" (string)\n- "invoiceDate" (string)\n- "invoiceTotal" (number)\n- "lineItems" (an array of objects containing "itemName" (string), "quantity" (number), "packSize" (string), "unitPrice" (number), and "totalPrice" (number)).`;
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: mimeType || "application/pdf",
-                data: base64Data
-              }
-            }
-          ]
-        }]
-      })
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+        temperature: 0.1, // Set near zero to force strict robotic accuracy
+      },
+      systemInstruction: systemInstruction
     });
 
-    const data = await response.json();
+    const response = await model.generateContent([
+      { inlineData: { data: base64Data, mimeType: mimeType } },
+      "Extract the vendor data and line items strictly according to the system instructions."
+    ]);
 
-    if (data.error) throw new Error(data.error.message);
-
-    const rawText = data.candidates[0].content.parts[0].text;
-    
-    // Safety net for JSON parsing
-    const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    const invoiceData = JSON.parse(cleanText);
-    return res.status(200).json(invoiceData);
+    const resultData = JSON.parse(response.response.text());
+    return res.status(200).json(resultData);
 
   } catch (error) {
-    console.error("AI Invoice Scan Error:", error);
-    return res.status(500).json({ error: error.message || "Failed to process invoice." });
+    console.error("Parse Error:", error);
+    return res.status(500).json({ error: error.message });
   }
-}
+});
