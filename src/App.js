@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.2.2';
+const CURRENT_VERSION = '8.5.0';
 
 
 // --- Helpers ---
@@ -3927,16 +3927,16 @@ const handleSavePrefs = async (e) => {
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
   };
 
-  const handleSaveSystem = async (e) => {
+const handleSaveSystem = async (e) => {
     e.preventDefault();
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
-await setDoc(doc(db, "restaurants", targetId), {
-            systemSettings: { 
-              geofence: sysGeofence, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 100,
-              breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime 
-            }
-          }, { merge: true });
+      await setDoc(doc(db, "restaurants", targetId), {
+        systemSettings: { 
+          geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
+          breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime 
+        }
+      }, { merge: true });
       addToast('System Saved', 'Global workspace configurations updated.');
       logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
     } catch (err) { addToast('Error', err.message); }
@@ -5343,7 +5343,7 @@ const wasteLogs = useLiveCollection('wasteLogs', rId);
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.2.2</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.5.0</span>
       </div>
     </div>
   );
