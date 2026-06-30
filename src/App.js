@@ -2985,13 +2985,15 @@ const TabInventory = ({ addToast, appUser }) => {
        let updateCount = 0;
        let newCount = 0;
        
-       for (const item of scannedInvoice.lineItems) {
+for (const item of scannedInvoice.lineItems) {
+          const incomingCode = item.productCode || item.pfgCode || item.code || item.itemCode || '';
+
           if (item.matchedItemId === 'CREATE_NEW') {
              // Create a brand new item in inventory
              await addDoc(collection(db, "inventoryItems"), {
                 name: item.itemName,
                 category: 'Other', 
-                pfgCode: item.productCode || '', 
+                pfgCode: incomingCode, 
                 supplierId: vId,
                 packSize: item.packSize || '1 CS',
                 yieldQty: 1, 
@@ -3009,9 +3011,16 @@ const TabInventory = ({ addToast, appUser }) => {
              const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
              if (invItem) {
                 const addedStock = parseFloat(item.quantity) || 0;
-                await updateDoc(doc(db, "inventoryItems", invItem.id), { 
+                const updates = { 
                    currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
-                });
+                };
+                
+                // If the item didn't have a product code before, but the invoice found one, save it
+                if (!invItem.pfgCode && incomingCode) {
+                   updates.pfgCode = incomingCode;
+                }
+
+                await updateDoc(doc(db, "inventoryItems", invItem.id), updates);
                 updateCount++;
              }
           }
@@ -3336,7 +3345,7 @@ const TabInventory = ({ addToast, appUser }) => {
             <input type="text" placeholder="Search master list by name or product number..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
           </div>
 
-          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={() => { if(window.confirm(`Are you sure you want to delete ${item.name}?`)) deleteDoc(doc(db,"inventoryItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
         </div>
       )}
 
