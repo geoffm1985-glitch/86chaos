@@ -1590,26 +1590,42 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
     } catch (err) { addToast('Error', err.message); }
   };
 
-  const handleExportTimesheets = () => {
+const handleExportTimesheets = () => {
     if (periodPunches.length === 0) return addToast("Empty", "No punches to export for this period.");
     const pStartStr = new Date(periodStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const pEndStr = new Date(periodEnd + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
+    // Header for the Payroll Summary
     let csv = `"--- PAYROLL SUMMARY ---"\n"Pay Period: ${pStartStr} - ${pEndStr}"\n\n"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n`;
-    summaryList.forEach(s => { csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`; });
+    summaryList.forEach(s => { 
+      csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`; 
+    });
+    
+    // Header for Individual Punches
     csv += '\n"--- INDIVIDUAL PUNCHES ---"\n"Employee Name","Date","Clock In","Clock Out","Break (Mins)","Total Hours","Hourly Rate","Total Pay","Cash Tips","Credit Tips"\n';
     
     const sortedPunches = [...periodPunches].sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
     sortedPunches.forEach(p => {
-       const emp = users.find(u => u.id === p.employeeId); const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0); const rate = emp?.wage || 0; const estCost = hours * rate; 
+       const emp = users.find(u => u.id === p.employeeId); 
+       const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0); 
+       const rate = emp?.wage || 0; 
+       const estCost = hours * rate; 
        const inStr = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown';
        const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown');
+       
        csv += `"${p.employeeName || 'Unknown'}","${p.date || 'Unknown'}","${inStr}","${outStr}","${p.breakMinutes||0}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${estCost.toFixed(2)}","$${parseFloat(p.cashTips||0).toFixed(2)}","$${parseFloat(p.creditTips||0).toFixed(2)}"\n`;
     });
 
-    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob);
-    const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); addToast('Exported', 'Spreadsheet generated.');
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' }); 
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); 
+    link.setAttribute("href", url); 
+    link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
+    document.body.appendChild(link); 
+    link.click(); 
+    document.body.removeChild(link); 
+    URL.revokeObjectURL(url); 
+    addToast('Exported', 'Spreadsheet generated.');
   };
 
   const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
@@ -2018,11 +2034,11 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
         </div>
       )}
 
-      {/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
+{/* THE TIMESHEET SUB-TAB (Secured & Safed) */}
       {subTab === 'timesheets' && appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           
-<div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
             <div className="flex items-center gap-4 flex-wrap">
               <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Payroll</h3>
               <div className="flex items-center gap-2 bg-[#1A2126] border border-[#2A353D] p-1.5 rounded-lg shadow-inner">
