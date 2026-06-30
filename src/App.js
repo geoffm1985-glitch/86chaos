@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.6.0';
+const CURRENT_VERSION = '8.6.'1;
 
 
 // --- Helpers ---
@@ -483,14 +483,34 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     return (R * c) * 3.28084; // Convert final result to feet
   };
 
-  const handleClockIn = async () => {
+const handleClockIn = async () => {
+    // Check if scheduled today
+    const isScheduledToday = shifts.some(s => s.employeeId === appUser.id && s.date === getToday() && s.isPublished);
+    
+    let isUnscheduled = false;
+    if (!isScheduledToday) {
+       const confirmUnscheduled = window.confirm("You are not scheduled for a shift today. Do you want to proceed with an unscheduled clock-in?");
+       if (!confirmUnscheduled) return;
+       isUnscheduled = true;
+    }
+
     const executePunch = async () => {
       try {
         await addDoc(collection(db, "timePunches"), { 
           employeeId: appUser.id, employeeName: appUser.name, clockInTime: new Date().toISOString(), 
-          status: 'clocked_in', restaurantId: appUser.restaurantId, date: getToday(), breakMinutes: 0
+          status: 'clocked_in', restaurantId: appUser.restaurantId, date: getToday(), breakMinutes: 0,
+          isUnscheduled: isUnscheduled, isApproved: !isUnscheduled
         });
-        addToast('Clocked In', 'Shift started successfully.');
+        
+        // Blast the manager alert to the Message Board
+        if (isUnscheduled) {
+           await addDoc(collection(db, "events"), { 
+             date: new Date().toISOString(), title: `UNSCHEDULED PUNCH: ${appUser.name.split(' ')[0]} clocked in without a scheduled shift. Please review in Timesheets.`, 
+             type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId, replies: [] 
+           });
+        }
+        
+        addToast('Clocked In', isUnscheduled ? 'Unscheduled shift started. Manager notified.' : 'Shift started successfully.');
       } catch (e) { addToast('Error', e.message); }
     };
 
@@ -1266,6 +1286,24 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   // --- PAYROLL DATE RANGE ---
   const [periodStart, setPeriodStart] = useState(`${monthStr}-01`);
   const [periodEnd, setPeriodEnd] = useState(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
+
+  // --- LABOR & FINANCIAL TARGETS ---
+  const [isTargetSettingsOpen, setIsTargetSettingsOpen] = useState(false);
+  const [targetSales, setTargetSales] = useState(appUser?.systemSettings?.targetSales || '0');
+  const [targetLaborPct, setTargetLaborPct] = useState(appUser?.systemSettings?.targetLaborPct || '0');
+  
+  const handleSaveTargets = async (e) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, "restaurants", appUser.restaurantId), {
+        'systemSettings.targetSales': parseFloat(targetSales) || 0,
+        'systemSettings.targetLaborPct': parseFloat(targetLaborPct) || 0,
+        'systemSettings.enableTargets': true
+      });
+      addToast('Saved', 'Financial and labor targets updated.');
+      setIsTargetSettingsOpen(false);
+    } catch (err) { addToast('Error', err.message); }
+  };
 
   useEffect(() => {
     setPeriodStart(`${monthStr}-01`);
@@ -2058,6 +2096,54 @@ const handleExportTimesheets = () => {
             </div>
           </div>
 
+{/* TARGETS DASHBOARD */}
+          {appUser?.systemSettings?.enableTargets && (
+            <div className="bg-[#0B0E11] p-4 border-b border-[#2A353D] flex flex-col sm:flex-row gap-4 justify-between items-center">
+              <div className="flex items-center gap-6">
+                 <div>
+                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Target Period Sales</div>
+                   <div className="text-lg font-black text-white">${parseFloat(appUser.systemSettings.targetSales || 0).toLocaleString()}</div>
+                 </div>
+                 <div>
+                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Target Labor %</div>
+                   <div className="text-lg font-black text-white">{parseFloat(appUser.systemSettings.targetLaborPct || 0).toFixed(1)}%</div>
+                 </div>
+                 <div className="border-l border-[#2A353D] pl-6">
+                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Actual Period Labor %</div>
+                   <div className={`text-lg font-black ${((actualPeriodLabor / parseFloat(appUser.systemSettings.targetSales || 1)) * 100) > parseFloat(appUser.systemSettings.targetLaborPct || 100) ? 'text-red-400' : 'text-emerald-400'}`}>
+                     {appUser.systemSettings.targetSales > 0 ? ((actualPeriodLabor / parseFloat(appUser.systemSettings.targetSales)) * 100).toFixed(1) : '0.0'}%
+                   </div>
+                 </div>
+              </div>
+              <button onClick={() => setIsTargetSettingsOpen(!isTargetSettingsOpen)} className="text-xs font-bold text-slate-400 hover:text-[#D4A381] border border-[#2A353D] bg-[#1A2126] px-3 py-1.5 rounded-lg transition-colors">Configure Targets</button>
+            </div>
+          )}
+
+          {!appUser?.systemSettings?.enableTargets && (
+            <div className="bg-[#0B0E11] p-3 border-b border-[#2A353D] text-right">
+              <button onClick={() => setIsTargetSettingsOpen(!isTargetSettingsOpen)} className="text-xs font-bold text-slate-400 hover:text-[#D4A381] transition-colors">Configure Financial Targets</button>
+            </div>
+          )}
+
+          {isTargetSettingsOpen && (
+            <form onSubmit={handleSaveTargets} className="p-4 bg-[#1A2126] border-b border-[#2A353D] space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={T.label}>Period Sales Target ($)</label>
+                  <input type="number" step="0.01" value={targetSales} onChange={e=>setTargetSales(e.target.value)} className={T.input} placeholder="e.g. 50000" />
+                </div>
+                <div>
+                  <label className={T.label}>Target Labor Cost (%)</label>
+                  <input type="number" step="0.1" value={targetLaborPct} onChange={e=>setTargetLaborPct(e.target.value)} className={T.input} placeholder="e.g. 25.5" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                 <button type="submit" className={`flex-1 ${T.btn} py-2 text-xs`}>Save Targets</button>
+                 <button type="button" onClick={async () => { await updateDoc(doc(db, "restaurants", appUser.restaurantId), { 'systemSettings.enableTargets': false }); setIsTargetSettingsOpen(false); }} className={`px-4 bg-red-900/20 text-red-500 font-bold text-xs rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-colors`}>Disable</button>
+              </div>
+            </form>
+          )}
+
           {summaryList.length > 0 && (
             <div className="p-4 border-b border-[#2A353D] bg-[#0B0E11]">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Payroll Summary</h4>
@@ -2095,8 +2181,10 @@ const handleExportTimesheets = () => {
                return (
                  <div key={p.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
                    <div>
-                     <div className="font-bold text-white text-base">{p.employeeName || 'Unknown'}</div>
-                     <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
+<div className="font-bold text-white text-base">
+  {p.employeeName || 'Unknown'}
+  {p.isUnscheduled && !p.isApproved && <span className="ml-2 text-[8px] bg-amber-500 text-slate-900 px-1.5 py-0.5 rounded-sm uppercase tracking-widest font-black align-middle">Unscheduled</span>}
+</div>                     <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
                        {p.date ? formatDisplayDate(p.date) : 'Unknown Date'}
                      </div>
                    </div>
@@ -2115,6 +2203,7 @@ const handleExportTimesheets = () => {
                      </div>
                      <div className="flex gap-2 border-l border-[#2A353D] pl-4">
                        {isClockedIn && <button onClick={() => handleForceClockOut(p)} className="px-3 py-1 bg-red-900/20 text-red-500 text-[10px] font-black uppercase rounded-lg border border-red-900/50 hover:bg-red-900/40 transition-colors">Force Out</button>}
+    {p.isUnscheduled && !p.isApproved && <button onClick={() => updateDoc(doc(db, "timePunches", p.id), { isApproved: true })} className="px-3 py-1 bg-amber-900/20 text-amber-400 text-[10px] font-black uppercase rounded-lg border border-amber-900/50 hover:bg-amber-900/40 transition-colors animate-pulse">Approve</button>}
                        <button onClick={() => openEditPunchModal(p)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
                        <button onClick={() => handleDeletePunch(p.id)} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
                      </div>
@@ -5619,7 +5708,7 @@ useEffect(() => {
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.6.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.6.1</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
       </div>
     </div>
