@@ -3067,8 +3067,10 @@ for (const item of scannedInvoice.lineItems) {
                 <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
                   <div className="flex justify-between items-start">
                     <div>
-                      <div className="font-bold text-white text-sm">{item.itemName}</div>
-                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
+<div className="font-bold text-white text-sm flex items-center gap-1.5">
+  {item.productCode && <span className="text-[#D4A381] font-black">[{item.productCode}]</span>}
+  {item.itemName}
+</div>                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
                         {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
                       </div>
                     </div>
