@@ -3376,8 +3376,37 @@ const TabRecipes = ({ recipes, appUser, addToast }) => {
   const [isFormOpen, setIsFormOpen] = useState(false); 
   const [activeRecipe, setActiveRecipe] = useState(null); 
   const [yieldMult, setYieldMult] = useState(1);
-  const [editingRecipeId, setEditingRecipeId] = useState(null);
+const [editingRecipeId, setEditingRecipeId] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+
+  // --- SCREEN WAKE LOCK ENGINE ---
+  const [isAwake, setIsAwake] = useState(false);
+  const [wakeLock, setWakeLock] = useState(null);
+
+  const toggleWakeLock = async () => {
+    if (!isAwake) {
+      try {
+        if ('wakeLock' in navigator) {
+          const lock = await navigator.wakeLock.request('screen');
+          setWakeLock(lock);
+          setIsAwake(true);
+          addToast('Screen Awake', 'Screen will stay on. Perfect for messy hands.');
+          
+          // Browsers automatically release the lock if the user switches tabs/minimizes
+          lock.addEventListener('release', () => { setIsAwake(false); setWakeLock(null); });
+        } else {
+          addToast('Error', 'Screen Wake Lock is not supported on this device/browser.');
+        }
+      } catch (err) { addToast('Error', err.message); }
+    } else {
+      if (wakeLock) {
+        await wakeLock.release();
+        setWakeLock(null);
+      }
+      setIsAwake(false);
+      addToast('Screen Normal', 'Screen sleep timeout restored.');
+    }
+  };
 
   const handleScanRecipe = async (e) => {
     const file = e.target.files[0];
@@ -3547,9 +3576,14 @@ return (
           </select>
         </div>
 
-        {/* Bottom Row: Action Buttons */}
+{/* Bottom Row: Action Buttons */}
         <div className="flex flex-wrap gap-2 justify-end w-full">
           
+          <button onClick={toggleWakeLock} className={`bg-[#12161A] border border-[#2A353D] font-bold rounded-xl transition-all px-4 py-2 text-xs flex items-center justify-center gap-2 ${isAwake ? 'text-amber-400 border-amber-900/50 bg-amber-900/10' : 'text-slate-300 hover:text-amber-400'}`} title="Keep Screen On">
+            <Sun size={16} className={isAwake ? 'animate-pulse' : ''} />
+            {isAwake ? 'Screen Locked On' : 'Keep Screen On'}
+          </button>
+
           {/* ONLY GEOFF CAN SEE THIS BUTTON */}
           {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
             <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-xs flex items-center justify-center gap-2`} title="Inject Card Recipes"><Package size={16} /> Import</button>
