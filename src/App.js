@@ -93,13 +93,23 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
   window.crashCatcherAttached = true; 
   window.breadcrumbs = [];
 
-  // Silently record the last 15 buttons clicked
+// Silently record the last 15 buttons clicked
   window.addEventListener('click', (e) => {
     let target = e.target;
     // Find the closest button if they clicked an icon inside a button
     let btn = target.closest('button');
     if (btn) {
-      let text = btn.innerText || btn.getAttribute('aria-label') || 'Icon Button';
+      // Improved logic: Check title, aria-label, text, or the SVG class name
+      let text = btn.title || btn.getAttribute('aria-label') || btn.innerText || '';
+      if (!text.trim()) {
+        const svg = btn.querySelector('svg');
+        if (svg && svg.classList && svg.classList.length > 0) {
+           // Extracts 'Trash2' or 'Edit' from the Lucide SVG class
+           text = svg.classList[0].replace('lucide-', '').replace('lucide', 'Icon');
+        } else {
+           text = 'Icon Button';
+        }
+      }
       if (text.length > 40) text = text.substring(0, 40) + '...';
       window.breadcrumbs.push({ time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}), action: 'Clicked', target: text.trim().replace(/\n/g, ' ') });
       if (window.breadcrumbs.length > 15) window.breadcrumbs.shift();
@@ -4959,7 +4969,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const handleDeployTenant = async (e) => {
     e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
     try {
-      const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true };
+      const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, maintenance: true, timesheets: true };
       const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planType: 'Trial', billingStatus: 'Paid', createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
       const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
@@ -4972,8 +4982,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
 
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features
- || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
+    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
 
@@ -4982,7 +4991,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     await deleteDoc(doc(db, "restaurants", id)); addToast('Deleted', `${name} has been erased from existence.`);
   };
 
-const handleExportData = async (rest) => {
+  const handleExportData = async (rest) => {
     addToast('Compiling Data', 'Building CSV payload...');
     const uSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', rest.id)));
     let csv = "ID,Name,Email,Role,Phone,Status\n";
@@ -4995,7 +5004,7 @@ const handleExportData = async (rest) => {
   // --- DATABASE SNAPSHOT ENGINE (BACKUP & RESTORE) ---
   const handleCreateBackup = async (rest) => {
     addToast('Backing Up', `Compiling database snapshot for ${rest.name}...`);
-    const collectionsToBackup = ['users', 'shifts', 'recipes', 'inventoryItems', 'vendors', 'invoices', 'timePunches', 'sales', 'events', 'tasks', 'wasteLogs', 'timeOffRequests', 'prepCategories', 'roles', 'shiftSwaps'];
+    const collectionsToBackup = ['users', 'shifts', 'recipes', 'inventoryItems', 'vendors', 'invoices', 'timePunches', 'sales', 'events', 'tasks', 'wasteLogs', 'timeOffRequests', 'prepCategories', 'roles', 'shiftSwaps', 'maintenanceLogs'];
     const snapshot = { metadata: { restaurantId: rest.id, restaurantName: rest.name, timestamp: new Date().toISOString() }, data: {} };
 
     try {
@@ -5048,6 +5057,71 @@ const handleExportData = async (rest) => {
     e.target.value = '';
   };
 
+  // --- EMPLOYEE SPECIFIC BACKUP & RESTORE ENGINE ---
+  const handleBackupEmployee = async (u) => {
+    addToast('Backing Up', `Compiling data for ${u.name}...`);
+    const snapshot = { metadata: { userId: u.id, userName: u.name, timestamp: new Date().toISOString() }, data: { users: [u], shifts: [], timePunches: [], timeOffRequests: [] } };
+    try {
+      const shiftsSnap = await getDocs(query(collection(db, 'shifts'), where('employeeId', '==', u.id)));
+      snapshot.data.shifts = shiftsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const punchesSnap = await getDocs(query(collection(db, 'timePunches'), where('employeeId', '==', u.id)));
+      snapshot.data.timePunches = punchesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const timeOffSnap = await getDocs(query(collection(db, 'timeOffRequests'), where('userId', '==', u.id)));
+      snapshot.data.timeOffRequests = timeOffSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `86chaos_Employee_${u.name.replace(/\s+/g, '_')}_${getToday()}.json`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      addToast('Backup Complete', 'Employee JSON downloaded.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleRestoreEmployee = async (e, u) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (prompt(`CRITICAL: Type "RESTORE" to inject this backup into ${u.name}'s profile.`) !== 'RESTORE') {
+      e.target.value = ''; return addToast('Aborted', 'Restore canceled.');
+    }
+    addToast('Restoring', 'Injecting employee data...');
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const backup = JSON.parse(event.target.result);
+        if (backup.metadata.userId !== u.id && !window.confirm("ID mismatch. Inject anyway?")) return;
+        let count = 0;
+        for (const [colName, docs] of Object.entries(backup.data)) {
+          const promises = docs.map(d => {
+            const { id, ...data } = d;
+            return setDoc(doc(db, colName, id), data);
+          });
+          await Promise.all(promises);
+          count += docs.length;
+        }
+        addToast('Restore Complete', `Injected ${count} records.`);
+      } catch (err) { addToast('Error', 'Invalid backup file.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleDeleteGlobalUser = async (u) => {
+    if (prompt(`CRITICAL: Type "DELETE" to permanently erase ${u.name} and all their access.`) !== 'DELETE') {
+      return addToast('Aborted', 'User deletion canceled.');
+    }
+    try {
+      await deleteDoc(doc(db, "users", u.id));
+      addToast('Terminated', `User ${u.name} has been erased.`);
+    } catch (err) {
+      addToast('Error', 'Could not delete user.');
+    }
+  };
+
   // --- OBLITERATION ENGINE ---
   const handleNukeData = async (e) => {
     e.preventDefault();
@@ -5055,7 +5129,6 @@ const handleExportData = async (rest) => {
     setIsNuking(true);
     
     try {
-      // Re-authenticate using the master admin's password as a security lock
       await signInWithEmailAndPassword(auth, appUser.email, nukePassword);
       
       let cols = [];
@@ -5064,7 +5137,7 @@ const handleExportData = async (rest) => {
       else if (nukeTarget.type === 'recipes') cols = ['recipes'];
       else if (nukeTarget.type === 'events') cols = ['events'];
       else if (nukeTarget.type === 'users') cols = ['users'];
-      else if (nukeTarget.type === 'everything') cols = ['inventoryItems', 'vendors', 'invoices', 'users', 'recipes', 'shifts', 'timeOffRequests', 'shiftSwaps', 'events', 'wasteLogs', 'sales'];
+      else if (nukeTarget.type === 'everything') cols = ['inventoryItems', 'vendors', 'invoices', 'users', 'recipes', 'shifts', 'timeOffRequests', 'shiftSwaps', 'events', 'wasteLogs', 'sales', 'maintenanceLogs'];
 
       let totalDeleted = 0;
       for (const c of cols) {
@@ -5072,7 +5145,6 @@ const handleExportData = async (rest) => {
         const deletePromises = [];
         
         snap.forEach(d => {
-           // HARD SAFETY LOCK: Never delete the global admin user requesting the wipe
            if (c === 'users' && d.id === appUser.id) return;
            deletePromises.push(deleteDoc(doc(db, c, d.id)));
         });
@@ -5103,24 +5175,14 @@ const handleExportData = async (rest) => {
     for (const r of restaurants) {
       try {
         await addDoc(collection(db, "events"), { 
-          date: new Date().toISOString(), 
-          title: broadcastMsg.trim(), 
-          type: 'note', 
-          author: 'System Alert', 
-          isImportant: true, 
-          restaurantId: r.id, 
-          replies: [] 
+          date: new Date().toISOString(), title: broadcastMsg.trim(), type: 'note', author: 'System Alert', isImportant: true, restaurantId: r.id, replies: [] 
         });
         success++;
-      } catch (err) {
-        console.error("Megaphone blocked:", err);
-        failed++;
-      }
+      } catch (err) { failed++; }
     }
     
     if (failed > 0) addToast('Partial Alert', `Sent to ${success}, but Firebase blocked ${failed}. Check console.`);
     else addToast('Megaphone', `Message blasted successfully to ${success} locations.`);
-    
     setBroadcastMsg('');
   };
 
@@ -5136,15 +5198,11 @@ const handleExportData = async (rest) => {
         if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
         if (type === 'Recipe') await addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
         success++;
-      } catch (err) {
-        console.error("Forge blocked:", err);
-        failed++;
-      }
+      } catch (err) { failed++; }
     }
     
     if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
     else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
-    
     setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
   };
 
@@ -5156,11 +5214,10 @@ const handleExportData = async (rest) => {
     addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
   };
 
-const handleForceRefresh = async () => {
+  const handleForceRefresh = async () => {
     if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
     addToast('Executing', 'Sending refresh signal...');
-    const stamp = new Date().toISOString();
-    let count = 0;
+    const stamp = new Date().toISOString(); let count = 0;
     for (const r of restaurants) {
        try { await updateDoc(doc(db, "restaurants", r.id), { forceRefresh: stamp }); count++; } catch(e){}
     }
@@ -5178,12 +5235,8 @@ const handleForceRefresh = async () => {
     
     let count = 0;
     for (const r of restaurants) {
-      // SAFEGUARD: Never lock the workspace the Admin is currently using
       if (r.id !== appUser.restaurantId) {
-        try { 
-            await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); 
-            count++; 
-        } catch(e){}
+        try { await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); count++; } catch(e){}
       }
     }
     addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'suspended' : 'restored'}.`);
@@ -5219,7 +5272,17 @@ const handleForceRefresh = async () => {
                 <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
                 <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
               </div>
-<div className="pt-2 border-t border-[#2A353D]"><label className={T.label}>Module Access</label><div className="grid grid-cols-2 gap-2 mt-2">{['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team'].map(feat => (<label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]"><input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" /><span className="text-xs font-bold text-slate-300 capitalize">{feat}</span></label>))}</div></div>
+              <div className="pt-2 border-t border-[#2A353D]">
+                 <label className={T.label}>Module Access</label>
+                 <div className="grid grid-cols-2 gap-2 mt-2">
+                    {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
+                      <label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]">
+                        <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
+                        <span className="text-xs font-bold text-slate-300 capitalize">{feat}</span>
+                      </label>
+                    ))}
+                 </div>
+              </div>
               
               {/* LABS / CANARY ROLLOUT */}
               <div className="pt-2 border-t border-[#2A353D]">
@@ -5235,7 +5298,7 @@ const handleForceRefresh = async () => {
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
 
-{/* BACKUP & RESTORE */}
+            {/* BACKUP & RESTORE */}
             <div className="pt-4 border-t border-[#2A353D] mt-4 space-y-3">
               <h4 className="text-[10px] uppercase tracking-widest text-emerald-500 font-black mb-2">Database Backup & Recovery</h4>
               <div className="grid grid-cols-2 gap-2">
@@ -5293,9 +5356,10 @@ const handleForceRefresh = async () => {
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-{appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
+            {appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
               <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
-            )}          </div>
+            )}          
+          </div>
 
           {/* STALE ACCOUNT ALERTS */}
           {staleTenants.length > 0 && (
@@ -5351,13 +5415,12 @@ const handleForceRefresh = async () => {
                   </div>
                 </div>
               ))}
-        
-    </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* --- NEW TAB: GLOBAL USERS (User Impersonation) --- */}
+      {/* --- TAB: GLOBAL USERS --- */}
       {subTab === 'users' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-4 flex gap-3 items-center`}>
@@ -5365,20 +5428,33 @@ const handleForceRefresh = async () => {
             <input type="text" placeholder="Search any user by name, email, role, or ID..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
           </div>
           <div className={`divide-y ${T.border} ${T.card} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-{allUsers.filter(u => {
-  const restName = restaurants.find(r => r.id === u.restaurantId)?.name || '';
-  return (u.name + u.email + u.role + u.id + restName).toLowerCase().includes(userSearch.toLowerCase());
-}).slice(0, 50).map(u => {              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
+            {allUsers.filter(u => {
+              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || '';
+              return (u.name + u.email + u.role + u.id + restName).toLowerCase().includes(userSearch.toLowerCase());
+            }).slice(0, 50).map(u => {              
+              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
               return (
-                <div key={u.id} className={`${T.row} flex justify-between items-center`}>
-<div>
+                <div key={u.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-3`}>
+                  <div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
                     <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName} <span className="mx-1">|</span> <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span></div>
                   </div>
-                  <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
-                    <Moon size={14} /> Possess
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
+                      <Moon size={14} /> Possess
+                    </button>
+                    <button onClick={() => handleBackupEmployee(u)} className="p-1.5 bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-emerald-400 rounded-lg transition-colors shadow-sm" title="Download User Data JSON">
+                      💾
+                    </button>
+                    <label className="p-1.5 bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-blue-400 rounded-lg transition-colors shadow-sm cursor-pointer" title="Inject Data to User">
+                      <input type="file" accept=".json" onChange={(e) => handleRestoreEmployee(e, u)} className="hidden" />
+                      🔄
+                    </label>
+                    <button onClick={() => handleDeleteGlobalUser(u)} className="p-1.5 bg-red-900/10 border border-red-900/30 text-red-500 hover:bg-red-900/40 rounded-lg transition-colors shadow-sm" title="Delete Account">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               )
             })}
@@ -5473,14 +5549,13 @@ const handleForceRefresh = async () => {
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2
- gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className={`${T.card} p-5 border-emerald-900/30`}>
               <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
               <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
             </div>
- <div className={`${T.card} p-5 border-blue-900/30`}>
+            <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
