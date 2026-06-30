@@ -4093,8 +4093,10 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
   const [sysSameRoleTrades, setSysSameRoleTrades] = useState(sys.sameRoleTrades ?? true);
   const [sysBlockEarly, setSysBlockEarly] = useState(sys.blockEarly ?? true);
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
-  const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
-
+const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
+  const [sysWageAccess, setSysWageAccess] = useState(sys.wageAccess || []);
+  const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
+  const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
   const handleGeocodeAddress = async () => {
     if (!sysAddress.trim()) return addToast('Error', 'Please enter a full address first.');
     addToast('Locating...', 'Searching map database...');
@@ -4170,10 +4172,11 @@ const handleSaveSystem = async (e) => {
     e.preventDefault();
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
-      await setDoc(doc(db, "restaurants", targetId), {
+await setDoc(doc(db, "restaurants", targetId), {
         systemSettings: { 
           geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
-          breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime 
+          breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime,
+          wageAccess: sysWageAccess, enableIpWhitelist: sysEnableIpWhitelist, ipWhitelist: sysIpWhitelist
         }
       }, { merge: true });
       addToast('System Saved', 'Global workspace configurations updated.');
@@ -4492,12 +4495,40 @@ const handleSaveSystem = async (e) => {
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-2">
                <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
-               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
+<div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
                  <div>
                    <div className="text-xs font-bold text-white">Overtime Alert Threshold</div>
                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
                  </div>
                  <input type="number" min="1" value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
+               </div>
+             </div>
+
+             <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Security & Access Control</div>
+             <div className="space-y-2">
+               <Toggle label="Strict IP Whitelisting" desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} />
+               {sysEnableIpWhitelist && (
+                 <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl animate-[slideIn_0.2s_ease-out] ml-4">
+                   <label className={T.label}>Authorized IP Addresses (Comma Separated)</label>
+                   <input type="text" value={sysIpWhitelist} onChange={e=>setSysIpWhitelist(e.target.value)} className={`${T.input} py-1.5 text-xs font-mono`} placeholder="e.g. 192.168.1.1, 10.0.0.5" />
+                 </div>
+               )}
+
+               <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl mt-2">
+                 <div className="text-xs font-bold text-white mb-1">Wage Visibility Exceptions</div>
+                 <div className={`text-[9px] font-medium ${T.muted} mb-3 leading-snug`}>By default, only Full Admins can see hourly wages and labor costs. Select specific employees below to grant them exception access to view wages.</div>
+                 <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-1 bg-[#0B0E11] p-2 border border-[#2A353D] rounded-lg">
+                   {users.filter(u => u.isActive !== false && !u.isAdmin).map(u => (
+                     <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-[#1A2126] p-1.5 rounded transition-colors">
+                       <input type="checkbox" checked={sysWageAccess.includes(u.id)} onChange={e => {
+                         if (e.target.checked) setSysWageAccess([...sysWageAccess, u.id]);
+                         else setSysWageAccess(sysWageAccess.filter(id => id !== u.id));
+                       }} className="w-3.5 h-3.5 accent-[#8F6040] bg-[#12161A] border-[#2A353D]" />
+                       <span className="text-[10px] font-bold text-slate-300">{u.name} <span className="text-slate-500 font-normal">({u.role})</span></span>
+                     </label>
+                   ))}
+                   {users.filter(u => u.isActive !== false && !u.isAdmin).length === 0 && <div className="text-[10px] text-slate-500 text-center py-2">No non-admin staff available.</div>}
+                 </div>
                </div>
              </div>
 
