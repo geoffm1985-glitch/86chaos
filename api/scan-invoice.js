@@ -2,7 +2,7 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// THE FIX: Override Vercel's default 1MB upload limit so PDFs don't crash the server
+// Override Vercel's default 1MB upload limit so PDFs don't crash the server
 export const config = {
   api: {
     bodyParser: {
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     `;
 
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-flash", // <-- THE FATAL ERROR IS FIXED HERE
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: schema,
@@ -84,7 +84,11 @@ export default async function handler(req, res) {
       "Extract the vendor data and line items strictly according to the system instructions."
     ]);
 
-    const resultData = JSON.parse(response.response.text());
+    // Safety net: Strip out formatting tags if the AI accidentally includes them
+    let rawText = response.response.text();
+    rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    const resultData = JSON.parse(rawText);
     return res.status(200).json(resultData);
 
   } catch (error) {
