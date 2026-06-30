@@ -1,13 +1,18 @@
-const { onRequest } = require("firebase-functions/v2/https");
-const { GoogleGenerativeAI, SchemaType } = require("@google/generative-ai");
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
-// Initialize Gemini SDK
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-exports.scanInvoice = onRequest({ cors: true, maxInstances: 10 }, async (req, res) => {
+export default async function handler(req, res) {
+  // Only allow POST requests
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
   try {
     const { fileBase64, mimeType } = req.body;
-    if (!fileBase64 || !mimeType) return res.status(400).json({ error: "Missing file data." });
+    if (!fileBase64 || !mimeType) {
+      return res.status(400).json({ error: "Missing file data." });
+    }
 
     // Isolate base64 data string
     const base64Data = fileBase64.split(",")[1] || fileBase64;
@@ -31,7 +36,6 @@ exports.scanInvoice = onRequest({ cors: true, maxInstances: 10 }, async (req, re
               unitPrice: { type: SchemaType.NUMBER },
               totalPrice: { type: SchemaType.NUMBER }
             },
-            // productCode is strictly required
             required: ["itemName", "productCode", "quantity", "unitPrice", "totalPrice"]
           }
         }
@@ -58,7 +62,7 @@ exports.scanInvoice = onRequest({ cors: true, maxInstances: 10 }, async (req, re
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.1, // Set near zero to force strict robotic accuracy
+        temperature: 0.1, // Near zero forces strict robotic accuracy
       },
       systemInstruction: systemInstruction
     });
@@ -75,4 +79,4 @@ exports.scanInvoice = onRequest({ cors: true, maxInstances: 10 }, async (req, re
     console.error("Parse Error:", error);
     return res.status(500).json({ error: error.message });
   }
-});
+}
