@@ -4754,7 +4754,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
   };
 
-  const handleForceRefresh = async () => {
+const handleForceRefresh = async () => {
     if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
     addToast('Executing', 'Sending refresh signal...');
     const stamp = new Date().toISOString();
@@ -4763,6 +4763,28 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
        try { await updateDoc(doc(db, "restaurants", r.id), { forceRefresh: stamp }); count++; } catch(e){}
     }
     addToast('Refresh Broadcast', `Hard reload signal sent to ${count} databases.`);
+  };
+
+  const handleGlobalLockdown = async (lock) => {
+    if (lock) {
+        if (prompt('CRITICAL: This will instantly lock out EVERY client workspace (except yours) by triggering the billing lock screen. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
+        addToast('Executing', 'Initiating global lockdown...');
+    } else {
+        if (!window.confirm('Restore access to all suspended workspaces?')) return;
+        addToast('Executing', 'Lifting lockdown...');
+    }
+    
+    let count = 0;
+    for (const r of restaurants) {
+      // SAFEGUARD: Never lock the workspace the Admin is currently using
+      if (r.id !== appUser.restaurantId) {
+        try { 
+            await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); 
+            count++; 
+        } catch(e){}
+      }
+    }
+    addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'suspended' : 'restored'}.`);
   };
 
   const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Administrator access given.'); };
@@ -5043,11 +5065,21 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
               <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
             </div>
-            <div className={`${T.card} p-5 border-blue-900/30`}>
+ <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
             </div>
+            
+            <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
+              <h3 className="font-black text-white mb-1">Global Lockdown</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly suspends every tenant by triggering the Past Due billing lock. Bypasses your own workspace to prevent self-lockout.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => handleGlobalLockdown(true)} className="w-full bg-red-900/20 text-red-500 border border-red-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors flex items-center justify-center gap-2"><Shield size={16}/> Lock All</button>
+                <button onClick={() => handleGlobalLockdown(false)} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2">Unlock All</button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
