@@ -4636,7 +4636,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     await deleteDoc(doc(db, "restaurants", id)); addToast('Deleted', `${name} has been erased from existence.`);
   };
 
-  const handleExportData = async (rest) => {
+const handleExportData = async (rest) => {
     addToast('Compiling Data', 'Building CSV payload...');
     const uSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', rest.id)));
     let csv = "ID,Name,Email,Role,Phone,Status\n";
@@ -4644,6 +4644,62 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     const link = document.createElement("a"); link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csv)); link.setAttribute("download", `${rest.name.replace(/\s+/g, '_')}_Users_Export.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     addToast('Export Complete', 'Data delivered to downloads folder.');
+  };
+
+  // --- DATABASE SNAPSHOT ENGINE (BACKUP & RESTORE) ---
+  const handleCreateBackup = async (rest) => {
+    addToast('Backing Up', `Compiling database snapshot for ${rest.name}...`);
+    const collectionsToBackup = ['users', 'shifts', 'recipes', 'inventoryItems', 'vendors', 'invoices', 'timePunches', 'sales', 'events', 'tasks', 'wasteLogs', 'timeOffRequests', 'prepCategories', 'roles', 'shiftSwaps'];
+    const snapshot = { metadata: { restaurantId: rest.id, restaurantName: rest.name, timestamp: new Date().toISOString() }, data: {} };
+
+    try {
+      for (const colName of collectionsToBackup) {
+        const q = query(collection(db, colName), where("restaurantId", "==", rest.id));
+        const snap = await getDocs(q);
+        snapshot.data[colName] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      }
+      
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `86chaos_Backup_${rest.name.replace(/\s+/g, '_')}_${getToday()}.json`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      addToast('Backup Complete', 'JSON snapshot downloaded successfully.');
+    } catch (err) { addToast('Backup Failed', err.message); }
+  };
+
+  const handleRestoreBackup = async (e, rest) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (prompt(`CRITICAL: Type "RESTORE" to inject this backup file into ${rest.name}'s database.`) !== 'RESTORE') {
+      e.target.value = '';
+      return addToast('Aborted', 'Restore canceled.');
+    }
+
+    addToast('Restoring', 'Injecting data. Do not close your browser...');
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const backup = JSON.parse(event.target.result);
+        if (backup.metadata.restaurantId !== rest.id) return addToast('Error', 'Tenant ID mismatch. You cannot restore a backup from a different workspace.');
+
+        let restoredCount = 0;
+        for (const [colName, docs] of Object.entries(backup.data)) {
+          const promises = docs.map(d => {
+             const { id, ...data } = d;
+             return setDoc(doc(db, colName, id), data);
+          });
+          await Promise.all(promises);
+          restoredCount += docs.length;
+        }
+        addToast('Restore Complete', `Successfully injected ${restoredCount} documents.`);
+      } catch (err) { addToast('Error', 'Invalid backup file or upload failed.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   // --- OBLITERATION ENGINE ---
@@ -4833,14 +4889,27 @@ const handleForceRefresh = async () => {
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
 
+{/* BACKUP & RESTORE */}
+            <div className="pt-4 border-t border-[#2A353D] mt-4 space-y-3">
+              <h4 className="text-[10px] uppercase tracking-widest text-emerald-500 font-black mb-2">Database Backup & Recovery</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => handleCreateBackup(editingRest)} className="w-full bg-emerald-900/20 text-emerald-400 font-bold py-2.5 rounded-lg border border-emerald-900/50 hover:bg-emerald-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
+                  💾 Download JSON
+                </button>
+                <label className="w-full bg-blue-900/20 text-blue-400 font-bold py-2.5 rounded-lg border border-blue-900/50 hover:bg-blue-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
+                  <span>🔄 Upload Restore</span>
+                  <input type="file" accept=".json" onChange={(e) => handleRestoreBackup(e, editingRest)} className="hidden" />
+                </label>
+              </div>
+              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2 mt-2">
+                <ClipboardList size={14}/> Download CSV User Export
+              </button>
+            </div>
+
             {/* DANGER ZONE */}
             <div className="pt-4 border-t border-red-900/50 mt-4 space-y-3">
-              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2">
-                <ClipboardList size={14}/> Download CSV Export
-              </button>
-
               <div>
-                <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center mt-4">Danger Zone (Data Wipes)</h4>
+                <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center">Danger Zone (Data Wipes)</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'inventory', label: 'Inventory & Vendors' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Inventory</button>
                   <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'schedule', label: 'Schedule & Time Off' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Schedule</button>
