@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -220,12 +219,13 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 // --- 3. Management ---
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert });
   if (isEnabled('team') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
-  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Settings size={18}/> });
+  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
   // --- 4. System & Security ---
-  if (isGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Shield size={18}/> });
-  if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+  const isTrueGod = appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' || appUser?.isSuperAdmin === true;
+  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
+  if (appUser?.isAdmin || isTrueGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Preferences', icon: <Settings size={18}/> });
 
   return (
@@ -5345,8 +5345,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'suspended' : 'restored'}.`);
   };
 
-  const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Administrator access given.'); };
-  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
+const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Access given. The user MUST log out and log back in to see the new tab.'); };  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
 
   // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Pro' ? 99 : 0), 0);
@@ -6035,9 +6034,9 @@ useEffect(() => {
 {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
 {activeTabState === 'prep' && <TabPrep currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'recipes' && <TabRecipes appUser={liveAppUser} addToast={addToast} />}
-{activeTabState === 'inventory' && <TabInventory addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'maintenance' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance appUser={liveAppUser} addToast={addToast} />}
+{activeTabState === 'inventory' && clientFeatures?.inventory !== false && <TabInventory addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
         {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
 {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} />}      </main>
