@@ -43,14 +43,16 @@ export default async function handler(req, res) {
       required: ["vendorName", "invoiceTotal", "lineItems"]
     };
 
-    // The System Instruction that fixes the PFG formatting and the math
-    const systemInstruction = `
+const systemInstruction = `
     You are an expert restaurant inventory accounting engine extracting data from supplier invoices.
     
     CRITICAL RULES FOR PRODUCT CODES (SKUs):
-    1. You MUST extract a product code for EVERY item and return it in the "productCode" field.
-    2. For PFG / Performance Foodservice documents, the code is usually a 5-to-6 character string (e.g., VF480, EK598, GW640, 13206) found on the line IMMEDIATELY BELOW the main item description, just before the brand name. 
-    3. Isolate this code completely. Do not merge it into the item name. If no code exists at all, return an empty string.
+    1. You MUST extract a product code (SKU, Item #, Product ID) for EVERY item and return it in the "productCode" field.
+    2. Supplier formats vary wildly. To find the product code, look for:
+       - Alphanumeric strings or numbers under headers like "Item", "Item #", "SKU", "Product ID", or "Code".
+       - Identifiers floating immediately before, above, or below the main item description or brand name.
+       - Formats typically look like identifiers (e.g., 13206, VF480, 100456-2, 00412, SYS-998).
+    3. Isolate this code completely. Do not merge it into the item name. If absolutely no code exists anywhere near the item, return an empty string.
     
     CRITICAL RULES FOR MATH & TOTALS:
     1. Calculate the line item total yourself: quantity * unitPrice = totalPrice.
