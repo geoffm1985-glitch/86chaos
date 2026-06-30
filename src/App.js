@@ -63,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.6.1';
+const CURRENT_VERSION = '9.0.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -209,7 +209,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   
   // --- 3. Management ---
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert });
-  if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Settings size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
   // --- 4. System & Security ---
@@ -4530,6 +4531,173 @@ const handleSaveSystem = async (e) => {
   );
 };
 
+
+// --- MAINTENANCE LOG TAB ---
+const TabMaintenance = ({ appUser, addToast }) => {
+  const logs = useLiveCollection('maintenanceLogs', appUser?.restaurantId);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Form State
+  const [equipment, setEquipment] = useState('');
+  const [issue, setIssue] = useState('');
+  const [urgency, setUrgency] = useState('Standard');
+  const [status, setStatus] = useState('Reported');
+  const [cost, setCost] = useState('');
+  const [notes, setNotes] = useState('');
+  const [editingLogId, setEditingLogId] = useState(null);
+
+  const resetForm = () => {
+    setEquipment(''); setIssue(''); setUrgency('Standard'); 
+    setStatus('Reported'); setCost(''); setNotes(''); setEditingLogId(null);
+  };
+
+  const handleEdit = (log) => {
+    setEquipment(log.equipment); setIssue(log.issue); setUrgency(log.urgency);
+    setStatus(log.status); setCost(log.cost || ''); setNotes(log.notes || '');
+    setEditingLogId(log.id); setIsModalOpen(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!equipment.trim() || !issue.trim()) return addToast('Error', 'Equipment and issue are required.');
+    
+    const payload = {
+      equipment: equipment.trim(),
+      issue: issue.trim(),
+      urgency,
+      status,
+      cost: parseFloat(cost) || 0,
+      notes: notes.trim(),
+      restaurantId: appUser.restaurantId,
+      lastUpdated: new Date().toISOString(),
+      updatedBy: appUser.name
+    };
+
+    try {
+      if (editingLogId) {
+        if (status === 'Resolved' && logs.find(l => l.id === editingLogId)?.status !== 'Resolved') {
+            payload.resolvedAt = new Date().toISOString();
+        }
+        await updateDoc(doc(db, "maintenanceLogs", editingLogId), payload);
+        addToast('Updated', 'Maintenance log updated successfully.');
+      } else {
+        payload.reportedAt = new Date().toISOString();
+        payload.reportedBy = appUser.name;
+        await addDoc(collection(db, "maintenanceLogs"), payload);
+        addToast('Logged', 'New equipment issue reported.');
+      }
+      setIsModalOpen(false); resetForm();
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const getStatusColor = (s) => {
+    if (s === 'Reported') return 'text-orange-400 bg-orange-900/20 border-orange-900/50';
+    if (s === 'In Progress' || s === 'Pending Parts') return 'text-blue-400 bg-blue-900/20 border-blue-900/50';
+    if (s === 'Resolved') return 'text-emerald-400 bg-emerald-900/20 border-emerald-900/50';
+    return 'text-slate-400 bg-slate-900/20 border-slate-700';
+  };
+
+  const getUrgencyColor = (u) => {
+    if (u === 'Critical') return 'text-red-500 font-black animate-pulse';
+    if (u === 'High') return 'text-orange-500 font-bold';
+    return 'text-slate-400';
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+      
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Log" : "Report Equipment Issue"}>
+        <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={T.label}>Equipment / Area</label>
+              <input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required />
+            </div>
+            <div>
+              <label className={T.label}>Urgency Level</label>
+              <select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}>
+                <option value="Standard">Standard (Monitor)</option>
+                <option value="High">High (Needs Repair Soon)</option>
+                <option value="Critical">Critical (Down/Safety Hazard)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className={T.label}>Issue Description</label>
+            <textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-[#2A353D]">
+            <div>
+              <label className={T.label}>Current Status</label>
+              <select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}>
+                <option value="Reported">Reported (Open)</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Pending Parts">Pending Parts</option>
+                <option value="Resolved">Resolved / Fixed</option>
+              </select>
+            </div>
+            <div>
+              <label className={T.label}>Repair Cost ($)</label>
+              <input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." />
+            </div>
+          </div>
+          <div>
+            <label className={T.label}>Repair Notes / Vendor Used</label>
+            <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" />
+          </div>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingLogId ? 'Update Log' : 'Submit Report'}</button>
+        </form>
+      </Modal>
+
+      <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-lg">
+        <div>
+          <h2 className="text-xl font-black text-white flex items-center gap-2"><Settings className={T.copper} size={24}/> Equipment & Maintenance</h2>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track repairs, vendors, and maintenance costs.</p>
+        </div>
+        <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
+      </div>
+
+      <div className={`${T.card} overflow-hidden`}>
+        <div className={T.th}>Active & Resolved Issues</div>
+        <div className={`divide-y ${T.border}`}>
+          {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged. Kitchen is 100% operational.</div>}
+          
+          {logs.sort((a,b) => {
+             // Sort by unresolved first, then by urgency, then by date
+             if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
+             if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
+             if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
+             if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
+             return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
+          }).map(log => (
+            <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-white text-base">{log.equipment}</span>
+                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
+                  {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
+                </div>
+                <div className="text-sm font-medium text-slate-300 mt-1">{log.issue}</div>
+                <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
+                  <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>
+                  <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
+                  {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 md:self-end">
+                <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
+                <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+
 // --- AUDIT LOGS TAB (Master Admin Only) ---
 const TabAuditLog = ({ appUser }) => {
   const logs = useLiveCollection('auditLogs', appUser?.restaurantId);
@@ -5689,9 +5857,10 @@ useEffect(() => {
 {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
 {activeTabState === 'prep' && <TabPrep currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'recipes' && <TabRecipes appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'inventory' && <TabInventory addToast={addToast} appUser={liveAppUser} />}
+{activeTabState === 'inventory' && <TabInventory addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-{activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
+        {activeTabState === 'maintenance' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance appUser={liveAppUser} addToast={addToast} />}
+        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
         {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
 {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} />}      </main>
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
@@ -5707,7 +5876,7 @@ useEffect(() => {
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.6.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 9.0.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
       </div>
     </div>
