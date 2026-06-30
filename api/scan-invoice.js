@@ -2,6 +2,15 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// THE FIX: Override Vercel's default 1MB upload limit so PDFs don't crash the server
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
+
 export default async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== 'POST') {
@@ -43,7 +52,8 @@ export default async function handler(req, res) {
       required: ["vendorName", "invoiceTotal", "lineItems"]
     };
 
-const systemInstruction = `
+    // The Generalized System Instruction for ALL suppliers
+    const systemInstruction = `
     You are an expert restaurant inventory accounting engine extracting data from supplier invoices.
     
     CRITICAL RULES FOR PRODUCT CODES (SKUs):
