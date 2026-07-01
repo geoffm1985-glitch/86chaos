@@ -2985,12 +2985,13 @@ const TabInventory = ({ addToast, appUser }) => {
     setConfirmModal({ isOpen: true, vendorId, items: list });
   };
 
-  const executeOrder = async (method) => {
+const executeOrder = async (method) => {
     const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
     
     let bodyText = items.map(i => `${i.orderQty}x ${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize})`).join('%0D%0A');
     let fullText = `Order via 86chaos%0D%0A%0D%0A${bodyText}`;
 
+    // UNIVERSAL FAILSAFE: Always copy to clipboard in the background just in case
     try { await navigator.clipboard.writeText(decodeURIComponent(fullText)); } catch (e) { console.log(e); }
 
     if (method === 'csv') {
@@ -3002,35 +3003,43 @@ const TabInventory = ({ addToast, appUser }) => {
       const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
       if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
       else { window.location.href = emailUrl; }
-} else if (method === 'sms') {
+    } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
       if (smsUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
       else { window.location.href = smsUrl; }
     } else if (method === 'edi') {
-      if (!vendor?.ediEndpoint) return addToast('Missing Configuration', 'Please add an EDI API Endpoint URL in the Vendor Settings first.');
+      
+      // 1. Check for Endpoint
+      if (!vendor?.ediEndpoint) {
+        return addToast('Missing Config', 'Please add an EDI API Webhook URL in the Vendor Settings first.');
+      }
+      
       addToast('Transmitting', `Establishing secure handshake with ${vendor.name}...`);
       
-      // Compile machine-readable payload
+      // 2. Compile Machine-Readable Payload
       const ediPayload = {
         restaurantId: appUser.restaurantId,
         timestamp: new Date().toISOString(),
         items: items.map(i => ({ sku: i.pfgCode || 'UNKNOWN', quantity: i.orderQty, packSize: i.packSize }))
       };
 
+      // 3. Transmit (Currently simulating the API call)
       try {
-        // Simulate API Handshake to Broadliner
         await new Promise(resolve => setTimeout(resolve, 1500));
-        console.log(`EDI Payload sent to ${vendor.ediEndpoint}:`, ediPayload);
+        console.log(`[EDI SIMULATION] Payload sent to ${vendor.ediEndpoint}:`, ediPayload);
         addToast('EDI Success', `Order securely injected into ${vendor.name}'s system.`);
       } catch (err) {
         addToast('EDI Failure', 'Connection timed out. Retrying...');
-        return; // Abort stock updates on failure
+        return; // Abort stock updates on failure so the user can try again
       }
+
     } else {
       addToast('Copied', 'Order list copied to clipboard!');
     }
     
+    // Update Pending Stock
     for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
+    setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
   };
 
   const handleReceiveDelivery = async (vendorId) => {
