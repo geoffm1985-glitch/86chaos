@@ -5219,10 +5219,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0); 
 
-  // Form States
-  const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
+// Form States
+  const [rName, setRName] = useState(''); const [rAddress, setRAddress] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
-const [editingRest, setEditingRest] = useState(null);
+  const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
 
@@ -5286,18 +5286,38 @@ const [editingRest, setEditingRest] = useState(null);
     return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
   }, []);
 
-  // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
+// --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
   const handleDeployTenant = async (e) => {
-    e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
+    e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim() || !rAddress.trim()) return;
     try {
       const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, maintenance: true, timesheets: true };
-      const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planType: 'Trial', billingStatus: 'Paid', createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
+      
+      const newRestRef = await addDoc(collection(db, "restaurants"), { 
+        name: rName.trim(), 
+        ownerName: oName.trim(), 
+        ownerEmail: oEmail.toLowerCase().trim(), 
+        ownerPhone: oPhone.trim(),
+        isActive: true, 
+        isReadOnly: false, 
+        features: defaultFeatures, 
+        labs: {}, 
+        planType: 'Trial', 
+        billingStatus: 'Paid', 
+        createdAt: new Date().toISOString(), 
+        lastActive: new Date().toISOString(),
+        systemSettings: { address: rAddress.trim(), geofenceRadius: 300 } // Pre-load address for Geofencing
+      });
+      
       const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
+      
       await setDoc(doc(db, "users", newAuthUid), { name: oName.trim(), email: oEmail.toLowerCase().trim(), password: tPass, role: 'General Manager', isAdmin: true, isActive: true, forcePasswordChange: true, restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true } });
+      
       const welcomeMsg = `Welcome to 86chaos!\n\nYour restaurant OS is live. Access it here: https://app.86chaos.com\n\nUsername: ${oEmail.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in to set a permanent password.`;
       window.location.href = `mailto:${oEmail.toLowerCase().trim()}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${rName.trim()}`)}&body=${encodeURIComponent(welcomeMsg)}`;
-      addToast('Tenant Deployed', `${rName} is now live.`); setRName(''); setOName(''); setOEmail('');
+      
+      addToast('Tenant Deployed', `${rName} is now live.`); 
+      setRName(''); setOName(''); setOEmail(''); setOPhone(''); setRAddress('');
     } catch (error) { addToast('Deployment Failed', error.message); }
   };
 
@@ -5724,12 +5744,15 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         </div>
       )}
 
-      {/* --- TAB: TENANTS --- */}
-      {subTab === 'tenants' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <form onSubmit={handleDeployTenant} className={`${T.card} p-5 border-red-900/50 shadow-[0_0_20px_rgba(220,38,38,0.1)]`}>
+<form onSubmit={handleDeployTenant} className={`${T.card} p-5 border-red-900/50 shadow-[0_0_20px_rgba(220,38,38,0.1)]`}>
             <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2">Deploy New Workspace</h2></div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Restaurant Name" value={rName} onChange={e=>setRName(e.target.value)} className={T.input} required /><input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required /><input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required /><input type="tel" placeholder="Owner Phone" value={oPhone} onChange={e=>setOPhone(e.target.value)} className={T.input} required /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input type="text" placeholder="Restaurant Name" value={rName} onChange={e=>setRName(e.target.value)} className={T.input} required />
+              <input type="text" placeholder="Full Street Address" value={rAddress} onChange={e=>setRAddress(e.target.value)} className={T.input} required />
+              <input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required />
+              <input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required />
+              <input type="tel" placeholder="Owner Phone" value={oPhone} onChange={e=>setOPhone(e.target.value)} className={`${T.input} sm:col-span-2`} required />
+            </div>
             <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database & Email Credentials</button>
           </form>
 
