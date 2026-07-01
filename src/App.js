@@ -5737,7 +5737,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             </div>
           )}
 
-      <div className={`${T.card} p-6 border-red-900/30`}>
+<div className={`${T.card} p-6 border-red-900/30`}>
             <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Shield className="text-red-500" size={18}/> System Status</h3>
             <div className="flex items-center gap-3"><span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span><span className="text-sm font-bold text-slate-300">All Database Shards Operational   Version {CURRENT_VERSION} Online</span></div>
           </div>
@@ -5748,6 +5748,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
       {subTab === 'tenants' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleDeployTenant} className={`${T.card} p-5 border-red-900/50 shadow-[0_0_20px_rgba(220,38,38,0.1)]`}>
+            <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2">Deploy New Workspace</h2></div>
 
 <form onSubmit={handleDeployTenant} className={`${T.card} p-5 border-red-900/50 shadow-[0_0_20px_rgba(220,38,38,0.1)]`}>
             <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2">Deploy New Workspace</h2></div>
