@@ -4021,9 +4021,10 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
               <div key={r.id} className={T.row}>
                 <div className="flex-1">
                   <div className="font-black text-sm text-white leading-tight">{r.userName}</div>
-                  <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex items-center gap-2`}>
+          <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex flex-wrap items-center gap-2`}>
                     {formatDisplayDate(r.date)} {r.isPartial && <span className={`text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}
                     {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1.5 py-0.5 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                    {r.submittedAt && <span className="text-slate-500 border-l border-[#2A353D] pl-2 ml-1">Req: {new Date(r.submittedAt).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -4109,11 +4110,12 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
                         {formatDisplayDate(r.date)}
                         {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1 rounded uppercase tracking-widest text-[8px]">Pending</span>}
                       </div>
-                      {r.isPartial ? (
+             {r.isPartial ? (
                         <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-wider mt-0.5">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</div>
                       ) : (
                         <div className="text-[9px] text-red-400 font-black uppercase tracking-wider mt-0.5">Full Day Off</div>
                       )}
+                      {r.submittedAt && <div className="text-[9px] font-bold text-slate-500 mt-1">Submitted: {new Date(r.submittedAt).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</div>}
                     </div>
                     <button
                       type="button"
