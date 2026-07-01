@@ -62,7 +62,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '9.0.0';
+const CURRENT_VERSION = '9.5.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -4021,9 +4021,10 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
               <div key={r.id} className={T.row}>
                 <div className="flex-1">
                   <div className="font-black text-sm text-white leading-tight">{r.userName}</div>
-                  <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex items-center gap-2`}>
+          <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex flex-wrap items-center gap-2`}>
                     {formatDisplayDate(r.date)} {r.isPartial && <span className={`text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}
                     {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1.5 py-0.5 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                    {r.submittedAt && <span className="text-slate-500 border-l border-[#2A353D] pl-2 ml-1">Req: {new Date(r.submittedAt).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -4109,11 +4110,12 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
                         {formatDisplayDate(r.date)}
                         {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1 rounded uppercase tracking-widest text-[8px]">Pending</span>}
                       </div>
-                      {r.isPartial ? (
+             {r.isPartial ? (
                         <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-wider mt-0.5">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</div>
                       ) : (
                         <div className="text-[9px] text-red-400 font-black uppercase tracking-wider mt-0.5">Full Day Off</div>
                       )}
+                      {r.submittedAt && <div className="text-[9px] font-bold text-slate-500 mt-1">Submitted: {new Date(r.submittedAt).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</div>}
                     </div>
                     <button
                       type="button"
@@ -5219,14 +5221,49 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0); 
 
-  // Form States
-  const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
+// Form States
+  const [rName, setRName] = useState(''); const [rAddress, setRAddress] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
-  const [editingRest, setEditingRest] = useState(null);
-  const [forgeRecipeTitle, setForgeRecipeTitle] = useState(''); const [forgeRecipeBody, setForgeRecipeBody] = useState('');
+const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
 
+  // Live Banner States
+  const [bannerTarget, setBannerTarget] = useState('ALL');
+  const [bannerText, setBannerText] = useState('');
+
+  const handlePushBanner = async (e) => {
+    e.preventDefault();
+    if (!bannerText.trim()) return addToast('Error', 'Banner text required.');
+    if (!window.confirm("Pin this banner to the top of the app?")) return;
+    
+    addToast('Deploying', 'Pushing banner to selected workspace(s)...');
+    try {
+      if (bannerTarget === 'ALL') {
+        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: bannerText.trim() }));
+        await Promise.all(promises);
+      } else {
+        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: bannerText.trim() });
+      }
+      addToast('Success', 'Banner deployed successfully.');
+      setBannerText('');
+    } catch(err) { addToast('Error', err.message); }
+  };
+
+  const handleClearBanner = async () => {
+    if (!window.confirm("Clear active banners for the selected target?")) return;
+    addToast('Clearing', 'Removing banners...');
+    try {
+      if (bannerTarget === 'ALL') {
+        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: null }));
+        await Promise.all(promises);
+      } else {
+        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: null });
+      }
+      addToast('Success', 'Banner(s) cleared.');
+    } catch(err) { addToast('Error', err.message); }
+  };
+  
   // Nuke Security States
   const [nukeTarget, setNukeTarget] = useState(null);
   const [nukePassword, setNukePassword] = useState('');
@@ -5251,24 +5288,49 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
   }, []);
 
-  // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
+// --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
   const handleDeployTenant = async (e) => {
-    e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
+    e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim() || !rAddress.trim()) return;
     try {
       const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, maintenance: true, timesheets: true };
-      const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planType: 'Trial', billingStatus: 'Paid', createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
+      const newRestRef = await addDoc(collection(db, "restaurants"), { 
+        name: rName.trim(), 
+        ownerName: oName.trim(), 
+        ownerEmail: oEmail.toLowerCase().trim(), 
+        ownerPhone: oPhone.trim(),
+        isActive: true, 
+        isReadOnly: false, 
+        features: defaultFeatures, 
+        labs: {}, 
+        planType: 'Trial', 
+        billingStatus: 'Paid', 
+        createdAt: new Date().toISOString(), 
+        lastActive: new Date().toISOString(),
+        systemSettings: { address: rAddress.trim(), geofenceRadius: 300 }
+      });
       const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
       await setDoc(doc(db, "users", newAuthUid), { name: oName.trim(), email: oEmail.toLowerCase().trim(), password: tPass, role: 'General Manager', isAdmin: true, isActive: true, forcePasswordChange: true, restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true } });
       const welcomeMsg = `Welcome to 86chaos!\n\nYour restaurant OS is live. Access it here: https://app.86chaos.com\n\nUsername: ${oEmail.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in to set a permanent password.`;
       window.location.href = `mailto:${oEmail.toLowerCase().trim()}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${rName.trim()}`)}&body=${encodeURIComponent(welcomeMsg)}`;
-      addToast('Tenant Deployed', `${rName} is now live.`); setRName(''); setOName(''); setOEmail('');
-    } catch (error) { addToast('Deployment Failed', error.message); }
+addToast('Tenant Deployed', `${rName} is now live.`); setRName(''); setOName(''); setOEmail(''); setOPhone(''); setRAddress('');    } catch (error) { addToast('Deployment Failed', error.message); }
   };
 
-  const handleUpdateTenant = async (e) => {
+const handleUpdateTenant = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
+    await updateDoc(doc(db, "restaurants", editingRest.id), {
+      name: editingRest.name,
+      ownerName: editingRest.ownerName || '',
+      ownerEmail: editingRest.ownerEmail || '',
+      ownerPhone: editingRest.ownerPhone || '',
+      'systemSettings.address': editingRest.systemSettings?.address || '',
+      isActive: editingRest.isActive,
+      isReadOnly: editingRest.isReadOnly || false,
+      features: editingRest.features || {},
+      labs: editingRest.labs || {},
+      planType: editingRest.planType || 'Pro',
+      billingStatus: editingRest.billingStatus || 'Paid'
+    });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
 
@@ -5472,7 +5534,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     setBroadcastMsg('');
   };
 
-  const handleForgePush = async (e, type) => {
+ const handleForgePush = async (e, type) => {
     e.preventDefault(); 
     if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
     
@@ -5482,14 +5544,13 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     for (const r of restaurants) {
       try {
         if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
-        if (type === 'Recipe') await addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
         success++;
       } catch (err) { failed++; }
     }
     
     if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
     else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
-    setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
+    setForgeEventTitle('');
   };
 
                const handleTestPush = async () => {
@@ -5569,8 +5630,14 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         {editingRest && (
           <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
             <form onSubmit={handleUpdateTenant} className="space-y-4">
-              <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
-              <div className="grid grid-cols-2 gap-3">
+     <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
+              <div><label className={T.label}>Owner Name</label><input type="text" value={editingRest.ownerName || ''} onChange={e => setEditingRest({...editingRest, ownerName: e.target.value})} className={T.input} required /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className={T.label}>Owner Email</label><input type="email" value={editingRest.ownerEmail || ''} onChange={e => setEditingRest({...editingRest, ownerEmail: e.target.value})} className={T.input} required /></div>
+                <div><label className={T.label}>Owner Phone</label><input type="tel" value={editingRest.ownerPhone || ''} onChange={e => setEditingRest({...editingRest, ownerPhone: e.target.value})} className={T.input} required /></div>
+              </div>
+              <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
+              <div className="grid grid-cols-2 gap-3 mt-2">
                 <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option>Trial</option><option>Pro</option><option>Enterprise</option></select></div>
                 <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : 'text-emerald-500 font-black'}`}><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
               </div>
@@ -5693,9 +5760,15 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
       {/* --- TAB: TENANTS --- */}
       {subTab === 'tenants' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <form onSubmit={handleDeployTenant} className={`${T.card} p-5 border-red-900/50 shadow-[0_0_20px_rgba(220,38,38,0.1)]`}>
+ <form onSubmit={handleDeployTenant} className={`${T.card} p-5 border-red-900/50 shadow-[0_0_20px_rgba(220,38,38,0.1)]`}>
             <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2">Deploy New Workspace</h2></div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Restaurant Name" value={rName} onChange={e=>setRName(e.target.value)} className={T.input} required /><input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required /><input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required /><input type="tel" placeholder="Owner Phone" value={oPhone} onChange={e=>setOPhone(e.target.value)} className={T.input} required /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input type="text" placeholder="Restaurant Name" value={rName} onChange={e=>setRName(e.target.value)} className={T.input} required />
+              <input type="text" placeholder="Full Street Address" value={rAddress} onChange={e=>setRAddress(e.target.value)} className={T.input} required />
+              <input type="text" placeholder="Owner Name" value={oName} onChange={e=>setOName(e.target.value)} className={T.input} required />
+              <input type="email" placeholder="Owner Email" value={oEmail} onChange={e=>setOEmail(e.target.value)} className={T.input} required />
+              <input type="tel" placeholder="Owner Phone" value={oPhone} onChange={e=>setOPhone(e.target.value)} className={`${T.input} sm:col-span-2`} required />
+            </div>
             <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 rounded-xl shadow-lg mt-4 transition-colors">Deploy Database & Email Credentials</button>
           </form>
 
@@ -5768,16 +5841,12 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         </div>
       )}
 
-      {/* --- TAB: THE FORGE --- */}
+{/* --- TAB: THE FORGE --- */}
       {subTab === 'forge' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={(e) => handleForgePush(e, 'Event')} className={`${T.card} p-5`}>
             <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={18}/> Global Event Injection</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Force an event onto every client's calendar simultaneously.</p></div>
             <div className="flex flex-col sm:flex-row gap-3"><input type="date" value={forgeEventDate} onChange={e=>setForgeEventDate(e.target.value)} className={`${T.input} sm:w-48`} required /><input type="text" placeholder="Event Title (e.g. Mother's Day)" value={forgeEventTitle} onChange={e=>setForgeEventTitle(e.target.value)} className={T.input} required /><button type="submit" className={`${T.btn} px-8 whitespace-nowrap`}>Push Event</button></div>
-          </form>
-          <form onSubmit={(e) => handleForgePush(e, 'Recipe')} className={`${T.card} p-5`}>
-            <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><BookOpen className={T.copper} size={18}/> Global Recipe Push</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Distribute a master recipe to every active client database.</p></div>
-            <div className="space-y-3"><input type="text" placeholder="Recipe Title..." value={forgeRecipeTitle} onChange={e=>setForgeRecipeTitle(e.target.value)} className={T.input} required /><textarea placeholder="Ingredients & Instructions..." value={forgeRecipeBody} onChange={e=>setForgeRecipeBody(e.target.value)} rows="4" className={T.input} required></textarea><button type="submit" className={`w-full ${T.btn}`}>Push Spec Sheet</button></div>
           </form>
         </div>
       )}
@@ -5854,6 +5923,48 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             <textarea value={broadcastMsg} onChange={e=>setBroadcastMsg(e.target.value)} rows="3" className={`${T.input} mb-3 border-[#D4A381]/50 focus:border-[#D4A381]`} placeholder="SYSTEM ALERT: Maintenance scheduled for 3AM..."></textarea>
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
+
+    <div className={`${T.card} p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
+            <form onSubmit={handlePushBanner}>
+              <div className="mb-4 pb-2 border-b border-[#2A353D]">
+                <h2 className="text-lg font-black text-blue-400 flex items-center gap-2"><Bell size={18}/> Top-of-App Banner Broadcast</h2>
+                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Pin a persistent, high-visibility alert directly below the main header.</p>
+              </div>
+              <div className="space-y-3">
+                <select value={bannerTarget} onChange={e => setBannerTarget(e.target.value)} className={T.input}>
+                  <option value="ALL">🚨 ALL WORKSPACES (GLOBAL)</option>
+                  {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+                <input type="text" value={bannerText} onChange={e => setBannerText(e.target.value)} placeholder="e.g. SYSTEM DEGRADED - POS SYNC IS CURRENTLY DOWN" className={T.input} />
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 font-black uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">Pin Banner</button>
+                  <button type="button" onClick={handleClearBanner} className="px-6 bg-[#12161A] text-slate-400 border border-[#2A353D] hover:text-red-400 font-black uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">Clear Selected</button>
+                </div>
+              </div>
+            </form>
+
+            {/* THE ACTIVE BANNER LEDGER */}
+            {restaurants.filter(r => r.systemBanner).length > 0 && (
+              <div className="mt-5 pt-4 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
+                <h3 className="text-[10px] font-black uppercase text-[#D4A381] tracking-widest mb-3">Currently Active Banners</h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                  {restaurants.filter(r => r.systemBanner).map(r => (
+                    <div key={r.id} className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+                      <div className="min-w-0 pr-3">
+                        <div className="text-xs font-bold text-white truncate">{r.name}</div>
+                        <div className="text-[10px] text-blue-400 font-bold mt-0.5 leading-snug break-words">"{r.systemBanner}"</div>
+                      </div>
+                      <button type="button" onClick={async () => {
+                        if(!window.confirm(`Clear banner for ${r.name}?`)) return;
+                        await updateDoc(doc(db, "restaurants", r.id), { systemBanner: null });
+                        addToast('Cleared', `Banner removed from ${r.name}.`);
+                      }} className="text-slate-400 hover:text-red-500 p-2 flex-shrink-0 transition-colors bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className={`${T.card} p-5 border-fuchsia-900/30`}>
@@ -6237,6 +6348,16 @@ useEffect(() => {
         </button>
       </header>
 
+          {/* SYSTEM BROADCAST BANNER */}
+      {clientData?.systemBanner && (
+        <div className="bg-blue-600 border-b border-blue-800 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-center shadow-lg uppercase tracking-wider w-full relative z-30 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex items-center gap-2 text-center">
+            <Bell size={14} className="animate-pulse flex-shrink-0" />
+            <span>{clientData.systemBanner}</span>
+          </div>
+        </div>
+      )}
+
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} />
     
       {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
@@ -6302,7 +6423,7 @@ useEffect(() => {
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 9.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 9.5.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
       </div>
     </div>
