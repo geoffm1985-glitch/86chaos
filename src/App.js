@@ -5809,18 +5809,7 @@ export default function App() {
   }, []);
 
 
-// --- FOREGROUND NOTIFICATION CATCHER ---
-  useEffect(() => {
-    if (!messaging) return;
-    const unsub = onMessage(messaging, (payload) => {
-      console.log("Foreground message caught:", payload);
-      addToast(
-        payload.notification?.title || 'System Alert', 
-        payload.notification?.body || 'You have a new notification.'
-      );
-    });
-    return () => unsub();
-  }, [addToast]);
+
   
                     
   // --- APP INSTALL TRACKER (NEW) ---
@@ -6000,6 +5989,19 @@ useEffect(() => {
     setToasts(prev => [...prev, { id, title, message }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
+
+  // --- FOREGROUND NOTIFICATION CATCHER ---
+  useEffect(() => {
+    if (!messaging) return;
+    const unsub = onMessage(messaging, (payload) => {
+      console.log("Foreground message caught:", payload);
+      addToast(
+        payload.notification?.title || 'System Alert', 
+        payload.notification?.body || 'You have a new notification.'
+      );
+    });
+    return () => unsub();
+  }, [addToast, messaging]);
 
   const prevDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setCurrentDate(formatDate(d)); };
   const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
