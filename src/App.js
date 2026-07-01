@@ -5814,7 +5814,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
 <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
           
-          // --- THE TIER PRESET ENGINE ---
+    // --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
             const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
@@ -5823,11 +5823,14 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             
             // 2. Merge only the allowed features as TRUE over the baseline
             if (tier === 'Starter') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, timesheets: true };
+                // Starter: Core features only
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true };
             } else if (tier === 'Pro') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
+                // Pro: Starter + Inventory, Recipes, and Sales
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, inventory: true, recipes: true, sales: true };
             } else if (tier === 'Elite' || tier === 'Enterprise') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
+                // Elite/Enterprise: Everything + Maintenance, Timesheets, and Labor Projections
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, inventory: true, recipes: true, sales: true, maintenance: true, timesheets: true };
                 newLabs = { laborProjection: true };
             }
 
@@ -5861,14 +5864,14 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                   <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
                 </div>
 
-          {/* QUICK APPLY TIER PRESETS */}
+     {/* QUICK APPLY TIER PRESETS */}
               <div className="pt-4 border-t border-[#2A353D]">
                 <label className={T.label}>Quick-Apply Tier Packages</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
-                  <button type="button" onClick={() => setEditingRest({...editingRest, planType: 'Starter', features: { schedule: true, messages: true, prep: true, recipes: false, inventory: false, sales: false, team: true, maintenance: false, timesheets: false }, labs: { laborProjection: false }})} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
-                  <button type="button" onClick={() => setEditingRest({...editingRest, planType: 'Pro', features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: false }, labs: { laborProjection: false }})} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
-                  <button type="button" onClick={() => setEditingRest({...editingRest, planType: 'Elite', features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true }, labs: { laborProjection: true }})} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
-                  <button type="button" onClick={() => setEditingRest({...editingRest, planType: 'Enterprise', features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true }, labs: { laborProjection: true }})} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`}>Enterprise</button>
+                  <button type="button" onClick={() => applyTierPreset('Starter')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
+                  <button type="button" onClick={() => applyTierPreset('Pro')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
+                  <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
+                  <button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`}>Enterprise</button>
                 </div>
               </div>
 
