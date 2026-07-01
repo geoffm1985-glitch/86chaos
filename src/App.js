@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getMessaging, getToken } from 'firebase/messaging';
+
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
 const T = {
@@ -50,21 +50,19 @@ const firebaseConfig = window.location.hostname === 'app.86chaos.com' ? prodConf
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
+export const messaging = typeof window !== "undefined" ? getMessaging(app) : null;
 
 // Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
 enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
 
 const auth = getAuth(app);
-let messaging = null;
-try { if (typeof window !== 'undefined' && 'Notification' in window) messaging = getMessaging(app); } catch (e) { console.warn("Push not supported."); }
 
 // --- Master Configuration ---
 const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '8.6.0';
-
+const CURRENT_VERSION = '9.0.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -94,13 +92,23 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
   window.crashCatcherAttached = true; 
   window.breadcrumbs = [];
 
-  // Silently record the last 15 buttons clicked
+// Silently record the last 15 buttons clicked
   window.addEventListener('click', (e) => {
     let target = e.target;
     // Find the closest button if they clicked an icon inside a button
     let btn = target.closest('button');
     if (btn) {
-      let text = btn.innerText || btn.getAttribute('aria-label') || 'Icon Button';
+      // Improved logic: Check title, aria-label, text, or the SVG class name
+      let text = btn.title || btn.getAttribute('aria-label') || btn.innerText || '';
+      if (!text.trim()) {
+        const svg = btn.querySelector('svg');
+        if (svg && svg.classList && svg.classList.length > 0) {
+           // Extracts 'Trash2' or 'Edit' from the Lucide SVG class
+           text = svg.classList[0].replace('lucide-', '').replace('lucide', 'Icon');
+        } else {
+           text = 'Icon Button';
+        }
+      }
       if (text.length > 40) text = text.substring(0, 40) + '...';
       window.breadcrumbs.push({ time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}), action: 'Clicked', target: text.trim().replace(/\n/g, ' ') });
       if (window.breadcrumbs.length > 15) window.breadcrumbs.shift();
@@ -208,16 +216,17 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Spec Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Stock & Orders', icon: <Package size={18}/> });  
   
-  // --- 3. Management ---
+// --- 3. Management ---
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert });
-  if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (isEnabled('team') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
-  // --- 4. System & Security ---
-  if (isGod) tabs.push({ id: 'godmode', label: 'Master Control', icon: <Shield size={18}/> });
-  if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+// --- 4. System & Security ---
+  const isTrueGod = (appUser?.email || '').toLowerCase() === 'geoffm1985@gmail.com' || appUser?.isSuperAdmin === true || (appUser?.name || '').includes('Geoff');
+  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
+  if (appUser?.isAdmin || isTrueGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Preferences', icon: <Settings size={18}/> });
-
   return (
      <div className="fixed inset-0 z-[70] flex justify-end">
        <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
@@ -483,14 +492,34 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     return (R * c) * 3.28084; // Convert final result to feet
   };
 
-  const handleClockIn = async () => {
+const handleClockIn = async () => {
+    // Check if scheduled today
+    const isScheduledToday = shifts.some(s => s.employeeId === appUser.id && s.date === getToday() && s.isPublished);
+    
+    let isUnscheduled = false;
+    if (!isScheduledToday) {
+       const confirmUnscheduled = window.confirm("You are not scheduled for a shift today. Do you want to proceed with an unscheduled clock-in?");
+       if (!confirmUnscheduled) return;
+       isUnscheduled = true;
+    }
+
     const executePunch = async () => {
       try {
         await addDoc(collection(db, "timePunches"), { 
           employeeId: appUser.id, employeeName: appUser.name, clockInTime: new Date().toISOString(), 
-          status: 'clocked_in', restaurantId: appUser.restaurantId, date: getToday(), breakMinutes: 0
+          status: 'clocked_in', restaurantId: appUser.restaurantId, date: getToday(), breakMinutes: 0,
+          isUnscheduled: isUnscheduled, isApproved: !isUnscheduled
         });
-        addToast('Clocked In', 'Shift started successfully.');
+        
+        // Blast the manager alert to the Message Board
+        if (isUnscheduled) {
+           await addDoc(collection(db, "events"), { 
+             date: new Date().toISOString(), title: `UNSCHEDULED PUNCH: ${appUser.name.split(' ')[0]} clocked in without a scheduled shift. Please review in Timesheets.`, 
+             type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId, replies: [] 
+           });
+        }
+        
+        addToast('Clocked In', isUnscheduled ? 'Unscheduled shift started. Manager notified.' : 'Shift started successfully.');
       } catch (e) { addToast('Error', e.message); }
     };
 
@@ -586,16 +615,46 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     addToast('Revoked', 'Shift removed from Trade Board.');
   };
 
-  const handleClaimShift = async (swap) => {
-    if (!window.confirm(`Claim the ${swap.role} shift on ${formatDisplayDate(swap.date)}?`)) return;
+const handleOfferSwap = async (shift) => {
+    if (!window.confirm(`Offer your ${shift.role} shift on ${formatDisplayDate(shift.date)} to the Trade Board?`)) return;
+    
     try {
-       await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: appUser.id });
-       await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
-       await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `✅ Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
-       addToast('Claimed', 'Shift successfully added to your schedule.');
-       setSubTab('my-schedule'); 
+      // 1. Add the swap to the database
+      await addDoc(collection(db, "shiftSwaps"), {
+        shiftId: shift.id,
+        originalEmployeeId: appUser.id,
+        role: shift.role,
+        date: shift.date,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+        status: 'available',
+        restaurantId: appUser.restaurantId,
+        listedAt: new Date().toISOString()
+      });
+      
+      addToast('Listed', 'Shift is now on the Trade Board.');
+      setSubTab('trade-board');
+
+      // 2. Trigger the Universal Push Cannon
+      try {
+        await fetch('/api/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            restaurantId: appUser.restaurantId,
+            type: 'trade', // This tells the cannon to respect the notifTrades toggle
+            title: '🔄 Shift up for grabs!',
+            body: `${appUser.name.split(' ')[0]} just posted a ${shift.role} shift on ${formatDisplayDate(shift.date)}.`,
+            textContent: '', // Not a message, so no keyword scanning needed
+            isCritical: false
+          })
+        });
+      } catch (err) {
+        console.error("Failed to trigger push:", err);
+      }
+
     } catch (e) {
-       addToast('Error', e.message);
+      addToast('Error', e.message);
     }
   };
 
@@ -923,10 +982,10 @@ return (
             </div>
           )}
 
-         {appUser?.isAdmin && (
+  {appUser?.isAdmin && (
             <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
               <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
-              <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
+              <span className="text-sm font-black text-red-500">Store Manager (Full Admin)</span>
             </label>
           )}
           
@@ -1012,17 +1071,38 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
       }
     }
 
+const isCritical = message.trim().toLowerCase().includes('!critical');
+    const finalMessage = message.trim().replace(/!critical/ig, '').trim();
+
     await addDoc(collection(db, "events"), { 
       date: new Date().toISOString(), 
-      title: message.trim(), 
+      title: finalMessage, 
       type: 'note', 
       author: appUser.name, 
-      isImportant: false, 
+      isImportant: isCritical, 
       restaurantId: appUser.restaurantId, 
       replies: [],
       imageUrl: photoUrl 
     }); 
     
+    // --- NEW: TRIGGER UNIVERSAL PUSH NOTIFICATION ---
+    try {
+      await fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          restaurantId: appUser.restaurantId,
+          type: 'message',
+          title: isCritical ? '🚨 CRITICAL ALERT' : `New Message from ${appUser.name.split(' ')[0]}`,
+          body: finalMessage,
+          textContent: finalMessage,
+          isCritical: isCritical
+        })
+      });
+    } catch (err) {
+      console.error("Failed to trigger push:", err);
+    }
+
     setMessage(''); 
     setImageFile(null);
     setIsUploading(false);
@@ -1267,6 +1347,24 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [periodStart, setPeriodStart] = useState(`${monthStr}-01`);
   const [periodEnd, setPeriodEnd] = useState(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
 
+  // --- LABOR & FINANCIAL TARGETS ---
+  const [isTargetSettingsOpen, setIsTargetSettingsOpen] = useState(false);
+  const [targetSales, setTargetSales] = useState(appUser?.systemSettings?.targetSales || '0');
+  const [targetLaborPct, setTargetLaborPct] = useState(appUser?.systemSettings?.targetLaborPct || '0');
+  
+  const handleSaveTargets = async (e) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, "restaurants", appUser.restaurantId), {
+        'systemSettings.targetSales': parseFloat(targetSales) || 0,
+        'systemSettings.targetLaborPct': parseFloat(targetLaborPct) || 0,
+        'systemSettings.enableTargets': true
+      });
+      addToast('Saved', 'Financial and labor targets updated.');
+      setIsTargetSettingsOpen(false);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
   useEffect(() => {
     setPeriodStart(`${monthStr}-01`);
     setPeriodEnd(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
@@ -1330,7 +1428,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 const handlePublish = async () => { 
     if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
     
-    // 1. Target ALL unpublished shifts across all months, not just the currently viewed month
     const unpub = shifts.filter(s => !s.isPublished); 
     
     if (unpub.length === 0) {
@@ -1341,15 +1438,45 @@ const handlePublish = async () => {
     addToast('Publishing...', `Pushing ${unpub.length} shifts live. Please wait.`);
     
     try {
-      // 2. Blast them all to Firebase simultaneously to prevent throttling and timeouts
       await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true })));
       
       addToast("Published", "Schedule is live."); 
       logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live.`); 
+
+// --- NEW: TRIGGER PUSH NOTIFICATIONS ---
+      try {
+        addToast('Pinging Server', 'Sending alert request to Vercel...');
+        const pushRes = await fetch('/api/send-schedule-alert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            restaurantId: appUser.restaurantId,
+            restaurantName: appUser.restaurantName || 'Your restaurant'
+          })
+        });
+        
+        const pushData = await pushRes.json();
+        console.log("VERCEL RESPONSE:", pushData);
+        
+        if (pushData.message) {
+          // This catches the "No devices registered" silent exit
+          addToast('Server Reply', pushData.message); 
+        } else if (pushData.success) {
+          addToast('Alerts Sent!', `Successfully pushed to ${pushData.sentCount} devices.`);
+        } else {
+          addToast('API Error', pushData.error || 'Unknown server error');
+        }
+
+      } catch (pushErr) {
+        console.error("Failed to send push notifications:", pushErr);
+        addToast('Network Error', 'Failed to reach Vercel API.');
+      }
+
     } catch (err) {
       addToast("Error", "Some shifts failed to publish. Check connection and try again.");
     }
-  };  
+  };
+  
   const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
@@ -2058,6 +2185,54 @@ const handleExportTimesheets = () => {
             </div>
           </div>
 
+{/* TARGETS DASHBOARD */}
+          {appUser?.systemSettings?.enableTargets && (
+            <div className="bg-[#0B0E11] p-4 border-b border-[#2A353D] flex flex-col sm:flex-row gap-4 justify-between items-center">
+              <div className="flex items-center gap-6">
+                 <div>
+                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Target Period Sales</div>
+                   <div className="text-lg font-black text-white">${parseFloat(appUser.systemSettings.targetSales || 0).toLocaleString()}</div>
+                 </div>
+                 <div>
+                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Target Labor %</div>
+                   <div className="text-lg font-black text-white">{parseFloat(appUser.systemSettings.targetLaborPct || 0).toFixed(1)}%</div>
+                 </div>
+                 <div className="border-l border-[#2A353D] pl-6">
+                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Actual Period Labor %</div>
+                   <div className={`text-lg font-black ${((actualPeriodLabor / parseFloat(appUser.systemSettings.targetSales || 1)) * 100) > parseFloat(appUser.systemSettings.targetLaborPct || 100) ? 'text-red-400' : 'text-emerald-400'}`}>
+                     {appUser.systemSettings.targetSales > 0 ? ((actualPeriodLabor / parseFloat(appUser.systemSettings.targetSales)) * 100).toFixed(1) : '0.0'}%
+                   </div>
+                 </div>
+              </div>
+              <button onClick={() => setIsTargetSettingsOpen(!isTargetSettingsOpen)} className="text-xs font-bold text-slate-400 hover:text-[#D4A381] border border-[#2A353D] bg-[#1A2126] px-3 py-1.5 rounded-lg transition-colors">Configure Targets</button>
+            </div>
+          )}
+
+          {!appUser?.systemSettings?.enableTargets && (
+            <div className="bg-[#0B0E11] p-3 border-b border-[#2A353D] text-right">
+              <button onClick={() => setIsTargetSettingsOpen(!isTargetSettingsOpen)} className="text-xs font-bold text-slate-400 hover:text-[#D4A381] transition-colors">Configure Financial Targets</button>
+            </div>
+          )}
+
+          {isTargetSettingsOpen && (
+            <form onSubmit={handleSaveTargets} className="p-4 bg-[#1A2126] border-b border-[#2A353D] space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={T.label}>Period Sales Target ($)</label>
+                  <input type="number" step="0.01" value={targetSales} onChange={e=>setTargetSales(e.target.value)} className={T.input} placeholder="e.g. 50000" />
+                </div>
+                <div>
+                  <label className={T.label}>Target Labor Cost (%)</label>
+                  <input type="number" step="0.1" value={targetLaborPct} onChange={e=>setTargetLaborPct(e.target.value)} className={T.input} placeholder="e.g. 25.5" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                 <button type="submit" className={`flex-1 ${T.btn} py-2 text-xs`}>Save Targets</button>
+                 <button type="button" onClick={async () => { await updateDoc(doc(db, "restaurants", appUser.restaurantId), { 'systemSettings.enableTargets': false }); setIsTargetSettingsOpen(false); }} className={`px-4 bg-red-900/20 text-red-500 font-bold text-xs rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-colors`}>Disable</button>
+              </div>
+            </form>
+          )}
+
           {summaryList.length > 0 && (
             <div className="p-4 border-b border-[#2A353D] bg-[#0B0E11]">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Payroll Summary</h4>
@@ -2095,8 +2270,10 @@ const handleExportTimesheets = () => {
                return (
                  <div key={p.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
                    <div>
-                     <div className="font-bold text-white text-base">{p.employeeName || 'Unknown'}</div>
-                     <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
+<div className="font-bold text-white text-base">
+  {p.employeeName || 'Unknown'}
+  {p.isUnscheduled && !p.isApproved && <span className="ml-2 text-[8px] bg-amber-500 text-slate-900 px-1.5 py-0.5 rounded-sm uppercase tracking-widest font-black align-middle">Unscheduled</span>}
+</div>                     <div className={`text-[10px] font-black uppercase tracking-widest ${T.muted} mt-0.5`}>
                        {p.date ? formatDisplayDate(p.date) : 'Unknown Date'}
                      </div>
                    </div>
@@ -2115,6 +2292,7 @@ const handleExportTimesheets = () => {
                      </div>
                      <div className="flex gap-2 border-l border-[#2A353D] pl-4">
                        {isClockedIn && <button onClick={() => handleForceClockOut(p)} className="px-3 py-1 bg-red-900/20 text-red-500 text-[10px] font-black uppercase rounded-lg border border-red-900/50 hover:bg-red-900/40 transition-colors">Force Out</button>}
+    {p.isUnscheduled && !p.isApproved && <button onClick={() => updateDoc(doc(db, "timePunches", p.id), { isApproved: true })} className="px-3 py-1 bg-amber-900/20 text-amber-400 text-[10px] font-black uppercase rounded-lg border border-amber-900/50 hover:bg-amber-900/40 transition-colors animate-pulse">Approve</button>}
                        <button onClick={() => openEditPunchModal(p)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
                        <button onClick={() => handleDeletePunch(p.id)} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
                      </div>
@@ -2985,13 +3163,15 @@ const TabInventory = ({ addToast, appUser }) => {
        let updateCount = 0;
        let newCount = 0;
        
-       for (const item of scannedInvoice.lineItems) {
+for (const item of scannedInvoice.lineItems) {
+          // Catch every possible key name the AI might use for the SKU/Product Code
+          const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
+
           if (item.matchedItemId === 'CREATE_NEW') {
-             // Create a brand new item in inventory
              await addDoc(collection(db, "inventoryItems"), {
                 name: item.itemName,
                 category: 'Other', 
-                pfgCode: item.productCode || '', 
+                pfgCode: incomingCode, 
                 supplierId: vId,
                 packSize: item.packSize || '1 CS',
                 yieldQty: 1, 
@@ -3005,13 +3185,19 @@ const TabInventory = ({ addToast, appUser }) => {
              });
              newCount++;
           } else if (item.matchedItemId) {
-             // Update existing item
              const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
              if (invItem) {
                 const addedStock = parseFloat(item.quantity) || 0;
-                await updateDoc(doc(db, "inventoryItems", invItem.id), { 
+                const updates = { 
                    currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
-                });
+                };
+                
+                // If the item doesn't have a product code yet, but the invoice found one, save it
+                if (!invItem.pfgCode && incomingCode) {
+                   updates.pfgCode = incomingCode;
+                }
+
+                await updateDoc(doc(db, "inventoryItems", invItem.id), updates);
                 updateCount++;
              }
           }
@@ -3059,8 +3245,10 @@ const TabInventory = ({ addToast, appUser }) => {
                 <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
                   <div className="flex justify-between items-start">
                     <div>
-                      <div className="font-bold text-white text-sm">{item.itemName}</div>
-                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
+<div className="font-bold text-white text-sm flex items-center gap-1.5">
+  {item.productCode && <span className="text-[#D4A381] font-black">[{item.productCode}]</span>}
+  {item.itemName}
+</div>                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
                         {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
                       </div>
                     </div>
@@ -3336,7 +3524,7 @@ const TabInventory = ({ addToast, appUser }) => {
             <input type="text" placeholder="Search master list by name or product number..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
           </div>
 
-          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={()=>deleteDoc(doc(db,"inventoryItems",item.id))} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={() => { if(window.confirm(`Are you sure you want to delete ${item.name}?`)) deleteDoc(doc(db,"inventoryItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
         </div>
       )}
 
@@ -3961,8 +4149,9 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
-const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
+  const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
   const [payPeriodStart, setPayPeriodStart] = useState(prefs.payPeriodStart || 'Monday');
+  
   // --- Notification State ---
   const [notifSchedule, setNotifSchedule] = useState(prefs.notifSchedule ?? true);
   const [notifMessages, setNotifMessages] = useState(prefs.notifMessages ?? true);
@@ -3970,7 +4159,15 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
   const [notifReminders, setNotifReminders] = useState(prefs.notifReminders ?? false);
   const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); 
 
-// --- System Config State (Admin Only) ---
+  // --- Advanced SaaS Notification States ---
+  const [notifLevel, setNotifLevel] = useState(prefs.notifLevel || 'all');
+  const [keywords, setKeywords] = useState(prefs.keywords || '');
+  const [muteOnDaysOff, setMuteOnDaysOff] = useState(prefs.muteOnDaysOff ?? false);
+  const [dndEnabled, setDndEnabled] = useState(prefs.dndEnabled ?? false);
+  const [dndStart, setDndStart] = useState(prefs.dndStart || '22:00');
+  const [dndEnd, setDndEnd] = useState(prefs.dndEnd || '08:00');
+
+  // --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
   const [sysAddress, setSysAddress] = useState(sys.address || '');
@@ -3985,6 +4182,36 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
   const [sysBlockEarly, setSysBlockEarly] = useState(sys.blockEarly ?? true);
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
   const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
+  const [sysWageAccess, setSysWageAccess] = useState(sys.wageAccess || []);
+  const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
+  const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
+
+const handleEnableNotifications = async () => {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        
+        // --- NEW: THE SMART TARGET LOCK ---
+        const activeVapidKey = window.location.hostname === 'app.86chaos.com' 
+          ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU' // Production
+          : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc'; // Testing Sandbox
+
+        const currentToken = await getToken(messaging, { 
+          vapidKey: activeVapidKey 
+        });
+        
+        if (currentToken) {
+          await updateDoc(doc(db, "users", appUser.id), { fcmToken: currentToken });
+          addToast('Success', 'Push notifications enabled for this device.');
+        }
+      } else {
+        addToast('Denied', 'You blocked notifications in your browser settings.');
+      }
+    } catch (error) {
+      console.error(error);
+      addToast('Error', 'Could not enable notifications.');
+    }
+  };
 
   const handleGeocodeAddress = async () => {
     if (!sysAddress.trim()) return addToast('Error', 'Please enter a full address first.');
@@ -4010,7 +4237,6 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
   
-  // FIX: Unpacked the arrays into a new array [...dbRoles] before sorting to prevent the frozen data crash
   const displayRoles = dbRoles.length > 0 
     ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
     : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
@@ -4047,28 +4273,32 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
     } catch (err) { addToast('Error', 'Failed to save profile.'); }
   };
 
-const handleSavePrefs = async (e) => {
+  const handleSavePrefs = async (e) => {
     e.preventDefault();
     try {
       await updateDoc(doc(db, "users", appUser.id), {
-        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime, payPeriod, payPeriodStart }
+        preferences: { 
+          ...prefs, defaultTab, timeFormat, payPeriod, payPeriodStart,
+          notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
+          notifLevel, keywords, muteOnDaysOff, dndEnabled, dndStart, dndEnd
+        }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
   };
 
-const handleSaveSystem = async (e) => {
+  const handleSaveSystem = async (e) => {
     e.preventDefault();
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
       await setDoc(doc(db, "restaurants", targetId), {
         systemSettings: { 
           geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
-          breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime 
+          breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime,
+          wageAccess: sysWageAccess, enableIpWhitelist: sysEnableIpWhitelist, ipWhitelist: sysIpWhitelist
         }
       }, { merge: true });
       addToast('System Saved', 'Global workspace configurations updated.');
-      logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -4139,7 +4369,7 @@ const handleSaveSystem = async (e) => {
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
-        {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace'] : []).map((tab) => (
+        {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace', 'integrations'] : []).map((tab) => (
           <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {tab}
           </button>
@@ -4220,7 +4450,7 @@ const handleSaveSystem = async (e) => {
                 <h2 className="text-base font-black text-emerald-400 mb-3 border-b border-[#2A353D] pb-2">Payroll Settings</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-<label className={T.label}>Default Pay Period</label>
+                    <label className={T.label}>Default Pay Period</label>
                     <select value={payPeriod} onChange={e => setPayPeriod(e.target.value)} className={`${T.input} py-2 text-sm`}>
                       <option value="Weekly">Weekly</option>
                       <option value="Bi-Weekly">Bi-Weekly</option>
@@ -4301,37 +4531,104 @@ const handleSaveSystem = async (e) => {
       )}
 
       {subTab === 'alerts' && (
-        <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
-          <div>
-            <h2 className="text-base font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={16}/> Alerts & Routing</h2>
-            <p className="text-[10px] text-slate-400 font-medium mb-3">Control how 86 Chaos pings your device.</p>
-            <div className="space-y-2">
-              <Toggle label="Schedule Publications" desc="Get alerted the exact second a new schedule goes live." checked={notifSchedule} onChange={e => setNotifSchedule(e.target.checked)} />
-              <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
-              <Toggle label="Urgent Message Board" desc="Receive push alerts for announcements marked 'Critical' by managers." checked={notifMessages} onChange={e => setNotifMessages(e.target.checked)} />
-              <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl`}>
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <div>
-                    <div className="text-xs font-bold text-white group-hover:text-[#D4A381] transition-colors">Pre-Shift Reminders</div>
-                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Automated ping before your scheduled clock-in time.</div>
-                  </div>
-                  <div className="relative flex-shrink-0">
-                    <input type="checkbox" checked={notifReminders} onChange={e => setNotifReminders(e.target.checked)} className="sr-only" />
-                    <div className={`block w-10 h-6 rounded-full transition-colors ${notifReminders ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
-                    <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${notifReminders ? 'transform translate-x-4' : ''}`}></div>
-                  </div>
-                </label>
-                {notifReminders && (
-                  <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
-                    <input type="number" min="1" value={reminderTime} onChange={e => setReminderTime(e.target.value)} className={`${T.input} w-20 py-1 text-center text-xs font-black`} placeholder="120" />
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-5`}>
+            
+            {/* SLEEK CONNECTION STATUS BAR */}
+            <div className="p-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl flex justify-between items-center gap-3">
+              <div>
+                <div className="text-sm font-black text-white flex items-center gap-2">Device Connection</div>
+                <div className="text-[9px] font-medium text-slate-400 mt-0.5 leading-snug">
+                  Browser Status: {typeof window !== 'undefined' && typeof Notification !== 'undefined' ? (Notification.permission === 'granted' ? 'Allowed' : Notification.permission === 'denied' ? 'Blocked via Browser Settings' : 'Not Configured') : 'Not Supported'}
+                </div>
+              </div>
+              {typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+                <button onClick={handleEnableNotifications} type="button" className="px-4 py-2 bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-80 text-slate-900 font-black text-[10px] uppercase tracking-widest rounded-lg transition-colors shadow-md whitespace-nowrap">
+                  Connect Device
+                </button>
+              )}
+              {typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission === 'granted' && (
+                <div className="px-3 py-1.5 bg-emerald-900/20 border border-emerald-900/50 text-emerald-500 font-black text-[10px] uppercase tracking-widest rounded-lg flex items-center gap-1">
+                  <Check size={12}/> Connected
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h2 className="text-base font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={16}/> Alerts & Routing</h2>
+              <p className="text-[10px] text-slate-400 font-medium mb-4">Control exactly when and how 86 Chaos pings your device.</p>
+              
+              <div className="space-y-2 mb-6">
+                <Toggle label="Schedule Publications" desc="Get alerted the exact second a new schedule goes live." checked={notifSchedule} onChange={e => setNotifSchedule(e.target.checked)} />
+                <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
+                <Toggle label="Smart Mute: Days Off" desc="Automatically silence all non-critical notifications if you are not scheduled to work today." checked={muteOnDaysOff} onChange={e => setMuteOnDaysOff(e.target.checked)} />
+              </div>
+
+              <h3 className="text-xs font-black uppercase text-[#D4A381] tracking-widest border-b border-[#2A353D] pb-1 mb-3">Message Board Rules</h3>
+              <div className="space-y-3 mb-6">
+                <select value={notifLevel} onChange={e => setNotifLevel(e.target.value)} className={T.input}>
+                  <option value="all">Notify me for ALL new messages</option>
+                  <option value="mentions">Only notify me for @mentions & Keywords</option>
+                  <option value="critical">Only notify me for Critical Manager Alerts</option>
+                </select>
+
+                {notifLevel === 'mentions' && (
+                  <div className="animate-[slideIn_0.2s_ease-out]">
+                    <label className={T.label}>Keyword Alerts (Comma Separated)</label>
+                    <input type="text" value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="e.g. 86, emergency, VIP, cooler" className={`${T.input} text-sm`} />
+                    <p className="text-[9px] text-slate-500 mt-1 font-bold">You will be pinged anytime someone types these exact words.</p>
                   </div>
                 )}
               </div>
+
+              <h3 className="text-xs font-black uppercase text-[#D4A381] tracking-widest border-b border-[#2A353D] pb-1 mb-3">Timing & Delays</h3>
+              <div className="space-y-2">
+                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl`}>
+                  <label className="flex items-center justify-between cursor-pointer group">
+                    <div>
+                      <div className="text-xs font-bold text-white group-hover:text-[#D4A381] transition-colors">Quiet Hours (Do Not Disturb)</div>
+                      <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Hold all non-critical notifications until morning.</div>
+                    </div>
+                    <div className="relative flex-shrink-0">
+                      <input type="checkbox" checked={dndEnabled} onChange={e => setDndEnabled(e.target.checked)} className="sr-only" />
+                      <div className={`block w-10 h-6 rounded-full transition-colors ${dndEnabled ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${dndEnabled ? 'transform translate-x-4' : ''}`}></div>
+                    </div>
+                  </label>
+                  {dndEnabled && (
+                    <div className="flex items-center gap-3 pt-3 mt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
+                      <input type="time" value={dndStart} onChange={e => setDndStart(e.target.value)} className={`${T.input} py-1.5 text-xs text-center`} />
+                      <span className="text-[9px] font-black text-slate-500 uppercase">TO</span>
+                      <input type="time" value={dndEnd} onChange={e => setDndEnd(e.target.value)} className={`${T.input} py-1.5 text-xs text-center`} />
+                    </div>
+                  )}
+                </div>
+
+                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl`}>
+                  <label className="flex items-center justify-between cursor-pointer group">
+                    <div>
+                      <div className="text-xs font-bold text-white group-hover:text-[#D4A381] transition-colors">Pre-Shift Reminders</div>
+                      <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Automated ping before your scheduled clock-in time.</div>
+                    </div>
+                    <div className="relative flex-shrink-0">
+                      <input type="checkbox" checked={notifReminders} onChange={e => setNotifReminders(e.target.checked)} className="sr-only" />
+                      <div className={`block w-10 h-6 rounded-full transition-colors ${notifReminders ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${notifReminders ? 'transform translate-x-4' : ''}`}></div>
+                    </div>
+                  </label>
+                  {notifReminders && (
+                    <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
+                      <input type="number" min="1" value={reminderTime} onChange={e => setReminderTime(e.target.value)} className={`${T.input} w-20 py-1 text-center text-xs font-black`} placeholder="120" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
-          </div>
-          <button type="submit" className={`w-full ${T.btn} py-2`}>Save Alerts</button>
-        </form>
+            <button type="submit" className={`w-full ${T.btn} py-3 text-sm mt-4`}>Save Alert Preferences</button>
+          </form>
+        </div>
       )}
 
       {subTab === 'workspace' && appUser?.isAdmin && (
@@ -4344,7 +4641,7 @@ const handleSaveSystem = async (e) => {
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
-<Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
+              <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
               {sysGeofence && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
                    <div>
@@ -4370,8 +4667,7 @@ const handleSaveSystem = async (e) => {
                  </div>
                  <input type="number" min="0" value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
                </div>
-        
-     </div>
+      </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Shift Board Rules</div>
              <div className="space-y-2">
@@ -4392,8 +4688,36 @@ const handleSaveSystem = async (e) => {
                </div>
              </div>
 
+             <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Security & Access Control</div>
+             <div className="space-y-2">
+               <Toggle label="Strict IP Whitelisting" desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} />
+               {sysEnableIpWhitelist && (
+                 <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl animate-[slideIn_0.2s_ease-out] ml-4">
+                   <label className={T.label}>Authorized IP Addresses (Comma Separated)</label>
+                   <input type="text" value={sysIpWhitelist} onChange={e=>setSysIpWhitelist(e.target.value)} className={`${T.input} py-1.5 text-xs font-mono`} placeholder="e.g. 192.168.1.1, 10.0.0.5" />
+                 </div>
+               )}
+
+               <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl mt-2">
+                 <div className="text-xs font-bold text-white mb-1">Wage Visibility Exceptions</div>
+                 <div className={`text-[9px] font-medium ${T.muted} mb-3 leading-snug`}>By default, only Full Admins can see hourly wages and labor costs. Select specific employees below to grant them exception access to view wages.</div>
+                 <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-1 bg-[#0B0E11] p-2 border border-[#2A353D] rounded-lg">
+                   {users.filter(u => u.isActive !== false && !u.isAdmin).map(u => (
+                     <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-[#1A2126] p-1.5 rounded transition-colors">
+                       <input type="checkbox" checked={sysWageAccess.includes(u.id)} onChange={e => {
+                         if (e.target.checked) setSysWageAccess([...sysWageAccess, u.id]);
+                         else setSysWageAccess(sysWageAccess.filter(id => id !== u.id));
+                       }} className="w-3.5 h-3.5 accent-[#8F6040] bg-[#12161A] border-[#2A353D]" />
+                       <span className="text-[10px] font-bold text-slate-300">{u.name} <span className="text-slate-500 font-normal">({u.role})</span></span>
+                     </label>
+                   ))}
+                   {users.filter(u => u.isActive !== false && !u.isAdmin).length === 0 && <div className="text-[10px] text-slate-500 text-center py-2">No non-admin staff available.</div>}
+                 </div>
+               </div>
+             </div>
+
           </div>
-<button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
         </form>
       )}
 
@@ -4428,9 +4752,247 @@ const handleSaveSystem = async (e) => {
         </form>
       )}
 
+      {/* --- INTEGRATIONS ZONE --- */}
+      {subTab === 'integrations' && appUser?.isAdmin && (
+        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          
+          <div className={`${T.card} p-4 sm:p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
+             <div className="mb-4 border-b border-[#2A353D] pb-2">
+               <h2 className="text-base font-black text-blue-400">Point of Sale (POS) Sync</h2>
+               <p className="text-[10px] text-slate-400 font-medium leading-snug mt-1">Automatically pull daily sales data directly into your Daily Ledger.</p>
+             </div>
+             <form onSubmit={async (e) => {
+                e.preventDefault();
+                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { posProvider: e.target.posProvider.value, posApiKey: e.target.posApiKey.value } }, { merge: true });
+                addToast('Saved', 'POS API Configuration Saved.');
+             }} className="space-y-3">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                 <div>
+                   <label className={T.label}>POS Provider</label>
+                   <select name="posProvider" defaultValue={clientData?.integrations?.posProvider || ''} className={T.input}>
+                     <option value="">None / Manual Entry</option>
+                     <option value="Square">Square</option>
+                     <option value="Toast">Toast</option>
+                     <option value="Clover">Clover</option>
+                     <option value="TouchBistro">TouchBistro</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className={T.label}>Secure API Key / Access Token</label>
+                   <input type="password" name="posApiKey" defaultValue={clientData?.integrations?.posApiKey || ''} className={T.input} placeholder="sk_live_..." />
+                 </div>
+               </div>
+               <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl">
+                 <label className={T.label}>Your Webhook URL (Paste this into your POS dashboard)</label>
+                 <code className="text-[10px] text-emerald-400 break-all select-all block mt-1">https://app.86chaos.com/api/webhooks/pos-sync?tenant={appUser.restaurantId}</code>
+               </div>
+               <button type="submit" className="bg-blue-900/20 text-blue-400 font-black tracking-widest uppercase border border-blue-900/50 rounded-xl w-full py-3 hover:bg-blue-900/40 transition-colors">Connect POS</button>
+             </form>
+          </div>
+
+          <div className={`${T.card} p-4 sm:p-5 border-emerald-900/50 shadow-[0_0_15px_rgba(16,185,129,0.05)]`}>
+             <div className="mb-4 border-b border-[#2A353D] pb-2">
+               <h2 className="text-base font-black text-emerald-500">Payroll Provider API</h2>
+               <p className="text-[10px] text-slate-400 font-medium leading-snug mt-1">Sync approved timesheets directly to your payroll processor.</p>
+             </div>
+             <form onSubmit={async (e) => {
+                e.preventDefault();
+                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { payrollProvider: e.target.payrollProvider.value, payrollApiKey: e.target.payrollApiKey.value } }, { merge: true });
+                addToast('Saved', 'Payroll API Configuration Saved.');
+             }} className="space-y-3">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                 <div>
+                   <label className={T.label}>Payroll Provider</label>
+                   <select name="payrollProvider" defaultValue={clientData?.integrations?.payrollProvider || ''} className={T.input}>
+                     <option value="">None / CSV Export Only</option>
+                     <option value="Gusto">Gusto</option>
+                     <option value="ADP">ADP Run</option>
+                     <option value="Paychex">Paychex</option>
+                     <option value="QuickBooks">QuickBooks Time</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className={T.label}>Secure API Key / Bearer Token</label>
+                   <input type="password" name="payrollApiKey" defaultValue={clientData?.integrations?.payrollApiKey || ''} className={T.input} placeholder="eyJhbGciOiJIUzI1Ni..." />
+                 </div>
+               </div>
+               <button type="submit" className="bg-emerald-900/20 text-emerald-400 font-black tracking-widest uppercase border border-emerald-900/50 rounded-xl w-full py-3 hover:bg-emerald-900/40 transition-colors">Connect Payroll</button>
+             </form>
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 };
+
+
+// --- MAINTENANCE LOG TAB ---
+const TabMaintenance = ({ appUser, addToast }) => {
+  const logs = useLiveCollection('maintenanceLogs', appUser?.restaurantId);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Form State
+  const [equipment, setEquipment] = useState('');
+  const [issue, setIssue] = useState('');
+  const [urgency, setUrgency] = useState('Standard');
+  const [status, setStatus] = useState('Reported');
+  const [cost, setCost] = useState('');
+  const [notes, setNotes] = useState('');
+  const [editingLogId, setEditingLogId] = useState(null);
+
+  const resetForm = () => {
+    setEquipment(''); setIssue(''); setUrgency('Standard'); 
+    setStatus('Reported'); setCost(''); setNotes(''); setEditingLogId(null);
+  };
+
+  const handleEdit = (log) => {
+    setEquipment(log.equipment); setIssue(log.issue); setUrgency(log.urgency);
+    setStatus(log.status); setCost(log.cost || ''); setNotes(log.notes || '');
+    setEditingLogId(log.id); setIsModalOpen(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!equipment.trim() || !issue.trim()) return addToast('Error', 'Equipment and issue are required.');
+    
+    const payload = {
+      equipment: equipment.trim(),
+      issue: issue.trim(),
+      urgency,
+      status,
+      cost: parseFloat(cost) || 0,
+      notes: notes.trim(),
+      restaurantId: appUser.restaurantId,
+      lastUpdated: new Date().toISOString(),
+      updatedBy: appUser.name
+    };
+
+    try {
+      if (editingLogId) {
+        if (status === 'Resolved' && logs.find(l => l.id === editingLogId)?.status !== 'Resolved') {
+            payload.resolvedAt = new Date().toISOString();
+        }
+        await updateDoc(doc(db, "maintenanceLogs", editingLogId), payload);
+        addToast('Updated', 'Maintenance log updated successfully.');
+      } else {
+        payload.reportedAt = new Date().toISOString();
+        payload.reportedBy = appUser.name;
+        await addDoc(collection(db, "maintenanceLogs"), payload);
+        addToast('Logged', 'New equipment issue reported.');
+      }
+      setIsModalOpen(false); resetForm();
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const getStatusColor = (s) => {
+    if (s === 'Reported') return 'text-orange-400 bg-orange-900/20 border-orange-900/50';
+    if (s === 'In Progress' || s === 'Pending Parts') return 'text-blue-400 bg-blue-900/20 border-blue-900/50';
+    if (s === 'Resolved') return 'text-emerald-400 bg-emerald-900/20 border-emerald-900/50';
+    return 'text-slate-400 bg-slate-900/20 border-slate-700';
+  };
+
+  const getUrgencyColor = (u) => {
+    if (u === 'Critical') return 'text-red-500 font-black animate-pulse';
+    if (u === 'High') return 'text-orange-500 font-bold';
+    return 'text-slate-400';
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+      
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Log" : "Report Equipment Issue"}>
+        <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={T.label}>Equipment / Area</label>
+              <input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required />
+            </div>
+            <div>
+              <label className={T.label}>Urgency Level</label>
+              <select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}>
+                <option value="Standard">Standard (Monitor)</option>
+                <option value="High">High (Needs Repair Soon)</option>
+                <option value="Critical">Critical (Down/Safety Hazard)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className={T.label}>Issue Description</label>
+            <textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-[#2A353D]">
+            <div>
+              <label className={T.label}>Current Status</label>
+              <select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}>
+                <option value="Reported">Reported (Open)</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Pending Parts">Pending Parts</option>
+                <option value="Resolved">Resolved / Fixed</option>
+              </select>
+            </div>
+            <div>
+              <label className={T.label}>Repair Cost ($)</label>
+              <input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." />
+            </div>
+          </div>
+          <div>
+            <label className={T.label}>Repair Notes / Vendor Used</label>
+            <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" />
+          </div>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingLogId ? 'Update Log' : 'Submit Report'}</button>
+        </form>
+      </Modal>
+
+      <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-lg">
+        <div>
+          <h2 className="text-xl font-black text-white flex items-center gap-2"><Settings className={T.copper} size={24}/> Equipment & Maintenance</h2>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track repairs, vendors, and maintenance costs.</p>
+        </div>
+        <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
+      </div>
+
+      <div className={`${T.card} overflow-hidden`}>
+        <div className={T.th}>Active & Resolved Issues</div>
+        <div className={`divide-y ${T.border}`}>
+          {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged. Kitchen is 100% operational.</div>}
+          
+          {logs.sort((a,b) => {
+             // Sort by unresolved first, then by urgency, then by date
+             if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
+             if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
+             if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
+             if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
+             return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
+          }).map(log => (
+            <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-white text-base">{log.equipment}</span>
+                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
+                  {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
+                </div>
+                <div className="text-sm font-medium text-slate-300 mt-1">{log.issue}</div>
+                <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
+                  <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>
+                  <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
+                  {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 md:self-end">
+                <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
+                <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 
 // --- AUDIT LOGS TAB (Master Admin Only) ---
 const TabAuditLog = ({ appUser }) => {
@@ -4693,7 +5255,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const handleDeployTenant = async (e) => {
     e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
     try {
-      const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true };
+      const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, maintenance: true, timesheets: true };
       const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planType: 'Trial', billingStatus: 'Paid', createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
       const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
@@ -4706,8 +5268,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
 
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features
- || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
+    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
 
@@ -4716,7 +5277,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     await deleteDoc(doc(db, "restaurants", id)); addToast('Deleted', `${name} has been erased from existence.`);
   };
 
-const handleExportData = async (rest) => {
+  const handleExportData = async (rest) => {
     addToast('Compiling Data', 'Building CSV payload...');
     const uSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', rest.id)));
     let csv = "ID,Name,Email,Role,Phone,Status\n";
@@ -4729,7 +5290,7 @@ const handleExportData = async (rest) => {
   // --- DATABASE SNAPSHOT ENGINE (BACKUP & RESTORE) ---
   const handleCreateBackup = async (rest) => {
     addToast('Backing Up', `Compiling database snapshot for ${rest.name}...`);
-    const collectionsToBackup = ['users', 'shifts', 'recipes', 'inventoryItems', 'vendors', 'invoices', 'timePunches', 'sales', 'events', 'tasks', 'wasteLogs', 'timeOffRequests', 'prepCategories', 'roles', 'shiftSwaps'];
+    const collectionsToBackup = ['users', 'shifts', 'recipes', 'inventoryItems', 'vendors', 'invoices', 'timePunches', 'sales', 'events', 'tasks', 'wasteLogs', 'timeOffRequests', 'prepCategories', 'roles', 'shiftSwaps', 'maintenanceLogs'];
     const snapshot = { metadata: { restaurantId: rest.id, restaurantName: rest.name, timestamp: new Date().toISOString() }, data: {} };
 
     try {
@@ -4782,6 +5343,71 @@ const handleExportData = async (rest) => {
     e.target.value = '';
   };
 
+  // --- EMPLOYEE SPECIFIC BACKUP & RESTORE ENGINE ---
+  const handleBackupEmployee = async (u) => {
+    addToast('Backing Up', `Compiling data for ${u.name}...`);
+    const snapshot = { metadata: { userId: u.id, userName: u.name, timestamp: new Date().toISOString() }, data: { users: [u], shifts: [], timePunches: [], timeOffRequests: [] } };
+    try {
+      const shiftsSnap = await getDocs(query(collection(db, 'shifts'), where('employeeId', '==', u.id)));
+      snapshot.data.shifts = shiftsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const punchesSnap = await getDocs(query(collection(db, 'timePunches'), where('employeeId', '==', u.id)));
+      snapshot.data.timePunches = punchesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const timeOffSnap = await getDocs(query(collection(db, 'timeOffRequests'), where('userId', '==', u.id)));
+      snapshot.data.timeOffRequests = timeOffSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `86chaos_Employee_${u.name.replace(/\s+/g, '_')}_${getToday()}.json`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      addToast('Backup Complete', 'Employee JSON downloaded.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleRestoreEmployee = async (e, u) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (prompt(`CRITICAL: Type "RESTORE" to inject this backup into ${u.name}'s profile.`) !== 'RESTORE') {
+      e.target.value = ''; return addToast('Aborted', 'Restore canceled.');
+    }
+    addToast('Restoring', 'Injecting employee data...');
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const backup = JSON.parse(event.target.result);
+        if (backup.metadata.userId !== u.id && !window.confirm("ID mismatch. Inject anyway?")) return;
+        let count = 0;
+        for (const [colName, docs] of Object.entries(backup.data)) {
+          const promises = docs.map(d => {
+            const { id, ...data } = d;
+            return setDoc(doc(db, colName, id), data);
+          });
+          await Promise.all(promises);
+          count += docs.length;
+        }
+        addToast('Restore Complete', `Injected ${count} records.`);
+      } catch (err) { addToast('Error', 'Invalid backup file.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleDeleteGlobalUser = async (u) => {
+    if (prompt(`CRITICAL: Type "DELETE" to permanently erase ${u.name} and all their access.`) !== 'DELETE') {
+      return addToast('Aborted', 'User deletion canceled.');
+    }
+    try {
+      await deleteDoc(doc(db, "users", u.id));
+      addToast('Terminated', `User ${u.name} has been erased.`);
+    } catch (err) {
+      addToast('Error', 'Could not delete user.');
+    }
+  };
+
   // --- OBLITERATION ENGINE ---
   const handleNukeData = async (e) => {
     e.preventDefault();
@@ -4789,7 +5415,6 @@ const handleExportData = async (rest) => {
     setIsNuking(true);
     
     try {
-      // Re-authenticate using the master admin's password as a security lock
       await signInWithEmailAndPassword(auth, appUser.email, nukePassword);
       
       let cols = [];
@@ -4798,7 +5423,7 @@ const handleExportData = async (rest) => {
       else if (nukeTarget.type === 'recipes') cols = ['recipes'];
       else if (nukeTarget.type === 'events') cols = ['events'];
       else if (nukeTarget.type === 'users') cols = ['users'];
-      else if (nukeTarget.type === 'everything') cols = ['inventoryItems', 'vendors', 'invoices', 'users', 'recipes', 'shifts', 'timeOffRequests', 'shiftSwaps', 'events', 'wasteLogs', 'sales'];
+      else if (nukeTarget.type === 'everything') cols = ['inventoryItems', 'vendors', 'invoices', 'users', 'recipes', 'shifts', 'timeOffRequests', 'shiftSwaps', 'events', 'wasteLogs', 'sales', 'maintenanceLogs'];
 
       let totalDeleted = 0;
       for (const c of cols) {
@@ -4806,7 +5431,6 @@ const handleExportData = async (rest) => {
         const deletePromises = [];
         
         snap.forEach(d => {
-           // HARD SAFETY LOCK: Never delete the global admin user requesting the wipe
            if (c === 'users' && d.id === appUser.id) return;
            deletePromises.push(deleteDoc(doc(db, c, d.id)));
         });
@@ -4837,24 +5461,14 @@ const handleExportData = async (rest) => {
     for (const r of restaurants) {
       try {
         await addDoc(collection(db, "events"), { 
-          date: new Date().toISOString(), 
-          title: broadcastMsg.trim(), 
-          type: 'note', 
-          author: 'System Alert', 
-          isImportant: true, 
-          restaurantId: r.id, 
-          replies: [] 
+          date: new Date().toISOString(), title: broadcastMsg.trim(), type: 'note', author: 'System Alert', isImportant: true, restaurantId: r.id, replies: [] 
         });
         success++;
-      } catch (err) {
-        console.error("Megaphone blocked:", err);
-        failed++;
-      }
+      } catch (err) { failed++; }
     }
     
     if (failed > 0) addToast('Partial Alert', `Sent to ${success}, but Firebase blocked ${failed}. Check console.`);
     else addToast('Megaphone', `Message blasted successfully to ${success} locations.`);
-    
     setBroadcastMsg('');
   };
 
@@ -4870,17 +5484,34 @@ const handleExportData = async (rest) => {
         if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
         if (type === 'Recipe') await addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
         success++;
-      } catch (err) {
-        console.error("Forge blocked:", err);
-        failed++;
-      }
+      } catch (err) { failed++; }
     }
     
     if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
     else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
-    
     setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
   };
+
+               const handleTestPush = async () => {
+    if (!window.confirm("Fire a test notification to all opted-in devices in your workspace?")) return;
+    addToast('Pinging Server', 'Firing test shot to Vercel...');
+    try {
+      const pushRes = await fetch('/api/send-schedule-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          restaurantId: appUser.restaurantId,
+          restaurantName: 'TEST MODE'
+        })
+      });
+      const pushData = await pushRes.json();
+      if (pushData.message) addToast('Server Reply', pushData.message); 
+      else if (pushData.success) addToast('Success', `Test pushed to ${pushData.sentCount} devices.`);
+      else addToast('API Error', pushData.error || 'Unknown error');
+    } catch (err) {
+      addToast('Network Error', 'Failed to reach Vercel.');
+    }
+  };   
 
   const handleOrphanSweep = async () => {
     if(!window.confirm("Scan platform for dead shifts (shifts attached to deleted users)?")) return;
@@ -4890,11 +5521,10 @@ const handleExportData = async (rest) => {
     addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
   };
 
-const handleForceRefresh = async () => {
+  const handleForceRefresh = async () => {
     if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
     addToast('Executing', 'Sending refresh signal...');
-    const stamp = new Date().toISOString();
-    let count = 0;
+    const stamp = new Date().toISOString(); let count = 0;
     for (const r of restaurants) {
        try { await updateDoc(doc(db, "restaurants", r.id), { forceRefresh: stamp }); count++; } catch(e){}
     }
@@ -4912,19 +5542,14 @@ const handleForceRefresh = async () => {
     
     let count = 0;
     for (const r of restaurants) {
-      // SAFEGUARD: Never lock the workspace the Admin is currently using
       if (r.id !== appUser.restaurantId) {
-        try { 
-            await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); 
-            count++; 
-        } catch(e){}
+        try { await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); count++; } catch(e){}
       }
     }
     addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'suspended' : 'restored'}.`);
   };
 
-  const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Administrator access given.'); };
-  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
+const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Access given. The user MUST log out and log back in to see the new tab.'); };  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
 
   // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Pro' ? 99 : 0), 0);
@@ -4953,7 +5578,17 @@ const handleForceRefresh = async () => {
                 <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
                 <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
               </div>
-<div className="pt-2 border-t border-[#2A353D]"><label className={T.label}>Module Access</label><div className="grid grid-cols-2 gap-2 mt-2">{['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team'].map(feat => (<label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]"><input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" /><span className="text-xs font-bold text-slate-300 capitalize">{feat}</span></label>))}</div></div>
+              <div className="pt-2 border-t border-[#2A353D]">
+                 <label className={T.label}>Module Access</label>
+                 <div className="grid grid-cols-2 gap-2 mt-2">
+                    {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
+                      <label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]">
+                        <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
+                        <span className="text-xs font-bold text-slate-300 capitalize">{feat}</span>
+                      </label>
+                    ))}
+                 </div>
+              </div>
               
               {/* LABS / CANARY ROLLOUT */}
               <div className="pt-2 border-t border-[#2A353D]">
@@ -4969,7 +5604,7 @@ const handleForceRefresh = async () => {
               <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
             </form>
 
-{/* BACKUP & RESTORE */}
+            {/* BACKUP & RESTORE */}
             <div className="pt-4 border-t border-[#2A353D] mt-4 space-y-3">
               <h4 className="text-[10px] uppercase tracking-widest text-emerald-500 font-black mb-2">Database Backup & Recovery</h4>
               <div className="grid grid-cols-2 gap-2">
@@ -5027,9 +5662,10 @@ const handleForceRefresh = async () => {
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-{appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
+            {appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
               <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
-            )}          </div>
+            )}          
+          </div>
 
           {/* STALE ACCOUNT ALERTS */}
           {staleTenants.length > 0 && (
@@ -5085,13 +5721,12 @@ const handleForceRefresh = async () => {
                   </div>
                 </div>
               ))}
-        
-    </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* --- NEW TAB: GLOBAL USERS (User Impersonation) --- */}
+      {/* --- TAB: GLOBAL USERS --- */}
       {subTab === 'users' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-4 flex gap-3 items-center`}>
@@ -5099,20 +5734,33 @@ const handleForceRefresh = async () => {
             <input type="text" placeholder="Search any user by name, email, role, or ID..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
           </div>
           <div className={`divide-y ${T.border} ${T.card} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-{allUsers.filter(u => {
-  const restName = restaurants.find(r => r.id === u.restaurantId)?.name || '';
-  return (u.name + u.email + u.role + u.id + restName).toLowerCase().includes(userSearch.toLowerCase());
-}).slice(0, 50).map(u => {              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
+            {allUsers.filter(u => {
+              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || '';
+              return (u.name + u.email + u.role + u.id + restName).toLowerCase().includes(userSearch.toLowerCase());
+            }).slice(0, 50).map(u => {              
+              const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
               return (
-                <div key={u.id} className={`${T.row} flex justify-between items-center`}>
-<div>
+                <div key={u.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-3`}>
+                  <div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
                     <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName} <span className="mx-1">|</span> <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span></div>
                   </div>
-                  <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
-                    <Moon size={14} /> Possess
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={() => setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u })} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">
+                      <Moon size={14} /> Possess
+                    </button>
+                    <button onClick={() => handleBackupEmployee(u)} className="p-1.5 bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-emerald-400 rounded-lg transition-colors shadow-sm" title="Download User Data JSON">
+                      💾
+                    </button>
+                    <label className="p-1.5 bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-blue-400 rounded-lg transition-colors shadow-sm cursor-pointer" title="Inject Data to User">
+                      <input type="file" accept=".json" onChange={(e) => handleRestoreEmployee(e, u)} className="hidden" />
+                      🔄
+                    </label>
+                    <button onClick={() => handleDeleteGlobalUser(u)} className="p-1.5 bg-red-900/10 border border-red-900/30 text-red-500 hover:bg-red-900/40 rounded-lg transition-colors shadow-sm" title="Delete Account">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               )
             })}
@@ -5207,14 +5855,18 @@ const handleForceRefresh = async () => {
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2
- gap-4">
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`${T.card} p-5 border-fuchsia-900/30`}>
+              <h3 className="font-black text-white mb-1">Test Push Notifications</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Fires a live test ping through Vercel to verify tokens and Firebase Admin credentials are working.</p>
+              <button onClick={handleTestPush} type="button" className="w-full bg-fuchsia-900/20 text-fuchsia-400 border border-fuchsia-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-fuchsia-900/40 transition-colors flex items-center justify-center gap-2"><Bell size={16}/> Fire Test Alert</button>
+            </div>
             <div className={`${T.card} p-5 border-emerald-900/30`}>
               <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
               <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
             </div>
- <div className={`${T.card} p-5 border-blue-900/30`}>
+            <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
@@ -5282,6 +5934,10 @@ export default function App() {
     return () => clearInterval(versionInterval);
   }, []);
 
+
+
+  
+                    
   // --- APP INSTALL TRACKER (NEW) ---
   useEffect(() => {
     const handleAppInstall = () => {
@@ -5460,6 +6116,42 @@ useEffect(() => {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
 
+// --- AUTO-ASK FOR NOTIFICATIONS ON LOGIN ---
+  useEffect(() => {
+    if (liveAppUser && !ghostTenant && typeof window !== 'undefined' && 'Notification' in window) {
+      // Only ask if they haven't made a decision yet
+      if (Notification.permission === 'default') {
+        // Wait 2.5 seconds after app load so the browser doesn't flag it as spam
+        setTimeout(() => {
+          Notification.requestPermission().then(async (permission) => {
+            if (permission === 'granted' && messaging) {
+              const currentToken = await getToken(messaging, { 
+                vapidKey: 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc' 
+              });
+              if (currentToken) {
+                await updateDoc(doc(db, "users", liveAppUser.id), { fcmToken: currentToken });
+                addToast('Success', 'Push notifications enabled for this device.');
+              }
+            }
+          });
+        }, 2500);
+      }
+    }
+  }, [liveAppUser?.id]);
+                      
+  // --- FOREGROUND NOTIFICATION CATCHER ---
+  useEffect(() => {
+    if (!messaging) return;
+    const unsub = onMessage(messaging, (payload) => {
+      console.log("Foreground message caught:", payload);
+      addToast(
+        payload.notification?.title || 'System Alert', 
+        payload.notification?.body || 'You have a new notification.'
+      );
+    });
+    return () => unsub();
+  }, [addToast, messaging]);
+
   const prevDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setCurrentDate(formatDate(d)); };
   const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
@@ -5591,9 +6283,10 @@ useEffect(() => {
 {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
 {activeTabState === 'prep' && <TabPrep currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'recipes' && <TabRecipes appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'inventory' && <TabInventory addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'team' && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-{activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
+{activeTabState === 'inventory' && clientFeatures?.inventory !== false && <TabInventory addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance appUser={liveAppUser} addToast={addToast} />}
+        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
         {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
 {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} />}      </main>
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
@@ -5609,7 +6302,7 @@ useEffect(() => {
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 8.6.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 9.0.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
       </div>
     </div>

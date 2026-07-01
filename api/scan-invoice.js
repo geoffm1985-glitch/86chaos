@@ -19,8 +19,8 @@ export default async function handler(req, res) {
     // Strip the data URL prefix (e.g., "data:application/pdf;base64,")
     const base64Data = fileBase64.split(',')[1] || fileBase64;
 
-    // Strict accounting prompt
-    const prompt = `You are an expert restaurant accountant. Extract the data from this invoice and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\nRequired keys:\n- "vendorName" (string)\n- "invoiceDate" (string)\n- "invoiceTotal" (number)\n- "lineItems" (an array of objects containing "itemName" (string), "quantity" (number), "packSize" (string), "unitPrice" (number), and "totalPrice" (number)).`;
+    // Strict accounting prompt with generalized SKU/Product Code extraction rules
+    const prompt = `You are an expert restaurant accountant. Extract the data from this invoice and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\n\nCRITICAL: You MUST extract the product code (SKU, Item #, Product ID) for EVERY item. Supplier formats vary wildly. Look for alphanumeric strings/numbers under headers like "Item", "SKU", "Code", or floating near the item description/brand name (e.g., 13206, VF480, SYS-998). Isolate this code completely; do not merge it into the item name. If no code exists, return an empty string.\n\nRequired keys:\n- "vendorName" (string)\n- "invoiceDate" (string)\n- "invoiceTotal" (number)\n- "lineItems" (an array of objects containing "itemName" (string), "productCode" (string), "quantity" (number), "packSize" (string), "unitPrice" (number), and "totalPrice" (number)).`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
