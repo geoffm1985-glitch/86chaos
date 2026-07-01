@@ -4098,23 +4098,25 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
-const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
+  const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
   const [payPeriodStart, setPayPeriodStart] = useState(prefs.payPeriodStart || 'Monday');
-// --- Notification State ---
+  
+  // --- Notification State ---
   const [notifSchedule, setNotifSchedule] = useState(prefs.notifSchedule ?? true);
   const [notifMessages, setNotifMessages] = useState(prefs.notifMessages ?? true);
   const [notifTrades, setNotifTrades] = useState(prefs.notifTrades ?? true);
   const [notifReminders, setNotifReminders] = useState(prefs.notifReminders ?? false);
   const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); 
-  
-  // Advanced SaaS Notification States
-  const [notifLevel, setNotifLevel] = useState(prefs.notifLevel || 'all'); // 'all', 'mentions', 'critical'
+
+  // --- Advanced SaaS Notification States ---
+  const [notifLevel, setNotifLevel] = useState(prefs.notifLevel || 'all');
   const [keywords, setKeywords] = useState(prefs.keywords || '');
   const [muteOnDaysOff, setMuteOnDaysOff] = useState(prefs.muteOnDaysOff ?? false);
   const [dndEnabled, setDndEnabled] = useState(prefs.dndEnabled ?? false);
   const [dndStart, setDndStart] = useState(prefs.dndStart || '22:00');
   const [dndEnd, setDndEnd] = useState(prefs.dndEnd || '08:00');
-// --- System Config State (Admin Only) ---
+
+  // --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
   const [sysAddress, setSysAddress] = useState(sys.address || '');
@@ -4128,11 +4130,12 @@ const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly');
   const [sysSameRoleTrades, setSysSameRoleTrades] = useState(sys.sameRoleTrades ?? true);
   const [sysBlockEarly, setSysBlockEarly] = useState(sys.blockEarly ?? true);
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
-const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
+  const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
   const [sysWageAccess, setSysWageAccess] = useState(sys.wageAccess || []);
   const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
   const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
-const handleEnableNotifications = async () => {
+
+  const handleEnableNotifications = async () => {
     try {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
@@ -4151,6 +4154,7 @@ const handleEnableNotifications = async () => {
       addToast('Error', 'Could not enable notifications.');
     }
   };
+
   const handleGeocodeAddress = async () => {
     if (!sysAddress.trim()) return addToast('Error', 'Please enter a full address first.');
     addToast('Locating...', 'Searching map database...');
@@ -4175,7 +4179,6 @@ const handleEnableNotifications = async () => {
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
   
-  // FIX: Unpacked the arrays into a new array [...dbRoles] before sorting to prevent the frozen data crash
   const displayRoles = dbRoles.length > 0 
     ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
     : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
@@ -4212,7 +4215,7 @@ const handleEnableNotifications = async () => {
     } catch (err) { addToast('Error', 'Failed to save profile.'); }
   };
 
-const handleSavePrefs = async (e) => {
+  const handleSavePrefs = async (e) => {
     e.preventDefault();
     try {
       await updateDoc(doc(db, "users", appUser.id), {
@@ -4226,11 +4229,11 @@ const handleSavePrefs = async (e) => {
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
   };
 
-const handleSaveSystem = async (e) => {
+  const handleSaveSystem = async (e) => {
     e.preventDefault();
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
-await setDoc(doc(db, "restaurants", targetId), {
+      await setDoc(doc(db, "restaurants", targetId), {
         systemSettings: { 
           geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
           breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime,
@@ -4238,7 +4241,6 @@ await setDoc(doc(db, "restaurants", targetId), {
         }
       }, { merge: true });
       addToast('System Saved', 'Global workspace configurations updated.');
-      logAudit(appUser, 'UPDATE_SYS_CONFIG', 'Global Settings', 'Modified core workspace settings.');
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -4308,7 +4310,7 @@ await setDoc(doc(db, "restaurants", targetId), {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-<div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
+      <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
         {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace', 'integrations'] : []).map((tab) => (
           <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {tab}
@@ -4390,7 +4392,7 @@ await setDoc(doc(db, "restaurants", targetId), {
                 <h2 className="text-base font-black text-emerald-400 mb-3 border-b border-[#2A353D] pb-2">Payroll Settings</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-<label className={T.label}>Default Pay Period</label>
+                    <label className={T.label}>Default Pay Period</label>
                     <select value={payPeriod} onChange={e => setPayPeriod(e.target.value)} className={`${T.input} py-2 text-sm`}>
                       <option value="Weekly">Weekly</option>
                       <option value="Bi-Weekly">Bi-Weekly</option>
@@ -4470,7 +4472,7 @@ await setDoc(doc(db, "restaurants", targetId), {
         </div>
       )}
 
-{subTab === 'alerts' && (
+      {subTab === 'alerts' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-5`}>
             
@@ -4479,15 +4481,15 @@ await setDoc(doc(db, "restaurants", targetId), {
               <div>
                 <div className="text-sm font-black text-white flex items-center gap-2">Device Connection</div>
                 <div className="text-[9px] font-medium text-slate-400 mt-0.5 leading-snug">
-                  Browser Status: {'Notification' in window ? (Notification.permission === 'granted' ? 'Allowed' : Notification.permission === 'denied' ? 'Blocked via Browser Settings' : 'Not Configured') : 'Not Supported'}
+                  Browser Status: {typeof window !== 'undefined' && typeof Notification !== 'undefined' ? (Notification.permission === 'granted' ? 'Allowed' : Notification.permission === 'denied' ? 'Blocked via Browser Settings' : 'Not Configured') : 'Not Supported'}
                 </div>
               </div>
-              {typeof window !== 'undefined' && 'Notification' in window && Notification.permission !== 'granted' && (
+              {typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
                 <button onClick={handleEnableNotifications} type="button" className="px-4 py-2 bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-80 text-slate-900 font-black text-[10px] uppercase tracking-widest rounded-lg transition-colors shadow-md whitespace-nowrap">
                   Connect Device
                 </button>
               )}
-              {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted' && (
+              {typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission === 'granted' && (
                 <div className="px-3 py-1.5 bg-emerald-900/20 border border-emerald-900/50 text-emerald-500 font-black text-[10px] uppercase tracking-widest rounded-lg flex items-center gap-1">
                   <Check size={12}/> Connected
                 </div>
@@ -4570,6 +4572,7 @@ await setDoc(doc(db, "restaurants", targetId), {
           </form>
         </div>
       )}
+
       {subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
@@ -4580,7 +4583,7 @@ await setDoc(doc(db, "restaurants", targetId), {
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
-<Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
+              <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
               {sysGeofence && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
                    <div>
@@ -4606,8 +4609,7 @@ await setDoc(doc(db, "restaurants", targetId), {
                  </div>
                  <input type="number" min="0" value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
                </div>
-        
-     </div>
+      </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Shift Board Rules</div>
              <div className="space-y-2">
@@ -4619,7 +4621,7 @@ await setDoc(doc(db, "restaurants", targetId), {
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-2">
                <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
-<div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
+               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
                  <div>
                    <div className="text-xs font-bold text-white">Overtime Alert Threshold</div>
                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
@@ -4657,7 +4659,7 @@ await setDoc(doc(db, "restaurants", targetId), {
              </div>
 
           </div>
-<button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
         </form>
       )}
 
@@ -4688,8 +4690,11 @@ await setDoc(doc(db, "restaurants", targetId), {
                ))}
              </select>
              <button type="submit" className="bg-red-900/20 text-red-500 font-black tracking-widest uppercase border border-red-900/50 rounded-xl px-6 py-3 hover:bg-red-900/40 transition-colors whitespace-nowrap">Transfer</button>
+           </div>
+        </form>
+      )}
 
-                {/* --- INTEGRATIONS ZONE --- */}
+      {/* --- INTEGRATIONS ZONE --- */}
       {subTab === 'integrations' && appUser?.isAdmin && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           
@@ -4758,10 +4763,6 @@ await setDoc(doc(db, "restaurants", targetId), {
           </div>
 
         </div>
-      )} 
-                 
-                 </div>
-        </form>
       )}
 
     </div>
