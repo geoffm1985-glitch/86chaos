@@ -4867,9 +4867,13 @@ const handleEnableNotifications = async () => {
 // --- MAINTENANCE LOG TAB ---
 const TabMaintenance = ({ appUser, addToast }) => {
   const logs = useLiveCollection('maintenanceLogs', appUser?.restaurantId);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId);
   
-  // Form State
+  const [subTab, setSubTab] = useState('issues'); // 'issues' or 'pm'
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPmModalOpen, setIsPmModalOpen] = useState(false);
+  
+  // Reactive Form State
   const [equipment, setEquipment] = useState('');
   const [issue, setIssue] = useState('');
   const [urgency, setUrgency] = useState('Standard');
@@ -4878,9 +4882,19 @@ const TabMaintenance = ({ appUser, addToast }) => {
   const [notes, setNotes] = useState('');
   const [editingLogId, setEditingLogId] = useState(null);
 
+  // PM Form State
+  const [pmTitle, setPmTitle] = useState('');
+  const [pmEquipment, setPmEquipment] = useState('');
+  const [pmDays, setPmDays] = useState('30');
+  const [editingPmId, setEditingPmId] = useState(null);
+
   const resetForm = () => {
     setEquipment(''); setIssue(''); setUrgency('Standard'); 
     setStatus('Reported'); setCost(''); setNotes(''); setEditingLogId(null);
+  };
+
+  const resetPmForm = () => {
+    setPmTitle(''); setPmEquipment(''); setPmDays('30'); setEditingPmId(null);
   };
 
   const handleEdit = (log) => {
@@ -4922,6 +4936,56 @@ const TabMaintenance = ({ appUser, addToast }) => {
     } catch (err) { addToast('Error', err.message); }
   };
 
+  // --- PM ENGINE LOGIC ---
+  const handleSavePm = async (e) => {
+    e.preventDefault();
+    if(!pmTitle || !pmEquipment || !pmDays) return;
+    const payload = {
+      title: pmTitle.trim(),
+      equipment: pmEquipment.trim(),
+      frequencyDays: parseInt(pmDays) || 30,
+      restaurantId: appUser.restaurantId,
+      lastUpdatedBy: appUser.name
+    };
+    try {
+      if (editingPmId) {
+        await updateDoc(doc(db, "pmSchedules", editingPmId), payload);
+        addToast('Updated', 'PM Schedule updated.');
+      } else {
+        payload.lastCompleted = getToday(); // Default to today on creation
+        await addDoc(collection(db, "pmSchedules"), payload);
+        addToast('Created', 'New PM Schedule active.');
+      }
+      setIsPmModalOpen(false); resetPmForm();
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleMarkPmDone = async (pm) => {
+    if(!window.confirm(`Mark ${pm.title} as completed for today?`)) return;
+    try {
+      // 1. Update the PM tracker
+      await updateDoc(doc(db, "pmSchedules", pm.id), { lastCompleted: getToday() });
+      
+      // 2. Auto-generate a historical paper trail in the main logs
+      await addDoc(collection(db, "maintenanceLogs"), {
+        equipment: pm.equipment,
+        issue: `[PM COMPLETED] ${pm.title}`,
+        urgency: 'Standard',
+        status: 'Resolved',
+        cost: 0,
+        notes: `Routine Preventative Maintenance. Cycle: ${pm.frequencyDays} days.`,
+        restaurantId: appUser.restaurantId,
+        reportedAt: new Date().toISOString(),
+        reportedBy: appUser.name,
+        resolvedAt: new Date().toISOString(),
+        updatedBy: appUser.name,
+        lastUpdated: new Date().toISOString()
+      });
+      
+      addToast('PM Completed', 'Schedule reset and historical log created.');
+    } catch (e) { addToast('Error', e.message); }
+  };
+
   const getStatusColor = (s) => {
     if (s === 'Reported') return 'text-orange-400 bg-orange-900/20 border-orange-900/50';
     if (s === 'In Progress' || s === 'Pending Parts') return 'text-blue-400 bg-blue-900/20 border-blue-900/50';
@@ -4935,95 +4999,152 @@ const TabMaintenance = ({ appUser, addToast }) => {
     return 'text-slate-400';
   };
 
+  // Calculate Overdue PMs for the notification dot
+  const todayMs = new Date(getToday()+'T12:00:00').getTime();
+  const overdueCount = pmSchedules.filter(pm => {
+    const lastMs = new Date(pm.lastCompleted+'T12:00:00').getTime();
+    return (pm.frequencyDays - Math.floor((todayMs - lastMs) / 86400000)) <= 0;
+  }).length;
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-5xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       
+      {/* REACTIVE MODAL */}
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Log" : "Report Equipment Issue"}>
         <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={T.label}>Equipment / Area</label>
-              <input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required />
-            </div>
-            <div>
-              <label className={T.label}>Urgency Level</label>
-              <select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}>
-                <option value="Standard">Standard (Monitor)</option>
-                <option value="High">High (Needs Repair Soon)</option>
-                <option value="Critical">Critical (Down/Safety Hazard)</option>
-              </select>
-            </div>
+            <div><label className={T.label}>Equipment / Area</label><input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required /></div>
+            <div><label className={T.label}>Urgency Level</label><select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}><option value="Standard">Standard (Monitor)</option><option value="High">High (Needs Repair Soon)</option><option value="Critical">Critical (Down/Hazard)</option></select></div>
           </div>
-          <div>
-            <label className={T.label}>Issue Description</label>
-            <textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea>
-          </div>
+          <div><label className={T.label}>Issue Description</label><textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-[#2A353D]">
-            <div>
-              <label className={T.label}>Current Status</label>
-              <select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}>
-                <option value="Reported">Reported (Open)</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Pending Parts">Pending Parts</option>
-                <option value="Resolved">Resolved / Fixed</option>
-              </select>
-            </div>
-            <div>
-              <label className={T.label}>Repair Cost ($)</label>
-              <input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." />
-            </div>
+            <div><label className={T.label}>Current Status</label><select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}><option value="Reported">Reported (Open)</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved / Fixed</option></select></div>
+            <div><label className={T.label}>Repair Cost ($)</label><input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." /></div>
           </div>
-          <div>
-            <label className={T.label}>Repair Notes / Vendor Used</label>
-            <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" />
-          </div>
+          <div><label className={T.label}>Repair Notes / Vendor Used</label><input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" /></div>
           <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingLogId ? 'Update Log' : 'Submit Report'}</button>
         </form>
       </Modal>
 
-      <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-lg">
-        <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2"><Settings className={T.copper} size={24}/> Equipment & Maintenance</h2>
-          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track repairs, vendors, and maintenance costs.</p>
-        </div>
-        <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
+      {/* PM MODAL */}
+      <Modal isOpen={isPmModalOpen} onClose={() => { setIsPmModalOpen(false); resetPmForm(); }} title={editingPmId ? "Edit PM Schedule" : "New Preventative Maintenance"}>
+        <form onSubmit={handleSavePm} className="space-y-4">
+          <div><label className={T.label}>Task Title</label><input type="text" value={pmTitle} onChange={e=>setPmTitle(e.target.value)} className={T.input} placeholder="e.g. Clean Hood Vents" required /></div>
+          <div><label className={T.label}>Equipment / Area</label><input type="text" value={pmEquipment} onChange={e=>setPmEquipment(e.target.value)} className={T.input} placeholder="e.g. Grill Line" required /></div>
+          <div><label className={T.label}>Frequency (In Days)</label><input type="number" min="1" value={pmDays} onChange={e=>setPmDays(e.target.value)} className={T.input} placeholder="e.g. 90 for quarterly" required /></div>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingPmId ? 'Update Schedule' : 'Start Countdown'}</button>
+        </form>
+      </Modal>
+
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
+        <button onClick={() => setSubTab('issues')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'issues' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Reactive Repairs</button>
+        <button onClick={() => setSubTab('pm')} className={`relative px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'pm' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          PM Schedules
+          {overdueCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg animate-pulse">{overdueCount}</span>}
+        </button>
       </div>
 
-      <div className={`${T.card} overflow-hidden`}>
-        <div className={T.th}>Active & Resolved Issues</div>
-        <div className={`divide-y ${T.border}`}>
-          {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged. Kitchen is 100% operational.</div>}
-          
-          {logs.sort((a,b) => {
-             // Sort by unresolved first, then by urgency, then by date
-             if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
-             if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
-             if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
-             if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
-             return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
-          }).map(log => (
-            <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-white text-base">{log.equipment}</span>
-                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
-                  {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
-                </div>
-                <div className="text-sm font-medium text-slate-300 mt-1">{log.issue}</div>
-                <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
-                  <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>
-                  <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
-                  {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 md:self-end">
-                <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
-                <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
-              </div>
+      {subTab === 'issues' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2"><Wrench className={T.copper} size={20}/> Logged Repairs</h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track broken equipment and repair costs.</p>
             </div>
-          ))}
+            <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>Active & Resolved Issues</div>
+            <div className={`divide-y ${T.border}`}>
+              {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged.</div>}
+              {logs.sort((a,b) => {
+                  if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
+                  if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
+                  if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
+                  if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
+                  return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
+              }).map(log => (
+                <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' && !log.issue.includes('[PM') ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-white text-base">{log.equipment}</span>
+                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
+                      {log.issue.includes('[PM COMPLETED]') && <span className="text-[8px] font-black uppercase tracking-widest bg-blue-900/20 text-blue-400 px-2 py-0.5 rounded border border-blue-900/50">Auto-Logged PM</span>}
+                      {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
+                    </div>
+                    <div className={`text-sm font-medium mt-1 ${log.issue.includes('[PM') ? 'text-blue-300' : 'text-slate-300'}`}>{log.issue}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
+                      {!log.issue.includes('[PM') && <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>}
+                      <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
+                      {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 md:self-end">
+                    <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
+                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {subTab === 'pm' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={20}/> Preventative Schedules</h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Automated countdowns for recurring tasks.</p>
+            </div>
+            <button onClick={() => setIsPmModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> New PM</button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>Active PM Countdowns</div>
+            <div className={`divide-y ${T.border}`}>
+              {pmSchedules.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No preventative maintenance schedules set up.</div>}
+              {pmSchedules.sort((a,b) => {
+                const aDaysLeft = a.frequencyDays - Math.floor((todayMs - new Date(a.lastCompleted+'T12:00:00').getTime()) / 86400000);
+                const bDaysLeft = b.frequencyDays - Math.floor((todayMs - new Date(b.lastCompleted+'T12:00:00').getTime()) / 86400000);
+                return aDaysLeft - bDaysLeft;
+              }).map(pm => {
+                const lastMs = new Date(pm.lastCompleted+'T12:00:00').getTime();
+                const daysSince = Math.floor((todayMs - lastMs) / 86400000);
+                const daysLeft = pm.frequencyDays - daysSince;
+                
+                let statusColor = 'text-emerald-500 bg-emerald-900/20 border-emerald-900/50';
+                let statusText = `${daysLeft} Days Left`;
+                if (daysLeft <= 0) { statusColor = 'text-red-500 bg-red-900/20 border-red-900/50 animate-pulse'; statusText = `OVERDUE (${Math.abs(daysLeft)}d)`; }
+                else if (daysLeft <= 7) { statusColor = 'text-orange-400 bg-orange-900/20 border-orange-900/50'; statusText = `DUE SOON (${daysLeft}d)`; }
+
+                return (
+                  <div key={pm.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                    <div className="flex-1">
+                      <div className="font-bold text-white text-base">{pm.title}</div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">{pm.equipment} • Every {pm.frequencyDays} Days</div>
+                      <div className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-widest">Last Done: {new Date(pm.lastCompleted+'T12:00:00').toLocaleDateString()}</div>
+                    </div>
+                    <div className="flex items-center gap-3 md:self-end">
+                      <div className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border ${statusColor}`}>
+                        {statusText}
+                      </div>
+                      <button onClick={() => handleMarkPmDone(pm)} className="bg-[#12161A] text-emerald-500 border border-[#2A353D] hover:bg-[#1A2126] hover:border-emerald-900/50 font-black text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-1">
+                        <Check size={14}/> Mark Done
+                      </button>
+                      <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
+                        <button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(pm.frequencyDays.toString()); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><Edit size={14}/></button>
+                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) deleteDoc(doc(db,"pmSchedules",pm.id)); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
