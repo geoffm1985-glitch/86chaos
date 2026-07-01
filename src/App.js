@@ -62,7 +62,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '9.0.0';
+const CURRENT_VERSION = '9.5.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -5314,9 +5314,21 @@ const [editingRest, setEditingRest] = useState(null);
 addToast('Tenant Deployed', `${rName} is now live.`); setRName(''); setOName(''); setOEmail(''); setOPhone(''); setRAddress('');    } catch (error) { addToast('Deployment Failed', error.message); }
   };
 
-  const handleUpdateTenant = async (e) => {
+const handleUpdateTenant = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), { name: editingRest.name, isActive: editingRest.isActive, isReadOnly: editingRest.isReadOnly || false, features: editingRest.features || {}, labs: editingRest.labs || {}, planType: editingRest.planType || 'Pro', billingStatus: editingRest.billingStatus || 'Paid' });
+    await updateDoc(doc(db, "restaurants", editingRest.id), {
+      name: editingRest.name,
+      ownerName: editingRest.ownerName || '',
+      ownerEmail: editingRest.ownerEmail || '',
+      ownerPhone: editingRest.ownerPhone || '',
+      'systemSettings.address': editingRest.systemSettings?.address || '',
+      isActive: editingRest.isActive,
+      isReadOnly: editingRest.isReadOnly || false,
+      features: editingRest.features || {},
+      labs: editingRest.labs || {},
+      planType: editingRest.planType || 'Pro',
+      billingStatus: editingRest.billingStatus || 'Paid'
+    });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
 
@@ -5616,8 +5628,14 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         {editingRest && (
           <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
             <form onSubmit={handleUpdateTenant} className="space-y-4">
-              <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
-              <div className="grid grid-cols-2 gap-3">
+     <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
+              <div><label className={T.label}>Owner Name</label><input type="text" value={editingRest.ownerName || ''} onChange={e => setEditingRest({...editingRest, ownerName: e.target.value})} className={T.input} required /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className={T.label}>Owner Email</label><input type="email" value={editingRest.ownerEmail || ''} onChange={e => setEditingRest({...editingRest, ownerEmail: e.target.value})} className={T.input} required /></div>
+                <div><label className={T.label}>Owner Phone</label><input type="tel" value={editingRest.ownerPhone || ''} onChange={e => setEditingRest({...editingRest, ownerPhone: e.target.value})} className={T.input} required /></div>
+              </div>
+              <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
+              <div className="grid grid-cols-2 gap-3 mt-2">
                 <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option>Trial</option><option>Pro</option><option>Enterprise</option></select></div>
                 <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : 'text-emerald-500 font-black'}`}><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
               </div>
@@ -6403,7 +6421,7 @@ useEffect(() => {
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 9.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 9.5.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
       </div>
     </div>
