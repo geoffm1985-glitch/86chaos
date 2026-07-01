@@ -6374,13 +6374,16 @@ export default function App() {
 
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
-  const clientFeatures = clientData?.features || {};
+const clientFeatures = clientData?.features || {};
 
-if (liveAppUser && clientData) {
-     liveAppUser = { ...liveAppUser, systemSettings: clientData.systemSettings || {}, planType: clientData.planType || 'Pro' };
+  // THE FIX: Safely attach the Tier Data and System Settings to the user's live session
+  if (liveAppUser) {
+     liveAppUser = { 
+       ...liveAppUser, 
+       systemSettings: clientData?.systemSettings || {}, 
+       planType: clientData?.planType || 'Pro' 
+     };
   }
-
-  useEffect(() => {
     if (!rId) return;
     
     // 1. Fetch Master Client Data (Features & Billing)
