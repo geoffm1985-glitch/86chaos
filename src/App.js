@@ -1041,17 +1041,38 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
       }
     }
 
+const isCritical = message.trim().toLowerCase().includes('!critical');
+    const finalMessage = message.trim().replace(/!critical/ig, '').trim();
+
     await addDoc(collection(db, "events"), { 
       date: new Date().toISOString(), 
-      title: message.trim(), 
+      title: finalMessage, 
       type: 'note', 
       author: appUser.name, 
-      isImportant: false, 
+      isImportant: isCritical, 
       restaurantId: appUser.restaurantId, 
       replies: [],
       imageUrl: photoUrl 
     }); 
     
+    // --- NEW: TRIGGER UNIVERSAL PUSH NOTIFICATION ---
+    try {
+      await fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          restaurantId: appUser.restaurantId,
+          type: 'message',
+          title: isCritical ? '🚨 CRITICAL ALERT' : `New Message from ${appUser.name.split(' ')[0]}`,
+          body: finalMessage,
+          textContent: finalMessage,
+          isCritical: isCritical
+        })
+      });
+    } catch (err) {
+      console.error("Failed to trigger push:", err);
+    }
+
     setMessage(''); 
     setImageFile(null);
     setIsUploading(false);
