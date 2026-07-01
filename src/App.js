@@ -1377,7 +1377,6 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 const handlePublish = async () => { 
     if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
     
-    // 1. Target ALL unpublished shifts across all months, not just the currently viewed month
     const unpub = shifts.filter(s => !s.isPublished); 
     
     if (unpub.length === 0) {
@@ -1388,15 +1387,31 @@ const handlePublish = async () => {
     addToast('Publishing...', `Pushing ${unpub.length} shifts live. Please wait.`);
     
     try {
-      // 2. Blast them all to Firebase simultaneously to prevent throttling and timeouts
       await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true })));
       
       addToast("Published", "Schedule is live."); 
       logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live.`); 
+
+      // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
+      try {
+        await fetch('/api/send-schedule-alert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            restaurantId: appUser.restaurantId,
+            restaurantName: appUser.restaurantName || 'Your restaurant'
+          })
+        });
+      } catch (pushErr) {
+        console.error("Failed to send push notifications:", pushErr);
+        // We don't show a toast error here because the shifts STILL published successfully.
+      }
+
     } catch (err) {
       addToast("Error", "Some shifts failed to publish. Check connection and try again.");
     }
-  };  
+  };
+  
   const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
