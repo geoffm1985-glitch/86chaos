@@ -5227,6 +5227,42 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
 
+  // Live Banner States
+  const [bannerTarget, setBannerTarget] = useState('ALL');
+  const [bannerText, setBannerText] = useState('');
+
+  const handlePushBanner = async (e) => {
+    e.preventDefault();
+    if (!bannerText.trim()) return addToast('Error', 'Banner text required.');
+    if (!window.confirm("Pin this banner to the top of the app?")) return;
+    
+    addToast('Deploying', 'Pushing banner to selected workspace(s)...');
+    try {
+      if (bannerTarget === 'ALL') {
+        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: bannerText.trim() }));
+        await Promise.all(promises);
+      } else {
+        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: bannerText.trim() });
+      }
+      addToast('Success', 'Banner deployed successfully.');
+      setBannerText('');
+    } catch(err) { addToast('Error', err.message); }
+  };
+
+  const handleClearBanner = async () => {
+    if (!window.confirm("Clear active banners for the selected target?")) return;
+    addToast('Clearing', 'Removing banners...');
+    try {
+      if (bannerTarget === 'ALL') {
+        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: null }));
+        await Promise.all(promises);
+      } else {
+        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: null });
+      }
+      addToast('Success', 'Banner(s) cleared.');
+    } catch(err) { addToast('Error', err.message); }
+  };
+  
   // Nuke Security States
   const [nukeTarget, setNukeTarget] = useState(null);
   const [nukePassword, setNukePassword] = useState('');
@@ -5854,6 +5890,24 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             <textarea value={broadcastMsg} onChange={e=>setBroadcastMsg(e.target.value)} rows="3" className={`${T.input} mb-3 border-[#D4A381]/50 focus:border-[#D4A381]`} placeholder="SYSTEM ALERT: Maintenance scheduled for 3AM..."></textarea>
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
+
+            <form onSubmit={handlePushBanner} className={`${T.card} p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
+            <div className="mb-4 pb-2 border-b border-[#2A353D]">
+              <h2 className="text-lg font-black text-blue-400 flex items-center gap-2"><Bell size={18}/> Top-of-App Banner Broadcast</h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Pin a persistent, high-visibility alert directly below the main header.</p>
+            </div>
+            <div className="space-y-3">
+              <select value={bannerTarget} onChange={e => setBannerTarget(e.target.value)} className={T.input}>
+                <option value="ALL">🚨 ALL WORKSPACES (GLOBAL)</option>
+                {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              <input type="text" value={bannerText} onChange={e => setBannerText(e.target.value)} placeholder="e.g. SYSTEM DEGRADED - POS SYNC IS CURRENTLY DOWN" className={T.input} />
+              <div className="flex gap-2">
+                <button type="submit" className="flex-1 bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 font-black uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">Pin Banner</button>
+                <button type="button" onClick={handleClearBanner} className="px-6 bg-[#12161A] text-slate-400 border border-[#2A353D] hover:text-red-400 font-black uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">Clear Active</button>
+              </div>
+            </div>
+          </form>
           
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className={`${T.card} p-5 border-fuchsia-900/30`}>
@@ -6236,6 +6290,16 @@ useEffect(() => {
           {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
         </button>
       </header>
+
+          {/* SYSTEM BROADCAST BANNER */}
+      {clientData?.systemBanner && (
+        <div className="bg-blue-600 border-b border-blue-800 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-center shadow-lg uppercase tracking-wider w-full relative z-30 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex items-center gap-2 text-center">
+            <Bell size={14} className="animate-pulse flex-shrink-0" />
+            <span>{clientData.systemBanner}</span>
+          </div>
+        </div>
+      )}
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} />
     
