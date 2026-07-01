@@ -4816,7 +4816,7 @@ const handleEnableNotifications = async () => {
                    <input type="password" name="payrollApiKey" defaultValue={clientData?.integrations?.payrollApiKey || ''} className={T.input} placeholder="eyJhbGciOiJIUzI1Ni..." />
                  </div>
                </div>
-               <button type="submit" className="bg-emerald-900/20 text-emerald-400 font-black tracking-widest uppercase border border-emerald-900/50 rounded-xl w-full py-3 hover:bg-emerald-900/40 transition-colors">Connect Payroll</button>
+     <button type="submit" className="bg-emerald-900/20 text-emerald-400 font-black tracking-widest uppercase border border-emerald-900/50 rounded-xl w-full py-3 hover:bg-emerald-900/40 transition-colors">Connect Payroll</button>
              </form>
           </div>
 
@@ -4825,7 +4825,7 @@ const handleEnableNotifications = async () => {
 
     </div>
   );
-};
+}; // <--- This properly closes TabGodMode
 
 
 // --- MAINTENANCE LOG TAB ---
