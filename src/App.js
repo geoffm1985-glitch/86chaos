@@ -6078,16 +6078,7 @@ export default function App() {
   });
   // --- GHOST MODE & ROUTING STATE ---
   const [ghostTenant, setGhostTenant] = useState(null);
-    // --- REMOTE SESSION KILL SWITCH ---
-  useEffect(() => {
-    if (liveAppUser?.forceLogout) {
-      updateDoc(doc(db, "users", liveAppUser.id), { forceLogout: false }).catch(()=>{});
-      localStorage.removeItem('86chaosUser');
-      sessionStorage.removeItem('86chaosUser');
-      setAppUser(null);
-      alert("Session terminated by System Administrator to clear a cache error. Please log in again.");
-    }
-  }, [liveAppUser?.forceLogout]);            
+      
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   
   // --- VERSION CHECKER STATE & LOGIC ---
@@ -6147,6 +6138,19 @@ export default function App() {
        liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'System Administrator', isGhost: true };
     }
   }
+
+  // --- REMOTE SESSION KILL SWITCH ---
+  useEffect(() => {
+    if (liveAppUser?.forceLogout) {
+      updateDoc(doc(db, "users", liveAppUser.id), { forceLogout: false }).catch(()=>{});
+      localStorage.removeItem('86chaosUser');
+      sessionStorage.removeItem('86chaosUser');
+      setAppUser(null);
+      alert("Session terminated by System Administrator to clear a cache error. Please log in again.");
+    }
+  }, [liveAppUser?.forceLogout]);
+
+  // --- GLOBAL WORKSPACE & HEALTH PING ---
 
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
