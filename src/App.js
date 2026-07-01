@@ -6370,11 +6370,9 @@ export default function App() {
     }
   }, [liveAppUser?.forceLogout]);
 
-  // --- GLOBAL WORKSPACE & HEALTH PING ---
-
-  // --- GLOBAL WORKSPACE & HEALTH PING ---
+// --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
-const clientFeatures = clientData?.features || {};
+  const clientFeatures = clientData?.features || {};
 
   // THE FIX: Safely attach the Tier Data and System Settings to the user's live session
   if (liveAppUser) {
@@ -6384,6 +6382,8 @@ const clientFeatures = clientData?.features || {};
        planType: clientData?.planType || 'Pro' 
      };
   }
+
+  useEffect(() => {
     if (!rId) return;
     
     // 1. Fetch Master Client Data (Features & Billing)
@@ -6404,7 +6404,7 @@ const clientFeatures = clientData?.features || {};
       }
     });
 
-// 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
+    // 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
     if (!ghostTenant && appUser?.id) {
       const today = new Date().toDateString();
       const lastPing = localStorage.getItem(`ping_user_${appUser.id}`);
