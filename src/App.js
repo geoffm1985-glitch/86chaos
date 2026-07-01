@@ -5796,85 +5796,125 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         ))}
       </div>
 
-      <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
-        {editingRest && (
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-            <form onSubmit={handleUpdateTenant} className="space-y-4">
-     <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
-              <div><label className={T.label}>Owner Name</label><input type="text" value={editingRest.ownerName || ''} onChange={e => setEditingRest({...editingRest, ownerName: e.target.value})} className={T.input} required /></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className={T.label}>Owner Email</label><input type="email" value={editingRest.ownerEmail || ''} onChange={e => setEditingRest({...editingRest, ownerEmail: e.target.value})} className={T.input} required /></div>
-                <div><label className={T.label}>Owner Phone</label><input type="tel" value={editingRest.ownerPhone || ''} onChange={e => setEditingRest({...editingRest, ownerPhone: e.target.value})} className={T.input} required /></div>
-              </div>
-              <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
-              <div className="grid grid-cols-2 gap-3 mt-2">
-                <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option>Trial</option><option>Pro</option><option>Enterprise</option></select></div>
-                <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : 'text-emerald-500 font-black'}`}><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
-                <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
-              </div>
-              <div className="pt-2 border-t border-[#2A353D]">
-                 <label className={T.label}>Module Access</label>
-                 <div className="grid grid-cols-2 gap-2 mt-2">
-                    {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
-                      <label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]">
-                        <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
-                        <span className="text-xs font-bold text-slate-300 capitalize">{feat}</span>
-                      </label>
-                    ))}
-                 </div>
-              </div>
-              
-              {/* LABS / CANARY ROLLOUT */}
-              <div className="pt-2 border-t border-[#2A353D]">
-                <label className={T.label}>Labs / Beta Features (Canary Rollout)</label>
+ <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
+        {editingRest && (() => {
+          
+          // --- THE TIER PRESET ENGINE ---
+          const applyTierPreset = (tier) => {
+            let newFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
+            let newLabs = { laborProjection: false };
+            
+            if (tier === 'Starter') {
+                newFeatures = { schedule: true, messages: true, prep: true, team: true, timesheets: true };
+            } else if (tier === 'Pro') {
+                newFeatures = { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
+            } else if (tier === 'Elite' || tier === 'Enterprise') {
+                newFeatures = { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
+                newLabs = { laborProjection: true };
+            }
+
+            setEditingRest({
+                ...editingRest,
+                planType: tier,
+                features: newFeatures,
+                labs: newLabs
+            });
+          };
+
+          return (
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+              <form onSubmit={handleUpdateTenant} className="space-y-4">
+                <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
+                <div><label className={T.label}>Owner Name</label><input type="text" value={editingRest.ownerName || ''} onChange={e => setEditingRest({...editingRest, ownerName: e.target.value})} className={T.input} required /></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><label className={T.label}>Owner Email</label><input type="email" value={editingRest.ownerEmail || ''} onChange={e => setEditingRest({...editingRest, ownerEmail: e.target.value})} className={T.input} required /></div>
+                  <div><label className={T.label}>Owner Phone</label><input type="tel" value={editingRest.ownerPhone || ''} onChange={e => setEditingRest({...editingRest, ownerPhone: e.target.value})} className={T.input} required /></div>
+                </div>
+                <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
+                
                 <div className="grid grid-cols-2 gap-2 mt-2">
-                  <label className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]">
-                    <input type="checkbox" checked={editingRest.labs?.laborProjection || false} onChange={e => setEditingRest({...editingRest, labs: { ...(editingRest.labs || {}), laborProjection: e.target.checked }})} className="w-4 h-4 accent-purple-500" />
-                    <span className="text-xs font-bold text-purple-400 capitalize">Labor Projections</span>
+                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option>Starter</option><option>Pro</option><option>Elite</option><option>Enterprise</option></select></div>
+                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : 'text-emerald-500 font-black'}`}><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
+                  <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
+                </div>
+
+                {/* QUICK APPLY TIER PRESETS */}
+                <div className="pt-4 border-t border-[#2A353D]">
+                  <label className={T.label}>Quick-Apply Tier Packages</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                    <button type="button" onClick={() => applyTierPreset('Starter')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
+                    <button type="button" onClick={() => applyTierPreset('Pro')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
+                    <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
+                    <button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`}>Enterprise</button>
+                  </div>
+                </div>
+
+                {/* MANUAL MODULE OVERRIDES */}
+                <div className="pt-4 border-t border-[#2A353D]">
+                   <label className={T.label}>Manual Module Overrides</label>
+                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                      {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
+                        <label key={feat} className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors cursor-pointer ${editingRest.features && editingRest.features[feat] ? 'bg-[#8F6040]/20 border-[#C59373]' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
+                          <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : false} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
+                          <span className={`text-[11px] font-bold capitalize ${editingRest.features && editingRest.features[feat] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{feat}</span>
+                        </label>
+                      ))}
+                   </div>
+                </div>
+                
+                {/* LABS / CANARY ROLLOUT */}
+                <div className="pt-2 border-t border-[#2A353D]">
+                  <label className={T.label}>Labs / Beta Features (Canary Rollout)</label>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${editingRest.labs?.laborProjection ? 'bg-purple-900/20 border-purple-500/50' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
+                      <input type="checkbox" checked={editingRest.labs?.laborProjection || false} onChange={e => setEditingRest({...editingRest, labs: { ...(editingRest.labs || {}), laborProjection: e.target.checked }})} className="w-4 h-4 accent-purple-500" />
+                      <span className={`text-[11px] font-bold capitalize ${editingRest.labs?.laborProjection ? 'text-purple-400' : 'text-slate-400'}`}>Labor Projections</span>
+                    </label>
+                  </div>
+                </div>
+
+                <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
+              </form>
+
+              {/* BACKUP & RESTORE */}
+              <div className="pt-4 border-t border-[#2A353D] mt-4 space-y-3">
+                <h4 className="text-[10px] uppercase tracking-widest text-emerald-500 font-black mb-2">Database Backup & Recovery</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => handleCreateBackup(editingRest)} className="w-full bg-emerald-900/20 text-emerald-400 font-bold py-2.5 rounded-lg border border-emerald-900/50 hover:bg-emerald-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
+                    💾 Download JSON
+                  </button>
+                  <label className="w-full bg-blue-900/20 text-blue-400 font-bold py-2.5 rounded-lg border border-blue-900/50 hover:bg-blue-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
+                    <span>🔄 Upload Restore</span>
+                    <input type="file" accept=".json" onChange={(e) => handleRestoreBackup(e, editingRest)} className="hidden" />
                   </label>
                 </div>
-              </div>
-
-              <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
-            </form>
-
-            {/* BACKUP & RESTORE */}
-            <div className="pt-4 border-t border-[#2A353D] mt-4 space-y-3">
-              <h4 className="text-[10px] uppercase tracking-widest text-emerald-500 font-black mb-2">Database Backup & Recovery</h4>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => handleCreateBackup(editingRest)} className="w-full bg-emerald-900/20 text-emerald-400 font-bold py-2.5 rounded-lg border border-emerald-900/50 hover:bg-emerald-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-                  💾 Download JSON
+                <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2 mt-2">
+                  <ClipboardList size={14}/> Download CSV User Export
                 </button>
-                <label className="w-full bg-blue-900/20 text-blue-400 font-bold py-2.5 rounded-lg border border-blue-900/50 hover:bg-blue-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
-                  <span>🔄 Upload Restore</span>
-                  <input type="file" accept=".json" onChange={(e) => handleRestoreBackup(e, editingRest)} className="hidden" />
-                </label>
               </div>
-              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2 mt-2">
-                <ClipboardList size={14}/> Download CSV User Export
-              </button>
-            </div>
 
-            {/* DANGER ZONE */}
-            <div className="pt-4 border-t border-red-900/50 mt-4 space-y-3">
-              <div>
-                <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center">Danger Zone (Data Wipes)</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'inventory', label: 'Inventory & Vendors' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Inventory</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'schedule', label: 'Schedule & Time Off' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Schedule</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'recipes', label: 'All Recipes' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Recipes</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'events', label: 'Events & Messages' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Events/Msgs</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'users', label: 'All Users/Staff' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Users</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'everything', label: 'ABSOLUTELY EVERYTHING' })} className="w-full bg-red-600/20 text-red-500 font-black py-2 rounded-lg border border-red-500/50 hover:bg-red-600 hover:text-white transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> NUKE ALL</button>
+              {/* DANGER ZONE */}
+              <div className="pt-4 border-t border-red-900/50 mt-4 space-y-3">
+                <div>
+                  <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center">Danger Zone (Data Wipes)</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'inventory', label: 'Inventory & Vendors' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Inventory</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'schedule', label: 'Schedule & Time Off' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Schedule</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'recipes', label: 'All Recipes' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Recipes</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'events', label: 'Events & Messages' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Events/Msgs</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'users', label: 'All Users/Staff' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Users</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'everything', label: 'ABSOLUTELY EVERYTHING' })} className="w-full bg-red-600/20 text-red-500 font-black py-2 rounded-lg border border-red-500/50 hover:bg-red-600 hover:text-white transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> NUKE ALL</button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-          </div>
-        )}
+            </div>
+          );
+        })()}
       </Modal>
 
       <Modal isOpen={!!nukeTarget} onClose={() => { setNukeTarget(null); setNukePassword(''); }} title={`⚠️ CRITICAL: Nuke ${nukeTarget?.label}`}>
