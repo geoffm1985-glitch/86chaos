@@ -4100,13 +4100,20 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
 const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
   const [payPeriodStart, setPayPeriodStart] = useState(prefs.payPeriodStart || 'Monday');
-  // --- Notification State ---
+// --- Notification State ---
   const [notifSchedule, setNotifSchedule] = useState(prefs.notifSchedule ?? true);
   const [notifMessages, setNotifMessages] = useState(prefs.notifMessages ?? true);
   const [notifTrades, setNotifTrades] = useState(prefs.notifTrades ?? true);
   const [notifReminders, setNotifReminders] = useState(prefs.notifReminders ?? false);
   const [reminderTime, setReminderTime] = useState(prefs.reminderTime || '120'); 
-
+  
+  // Advanced SaaS Notification States
+  const [notifLevel, setNotifLevel] = useState(prefs.notifLevel || 'all'); // 'all', 'mentions', 'critical'
+  const [keywords, setKeywords] = useState(prefs.keywords || '');
+  const [muteOnDaysOff, setMuteOnDaysOff] = useState(prefs.muteOnDaysOff ?? false);
+  const [dndEnabled, setDndEnabled] = useState(prefs.dndEnabled ?? false);
+  const [dndStart, setDndStart] = useState(prefs.dndStart || '22:00');
+  const [dndEnd, setDndEnd] = useState(prefs.dndEnd || '08:00');
 // --- System Config State (Admin Only) ---
   const sys = appUser?.systemSettings || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
@@ -4209,7 +4216,11 @@ const handleSavePrefs = async (e) => {
     e.preventDefault();
     try {
       await updateDoc(doc(db, "users", appUser.id), {
-        preferences: { ...prefs, defaultTab, timeFormat, notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime, payPeriod, payPeriodStart }
+        preferences: { 
+          ...prefs, defaultTab, timeFormat, payPeriod, payPeriodStart,
+          notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
+          notifLevel, keywords, muteOnDaysOff, dndEnabled, dndStart, dndEnd
+        }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
     } catch (err) { addToast('Error', 'Failed to save preferences.'); }
@@ -4460,10 +4471,11 @@ await setDoc(doc(db, "restaurants", targetId), {
       )}
 
 {subTab === 'alerts' && (
-<div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-5`}>
             
-            <div className="p-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl flex justify-between items-center gap-3 mb-6">
+            {/* SLEEK CONNECTION STATUS BAR */}
+            <div className="p-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl flex justify-between items-center gap-3">
               <div>
                 <div className="text-sm font-black text-white flex items-center gap-2">Device Connection</div>
                 <div className="text-[9px] font-medium text-slate-400 mt-0.5 leading-snug">
@@ -4481,36 +4493,81 @@ await setDoc(doc(db, "restaurants", targetId), {
                 </div>
               )}
             </div>
+
             <div>
               <h2 className="text-base font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={16}/> Alerts & Routing</h2>
-            <p className="text-[10px] text-slate-400 font-medium mb-3">Control how 86 Chaos pings your device.</p>
-            <div className="space-y-2">
-              <Toggle label="Schedule Publications" desc="Get alerted the exact second a new schedule goes live." checked={notifSchedule} onChange={e => setNotifSchedule(e.target.checked)} />
-              <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
-              <Toggle label="Urgent Message Board" desc="Receive push alerts for announcements marked 'Critical' by managers." checked={notifMessages} onChange={e => setNotifMessages(e.target.checked)} />
-              <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl`}>
-                <label className="flex items-center justify-between cursor-pointer group">
-                  <div>
-                    <div className="text-xs font-bold text-white group-hover:text-[#D4A381] transition-colors">Pre-Shift Reminders</div>
-                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Automated ping before your scheduled clock-in time.</div>
-                  </div>
-                  <div className="relative flex-shrink-0">
-                    <input type="checkbox" checked={notifReminders} onChange={e => setNotifReminders(e.target.checked)} className="sr-only" />
-                    <div className={`block w-10 h-6 rounded-full transition-colors ${notifReminders ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
-                    <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${notifReminders ? 'transform translate-x-4' : ''}`}></div>
-                  </div>
-                </label>
-                {notifReminders && (
-                  <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
-                    <input type="number" min="1" value={reminderTime} onChange={e => setReminderTime(e.target.value)} className={`${T.input} w-20 py-1 text-center text-xs font-black`} placeholder="120" />
+              <p className="text-[10px] text-slate-400 font-medium mb-4">Control exactly when and how 86 Chaos pings your device.</p>
+              
+              <div className="space-y-2 mb-6">
+                <Toggle label="Schedule Publications" desc="Get alerted the exact second a new schedule goes live." checked={notifSchedule} onChange={e => setNotifSchedule(e.target.checked)} />
+                <Toggle label="Shift Trade Board" desc="Notify me when someone posts a shift they need covered." checked={notifTrades} onChange={e => setNotifTrades(e.target.checked)} />
+                <Toggle label="Smart Mute: Days Off" desc="Automatically silence all non-critical notifications if you are not scheduled to work today." checked={muteOnDaysOff} onChange={e => setMuteOnDaysOff(e.target.checked)} />
+              </div>
+
+              <h3 className="text-xs font-black uppercase text-[#D4A381] tracking-widest border-b border-[#2A353D] pb-1 mb-3">Message Board Rules</h3>
+              <div className="space-y-3 mb-6">
+                <select value={notifLevel} onChange={e => setNotifLevel(e.target.value)} className={T.input}>
+                  <option value="all">Notify me for ALL new messages</option>
+                  <option value="mentions">Only notify me for @mentions & Keywords</option>
+                  <option value="critical">Only notify me for Critical Manager Alerts</option>
+                </select>
+
+                {notifLevel === 'mentions' && (
+                  <div className="animate-[slideIn_0.2s_ease-out]">
+                    <label className={T.label}>Keyword Alerts (Comma Separated)</label>
+                    <input type="text" value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="e.g. 86, emergency, VIP, cooler" className={`${T.input} text-sm`} />
+                    <p className="text-[9px] text-slate-500 mt-1 font-bold">You will be pinged anytime someone types these exact words.</p>
                   </div>
                 )}
               </div>
+
+              <h3 className="text-xs font-black uppercase text-[#D4A381] tracking-widest border-b border-[#2A353D] pb-1 mb-3">Timing & Delays</h3>
+              <div className="space-y-2">
+                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl`}>
+                  <label className="flex items-center justify-between cursor-pointer group">
+                    <div>
+                      <div className="text-xs font-bold text-white group-hover:text-[#D4A381] transition-colors">Quiet Hours (Do Not Disturb)</div>
+                      <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Hold all non-critical notifications until morning.</div>
+                    </div>
+                    <div className="relative flex-shrink-0">
+                      <input type="checkbox" checked={dndEnabled} onChange={e => setDndEnabled(e.target.checked)} className="sr-only" />
+                      <div className={`block w-10 h-6 rounded-full transition-colors ${dndEnabled ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${dndEnabled ? 'transform translate-x-4' : ''}`}></div>
+                    </div>
+                  </label>
+                  {dndEnabled && (
+                    <div className="flex items-center gap-3 pt-3 mt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
+                      <input type="time" value={dndStart} onChange={e => setDndStart(e.target.value)} className={`${T.input} py-1.5 text-xs text-center`} />
+                      <span className="text-[9px] font-black text-slate-500 uppercase">TO</span>
+                      <input type="time" value={dndEnd} onChange={e => setDndEnd(e.target.value)} className={`${T.input} py-1.5 text-xs text-center`} />
+                    </div>
+                  )}
+                </div>
+
+                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl`}>
+                  <label className="flex items-center justify-between cursor-pointer group">
+                    <div>
+                      <div className="text-xs font-bold text-white group-hover:text-[#D4A381] transition-colors">Pre-Shift Reminders</div>
+                      <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Automated ping before your scheduled clock-in time.</div>
+                    </div>
+                    <div className="relative flex-shrink-0">
+                      <input type="checkbox" checked={notifReminders} onChange={e => setNotifReminders(e.target.checked)} className="sr-only" />
+                      <div className={`block w-10 h-6 rounded-full transition-colors ${notifReminders ? 'bg-[#8F6040]' : 'bg-[#2A353D]'}`}></div>
+                      <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${notifReminders ? 'transform translate-x-4' : ''}`}></div>
+                    </div>
+                  </label>
+                  {notifReminders && (
+                    <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex-1">Minutes Before Shift:</span>
+                      <input type="number" min="1" value={reminderTime} onChange={e => setReminderTime(e.target.value)} className={`${T.input} w-20 py-1 text-center text-xs font-black`} placeholder="120" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
-        </div>
-          <button type="submit" className={`w-full ${T.btn} py-2`}>Save Alerts</button>
-        </form>
+            <button type="submit" className={`w-full ${T.btn} py-3 text-sm mt-4`}>Save Alert Preferences</button>
+          </form>
         </div>
       )}
       {subTab === 'workspace' && appUser?.isAdmin && (
