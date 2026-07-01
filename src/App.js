@@ -56,8 +56,6 @@ export const messaging = typeof window !== "undefined" ? getMessaging(app) : nul
 enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
 
 const auth = getAuth(app);
-let messaging = null;
-try { if (typeof window !== 'undefined' && 'Notification' in window) messaging = getMessaging(app); } catch (e) { console.warn("Push not supported."); }
 
 // --- Master Configuration ---
 const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
@@ -4098,6 +4096,25 @@ const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40');
   const [sysWageAccess, setSysWageAccess] = useState(sys.wageAccess || []);
   const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
   const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
+const handleEnableNotifications = async () => {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const currentToken = await getToken(messaging, { 
+          vapidKey: 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc' 
+        });
+        if (currentToken) {
+          await updateDoc(doc(db, "users", appUser.id), { fcmToken: currentToken });
+          addToast('Success', 'Push notifications enabled for this device.');
+        }
+      } else {
+        addToast('Denied', 'You blocked notifications in your browser settings.');
+      }
+    } catch (error) {
+      console.error(error);
+      addToast('Error', 'Could not enable notifications.');
+    }
+  };
   const handleGeocodeAddress = async () => {
     if (!sysAddress.trim()) return addToast('Error', 'Please enter a full address first.');
     addToast('Locating...', 'Searching map database...');
@@ -4413,10 +4430,20 @@ await setDoc(doc(db, "restaurants", targetId), {
         </div>
       )}
 
-      {subTab === 'alerts' && (
-        <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
-          <div>
-            <h2 className="text-base font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={16}/> Alerts & Routing</h2>
+{subTab === 'alerts' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
+             <div className="mb-4 border-b border-[#2A353D] pb-2">
+               <h2 className="text-base font-black text-blue-400 flex items-center gap-2"><Bell size={18}/> Device Push Notifications</h2>
+               <p className="text-[10px] text-slate-400 font-medium leading-snug mt-1">Allow 86 Chaos to send live alerts directly to this browser or device.</p>
+             </div>
+             <button onClick={handleEnableNotifications} type="button" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black tracking-widest uppercase py-3 rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2">
+               <Bell size={18} /> Enable Notifications On This Device
+             </button>
+          </div>
+          <form onSubmit={handleSavePrefs} className={`${T.card} p-3 sm:p-5 space-y-4`}>
+            <div>
+              <h2 className="text-base font-black text-white mb-1"><Bell className={`inline mr-2 ${T.copper}`} size={16}/> Alerts & Routing</h2>
             <p className="text-[10px] text-slate-400 font-medium mb-3">Control how 86 Chaos pings your device.</p>
             <div className="space-y-2">
               <Toggle label="Schedule Publications" desc="Get alerted the exact second a new schedule goes live." checked={notifSchedule} onChange={e => setNotifSchedule(e.target.checked)} />
@@ -4442,11 +4469,11 @@ await setDoc(doc(db, "restaurants", targetId), {
                 )}
               </div>
             </div>
-          </div>
+        </div>
           <button type="submit" className={`w-full ${T.btn} py-2`}>Save Alerts</button>
         </form>
+        </div>
       )}
-
       {subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
