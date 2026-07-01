@@ -4186,13 +4186,20 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
   const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
 
-  const handleEnableNotifications = async () => {
+const handleEnableNotifications = async () => {
     try {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
+        
+        // --- NEW: THE SMART TARGET LOCK ---
+        const activeVapidKey = window.location.hostname === 'app.86chaos.com' 
+          ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU' // Production
+          : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc'; // Testing Sandbox
+
         const currentToken = await getToken(messaging, { 
-          vapidKey: 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc' 
+          vapidKey: activeVapidKey 
         });
+        
         if (currentToken) {
           await updateDoc(doc(db, "users", appUser.id), { fcmToken: currentToken });
           addToast('Success', 'Push notifications enabled for this device.');
