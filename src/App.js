@@ -615,16 +615,46 @@ const handleClockIn = async () => {
     addToast('Revoked', 'Shift removed from Trade Board.');
   };
 
-  const handleClaimShift = async (swap) => {
-    if (!window.confirm(`Claim the ${swap.role} shift on ${formatDisplayDate(swap.date)}?`)) return;
+const handleOfferSwap = async (shift) => {
+    if (!window.confirm(`Offer your ${shift.role} shift on ${formatDisplayDate(shift.date)} to the Trade Board?`)) return;
+    
     try {
-       await updateDoc(doc(db, "shifts", swap.shiftId), { employeeId: appUser.id });
-       await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
-       await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `✅ Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
-       addToast('Claimed', 'Shift successfully added to your schedule.');
-       setSubTab('my-schedule'); 
+      // 1. Add the swap to the database
+      await addDoc(collection(db, "shiftSwaps"), {
+        shiftId: shift.id,
+        originalEmployeeId: appUser.id,
+        role: shift.role,
+        date: shift.date,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+        status: 'available',
+        restaurantId: appUser.restaurantId,
+        listedAt: new Date().toISOString()
+      });
+      
+      addToast('Listed', 'Shift is now on the Trade Board.');
+      setSubTab('trade-board');
+
+      // 2. Trigger the Universal Push Cannon
+      try {
+        await fetch('/api/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            restaurantId: appUser.restaurantId,
+            type: 'trade', // This tells the cannon to respect the notifTrades toggle
+            title: '🔄 Shift up for grabs!',
+            body: `${appUser.name.split(' ')[0]} just posted a ${shift.role} shift on ${formatDisplayDate(shift.date)}.`,
+            textContent: '', // Not a message, so no keyword scanning needed
+            isCritical: false
+          })
+        });
+      } catch (err) {
+        console.error("Failed to trigger push:", err);
+      }
+
     } catch (e) {
-       addToast('Error', e.message);
+      addToast('Error', e.message);
     }
   };
 
