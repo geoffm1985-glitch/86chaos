@@ -121,6 +121,8 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
       message: msg, 
       stack: error?.stack || '', 
       breadcrumbs: window.breadcrumbs || [], // Attach the breadcrumbs to the crash
+      userAgent: navigator.userAgent, // Captures device, OS, and browser info
+      screenSize: `${window.innerWidth}x${window.innerHeight}`, // Helps debug UI clipping
       time: new Date().toISOString() 
     }).catch(()=>{}); 
     return false; 
@@ -5268,6 +5270,21 @@ const [editingRest, setEditingRest] = useState(null);
   const [nukeTarget, setNukeTarget] = useState(null);
   const [nukePassword, setNukePassword] = useState('');
   const [isNuking, setIsNuking] = useState(false);
+  // --- RAW JSON INSPECTOR STATE ---
+  const [isRawInspectorOpen, setIsRawInspectorOpen] = useState(false);
+  const [rawInspectorId, setRawInspectorId] = useState('');
+  const [rawInspectorCollection, setRawInspectorCollection] = useState('users');
+  const [rawInspectorData, setRawInspectorData] = useState(null);
+
+  const handleFetchRawDoc = async (e) => {
+    e.preventDefault();
+    if (!rawInspectorId.trim()) return;
+    try {
+      const docSnap = await getDoc(doc(db, rawInspectorCollection, rawInspectorId.trim()));
+      if (docSnap.exists()) setRawInspectorData({ id: docSnap.id, ...docSnap.data() });
+      else addToast('Not Found', 'No document found with that ID in that collection.');
+    } catch(err) { addToast('Error', err.message); }
+  };
 
   // Fetch Global Intelligence
   useEffect(() => {
@@ -5830,6 +5847,20 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                       <input type="file" accept=".json" onChange={(e) => handleRestoreEmployee(e, u)} className="hidden" />
                       🔄
                     </label>
+              <button onClick={async () => {
+                      if(!window.confirm(`Force ${u.name} to log out and clear their device cache?`)) return;
+                      await updateDoc(doc(db, "users", u.id), { forceLogout: true });
+                      addToast('Executed', 'Kill signal sent to user device.');
+                    }} className="p-1.5 bg-orange-900/20 border border-orange-900/50 text-orange-500 hover:bg-orange-900/40 rounded-lg transition-colors shadow-sm" title="Force Logout & Cache Clear">
+                      🔌
+                    </button>
+                    <button onClick={async () => {
+                      if(!window.confirm(`Force ${u.name} into the Password Reset flow on their next login?`)) return;
+                      await updateDoc(doc(db, "users", u.id), { forcePasswordChange: true });
+                      addToast('Executed', 'User must reset password on next login.');
+                    }} className="p-1.5 bg-yellow-900/20 border border-yellow-900/50 text-yellow-500 hover:bg-yellow-900/40 rounded-lg transition-colors shadow-sm" title="Force Password Reset Screen">
+                      🔑
+                    </button>
                     <button onClick={() => handleDeleteGlobalUser(u)} className="p-1.5 bg-red-900/10 border border-red-900/30 text-red-500 hover:bg-red-900/40 rounded-lg transition-colors shadow-sm" title="Delete Account">
                       <Trash2 size={14} />
                     </button>
@@ -5891,10 +5922,37 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
       )}
 
       {/* --- TAB: FORENSICS (GLOBAL AUDIT TRAIL) --- */}
+<Modal isOpen={isRawInspectorOpen} onClose={() => { setIsRawInspectorOpen(false); setRawInspectorData(null); }} title="Raw Database Inspector">
+        <div className="space-y-4">
+          <form onSubmit={handleFetchRawDoc} className="flex gap-2">
+            <select value={rawInspectorCollection} onChange={e=>setRawInspectorCollection(e.target.value)} className={`${T.input} w-1/3`}>
+              <option value="users">Users</option>
+              <option value="restaurants">Restaurants</option>
+              <option value="shifts">Shifts</option>
+              <option value="recipes">Recipes</option>
+              <option value="inventoryItems">Inventory</option>
+              <option value="timePunches">Time Punches</option>
+            </select>
+            <input type="text" value={rawInspectorId} onChange={e=>setRawInspectorId(e.target.value)} placeholder="Paste Document ID..." className={`${T.input} flex-1`} required />
+            <button type="submit" className={`${T.btn} px-4`}><Search size={18}/></button>
+          </form>
+          {rawInspectorData && (
+            <div className="bg-[#0B0E11] p-4 rounded-xl border border-[#2A353D] overflow-x-auto max-h-[50vh] custom-scrollbar">
+              <pre className="text-[10px] text-emerald-400 font-mono leading-relaxed">
+                {JSON.stringify(rawInspectorData, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      </Modal>
       {subTab === 'forensics' && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white flex items-center gap-2"><Search className="text-blue-500" size={18}/> Global Forensics & Ghost Audit</h3></div>
-          <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+<div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+            <h3 className="font-black text-sm text-white flex items-center gap-2"><Search className="text-blue-500" size={18}/> Global Forensics & Ghost Audit</h3>
+            <button onClick={() => setIsRawInspectorOpen(true)} className="bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
+              <Wrench size={12} /> Inspect Raw JSON
+            </button>
+          </div>          <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
             {auditLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No forensic data logged yet.</div>}
             {auditLogs.map(log => (
               <div key={log.id} className={`${T.row} flex flex-col gap-1`}>
@@ -6020,6 +6078,16 @@ export default function App() {
   });
   // --- GHOST MODE & ROUTING STATE ---
   const [ghostTenant, setGhostTenant] = useState(null);
+    // --- REMOTE SESSION KILL SWITCH ---
+  useEffect(() => {
+    if (liveAppUser?.forceLogout) {
+      updateDoc(doc(db, "users", liveAppUser.id), { forceLogout: false }).catch(()=>{});
+      localStorage.removeItem('86chaosUser');
+      sessionStorage.removeItem('86chaosUser');
+      setAppUser(null);
+      alert("Session terminated by System Administrator to clear a cache error. Please log in again.");
+    }
+  }, [liveAppUser?.forceLogout]);            
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   
   // --- VERSION CHECKER STATE & LOGIC ---
