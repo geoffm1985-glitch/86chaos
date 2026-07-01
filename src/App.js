@@ -5800,28 +5800,31 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         {editingRest && (() => {
           
           // --- THE TIER PRESET ENGINE ---
+// --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
-            let newFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
+            // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
+            const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
             let newLabs = { laborProjection: false };
+            let updatedFeatures = { ...baseFeatures };
             
+            // 2. Merge only the allowed features as TRUE over the baseline
             if (tier === 'Starter') {
-                newFeatures = { schedule: true, messages: true, prep: true, team: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, timesheets: true };
             } else if (tier === 'Pro') {
-                newFeatures = { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
             } else if (tier === 'Elite' || tier === 'Enterprise') {
-                newFeatures = { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
                 newLabs = { laborProjection: true };
             }
 
+            // 3. Save the complete object (with explicit true/false flags) to state
             setEditingRest({
                 ...editingRest,
                 planType: tier,
-                features: newFeatures,
+                features: updatedFeatures,
                 labs: newLabs
             });
           };
-
-          return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
               <form onSubmit={handleUpdateTenant} className="space-y-4">
                 <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
