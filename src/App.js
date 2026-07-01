@@ -5222,8 +5222,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
   // Form States
   const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
-  const [editingRest, setEditingRest] = useState(null);
-  const [forgeRecipeTitle, setForgeRecipeTitle] = useState(''); const [forgeRecipeBody, setForgeRecipeBody] = useState('');
+const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
 
@@ -5508,7 +5507,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     setBroadcastMsg('');
   };
 
-  const handleForgePush = async (e, type) => {
+ const handleForgePush = async (e, type) => {
     e.preventDefault(); 
     if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
     
@@ -5518,14 +5517,13 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     for (const r of restaurants) {
       try {
         if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
-        if (type === 'Recipe') await addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
         success++;
       } catch (err) { failed++; }
     }
     
     if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
     else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
-    setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
+    setForgeEventTitle('');
   };
 
                const handleTestPush = async () => {
@@ -5804,16 +5802,12 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         </div>
       )}
 
-      {/* --- TAB: THE FORGE --- */}
+{/* --- TAB: THE FORGE --- */}
       {subTab === 'forge' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={(e) => handleForgePush(e, 'Event')} className={`${T.card} p-5`}>
             <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={18}/> Global Event Injection</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Force an event onto every client's calendar simultaneously.</p></div>
             <div className="flex flex-col sm:flex-row gap-3"><input type="date" value={forgeEventDate} onChange={e=>setForgeEventDate(e.target.value)} className={`${T.input} sm:w-48`} required /><input type="text" placeholder="Event Title (e.g. Mother's Day)" value={forgeEventTitle} onChange={e=>setForgeEventTitle(e.target.value)} className={T.input} required /><button type="submit" className={`${T.btn} px-8 whitespace-nowrap`}>Push Event</button></div>
-          </form>
-          <form onSubmit={(e) => handleForgePush(e, 'Recipe')} className={`${T.card} p-5`}>
-            <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><BookOpen className={T.copper} size={18}/> Global Recipe Push</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Distribute a master recipe to every active client database.</p></div>
-            <div className="space-y-3"><input type="text" placeholder="Recipe Title..." value={forgeRecipeTitle} onChange={e=>setForgeRecipeTitle(e.target.value)} className={T.input} required /><textarea placeholder="Ingredients & Instructions..." value={forgeRecipeBody} onChange={e=>setForgeRecipeBody(e.target.value)} rows="4" className={T.input} required></textarea><button type="submit" className={`w-full ${T.btn}`}>Push Spec Sheet</button></div>
           </form>
         </div>
       )}
@@ -5891,23 +5885,47 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
 
-            <form onSubmit={handlePushBanner} className={`${T.card} p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
-            <div className="mb-4 pb-2 border-b border-[#2A353D]">
-              <h2 className="text-lg font-black text-blue-400 flex items-center gap-2"><Bell size={18}/> Top-of-App Banner Broadcast</h2>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Pin a persistent, high-visibility alert directly below the main header.</p>
-            </div>
-            <div className="space-y-3">
-              <select value={bannerTarget} onChange={e => setBannerTarget(e.target.value)} className={T.input}>
-                <option value="ALL">🚨 ALL WORKSPACES (GLOBAL)</option>
-                {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-              <input type="text" value={bannerText} onChange={e => setBannerText(e.target.value)} placeholder="e.g. SYSTEM DEGRADED - POS SYNC IS CURRENTLY DOWN" className={T.input} />
-              <div className="flex gap-2">
-                <button type="submit" className="flex-1 bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 font-black uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">Pin Banner</button>
-                <button type="button" onClick={handleClearBanner} className="px-6 bg-[#12161A] text-slate-400 border border-[#2A353D] hover:text-red-400 font-black uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">Clear Active</button>
+    <div className={`${T.card} p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
+            <form onSubmit={handlePushBanner}>
+              <div className="mb-4 pb-2 border-b border-[#2A353D]">
+                <h2 className="text-lg font-black text-blue-400 flex items-center gap-2"><Bell size={18}/> Top-of-App Banner Broadcast</h2>
+                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Pin a persistent, high-visibility alert directly below the main header.</p>
               </div>
-            </div>
-          </form>
+              <div className="space-y-3">
+                <select value={bannerTarget} onChange={e => setBannerTarget(e.target.value)} className={T.input}>
+                  <option value="ALL">🚨 ALL WORKSPACES (GLOBAL)</option>
+                  {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+                <input type="text" value={bannerText} onChange={e => setBannerText(e.target.value)} placeholder="e.g. SYSTEM DEGRADED - POS SYNC IS CURRENTLY DOWN" className={T.input} />
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 font-black uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">Pin Banner</button>
+                  <button type="button" onClick={handleClearBanner} className="px-6 bg-[#12161A] text-slate-400 border border-[#2A353D] hover:text-red-400 font-black uppercase tracking-widest py-3 rounded-xl transition-colors shadow-sm">Clear Selected</button>
+                </div>
+              </div>
+            </form>
+
+            {/* THE ACTIVE BANNER LEDGER */}
+            {restaurants.filter(r => r.systemBanner).length > 0 && (
+              <div className="mt-5 pt-4 border-t border-[#2A353D] animate-[slideIn_0.2s_ease-out]">
+                <h3 className="text-[10px] font-black uppercase text-[#D4A381] tracking-widest mb-3">Currently Active Banners</h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                  {restaurants.filter(r => r.systemBanner).map(r => (
+                    <div key={r.id} className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+                      <div className="min-w-0 pr-3">
+                        <div className="text-xs font-bold text-white truncate">{r.name}</div>
+                        <div className="text-[10px] text-blue-400 font-bold mt-0.5 leading-snug break-words">"{r.systemBanner}"</div>
+                      </div>
+                      <button type="button" onClick={async () => {
+                        if(!window.confirm(`Clear banner for ${r.name}?`)) return;
+                        await updateDoc(doc(db, "restaurants", r.id), { systemBanner: null });
+                        addToast('Cleared', `Banner removed from ${r.name}.`);
+                      }} className="text-slate-400 hover:text-red-500 p-2 flex-shrink-0 transition-colors bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className={`${T.card} p-5 border-fuchsia-900/30`}>
