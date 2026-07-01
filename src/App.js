@@ -5366,6 +5366,27 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
     setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
   };
 
+               const handleTestPush = async () => {
+    if (!window.confirm("Fire a test notification to all opted-in devices in your workspace?")) return;
+    addToast('Pinging Server', 'Firing test shot to Vercel...');
+    try {
+      const pushRes = await fetch('/api/send-schedule-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          restaurantId: appUser.restaurantId,
+          restaurantName: 'TEST MODE'
+        })
+      });
+      const pushData = await pushRes.json();
+      if (pushData.message) addToast('Server Reply', pushData.message); 
+      else if (pushData.success) addToast('Success', `Test pushed to ${pushData.sentCount} devices.`);
+      else addToast('API Error', pushData.error || 'Unknown error');
+    } catch (err) {
+      addToast('Network Error', 'Failed to reach Vercel.');
+    }
+  };   
+
   const handleOrphanSweep = async () => {
     if(!window.confirm("Scan platform for dead shifts (shifts attached to deleted users)?")) return;
     addToast('Scanning', 'Running orphan sweep...');
@@ -5708,7 +5729,12 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             <button type="submit" className="w-full bg-[#12161A] text-[#D4A381] border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest py-3 rounded-xl transition-colors">Blast Message</button>
           </form>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`${T.card} p-5 border-fuchsia-900/30`}>
+              <h3 className="font-black text-white mb-1">Test Push Notifications</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Fires a live test ping through Vercel to verify tokens and Firebase Admin credentials are working.</p>
+              <button onClick={handleTestPush} type="button" className="w-full bg-fuchsia-900/20 text-fuchsia-400 border border-fuchsia-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-fuchsia-900/40 transition-colors flex items-center justify-center gap-2"><Bell size={16}/> Fire Test Alert</button>
+            </div>
             <div className={`${T.card} p-5 border-emerald-900/30`}>
               <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
@@ -5782,6 +5808,21 @@ export default function App() {
     return () => clearInterval(versionInterval);
   }, []);
 
+
+// --- FOREGROUND NOTIFICATION CATCHER ---
+  useEffect(() => {
+    if (!messaging) return;
+    const unsub = onMessage(messaging, (payload) => {
+      console.log("Foreground message caught:", payload);
+      addToast(
+        payload.notification?.title || 'System Alert', 
+        payload.notification?.body || 'You have a new notification.'
+      );
+    });
+    return () => unsub();
+  }, [addToast]);
+  
+                    
   // --- APP INSTALL TRACKER (NEW) ---
   useEffect(() => {
     const handleAppInstall = () => {
