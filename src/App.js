@@ -5897,6 +5897,14 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                   <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
                   <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span>
                 </div>
+{/* HARDWARE DIAGNOSTICS UI */}
+                        {(log.screenSize || log.userAgent) && (
+                          <div className="text-[9px] mt-1.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 bg-[#0B0E11] p-1.5 rounded-lg border border-[#2A353D]">
+                            {log.screenSize && <span className="font-black text-blue-400 whitespace-nowrap">🖥️ {log.screenSize}</span>}
+                            {log.userAgent && <span className="font-medium text-slate-500 truncate" title={log.userAgent}>📱 {log.userAgent}</span>}
+                          </div>
+                        )}
+
                 
                 {/* TELEMETRY BREADCRUMBS UI */}
                 {log.breadcrumbs && log.breadcrumbs.length > 0 && (
