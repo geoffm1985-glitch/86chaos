@@ -62,7 +62,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '10.0.1';
+const CURRENT_VERSION = '10.0.';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -5796,11 +5796,10 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         ))}
       </div>
 
- <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
+<Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
           
-     
-// --- THE TIER PRESET ENGINE ---
+          // --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
             const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
@@ -5825,6 +5824,8 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                 labs: newLabs
             });
           };
+
+          return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
               <form onSubmit={handleUpdateTenant} className="space-y-4">
                 <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
