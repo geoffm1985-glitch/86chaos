@@ -1938,12 +1938,17 @@ const handleExportTimesheets = () => {
         </div>
       </Modal>
 
-      {/* TOP NAVIGATION TOGGLE */}
+{/* TOP NAVIGATION TOGGLE */}
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
         <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
         {appUser?.isAdmin && (
-          <button onClick={() => setSubTab('timesheets')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Timesheets & Labor</button>
+          <button onClick={() => {
+            if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Timesheets & Labor.');
+            setSubTab('timesheets');
+          }} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 cursor-not-allowed border border-[#2A353D]' : ''}`}>
+            {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Timesheets (Elite)' : 'Timesheets & Labor'}
+          </button>
         )}
       </div>
 
@@ -1992,8 +1997,12 @@ const handleExportTimesheets = () => {
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-              <button onClick={() => setIsAutoPopulateModalOpen(true)} className={`flex-1 2xl:flex-none ${T.btnAlt} border-blue-900/50 text-blue-400 py-2.5 h-12 flex items-center justify-center font-black`}><Repeat size={16} className="mr-1"/> Auto-Fill</button>
-              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
+<button onClick={() => {
+                if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to use Smart Auto-Fill.');
+                setIsAutoPopulateModalOpen(true);
+              }} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 text-slate-500 border-[#2A353D]' : 'border-blue-900/50 text-blue-400'}`}>
+                <Repeat size={16} className="mr-1"/> {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Auto-Fill' : 'Auto-Fill'}
+              </button>              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
@@ -3346,8 +3355,12 @@ for (const item of scannedInvoice.lineItems) {
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
 <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => executeOrder('edi')} className={`w-full col-span-2 bg-blue-900/20 text-blue-400 font-black tracking-widest uppercase border border-blue-900/50 hover:bg-blue-900/40 transition-all flex items-center justify-center gap-2 py-3 text-xs rounded-xl shadow-[0_0_10px_rgba(59,130,246,0.1)]`}><Globe size={16}/> Direct EDI Sync</button>
-              <button onClick={() => executeOrder('email')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}><Send size={16}/> Email</button>
+<button onClick={() => {
+                if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Direct EDI Sync.');
+                executeOrder('edi');
+              }} className={`w-full col-span-2 font-black tracking-widest uppercase border transition-all flex items-center justify-center gap-2 py-3 text-xs rounded-xl ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'bg-[#12161A] text-slate-500 border-[#2A353D] opacity-60 cursor-not-allowed' : 'bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40 shadow-[0_0_10px_rgba(59,130,246,0.1)]'}`}>
+                <Globe size={16}/> {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Direct EDI Sync (Elite)' : 'Direct EDI Sync'}
+              </button>              <button onClick={() => executeOrder('email')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}><Send size={16}/> Email</button>
               <button onClick={() => executeOrder('sms')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}><MessageSquare size={16}/> Text</button>
              <button onClick={() => executeOrder('csv')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}><Package size={16}/> CSV Export</button>
              <button onClick={() => executeOrder('copy')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}><ClipboardList size={16}/> Copy List</button>
@@ -5036,14 +5049,16 @@ const TabMaintenance = ({ appUser, addToast }) => {
         </form>
       </Modal>
 
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
+  <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
         <button onClick={() => setSubTab('issues')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'issues' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Reactive Repairs</button>
-        <button onClick={() => setSubTab('pm')} className={`relative px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'pm' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-          PM Schedules
-          {overdueCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg animate-pulse">{overdueCount}</span>}
+        <button onClick={() => {
+          if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Automated PM Schedules.');
+          setSubTab('pm');
+        }} className={`relative px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'pm' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
+          {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 PM Schedules' : 'PM Schedules'}
+          {(overdueCount > 0 && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro') && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg animate-pulse">{overdueCount}</span>}
         </button>
       </div>
-
       {subTab === 'issues' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
@@ -5846,16 +5861,16 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                   <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
                 </div>
 
-                {/* QUICK APPLY TIER PRESETS */}
-                <div className="pt-4 border-t border-[#2A353D]">
-                  <label className={T.label}>Quick-Apply Tier Packages</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
-                    <button type="button" onClick={() => applyTierPreset('Starter')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
-                    <button type="button" onClick={() => applyTierPreset('Pro')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
-                    <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
-                    <button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`}>Enterprise</button>
-                  </div>
+          {/* QUICK APPLY TIER PRESETS */}
+              <div className="pt-4 border-t border-[#2A353D]">
+                <label className={T.label}>Quick-Apply Tier Packages</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                  <button type="button" onClick={() => setEditingRest({...editingRest, planType: 'Starter', features: { schedule: true, messages: true, prep: true, recipes: false, inventory: false, sales: false, team: true, maintenance: false, timesheets: false }, labs: { laborProjection: false }})} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
+                  <button type="button" onClick={() => setEditingRest({...editingRest, planType: 'Pro', features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: false }, labs: { laborProjection: false }})} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
+                  <button type="button" onClick={() => setEditingRest({...editingRest, planType: 'Elite', features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true }, labs: { laborProjection: true }})} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
+                  <button type="button" onClick={() => setEditingRest({...editingRest, planType: 'Enterprise', features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true }, labs: { laborProjection: true }})} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`}>Enterprise</button>
                 </div>
+              </div>
 
                 {/* MANUAL MODULE OVERRIDES */}
                 <div className="pt-4 border-t border-[#2A353D]">
@@ -6361,8 +6376,8 @@ export default function App() {
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
 
-  if (liveAppUser && clientData?.systemSettings) {
-     liveAppUser = { ...liveAppUser, systemSettings: clientData.systemSettings };
+if (liveAppUser && clientData) {
+     liveAppUser = { ...liveAppUser, systemSettings: clientData.systemSettings || {}, planType: clientData.planType || 'Pro' };
   }
 
   useEffect(() => {
