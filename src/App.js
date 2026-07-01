@@ -5799,7 +5799,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
  <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
           
-          // --- THE TIER PRESET ENGINE ---
+     
 // --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
