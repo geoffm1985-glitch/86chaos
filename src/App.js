@@ -1392,9 +1392,10 @@ const handlePublish = async () => {
       addToast("Published", "Schedule is live."); 
       logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live.`); 
 
-      // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
+// --- NEW: TRIGGER PUSH NOTIFICATIONS ---
       try {
-        await fetch('/api/send-schedule-alert', {
+        addToast('Pinging Server', 'Sending alert request to Vercel...');
+        const pushRes = await fetch('/api/send-schedule-alert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -1402,9 +1403,22 @@ const handlePublish = async () => {
             restaurantName: appUser.restaurantName || 'Your restaurant'
           })
         });
+        
+        const pushData = await pushRes.json();
+        console.log("VERCEL RESPONSE:", pushData);
+        
+        if (pushData.message) {
+          // This catches the "No devices registered" silent exit
+          addToast('Server Reply', pushData.message); 
+        } else if (pushData.success) {
+          addToast('Alerts Sent!', `Successfully pushed to ${pushData.sentCount} devices.`);
+        } else {
+          addToast('API Error', pushData.error || 'Unknown server error');
+        }
+
       } catch (pushErr) {
         console.error("Failed to send push notifications:", pushErr);
-        // We don't show a toast error here because the shifts STILL published successfully.
+        addToast('Network Error', 'Failed to reach Vercel API.');
       }
 
     } catch (err) {
