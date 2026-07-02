@@ -5582,7 +5582,8 @@ const handleUpdateTenant = async (e) => {
       features: editingRest.features || {},
       labs: editingRest.labs || {},
       planType: editingRest.planType || 'Pro',
-      billingStatus: editingRest.billingStatus || 'Paid'
+      billingStatus: editingRest.billingStatus || 'Paid',
+      customPrice: editingRest.customPrice || ''
     });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
@@ -6041,7 +6042,10 @@ const handleUpdateTenant = async (e) => {
 const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Access given. The user MUST log out and log back in to see the new tab.'); };  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
 
 // --- CALCULATIONS ---
-  const mrr = restaurants.filter(r => r.billingStatus === 'Paid').reduce((acc, r) => acc + (tierPrices[r.planType] || 0), 0);
+  const mrr = restaurants.reduce((acc, r) => {
+    if (r.customPrice !== undefined && r.customPrice !== '') return acc + parseFloat(r.customPrice);
+    return acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Elite' ? 149 : r.planType === 'Pro' ? 99 : r.planType === 'Starter' ? 49 : 0);
+  }, 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
@@ -6110,14 +6114,15 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                 </div>
                 <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
                 
-                <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
                   <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
                   <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
+                  <div><label className={T.label}>Custom Price ($/mo)</label><input type="number" placeholder="Default" value={editingRest.customPrice || ''} onChange={e => setEditingRest({...editingRest, customPrice: e.target.value})} className={`${T.input} placeholder-slate-600`} /></div>
                 </div>
                 
-  <div className="grid grid-cols-2 gap-2 mt-2">
-                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
-                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
+                  <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
                 </div>
 
                 {/* QUICK APPLY TIER PRESETS */}
