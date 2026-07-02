@@ -4484,7 +4484,7 @@ const handleEnableNotifications = async () => {
         <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'transform translate-x-4' : ''}`}></div>
       </div>
     </label>
-  );
+  
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
