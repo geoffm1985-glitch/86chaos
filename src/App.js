@@ -1357,9 +1357,13 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     }
   };
 
-  // --- PAYROLL DATE RANGE ---
+// --- PAYROLL DATE RANGE ---
   const [periodStart, setPeriodStart] = useState(`${monthStr}-01`);
   const [periodEnd, setPeriodEnd] = useState(`${monthStr}-${String(getDaysInMonth(monthStr)).padStart(2, '0')}`);
+  
+  // --- PUNCH FILTERS ---
+  const [punchFilterDate, setPunchFilterDate] = useState('');
+  const [punchFilterEmp, setPunchFilterEmp] = useState('');
 
   // --- LABOR & FINANCIAL TARGETS ---
   const [isTargetSettingsOpen, setIsTargetSettingsOpen] = useState(false);
@@ -2256,7 +2260,7 @@ const handleExportTimesheets = () => {
             </form>
           )}
 
-          {summaryList.length > 0 && (
+{summaryList.length > 0 && (
             <div className="p-4 border-b border-[#2A353D] bg-[#0B0E11]">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Payroll Summary</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2278,10 +2282,23 @@ const handleExportTimesheets = () => {
             </div>
           )}
 
+          {/* TIME PUNCH FILTERS */}
+          <div className={`bg-[#12161A] p-3 border-b ${T.border} flex flex-col sm:flex-row gap-3 justify-between sm:items-center`}>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Filter Punches</h4>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <input type="date" value={punchFilterDate} onChange={e => setPunchFilterDate(e.target.value)} className={`${T.input} py-1.5 px-2 text-xs w-auto flex-1 sm:flex-none`} />
+              <select value={punchFilterEmp} onChange={e => setPunchFilterEmp(e.target.value)} className={`${T.input} py-1.5 px-2 text-xs w-auto flex-1 sm:flex-none`}>
+                <option value="">All Staff</option>
+                {users.filter(u => u.isActive !== false).sort((a,b) => a.name.localeCompare(b.name)).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              {(punchFilterDate || punchFilterEmp) && <button onClick={() => { setPunchFilterDate(''); setPunchFilterEmp(''); }} className="p-1.5 text-slate-400 hover:text-red-400 border border-[#2A353D] bg-[#1A2126] rounded-lg transition-colors"><X size={14}/></button>}
+            </div>
+          </div>
+
           <div className={`divide-y ${T.border}`}>
-            {periodPunches.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins recorded for this period.</div>}
+            {periodPunches.filter(p => (punchFilterDate ? p.date === punchFilterDate : true) && (punchFilterEmp ? p.employeeId === punchFilterEmp : true)).length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No clock-ins found for this selection.</div>}
             
-            {periodPunches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0)).map(p => {
+            {periodPunches.filter(p => (punchFilterDate ? p.date === punchFilterDate : true) && (punchFilterEmp ? p.employeeId === punchFilterEmp : true)).sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0)).map(p => {
                const emp = users.find(u => u.id === p.employeeId);
                const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
                const cost = hours * (emp?.wage || 0);
