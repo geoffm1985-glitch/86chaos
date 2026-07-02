@@ -4733,8 +4733,9 @@ const handleEnableNotifications = async () => {
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-2">
-               <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
-               
+<div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to unlock Mandatory Tip Declarations.'); } }}>
+                 <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Mandatory Tip Declaration (Elite)' : 'Mandatory Tip Declaration'} desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+               </div>               
                <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to set Overtime Alert Thresholds.'); } }} className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3 ${appUser?.planType === 'Starter' ? 'opacity-50 cursor-not-allowed' : ''}`}>
                  <div>
                    <div className="text-xs font-bold text-white">{appUser?.planType === 'Starter' ? '🔒 Overtime Alert Threshold (Pro)' : 'Overtime Alert Threshold'}</div>
@@ -5861,7 +5862,19 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
     
           return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-              <form onSubmit={handleUpdateTenant} className="space-y-4">
+<form onSubmit={handleUpdateTenant} className="space-y-4">
+                {/* ACTIVE SEATS DASHBOARD */}
+                <div className="flex justify-between items-center bg-[#12161A] p-4 rounded-xl border border-[#2A353D] mb-2 shadow-inner">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Active User Seats</div>
+                    <div className="text-2xl font-black text-[#D4A381]">{userCounts[editingRest.id] || 0} <span className="text-xs text-slate-400 font-bold">Staff Members</span></div>
+                  </div>
+                  <div className="text-right">
+                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Workspace ID</div>
+                     <div className="text-xs font-mono font-bold text-slate-300">{editingRest.id}</div>
+                  </div>
+                </div>
+
                 <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
                 <div><label className={T.label}>Owner Name</label><input type="text" value={editingRest.ownerName || ''} onChange={e => setEditingRest({...editingRest, ownerName: e.target.value})} className={T.input} required /></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
