@@ -5797,11 +5797,10 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         ))}
       </div>
 
- <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
+<Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
           
           // --- THE TIER PRESET ENGINE ---
-// --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
             const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
@@ -5810,11 +5809,11 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             
             // 2. Merge only the allowed features as TRUE over the baseline
             if (tier === 'Starter') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true };
             } else if (tier === 'Pro') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, inventory: true, recipes: true, sales: true };
             } else if (tier === 'Elite' || tier === 'Enterprise') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, inventory: true, recipes: true, sales: true, maintenance: true, timesheets: true };
                 newLabs = { laborProjection: true };
             }
 
@@ -5826,6 +5825,8 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                 labs: newLabs
             });
           };
+
+          return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
               <form onSubmit={handleUpdateTenant} className="space-y-4">
                 <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
@@ -5837,8 +5838,8 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                 <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
                 
                 <div className="grid grid-cols-2 gap-2 mt-2">
-                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option>Starter</option><option>Pro</option><option>Elite</option><option>Enterprise</option></select></div>
-                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : 'text-emerald-500 font-black'}`}><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
+                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
+                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2 mt-2">
@@ -5855,6 +5856,12 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                     <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
                     <button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`}>Enterprise</button>
                   </div>
+                  <button type="button" onClick={() => {
+                    applyTierPreset('Pro');
+                    setEditingRest(prev => ({...prev, planType: 'Trial', billingStatus: 'Trial'}));
+                  }} className={`w-full mt-2 py-3 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.billingStatus === 'Trial' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40'}`}>
+                    🎁 Start 14-Day Free Trial (Unlocks Pro Features)
+                  </button>
                 </div>
 
                 {/* MANUAL MODULE OVERRIDES */}
