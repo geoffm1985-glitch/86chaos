@@ -4,7 +4,18 @@ import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 
+// Fix for React-Leaflet invisible pin issue
+const customMapIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
+});
 
 
 // --- Master Theme (Mapped to Image 6187_2.png) ---
@@ -63,7 +74,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '10.0.0';
+const CURRENT_VERSION = '10.5.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -4235,8 +4246,17 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
 };
 
 
-// --- THE EXPANDED SETTINGS COMMAND CENTER ---
-const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
+const MapClickListener = ({ setLat, setLon }) => {
+  useMapEvents({
+    click(e) {
+      setLat(e.latlng.lat);
+      setLon(e.latlng.lng);
+    },
+  });
+  return null;
+};
+
+// --- THE EXPANDED SETTINGS COMMAND CENTER ---const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
   const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
 
@@ -4759,11 +4779,36 @@ const handleEnableNotifications = async () => {
                        <button type="button" onClick={handleGeocodeAddress} className={`${T.btn} py-1.5 px-4 text-xs whitespace-nowrap`}>Find GPS</button>
                      </div>
                    </div>
-                   <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[#2A353D]">
+              <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[#2A353D]">
                      <div><label className={T.label}>Latitude</label><input type="number" step="any" value={sysLat} onChange={e=>setSysLat(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 44.0300"/></div>
                      <div><label className={T.label}>Longitude</label><input type="number" step="any" value={sysLon} onChange={e=>setSysLon(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. -88.1630"/></div>
                      <div><label className={T.label}>Radius (Feet)</label><input type="number" min="10" value={sysRadius} onChange={e=>setSysRadius(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 300"/></div>
                    </div>
+
+                   <div className="w-full h-80 mt-4 rounded-xl border border-[#2A353D] relative z-0 overflow-hidden shadow-inner">
+                     <MapContainer 
+                       center={[parseFloat(sysLat) || 44.0296, parseFloat(sysLon) || -88.1633]} 
+                       zoom={17} 
+                       style={{ height: '100%', width: '100%' }}
+                     >
+                       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                       <MapClickListener 
+                         setLat={(lat) => setSysLat(lat.toFixed(6))} 
+                         setLon={(lon) => setSysLon(lon.toFixed(6))} 
+                       />
+                       {sysLat && sysLon && (
+                         <Marker position={[parseFloat(sysLat), parseFloat(sysLon)]} icon={customMapIcon} />
+                       )}
+                       {sysLat && sysLon && sysRadius && (
+                         <Circle 
+                           center={[parseFloat(sysLat), parseFloat(sysLon)]} 
+                           radius={parseInt(sysRadius) * 0.3048} 
+                           pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.2 }} 
+                         />
+                       )}
+                     </MapContainer>
+                   </div>
+                   <p className={`text-[10px] ${T.muted} font-bold uppercase tracking-widest mt-2 text-center`}>Click map to set geofence center</p>
                  </div>
                )}
                <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to unlock Unpaid Break Tracking.'); } }}>
@@ -7068,7 +7113,7 @@ return (
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 10.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 10.5.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
