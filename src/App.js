@@ -6,6 +6,7 @@ import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 
+
 // --- Master Theme (Mapped to Image 6187_2.png) ---
 const T = {
   bg: "bg-[#12161A] text-slate-100",
@@ -62,7 +63,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '9.5.0';
+const CURRENT_VERSION = '10.0.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -460,6 +461,7 @@ const [loginError, setLoginError] = useState('');
 // ============================================================================
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
   const [subTab, setSubTab] = useState('my-schedule');
+  const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
   // --- TIME CLOCK LOGIC ---
@@ -819,40 +821,50 @@ const handleOfferSwap = async (shift) => {
         </div>
       )}
 
-      {subTab === 'full-schedule' && (
-        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex justify-between items-center">
-            <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{formatDisplayMonth(currentDate)}</span>
-          </div>
-          <div className="divide-y divide-[#2A353D]">
-            {activeMonthShifts.map((shift, index) => {
-               const emp = users.find(u => u.id === shift.employeeId);
-               const showDivider = index === 0 || shift.date !== activeMonthShifts[index - 1].date;
-               
-               return (
-                 <React.Fragment key={shift.id}>
-                   {showDivider && (
-                     <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
-                       <span>{formatDisplayDate(shift.date)}</span>
-                       {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
+{subTab === 'full-schedule' && (() => {
+        const filteredRosterShifts = activeMonthShifts.filter(s => rosterFilterDate ? s.date === rosterFilterDate : true);
+        return (
+          <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
+            <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+              <div className="flex items-center gap-2">
+                 <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
+                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">({formatDisplayMonth(currentDate)})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Filter Day:</span>
+                 <input type="date" value={rosterFilterDate} onChange={(e) => setRosterFilterDate(e.target.value)} className={`${T.input} py-1 px-2 text-xs w-auto min-w-[130px]`} />
+                 {rosterFilterDate && <button onClick={() => setRosterFilterDate('')} className="text-slate-400 hover:text-red-400 p-1"><X size={14}/></button>}
+              </div>
+            </div>
+            <div className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
+              {filteredRosterShifts.map((shift, index) => {
+                 const emp = users.find(u => u.id === shift.employeeId);
+                 const showDivider = index === 0 || shift.date !== filteredRosterShifts[index - 1].date;
+                 
+                 return (
+                   <React.Fragment key={shift.id}>
+                     {showDivider && (
+                       <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
+                         <span>{formatDisplayDate(shift.date)}</span>
+                         {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
+                       </div>
+                     )}
+                     <div className={`${T.row} hover:bg-[#12161A]`}>
+                       <div className="flex items-center justify-between">
+                         <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div></div></div>
+                         <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                       </div>
                      </div>
-                   )}
-                   <div className={`${T.row} hover:bg-[#12161A]`}>
-                     <div className="flex items-center justify-between">
-                       <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div></div></div>
-                       <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
-                     </div>
-                   </div>
-                 </React.Fragment>
-               )
-            })}
-            {activeMonthShifts.length === 0 && <div className={`p-6 text-center text-xs font-bold ${T.muted}`}>No shifts published for this period.</div>}
+                   </React.Fragment>
+                 )
+              })}
+              {filteredRosterShifts.length === 0 && <div className={`p-6 text-center text-xs font-bold ${T.muted}`}>No shifts found for this selection.</div>}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
-      {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
+      {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} appUser={appUser} /></div>}
       {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}  
     </div>
   );
@@ -1938,12 +1950,17 @@ const handleExportTimesheets = () => {
         </div>
       </Modal>
 
-      {/* TOP NAVIGATION TOGGLE */}
+{/* TOP NAVIGATION TOGGLE */}
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
         <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
         <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
         {appUser?.isAdmin && (
-          <button onClick={() => setSubTab('timesheets')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Timesheets & Labor</button>
+          <button onClick={() => {
+            if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Timesheets & Labor.');
+            setSubTab('timesheets');
+          }} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 cursor-not-allowed border border-[#2A353D]' : ''}`}>
+            {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Timesheets (Elite)' : 'Timesheets & Labor'}
+          </button>
         )}
       </div>
 
@@ -1992,8 +2009,12 @@ const handleExportTimesheets = () => {
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-              <button onClick={() => setIsAutoPopulateModalOpen(true)} className={`flex-1 2xl:flex-none ${T.btnAlt} border-blue-900/50 text-blue-400 py-2.5 h-12 flex items-center justify-center font-black`}><Repeat size={16} className="mr-1"/> Auto-Fill</button>
-              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
+<button onClick={() => {
+                if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to use Smart Auto-Fill.');
+                setIsAutoPopulateModalOpen(true);
+              }} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 text-slate-500 border-[#2A353D]' : 'border-blue-900/50 text-blue-400'}`}>
+                <Repeat size={16} className="mr-1"/> {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Auto-Fill' : 'Auto-Fill'}
+              </button>              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
@@ -2310,7 +2331,7 @@ const handleExportTimesheets = () => {
 };
 
 // --- COMPACT MONTH VIEW ---
-const TabMonth = ({ currentDate, users, shifts }) => {
+const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   const [roleFilter, setRoleFilter] = useState('All');
   const uniqueRoles = ['All', ...new Set(users.map(u => u.role).filter(Boolean))].sort();
 
@@ -2414,8 +2435,10 @@ const TabMonth = ({ currentDate, users, shifts }) => {
 <div className="flex justify-between items-center p-2 no-print border-b border-[#2A353D] bg-[#12161A]">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 hidden sm:inline">Filter Role:</span>
-          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer shadow-inner">
-            {uniqueRoles.map(r => <option key={r} value={r}>{r === 'All' ? 'Whole Schedule' : r}</option>)}
+    <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer shadow-inner">
+            <option value="All">Whole Schedule</option>
+            <option value="ME">My Shifts Only</option>
+            {uniqueRoles.filter(r => r !== 'All').map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
         <button onClick={()=>window.print()} className={T.btnAlt}>🖨️ Print Calendar</button>
@@ -2432,8 +2455,8 @@ const TabMonth = ({ currentDate, users, shifts }) => {
         
 {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
-const dayShifts = shifts
-            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || s.role === roleFilter))
+          const dayShifts = shifts
+            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || (roleFilter === 'ME' ? s.employeeId === appUser?.id : s.role === roleFilter)))
             .sort((a, b) => {
               if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
               return (a.startTime || '').localeCompare(b.startTime || '');
@@ -2930,8 +2953,7 @@ const TabInventory = ({ addToast, appUser }) => {
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
   
   const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
-  const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };
-  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
+const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
   const handleLogWaste = async (e) => {
     e.preventDefault(); if(!wItemId || !wQty) return; const item = inventoryItems.find(i => i.id === wItemId); if(!item) return;
@@ -2985,12 +3007,13 @@ const TabInventory = ({ addToast, appUser }) => {
     setConfirmModal({ isOpen: true, vendorId, items: list });
   };
 
-  const executeOrder = async (method) => {
+const executeOrder = async (method) => {
     const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
     
     let bodyText = items.map(i => `${i.orderQty}x ${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize})`).join('%0D%0A');
     let fullText = `Order via 86chaos%0D%0A%0D%0A${bodyText}`;
 
+    // UNIVERSAL FAILSAFE: Always copy to clipboard in the background just in case
     try { await navigator.clipboard.writeText(decodeURIComponent(fullText)); } catch (e) { console.log(e); }
 
     if (method === 'csv') {
@@ -3002,35 +3025,43 @@ const TabInventory = ({ addToast, appUser }) => {
       const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
       if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
       else { window.location.href = emailUrl; }
-} else if (method === 'sms') {
+    } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
       if (smsUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
       else { window.location.href = smsUrl; }
     } else if (method === 'edi') {
-      if (!vendor?.ediEndpoint) return addToast('Missing Configuration', 'Please add an EDI API Endpoint URL in the Vendor Settings first.');
+      
+      // 1. Check for Endpoint
+      if (!vendor?.ediEndpoint) {
+        return addToast('Missing Config', 'Please add an EDI API Webhook URL in the Vendor Settings first.');
+      }
+      
       addToast('Transmitting', `Establishing secure handshake with ${vendor.name}...`);
       
-      // Compile machine-readable payload
+      // 2. Compile Machine-Readable Payload
       const ediPayload = {
         restaurantId: appUser.restaurantId,
         timestamp: new Date().toISOString(),
         items: items.map(i => ({ sku: i.pfgCode || 'UNKNOWN', quantity: i.orderQty, packSize: i.packSize }))
       };
 
+      // 3. Transmit (Currently simulating the API call)
       try {
-        // Simulate API Handshake to Broadliner
         await new Promise(resolve => setTimeout(resolve, 1500));
-        console.log(`EDI Payload sent to ${vendor.ediEndpoint}:`, ediPayload);
+        console.log(`[EDI SIMULATION] Payload sent to ${vendor.ediEndpoint}:`, ediPayload);
         addToast('EDI Success', `Order securely injected into ${vendor.name}'s system.`);
       } catch (err) {
         addToast('EDI Failure', 'Connection timed out. Retrying...');
-        return; // Abort stock updates on failure
+        return; // Abort stock updates on failure so the user can try again
       }
+
     } else {
       addToast('Copied', 'Order list copied to clipboard!');
     }
     
+    // Update Pending Stock
     for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
+    setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
   };
 
   const handleReceiveDelivery = async (vendorId) => {
@@ -4396,10 +4427,15 @@ const handleEnableNotifications = async () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
+<div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
         {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace', 'integrations'] : []).map((tab) => (
-          <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab}
+          <button type="button" key={tab} onClick={() => {
+            if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
+              return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
+            }
+            setSubTab(tab);
+          }} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
+            {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab}
           </button>
         ))}
       </div>
@@ -4659,7 +4695,7 @@ const handleEnableNotifications = async () => {
         </div>
       )}
 
-      {subTab === 'workspace' && appUser?.isAdmin && (
+{subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
@@ -4669,8 +4705,10 @@ const handleEnableNotifications = async () => {
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
-              <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
-              {sysGeofence && (
+              <div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to enforce Strict GPS Geofencing.'); } }}>
+                <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Strict Geofencing (Elite)' : 'Strict Geofencing (Time Clock)'} desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+              </div>
+              {sysGeofence && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro' && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
                    <div>
                      <label className={T.label}>Street Address (To auto-find coordinates)</label>
@@ -4686,7 +4724,9 @@ const handleEnableNotifications = async () => {
                    </div>
                  </div>
                )}
-               <Toggle label="Unpaid Break Tracking" desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} />
+               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to unlock Unpaid Break Tracking.'); } }}>
+                 <Toggle label={appUser?.planType === 'Starter' ? '🔒 Unpaid Break Tracking (Pro)' : 'Unpaid Break Tracking'} desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} disabled={appUser?.planType === 'Starter'} />
+               </div>
                <Toggle label="Block Early Clock-Ins" desc="Prevent staff from punching in before their grace period begins." checked={sysBlockEarly} onChange={e => setSysBlockEarly(e.target.checked)} />
                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
                  <div>
@@ -4695,7 +4735,7 @@ const handleEnableNotifications = async () => {
                  </div>
                  <input type="number" min="0" value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
                </div>
-      </div>
+             </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Shift Board Rules</div>
              <div className="space-y-2">
@@ -4706,20 +4746,25 @@ const handleEnableNotifications = async () => {
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-2">
-               <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
-               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
+<div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to unlock Mandatory Tip Declarations.'); } }}>
+                 <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Mandatory Tip Declaration (Elite)' : 'Mandatory Tip Declaration'} desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+               </div>               
+               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to set Overtime Alert Thresholds.'); } }} className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3 ${appUser?.planType === 'Starter' ? 'opacity-50 cursor-not-allowed' : ''}`}>
                  <div>
-                   <div className="text-xs font-bold text-white">Overtime Alert Threshold</div>
+                   <div className="text-xs font-bold text-white">{appUser?.planType === 'Starter' ? '🔒 Overtime Alert Threshold (Pro)' : 'Overtime Alert Threshold'}</div>
                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
                  </div>
-                 <input type="number" min="1" value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
+                 <input type="number" min="1" disabled={appUser?.planType === 'Starter'} value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs disabled:opacity-50`} />
                </div>
              </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Security & Access Control</div>
              <div className="space-y-2">
-               <Toggle label="Strict IP Whitelisting" desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} />
-               {sysEnableIpWhitelist && (
+               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to enforce Strict IP Whitelisting.'); } }}>
+                 <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Strict IP Whitelisting (Elite)' : 'Strict IP Whitelisting'} desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+               </div>
+               
+               {sysEnableIpWhitelist && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro' && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl animate-[slideIn_0.2s_ease-out] ml-4">
                    <label className={T.label}>Authorized IP Addresses (Comma Separated)</label>
                    <input type="text" value={sysIpWhitelist} onChange={e=>setSysIpWhitelist(e.target.value)} className={`${T.input} py-1.5 text-xs font-mono`} placeholder="e.g. 192.168.1.1, 10.0.0.5" />
@@ -4859,9 +4904,13 @@ const handleEnableNotifications = async () => {
 // --- MAINTENANCE LOG TAB ---
 const TabMaintenance = ({ appUser, addToast }) => {
   const logs = useLiveCollection('maintenanceLogs', appUser?.restaurantId);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId);
   
-  // Form State
+  const [subTab, setSubTab] = useState('issues'); // 'issues' or 'pm'
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPmModalOpen, setIsPmModalOpen] = useState(false);
+  
+  // Reactive Form State
   const [equipment, setEquipment] = useState('');
   const [issue, setIssue] = useState('');
   const [urgency, setUrgency] = useState('Standard');
@@ -4870,9 +4919,19 @@ const TabMaintenance = ({ appUser, addToast }) => {
   const [notes, setNotes] = useState('');
   const [editingLogId, setEditingLogId] = useState(null);
 
+  // PM Form State
+  const [pmTitle, setPmTitle] = useState('');
+  const [pmEquipment, setPmEquipment] = useState('');
+  const [pmDays, setPmDays] = useState('30');
+  const [editingPmId, setEditingPmId] = useState(null);
+
   const resetForm = () => {
     setEquipment(''); setIssue(''); setUrgency('Standard'); 
     setStatus('Reported'); setCost(''); setNotes(''); setEditingLogId(null);
+  };
+
+  const resetPmForm = () => {
+    setPmTitle(''); setPmEquipment(''); setPmDays('30'); setEditingPmId(null);
   };
 
   const handleEdit = (log) => {
@@ -4914,6 +4973,56 @@ const TabMaintenance = ({ appUser, addToast }) => {
     } catch (err) { addToast('Error', err.message); }
   };
 
+  // --- PM ENGINE LOGIC ---
+  const handleSavePm = async (e) => {
+    e.preventDefault();
+    if(!pmTitle || !pmEquipment || !pmDays) return;
+    const payload = {
+      title: pmTitle.trim(),
+      equipment: pmEquipment.trim(),
+      frequencyDays: parseInt(pmDays) || 30,
+      restaurantId: appUser.restaurantId,
+      lastUpdatedBy: appUser.name
+    };
+    try {
+      if (editingPmId) {
+        await updateDoc(doc(db, "pmSchedules", editingPmId), payload);
+        addToast('Updated', 'PM Schedule updated.');
+      } else {
+        payload.lastCompleted = getToday(); // Default to today on creation
+        await addDoc(collection(db, "pmSchedules"), payload);
+        addToast('Created', 'New PM Schedule active.');
+      }
+      setIsPmModalOpen(false); resetPmForm();
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleMarkPmDone = async (pm) => {
+    if(!window.confirm(`Mark ${pm.title} as completed for today?`)) return;
+    try {
+      // 1. Update the PM tracker
+      await updateDoc(doc(db, "pmSchedules", pm.id), { lastCompleted: getToday() });
+      
+      // 2. Auto-generate a historical paper trail in the main logs
+      await addDoc(collection(db, "maintenanceLogs"), {
+        equipment: pm.equipment,
+        issue: `[PM COMPLETED] ${pm.title}`,
+        urgency: 'Standard',
+        status: 'Resolved',
+        cost: 0,
+        notes: `Routine Preventative Maintenance. Cycle: ${pm.frequencyDays} days.`,
+        restaurantId: appUser.restaurantId,
+        reportedAt: new Date().toISOString(),
+        reportedBy: appUser.name,
+        resolvedAt: new Date().toISOString(),
+        updatedBy: appUser.name,
+        lastUpdated: new Date().toISOString()
+      });
+      
+      addToast('PM Completed', 'Schedule reset and historical log created.');
+    } catch (e) { addToast('Error', e.message); }
+  };
+
   const getStatusColor = (s) => {
     if (s === 'Reported') return 'text-orange-400 bg-orange-900/20 border-orange-900/50';
     if (s === 'In Progress' || s === 'Pending Parts') return 'text-blue-400 bg-blue-900/20 border-blue-900/50';
@@ -4927,95 +5036,152 @@ const TabMaintenance = ({ appUser, addToast }) => {
     return 'text-slate-400';
   };
 
+  // Calculate Overdue PMs for the notification dot
+  const todayMs = new Date(getToday()+'T12:00:00').getTime();
+  const overdueCount = pmSchedules.filter(pm => {
+    const lastMs = new Date(pm.lastCompleted+'T12:00:00').getTime();
+    return (pm.frequencyDays - Math.floor((todayMs - lastMs) / 86400000)) <= 0;
+  }).length;
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-5xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       
+      {/* REACTIVE MODAL */}
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Log" : "Report Equipment Issue"}>
         <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={T.label}>Equipment / Area</label>
-              <input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required />
-            </div>
-            <div>
-              <label className={T.label}>Urgency Level</label>
-              <select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}>
-                <option value="Standard">Standard (Monitor)</option>
-                <option value="High">High (Needs Repair Soon)</option>
-                <option value="Critical">Critical (Down/Safety Hazard)</option>
-              </select>
-            </div>
+            <div><label className={T.label}>Equipment / Area</label><input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required /></div>
+            <div><label className={T.label}>Urgency Level</label><select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}><option value="Standard">Standard (Monitor)</option><option value="High">High (Needs Repair Soon)</option><option value="Critical">Critical (Down/Hazard)</option></select></div>
           </div>
-          <div>
-            <label className={T.label}>Issue Description</label>
-            <textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea>
-          </div>
+          <div><label className={T.label}>Issue Description</label><textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea></div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-[#2A353D]">
-            <div>
-              <label className={T.label}>Current Status</label>
-              <select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}>
-                <option value="Reported">Reported (Open)</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Pending Parts">Pending Parts</option>
-                <option value="Resolved">Resolved / Fixed</option>
-              </select>
-            </div>
-            <div>
-              <label className={T.label}>Repair Cost ($)</label>
-              <input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." />
-            </div>
+            <div><label className={T.label}>Current Status</label><select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}><option value="Reported">Reported (Open)</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved / Fixed</option></select></div>
+            <div><label className={T.label}>Repair Cost ($)</label><input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." /></div>
           </div>
-          <div>
-            <label className={T.label}>Repair Notes / Vendor Used</label>
-            <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" />
-          </div>
+          <div><label className={T.label}>Repair Notes / Vendor Used</label><input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" /></div>
           <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingLogId ? 'Update Log' : 'Submit Report'}</button>
         </form>
       </Modal>
 
-      <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-lg">
-        <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2"><Settings className={T.copper} size={24}/> Equipment & Maintenance</h2>
-          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track repairs, vendors, and maintenance costs.</p>
-        </div>
-        <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
+      {/* PM MODAL */}
+      <Modal isOpen={isPmModalOpen} onClose={() => { setIsPmModalOpen(false); resetPmForm(); }} title={editingPmId ? "Edit PM Schedule" : "New Preventative Maintenance"}>
+        <form onSubmit={handleSavePm} className="space-y-4">
+          <div><label className={T.label}>Task Title</label><input type="text" value={pmTitle} onChange={e=>setPmTitle(e.target.value)} className={T.input} placeholder="e.g. Clean Hood Vents" required /></div>
+          <div><label className={T.label}>Equipment / Area</label><input type="text" value={pmEquipment} onChange={e=>setPmEquipment(e.target.value)} className={T.input} placeholder="e.g. Grill Line" required /></div>
+          <div><label className={T.label}>Frequency (In Days)</label><input type="number" min="1" value={pmDays} onChange={e=>setPmDays(e.target.value)} className={T.input} placeholder="e.g. 90 for quarterly" required /></div>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingPmId ? 'Update Schedule' : 'Start Countdown'}</button>
+        </form>
+      </Modal>
+
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
+        <button onClick={() => setSubTab('issues')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'issues' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Reactive Repairs</button>
+        <button onClick={() => setSubTab('pm')} className={`relative px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'pm' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          PM Schedules
+          {overdueCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg animate-pulse">{overdueCount}</span>}
+        </button>
       </div>
 
-      <div className={`${T.card} overflow-hidden`}>
-        <div className={T.th}>Active & Resolved Issues</div>
-        <div className={`divide-y ${T.border}`}>
-          {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged. Kitchen is 100% operational.</div>}
-          
-          {logs.sort((a,b) => {
-             // Sort by unresolved first, then by urgency, then by date
-             if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
-             if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
-             if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
-             if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
-             return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
-          }).map(log => (
-            <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-white text-base">{log.equipment}</span>
-                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
-                  {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
-                </div>
-                <div className="text-sm font-medium text-slate-300 mt-1">{log.issue}</div>
-                <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
-                  <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>
-                  <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
-                  {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 md:self-end">
-                <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
-                <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
-              </div>
+      {subTab === 'issues' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2"><Wrench className={T.copper} size={20}/> Logged Repairs</h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track broken equipment and repair costs.</p>
             </div>
-          ))}
+            <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>Active & Resolved Issues</div>
+            <div className={`divide-y ${T.border}`}>
+              {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged.</div>}
+              {logs.sort((a,b) => {
+                  if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
+                  if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
+                  if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
+                  if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
+                  return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
+              }).map(log => (
+                <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' && !log.issue.includes('[PM') ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-white text-base">{log.equipment}</span>
+                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
+                      {log.issue.includes('[PM COMPLETED]') && <span className="text-[8px] font-black uppercase tracking-widest bg-blue-900/20 text-blue-400 px-2 py-0.5 rounded border border-blue-900/50">Auto-Logged PM</span>}
+                      {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
+                    </div>
+                    <div className={`text-sm font-medium mt-1 ${log.issue.includes('[PM') ? 'text-blue-300' : 'text-slate-300'}`}>{log.issue}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
+                      {!log.issue.includes('[PM') && <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>}
+                      <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
+                      {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 md:self-end">
+                    <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
+                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {subTab === 'pm' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={20}/> Preventative Schedules</h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Automated countdowns for recurring tasks.</p>
+            </div>
+            <button onClick={() => setIsPmModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> New PM</button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>Active PM Countdowns</div>
+            <div className={`divide-y ${T.border}`}>
+              {pmSchedules.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No preventative maintenance schedules set up.</div>}
+              {pmSchedules.sort((a,b) => {
+                const aDaysLeft = a.frequencyDays - Math.floor((todayMs - new Date(a.lastCompleted+'T12:00:00').getTime()) / 86400000);
+                const bDaysLeft = b.frequencyDays - Math.floor((todayMs - new Date(b.lastCompleted+'T12:00:00').getTime()) / 86400000);
+                return aDaysLeft - bDaysLeft;
+              }).map(pm => {
+                const lastMs = new Date(pm.lastCompleted+'T12:00:00').getTime();
+                const daysSince = Math.floor((todayMs - lastMs) / 86400000);
+                const daysLeft = pm.frequencyDays - daysSince;
+                
+                let statusColor = 'text-emerald-500 bg-emerald-900/20 border-emerald-900/50';
+                let statusText = `${daysLeft} Days Left`;
+                if (daysLeft <= 0) { statusColor = 'text-red-500 bg-red-900/20 border-red-900/50 animate-pulse'; statusText = `OVERDUE (${Math.abs(daysLeft)}d)`; }
+                else if (daysLeft <= 7) { statusColor = 'text-orange-400 bg-orange-900/20 border-orange-900/50'; statusText = `DUE SOON (${daysLeft}d)`; }
+
+                return (
+                  <div key={pm.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                    <div className="flex-1">
+                      <div className="font-bold text-white text-base">{pm.title}</div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">{pm.equipment} • Every {pm.frequencyDays} Days</div>
+                      <div className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-widest">Last Done: {new Date(pm.lastCompleted+'T12:00:00').toLocaleDateString()}</div>
+                    </div>
+                    <div className="flex items-center gap-3 md:self-end">
+                      <div className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border ${statusColor}`}>
+                        {statusText}
+                      </div>
+                      <button onClick={() => handleMarkPmDone(pm)} className="bg-[#12161A] text-emerald-500 border border-[#2A353D] hover:bg-[#1A2126] hover:border-emerald-900/50 font-black text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-1">
+                        <Check size={14}/> Mark Done
+                      </button>
+                      <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
+                        <button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(pm.frequencyDays.toString()); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><Edit size={14}/></button>
+                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) deleteDoc(doc(db,"pmSchedules",pm.id)); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -5254,6 +5420,10 @@ const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
 
+// Pricing & MRR States
+  const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
+  const [isEditingPrices, setIsEditingPrices] = useState(false);
+  
   // Live Banner States
   const [bannerTarget, setBannerTarget] = useState('ALL');
   const [bannerText, setBannerText] = useState('');
@@ -5321,12 +5491,15 @@ const [editingRest, setEditingRest] = useState(null);
       setUserCounts(counts);
     });
     const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)));
-    const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
+const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
        setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
     });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
+    const unsubPricing = onSnapshot(doc(db, 'system', 'pricing'), doc => {
+       if (doc.exists()) setTierPrices(doc.data());
+    });
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); };
   }, []);
 
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
@@ -5653,8 +5826,8 @@ const handleUpdateTenant = async (e) => {
 
 const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Access given. The user MUST log out and log back in to see the new tab.'); };  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
 
-  // --- CALCULATIONS ---
-  const mrr = restaurants.reduce((acc, r) => acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Pro' ? 99 : 0), 0);
+// --- CALCULATIONS ---
+  const mrr = restaurants.filter(r => r.billingStatus === 'Paid').reduce((acc, r) => acc + (tierPrices[r.planType] || 0), 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
@@ -5667,85 +5840,150 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
         ))}
       </div>
 
-      <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
-        {editingRest && (
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-            <form onSubmit={handleUpdateTenant} className="space-y-4">
-     <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
-              <div><label className={T.label}>Owner Name</label><input type="text" value={editingRest.ownerName || ''} onChange={e => setEditingRest({...editingRest, ownerName: e.target.value})} className={T.input} required /></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className={T.label}>Owner Email</label><input type="email" value={editingRest.ownerEmail || ''} onChange={e => setEditingRest({...editingRest, ownerEmail: e.target.value})} className={T.input} required /></div>
-                <div><label className={T.label}>Owner Phone</label><input type="tel" value={editingRest.ownerPhone || ''} onChange={e => setEditingRest({...editingRest, ownerPhone: e.target.value})} className={T.input} required /></div>
-              </div>
-              <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
-              <div className="grid grid-cols-2 gap-3 mt-2">
-                <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option>Trial</option><option>Pro</option><option>Enterprise</option></select></div>
-                <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : 'text-emerald-500 font-black'}`}><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
-                <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
-              </div>
-              <div className="pt-2 border-t border-[#2A353D]">
-                 <label className={T.label}>Module Access</label>
-                 <div className="grid grid-cols-2 gap-2 mt-2">
-                    {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
-                      <label key={feat} className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]">
-                        <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : true} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
-                        <span className="text-xs font-bold text-slate-300 capitalize">{feat}</span>
-                      </label>
-                    ))}
-                 </div>
-              </div>
-              
-              {/* LABS / CANARY ROLLOUT */}
-              <div className="pt-2 border-t border-[#2A353D]">
-                <label className={T.label}>Labs / Beta Features (Canary Rollout)</label>
+<Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
+        {editingRest && (() => {
+          
+// --- THE TIER PRESET ENGINE ---
+          const applyTierPreset = (tier) => {
+            // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
+            const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
+            let newLabs = { laborProjection: false };
+            let updatedFeatures = { ...baseFeatures };
+            
+            // 2. Merge only the allowed features as TRUE over the baseline
+            if (tier === 'Starter') {
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true };
+            } else if (tier === 'Pro') {
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
+            } else if (tier === 'Elite') {
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+            } else if (tier === 'Enterprise') {
+                // Enterprise: Everything (Up to 5 Locations)
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+                newLabs = { laborProjection: true };
+            }
+
+            // 3. Save the complete object (with explicit true/false flags) to state
+            setEditingRest({
+                ...editingRest,
+                planType: tier,
+                features: updatedFeatures,
+                labs: newLabs
+            });
+          };
+       
+    
+          return (
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+<form onSubmit={handleUpdateTenant} className="space-y-4">
+                {/* ACTIVE SEATS DASHBOARD */}
+                <div className="flex justify-between items-center bg-[#12161A] p-4 rounded-xl border border-[#2A353D] mb-2 shadow-inner">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Active User Seats</div>
+                    <div className="text-2xl font-black text-[#D4A381]">{userCounts[editingRest.id] || 0} <span className="text-xs text-slate-400 font-bold">Staff Members</span></div>
+                  </div>
+                  <div className="text-right">
+                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Workspace ID</div>
+                     <div className="text-xs font-mono font-bold text-slate-300">{editingRest.id}</div>
+                  </div>
+                </div>
+
+                <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
+                <div><label className={T.label}>Owner Name</label><input type="text" value={editingRest.ownerName || ''} onChange={e => setEditingRest({...editingRest, ownerName: e.target.value})} className={T.input} required /></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><label className={T.label}>Owner Email</label><input type="email" value={editingRest.ownerEmail || ''} onChange={e => setEditingRest({...editingRest, ownerEmail: e.target.value})} className={T.input} required /></div>
+                  <div><label className={T.label}>Owner Phone</label><input type="tel" value={editingRest.ownerPhone || ''} onChange={e => setEditingRest({...editingRest, ownerPhone: e.target.value})} className={T.input} required /></div>
+                </div>
+                <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
+                
                 <div className="grid grid-cols-2 gap-2 mt-2">
-                  <label className="flex items-center gap-2 bg-[#12161A] p-2.5 rounded-lg border border-[#2A353D] cursor-pointer hover:bg-[#1A2126]">
-                    <input type="checkbox" checked={editingRest.labs?.laborProjection || false} onChange={e => setEditingRest({...editingRest, labs: { ...(editingRest.labs || {}), laborProjection: e.target.checked }})} className="w-4 h-4 accent-purple-500" />
-                    <span className="text-xs font-bold text-purple-400 capitalize">Labor Projections</span>
+                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
+                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
+                </div>
+                
+  <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
+                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
+                </div>
+
+                {/* QUICK APPLY TIER PRESETS */}
+                <div className="pt-4 border-t border-[#2A353D]">
+                  <label className={T.label}>Quick-Apply Tier Packages</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                    <button type="button" onClick={() => applyTierPreset('Starter')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
+                    <button type="button" onClick={() => applyTierPreset('Pro')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
+                    <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
+<button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`} title="Up to 5 Locations">Enterprise</button>                  </div>
+                  <button type="button" onClick={() => {
+                    applyTierPreset('Pro');
+                    setEditingRest(prev => ({...prev, planType: 'Trial', billingStatus: 'Trial'}));
+                  }} className={`w-full mt-2 py-3 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.billingStatus === 'Trial' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40'}`}>
+                    🎁 Start 14-Day Free Trial (Unlocks Pro Features)
+                  </button>
+                </div>
+
+                {/* MANUAL MODULE OVERRIDES */}
+                <div className="pt-4 border-t border-[#2A353D]">
+                   <label className={T.label}>Manual Module Overrides</label>
+                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                      {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
+                        <label key={feat} className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors cursor-pointer ${editingRest.features && editingRest.features[feat] ? 'bg-[#8F6040]/20 border-[#C59373]' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
+                          <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : false} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
+                          <span className={`text-[11px] font-bold capitalize ${editingRest.features && editingRest.features[feat] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{feat}</span>
+                        </label>
+                      ))}
+                   </div>
+                </div>
+                
+                {/* LABS / CANARY ROLLOUT */}
+                <div className="pt-2 border-t border-[#2A353D]">
+                  <label className={T.label}>Labs / Beta Features (Canary Rollout)</label>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${editingRest.labs?.laborProjection ? 'bg-purple-900/20 border-purple-500/50' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
+                      <input type="checkbox" checked={editingRest.labs?.laborProjection || false} onChange={e => setEditingRest({...editingRest, labs: { ...(editingRest.labs || {}), laborProjection: e.target.checked }})} className="w-4 h-4 accent-purple-500" />
+                      <span className={`text-[11px] font-bold capitalize ${editingRest.labs?.laborProjection ? 'text-purple-400' : 'text-slate-400'}`}>Labor Projections</span>
+                    </label>
+                  </div>
+                </div>
+
+                <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
+              </form>
+
+              {/* BACKUP & RESTORE */}
+              <div className="pt-4 border-t border-[#2A353D] mt-4 space-y-3">
+                <h4 className="text-[10px] uppercase tracking-widest text-emerald-500 font-black mb-2">Database Backup & Recovery</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => handleCreateBackup(editingRest)} className="w-full bg-emerald-900/20 text-emerald-400 font-bold py-2.5 rounded-lg border border-emerald-900/50 hover:bg-emerald-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
+                    💾 Download JSON
+                  </button>
+                  <label className="w-full bg-blue-900/20 text-blue-400 font-bold py-2.5 rounded-lg border border-blue-900/50 hover:bg-blue-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
+                    <span>🔄 Upload Restore</span>
+                    <input type="file" accept=".json" onChange={(e) => handleRestoreBackup(e, editingRest)} className="hidden" />
                   </label>
                 </div>
-              </div>
-
-              <button type="submit" className={`w-full ${T.btn} bg-gradient-to-r from-red-600 to-red-800 text-white mt-4`}>Save Configuration</button>
-            </form>
-
-            {/* BACKUP & RESTORE */}
-            <div className="pt-4 border-t border-[#2A353D] mt-4 space-y-3">
-              <h4 className="text-[10px] uppercase tracking-widest text-emerald-500 font-black mb-2">Database Backup & Recovery</h4>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => handleCreateBackup(editingRest)} className="w-full bg-emerald-900/20 text-emerald-400 font-bold py-2.5 rounded-lg border border-emerald-900/50 hover:bg-emerald-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-                  💾 Download JSON
+                <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2 mt-2">
+                  <ClipboardList size={14}/> Download CSV User Export
                 </button>
-                <label className="w-full bg-blue-900/20 text-blue-400 font-bold py-2.5 rounded-lg border border-blue-900/50 hover:bg-blue-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
-                  <span>🔄 Upload Restore</span>
-                  <input type="file" accept=".json" onChange={(e) => handleRestoreBackup(e, editingRest)} className="hidden" />
-                </label>
               </div>
-              <button type="button" onClick={() => handleExportData(editingRest)} className="w-full bg-[#12161A] text-slate-300 font-bold py-2 rounded-xl border border-[#2A353D] hover:text-white transition-all text-xs flex items-center justify-center gap-2 mt-2">
-                <ClipboardList size={14}/> Download CSV User Export
-              </button>
-            </div>
 
-            {/* DANGER ZONE */}
-            <div className="pt-4 border-t border-red-900/50 mt-4 space-y-3">
-              <div>
-                <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center">Danger Zone (Data Wipes)</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'inventory', label: 'Inventory & Vendors' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Inventory</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'schedule', label: 'Schedule & Time Off' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Schedule</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'recipes', label: 'All Recipes' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Recipes</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'events', label: 'Events & Messages' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Events/Msgs</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'users', label: 'All Users/Staff' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Users</button>
-                  <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'everything', label: 'ABSOLUTELY EVERYTHING' })} className="w-full bg-red-600/20 text-red-500 font-black py-2 rounded-lg border border-red-500/50 hover:bg-red-600 hover:text-white transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> NUKE ALL</button>
+              {/* DANGER ZONE */}
+              <div className="pt-4 border-t border-red-900/50 mt-4 space-y-3">
+                <div>
+                  <h4 className="text-[10px] uppercase tracking-widest text-red-500 font-black mb-2 text-center">Danger Zone (Data Wipes)</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'inventory', label: 'Inventory & Vendors' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Inventory</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'schedule', label: 'Schedule & Time Off' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Schedule</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'recipes', label: 'All Recipes' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Recipes</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'events', label: 'Events & Messages' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Events/Msgs</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'users', label: 'All Users/Staff' })} className="w-full bg-red-900/10 text-red-500 font-bold py-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> Users</button>
+                    <button type="button" onClick={() => setNukeTarget({ rest: editingRest, type: 'everything', label: 'ABSOLUTELY EVERYTHING' })} className="w-full bg-red-600/20 text-red-500 font-black py-2 rounded-lg border border-red-500/50 hover:bg-red-600 hover:text-white transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-1"><Trash2 size={12}/> NUKE ALL</button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-          </div>
-        )}
+            </div>
+          );
+        })()}
       </Modal>
 
       <Modal isOpen={!!nukeTarget} onClose={() => { setNukeTarget(null); setNukePassword(''); }} title={`⚠️ CRITICAL: Nuke ${nukeTarget?.label}`}>
@@ -5766,13 +6004,44 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
       {/* --- TAB: OVERVIEW --- */}
       {subTab === 'overview' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
+<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr.toLocaleString()}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
             {appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
               <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
             )}          
+          </div>
+
+          {/* PRICING & MRR CONFIG */}
+          <div className={`${T.card} p-6 border-[#D4A381]/30`}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-black text-lg text-white flex items-center gap-2"><Settings className={T.copper} size={18}/> Subscription Pricing</h3>
+              <button onClick={() => setIsEditingPrices(!isEditingPrices)} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] px-3 py-1.5 rounded-lg border border-[#2A353D]">{isEditingPrices ? 'Cancel' : 'Edit Prices'}</button>
+            </div>
+            {isEditingPrices ? (
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                await setDoc(doc(db, "system", "pricing"), tierPrices);
+                setIsEditingPrices(false);
+                addToast('Saved', 'Global tier pricing updated. MRR recalculated.');
+              }} className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div><label className={T.label}>Starter ($)</label><input type="number" min="0" value={tierPrices.Starter || 0} onChange={e => setTierPrices({...tierPrices, Starter: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                  <div><label className={T.label}>Pro ($)</label><input type="number" min="0" value={tierPrices.Pro || 0} onChange={e => setTierPrices({...tierPrices, Pro: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                  <div><label className={T.label}>Elite ($)</label><input type="number" min="0" value={tierPrices.Elite || 0} onChange={e => setTierPrices({...tierPrices, Elite: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                  <div><label className={T.label}>Enterprise ($)</label><input type="number" min="0" value={tierPrices.Enterprise || 0} onChange={e => setTierPrices({...tierPrices, Enterprise: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                </div>
+                <button type="submit" className={`w-full ${T.btn} py-3 text-sm`}>Save Pricing Model</button>
+              </form>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Starter</div><div className="text-xl font-black text-white">${tierPrices.Starter || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Pro</div><div className="text-xl font-black text-white">${tierPrices.Pro || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Elite</div><div className="text-xl font-black text-white">${tierPrices.Elite || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Enterprise</div><div className="text-xl font-black text-white">${tierPrices.Enterprise || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+              </div>
+            )}
           </div>
 
           {/* STALE ACCOUNT ALERTS */}
@@ -5823,8 +6092,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                       {r.name} 
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
-                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
-                    </div>
+{r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : r.billingStatus === 'Trial' ? <span className="bg-blue-900 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">14-Day Trial</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}                    </div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1"> </span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1"> </span> {r.ownerPhone}</>}</div>
                     <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
@@ -5968,9 +6236,9 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             <input type="text" value={rawInspectorId} onChange={e=>setRawInspectorId(e.target.value)} placeholder="Paste Document ID..." className={`${T.input} flex-1`} required />
             <button type="submit" className={`${T.btn} px-4`}><Search size={18}/></button>
           </form>
-          {rawInspectorData && (
+    {rawInspectorData && (
             <div className="bg-[#0B0E11] p-4 rounded-xl border border-[#2A353D] overflow-x-auto max-h-[50vh] custom-scrollbar">
-              <pre className="text-[10px] text-emerald-400 font-mono leading-relaxed">
+              <pre className="text-[10px] text-emerald-400 font-mono leading-relaxed whitespace-pre-wrap break-all">
                 {JSON.stringify(rawInspectorData, null, 2)}
               </pre>
             </div>
@@ -5996,7 +6264,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                   </div>
                   <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.timestamp).toLocaleString()}</span>
                 </div>
-                <div className="text-xs text-slate-300 font-medium mt-1">
+       <div className="text-xs text-slate-300 font-medium mt-1 break-words whitespace-pre-wrap">
                   {log.details} <span className="text-slate-500 ml-1">Target: [{log.target}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {log.restaurantId}</span>
                 </div>
               </div>
@@ -6182,16 +6450,20 @@ export default function App() {
     }
   }, [liveAppUser?.forceLogout]);
 
-  // --- GLOBAL WORKSPACE & HEALTH PING ---
+
 
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
 
-  if (liveAppUser && clientData?.systemSettings) {
-     liveAppUser = { ...liveAppUser, systemSettings: clientData.systemSettings };
+// THE FIX: Safely attach BOTH the System Settings and the Plan Tier to the live user
+if (liveAppUser && clientData) {
+     liveAppUser = { 
+       ...liveAppUser, 
+       systemSettings: clientData.systemSettings || {},
+       planType: clientData.planType || 'Pro'
+     };
   }
-
   useEffect(() => {
     if (!rId) return;
     
@@ -6390,8 +6662,8 @@ useEffect(() => {
     );
   }
 
-  return (
-    <div className={`min-h-screen font-sans flex flex-col ${T.bg}`}>
+return (
+    <div className={`min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST MODE BANNER */}
       {ghostTenant && (
@@ -6406,7 +6678,8 @@ useEffect(() => {
         </div>
       )}
       
-      <style>{`
+<style>{`
+        html, body { overflow-x: hidden !important; max-width: 100vw !important; width: 100% !important; background-color: #0F1318 !important; }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
@@ -6527,7 +6800,7 @@ useEffect(() => {
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 9.5.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 10.0.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
       </div>
     </div>
