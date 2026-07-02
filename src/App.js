@@ -4405,10 +4405,15 @@ const handleEnableNotifications = async () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
+<div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
         {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace', 'integrations'] : []).map((tab) => (
-          <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab}
+          <button type="button" key={tab} onClick={() => {
+            if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
+              return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
+            }
+            setSubTab(tab);
+          }} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
+            {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab}
           </button>
         ))}
       </div>
