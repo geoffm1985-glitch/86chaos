@@ -6333,7 +6333,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             </div>
           
       
-      )}
+   
 
       {/* --- TAB: GLOBAL USERS --- */}
       {subTab === 'users' && (
