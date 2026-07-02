@@ -5586,11 +5586,11 @@ const handleUpdateTenant = async (e) => {
       labs: editingRest.labs || {},
       planType: editingRest.planType || 'Pro',
       billingStatus: editingRest.billingStatus || 'Paid',
-      customPrice: editingRest.customPrice || ''
+      customPrice: editingRest.customPrice || '',
+      trialDays: editingRest.trialDays !== undefined ? parseInt(editingRest.trialDays) : 14
     });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
-
   const handleDeleteTenant = async (id, name) => {
     if (prompt(`CRITICAL WARNING: This completely destroys a business's data. Type "NUKE" to erase ${name}.`) !== 'NUKE') return addToast('Aborted', 'Deletion canceled.');
     await deleteDoc(doc(db, "restaurants", id)); addToast('Deleted', `${name} has been erased from existence.`);
@@ -6117,10 +6117,11 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                 </div>
                 <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2">
                   <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
                   <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
-                  <div><label className={T.label}>Custom Price ($/mo)</label><input type="number" placeholder="Default" value={editingRest.customPrice || ''} onChange={e => setEditingRest({...editingRest, customPrice: e.target.value})} className={`${T.input} placeholder-slate-600`} /></div>
+                  <div><label className={T.label}>Custom Price ($)</label><input type="number" placeholder="Default" value={editingRest.customPrice || ''} onChange={e => setEditingRest({...editingRest, customPrice: e.target.value})} className={`${T.input} placeholder-slate-600`} /></div>
+                  <div><label className={T.label}>Trial Length (Days)</label><input type="number" min="0" placeholder="14" value={editingRest.trialDays !== undefined ? editingRest.trialDays : 14} onChange={e => setEditingRest({...editingRest, trialDays: parseInt(e.target.value) || 0})} className={T.input} /></div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2 mt-2">
@@ -6136,11 +6137,11 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                     <button type="button" onClick={() => applyTierPreset('Pro')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
                     <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
 <button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`} title="Up to 5 Locations">Enterprise</button>                  </div>
-                  <button type="button" onClick={() => {
+           <button type="button" onClick={() => {
                     applyTierPreset('Pro');
                     setEditingRest(prev => ({...prev, planType: 'Trial', billingStatus: 'Trial'}));
                   }} className={`w-full mt-2 py-3 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.billingStatus === 'Trial' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40'}`}>
-                    🎁 Start 14-Day Free Trial (Unlocks Pro Features)
+                    🎁 Start {editingRest.trialDays !== undefined ? editingRest.trialDays : 14}-Day Free Trial (Unlocks Pro Features)
                   </button>
                 </div>
 
@@ -6307,10 +6308,11 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white">Client Roster</h3><span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurants.length} Total</span></div>
 <div className={`divide-y ${T.border}`}>
-              {restaurants.map(r => {
+{restaurants.map(r => {
                 // Subscription Math Engine
                 const createdDate = new Date(r.createdAt || Date.now());
-                const trialEndDate = new Date(createdDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+                const trialDurationDays = r.trialDays !== undefined ? parseInt(r.trialDays) : 14;
+                const trialEndDate = new Date(createdDate.getTime() + trialDurationDays * 24 * 60 * 60 * 1000);
                 const isTrialActive = r.billingStatus === 'Trial';
                 const daysInTrial = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                 
@@ -6336,9 +6338,9 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                         <span className="text-[10px] font-bold text-slate-300">{createdDate.toLocaleDateString()}</span>
                       </div>
                       <div className="h-6 w-px bg-[#2A353D]"></div>
-                      {isTrialActive ? (
+        {isTrialActive ? (
                         <div className="flex flex-col">
-                          <span className="text-[8px] font-black uppercase tracking-widest text-blue-400">14-Day Free Trial</span>
+                          <span className="text-[8px] font-black uppercase tracking-widest text-blue-400">{trialDurationDays}-Day Free Trial</span>
                           <span className="text-[10px] font-bold text-blue-300">Ends {trialEndDate.toLocaleDateString()} ({daysInTrial > 0 ? `${daysInTrial} days left` : 'Expired'})</span>
                         </div>
                       ) : (
@@ -7067,7 +7069,7 @@ return (
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
         <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 10.0.0</span>
-        <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works</span>
+        <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
   );
