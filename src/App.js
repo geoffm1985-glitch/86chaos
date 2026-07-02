@@ -6,7 +6,7 @@ import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
+import L from 'leaflet'; 
 
 // Fix for React-Leaflet invisible pin issue
 const customMapIcon = new L.Icon({
