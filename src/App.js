@@ -6276,59 +6276,30 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
 
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white">Client Roster</h3><span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurants.length} Total</span></div>
-           <div className={`divide-y ${T.border}`}>
-              {restaurants.map(r => {
-                // Subscription Math Engine
-                const createdDate = new Date(r.createdAt || Date.now());
-                const trialEndDate = new Date(createdDate.getTime() + 14 * 24 * 60 * 60 * 1000);
-                const isTrialActive = r.billingStatus === 'Trial';
-                const daysInTrial = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                
-                const nextBill = new Date();
-                nextBill.setDate(createdDate.getDate());
-                if (nextBill <= new Date()) nextBill.setMonth(nextBill.getMonth() + 1);
-
-                return (
-                <div key={r.id} className={`${T.row} flex flex-col xl:flex-row justify-between xl:items-center gap-4`}>
-                  <div className="flex-1 min-w-0">
+            <div className={`divide-y ${T.border}`}>
+              {restaurants.map(r => (
+                <div key={r.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                  <div>
                     <div className="font-black text-white text-lg flex items-center gap-2 flex-wrap">
-                      <span className="truncate">{r.name}</span>
+                      {r.name} 
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
-                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
-                    </div>
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1">•</span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1">•</span> {r.ownerPhone}</>}</div>
-                    
-                    {/* BILLING & SUBSCRIPTION HUD */}
-                    <div className="flex flex-wrap items-center gap-3 mt-2 mb-1 bg-[#0B0E11] border border-[#2A353D] p-2.5 rounded-lg w-full xl:w-max">
-                      <div className="flex flex-col">
-                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Service Started</span>
-                        <span className="text-[10px] font-bold text-slate-300">{createdDate.toLocaleDateString()}</span>
-                      </div>
-                      <div className="h-6 w-px bg-[#2A353D]"></div>
-                      {isTrialActive ? (
-                        <div className="flex flex-col">
-                          <span className="text-[8px] font-black uppercase tracking-widest text-blue-400">14-Day Free Trial</span>
-                          <span className="text-[10px] font-bold text-blue-300">Ends {trialEndDate.toLocaleDateString()} ({daysInTrial > 0 ? `${daysInTrial} days left` : 'Expired'})</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col">
-                          <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500">Next Billing Cycle</span>
-                          <span className="text-[10px] font-bold text-emerald-400">{r.billingStatus === 'Past Due' ? 'PAYMENT FAILED' : nextBill.toLocaleDateString()}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="text-[9px] text-slate-500 font-medium mt-1.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+{r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : r.billingStatus === 'Trial' ? <span className="bg-blue-900 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">14-Day Trial</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}                    </div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1"> </span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1"> </span> {r.ownerPhone}</>}</div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
-                  <div className="flex flex-wrap gap-2 flex-shrink-0">
+                  <div className="flex flex-wrap gap-2">
                     <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
                     <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors shadow-sm">Manage</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
                 </div>
-              )})}
+              ))}
             </div>
+          </div>
+        </div>
+      )}
+
       {/* --- TAB: GLOBAL USERS --- */}
       {subTab === 'users' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
