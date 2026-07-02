@@ -6148,9 +6148,9 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             <input type="text" value={rawInspectorId} onChange={e=>setRawInspectorId(e.target.value)} placeholder="Paste Document ID..." className={`${T.input} flex-1`} required />
             <button type="submit" className={`${T.btn} px-4`}><Search size={18}/></button>
           </form>
-          {rawInspectorData && (
+    {rawInspectorData && (
             <div className="bg-[#0B0E11] p-4 rounded-xl border border-[#2A353D] overflow-x-auto max-h-[50vh] custom-scrollbar">
-              <pre className="text-[10px] text-emerald-400 font-mono leading-relaxed">
+              <pre className="text-[10px] text-emerald-400 font-mono leading-relaxed whitespace-pre-wrap break-all">
                 {JSON.stringify(rawInspectorData, null, 2)}
               </pre>
             </div>
@@ -6176,7 +6176,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                   </div>
                   <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.timestamp).toLocaleString()}</span>
                 </div>
-                <div className="text-xs text-slate-300 font-medium mt-1">
+       <div className="text-xs text-slate-300 font-medium mt-1 break-words whitespace-pre-wrap">
                   {log.details} <span className="text-slate-500 ml-1">Target: [{log.target}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {log.restaurantId}</span>
                 </div>
               </div>
@@ -6570,8 +6570,8 @@ useEffect(() => {
     );
   }
 
-  return (
-    <div className={`min-h-screen font-sans flex flex-col ${T.bg}`}>
+return (
+    <div className={`min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST MODE BANNER */}
       {ghostTenant && (
@@ -6586,7 +6586,8 @@ useEffect(() => {
         </div>
       )}
       
-      <style>{`
+<style>{`
+        html, body { overflow-x: hidden !important; max-width: 100vw !important; width: 100% !important; background-color: #0F1318 !important; }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
