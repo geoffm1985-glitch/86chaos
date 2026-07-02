@@ -6332,7 +6332,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
               )})}
             </div>
           
-        </div>
+      
       )}
 
       {/* --- TAB: GLOBAL USERS --- */}
