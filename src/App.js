@@ -6331,7 +6331,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                 </div>
               )})}
             </div>
-          </div>
+          
         </div>
       )}
 
