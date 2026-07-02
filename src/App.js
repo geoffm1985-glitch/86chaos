@@ -6612,8 +6612,14 @@ useEffect(() => {
         setTimeout(() => {
           Notification.requestPermission().then(async (permission) => {
             if (permission === 'granted' && messaging) {
+              
+              // THE FIX: Apply the Smart Target Lock here too
+              const activeVapidKey = window.location.hostname === 'app.86chaos.com' 
+                ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU' // Production
+                : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc'; // Testing Sandbox
+
               const currentToken = await getToken(messaging, { 
-                vapidKey: 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc' 
+                vapidKey: activeVapidKey 
               });
               if (currentToken) {
                 await updateDoc(doc(db, "users", liveAppUser.id), { fcmToken: currentToken });
