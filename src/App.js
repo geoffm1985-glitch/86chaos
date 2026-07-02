@@ -5738,8 +5738,94 @@ const handleUpdateTenant = async (e) => {
       setEditingRest(null); 
     } catch (err) {
       addToast('Error', 'Authentication failed or deletion error. Check your password.');
-    }
+}
     setIsNuking(false);
+  };
+
+  // --- SHOWCASE GENERATOR (DEMO WORKSPACE) ---
+  const handleInjectDemoWorkspace = async () => {
+    if (!window.confirm("Deploy a fully populated Demo Workspace? This will take a few seconds.")) return;
+    addToast('Building...', 'Injecting showcase data...');
+
+    try {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+      // 1. Create Restaurant
+      const restRef = await addDoc(collection(db, "restaurants"), {
+         name: "Showcase Bistro (Demo)",
+         ownerName: "Sales Demo",
+         ownerEmail: "demo@86chaos.com",
+         isActive: true,
+         isReadOnly: false,
+         features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true },
+         labs: { laborProjection: true },
+         planType: 'Enterprise',
+         billingStatus: 'Paid',
+         createdAt: new Date().toISOString(),
+         lastActive: new Date().toISOString(),
+         systemSettings: { address: '123 Demo St', geofenceRadius: 300, overtime: 40, enableTargets: true, targetSales: 50000, targetLaborPct: 22.5 }
+      });
+      const rId = restRef.id;
+
+      // 2. Create Users
+      const dummyUsers = [
+         { name: 'Alice Admin', role: 'General Manager', isAdmin: true, wage: 25 },
+         { name: 'Bob Bartender', role: 'Bartender', isAdmin: false, wage: 10 },
+         { name: 'Charlie Chef', role: 'Chef', isAdmin: false, wage: 20 },
+         { name: 'Dave Dish', role: 'Dishwasher', isAdmin: false, wage: 15 },
+         { name: 'Eve Server', role: 'Server', isAdmin: false, wage: 8 }
+      ];
+      const userIds = [];
+      for (const u of dummyUsers) {
+         const uRef = await addDoc(collection(db, "users"), {
+           ...u, email: u.name.split(' ')[0].toLowerCase() + '@demo.com', restaurantId: rId, isActive: true, password: 'password123'
+         });
+         userIds.push({ ...u, id: uRef.id });
+      }
+
+      // 3. Create Shifts & Swaps
+      const s1 = await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[1].id, role: 'Bartender', date: todayStr, startTime: '16:00', endTime: '23:00', isPublished: true });
+      await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[2].id, role: 'Chef', date: todayStr, startTime: '14:00', endTime: '22:00', isPublished: true });
+      await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[3].id, role: 'Dishwasher', date: tomorrowStr, startTime: '17:00', endTime: '23:00', isPublished: true });
+      
+      await addDoc(collection(db, "shiftSwaps"), { restaurantId: rId, shiftId: s1.id, originalEmployeeId: userIds[1].id, role: 'Bartender', date: todayStr, startTime: '16:00', endTime: '23:00', status: 'available', listedAt: new Date().toISOString() });
+
+      // 4. Time Off & Punches
+      await addDoc(collection(db, "timeOffRequests"), { restaurantId: rId, userId: userIds[4].id, userName: 'Eve Server', date: tomorrowStr, status: 'pending', submittedAt: new Date().toISOString(), isPartial: false });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[1].id, employeeName: 'Bob Bartender', date: todayStr, clockInTime: new Date(today.setHours(15, 55, 0)).toISOString(), status: 'clocked_in' });
+
+      // 5. Messages / Events
+      await addDoc(collection(db, "events"), { restaurantId: rId, type: 'note', title: 'Welcome to the Demo Workspace! Feel free to click around and explore the features.', author: 'Alice Admin', date: new Date().toISOString(), isImportant: true });
+      await addDoc(collection(db, "events"), { restaurantId: rId, type: 'special_event', title: 'Live Music Night', date: todayStr, time: '19:00', addedBy: 'System' });
+
+      // 6. Prep & Tasks
+      await addDoc(collection(db, "prepItems"), { restaurantId: rId, date: 'MASTER', text: 'Dice Onions (2 Qt)', station: 'Prep Table', isCompleted: false, qty: 1 });
+      await addDoc(collection(db, "prepItems"), { restaurantId: rId, date: todayStr, text: 'Slice Tomatoes', station: 'Salad/Cold', isCompleted: true, completedBy: 'Charlie Chef', qty: 1 });
+      await addDoc(collection(db, "tasks"), { restaurantId: rId, title: 'Clean Deep Fryer', category: 'Cleaning', frequency: 'daily', completions: {} });
+
+      // 7. Inventory & Vendors & Line Checks
+      const vRef = await addDoc(collection(db, "vendors"), { restaurantId: rId, name: 'Sysco (Demo)', rep: 'John', phone: '555-0192' });
+      await addDoc(collection(db, "inventoryItems"), { restaurantId: rId, name: 'French Fries (3/8)', category: 'Frozen', supplierId: vRef.id, packSize: '6/5#', yieldQty: 1, price: 35.50, parLevel: 5, currentStock: 2, pendingQty: 0 });
+      await addDoc(collection(db, "inventoryItems"), { restaurantId: rId, name: 'Ketchup', category: 'Dry Goods', supplierId: vRef.id, packSize: '6/#10', yieldQty: 1, price: 28.00, parLevel: 3, currentStock: 4, pendingQty: 0 });
+      await addDoc(collection(db, "lineCheckItems"), { restaurantId: rId, name: 'Salad Station Cooler', category: 'Cold Holding (≤ 41°F)' });
+
+      // 8. Recipes
+      await addDoc(collection(db, "recipes"), { restaurantId: rId, title: 'House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 Gallon', ingredients: '1 Gal Mayo\n1/2 Gal Buttermilk\n1 Cup Ranch Seasoning', instructions: '1. Combine all in 12qt Cambro.\n2. Whisk until smooth.\n3. Date and label.', authorName: 'Alice Admin', lastUpdated: new Date().toISOString() });
+
+      // 9. Sales
+      await addDoc(collection(db, "sales"), { restaurantId: rId, date: todayStr, grossSales: 4500, laborCost: 950, foodCost: 1200, notes: 'Busy night! Live music drew a crowd.' });
+
+      // 10. Maintenance & PM
+      await addDoc(collection(db, "maintenanceLogs"), { restaurantId: rId, equipment: 'Ice Machine', issue: 'Leaking water on the floor', urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: 'Bob Bartender' });
+      await addDoc(collection(db, "pmSchedules"), { restaurantId: rId, title: 'Degrease Hood Filters', equipment: 'Line Vents', frequencyDays: 30, lastCompleted: todayStr });
+
+      addToast('Demo Live', 'Showcase Bistro is ready. Check your Clients list.');
+    } catch(e) {
+      addToast('Error', e.message);
+    }
   };
 
   // --- 2. SYSTEM OPERATIONS & FORGE ---
@@ -6342,6 +6428,11 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
           </div>
           
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`${T.card} p-5 border-amber-900/30`}>
+              <h3 className="font-black text-white mb-1">Deploy Demo Workspace</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Automatically inject a fake restaurant populated with staff, shifts, prep lists, and data across every tab for showcasing.</p>
+              <button onClick={handleInjectDemoWorkspace} type="button" className="w-full bg-amber-900/20 text-amber-400 border border-amber-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-amber-900/40 transition-colors flex items-center justify-center gap-2"><Star size={16}/> Build Showcase</button>
+            </div>
             <div className={`${T.card} p-5 border-fuchsia-900/30`}>
               <h3 className="font-black text-white mb-1">Test Push Notifications</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Fires a live test ping through Vercel to verify tokens and Firebase Admin credentials are working.</p>
