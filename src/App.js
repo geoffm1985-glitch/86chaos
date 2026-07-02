@@ -4472,7 +4472,7 @@ const handleEnableNotifications = async () => {
     addToast('Role Deleted', 'Role removed from roster options.');
   };
 
-  const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
+const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
     <label className={`flex items-center justify-between p-3 bg-[#12161A] border ${T.border} rounded-xl ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-[#1A2126]'} transition-colors`}>
       <div className="pr-3">
         <div className="text-xs font-bold text-white">{label}</div>
@@ -4484,6 +4484,7 @@ const handleEnableNotifications = async () => {
         <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'transform translate-x-4' : ''}`}></div>
       </div>
     </label>
+  );
   
 
   return (
