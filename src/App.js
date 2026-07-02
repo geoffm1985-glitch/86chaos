@@ -6424,16 +6424,20 @@ export default function App() {
     }
   }, [liveAppUser?.forceLogout]);
 
-  // --- GLOBAL WORKSPACE & HEALTH PING ---
+
 
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
 
-  if (liveAppUser && clientData?.systemSettings) {
-     liveAppUser = { ...liveAppUser, systemSettings: clientData.systemSettings };
+// THE FIX: Safely attach BOTH the System Settings and the Plan Tier to the live user
+  if (liveAppUser && clientData) {
+     liveAppUser = { 
+       ...liveAppUser, 
+       systemSettings: clientData.systemSettings || {},
+       planType: clientData.planType || 'Pro'
+     };
   }
-
   useEffect(() => {
     if (!rId) return;
     
