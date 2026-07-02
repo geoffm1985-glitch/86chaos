@@ -461,6 +461,7 @@ const [loginError, setLoginError] = useState('');
 // ============================================================================
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
   const [subTab, setSubTab] = useState('my-schedule');
+  const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
   // --- TIME CLOCK LOGIC ---
@@ -820,40 +821,50 @@ const handleOfferSwap = async (shift) => {
         </div>
       )}
 
-      {subTab === 'full-schedule' && (
-        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex justify-between items-center">
-            <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{formatDisplayMonth(currentDate)}</span>
-          </div>
-          <div className="divide-y divide-[#2A353D]">
-            {activeMonthShifts.map((shift, index) => {
-               const emp = users.find(u => u.id === shift.employeeId);
-               const showDivider = index === 0 || shift.date !== activeMonthShifts[index - 1].date;
-               
-               return (
-                 <React.Fragment key={shift.id}>
-                   {showDivider && (
-                     <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
-                       <span>{formatDisplayDate(shift.date)}</span>
-                       {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
+{subTab === 'full-schedule' && (() => {
+        const filteredRosterShifts = activeMonthShifts.filter(s => rosterFilterDate ? s.date === rosterFilterDate : true);
+        return (
+          <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
+            <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+              <div className="flex items-center gap-2">
+                 <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
+                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">({formatDisplayMonth(currentDate)})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Filter Day:</span>
+                 <input type="date" value={rosterFilterDate} onChange={(e) => setRosterFilterDate(e.target.value)} className={`${T.input} py-1 px-2 text-xs w-auto min-w-[130px]`} />
+                 {rosterFilterDate && <button onClick={() => setRosterFilterDate('')} className="text-slate-400 hover:text-red-400 p-1"><X size={14}/></button>}
+              </div>
+            </div>
+            <div className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
+              {filteredRosterShifts.map((shift, index) => {
+                 const emp = users.find(u => u.id === shift.employeeId);
+                 const showDivider = index === 0 || shift.date !== filteredRosterShifts[index - 1].date;
+                 
+                 return (
+                   <React.Fragment key={shift.id}>
+                     {showDivider && (
+                       <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
+                         <span>{formatDisplayDate(shift.date)}</span>
+                         {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
+                       </div>
+                     )}
+                     <div className={`${T.row} hover:bg-[#12161A]`}>
+                       <div className="flex items-center justify-between">
+                         <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div></div></div>
+                         <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                       </div>
                      </div>
-                   )}
-                   <div className={`${T.row} hover:bg-[#12161A]`}>
-                     <div className="flex items-center justify-between">
-                       <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div></div></div>
-                       <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
-                     </div>
-                   </div>
-                 </React.Fragment>
-               )
-            })}
-            {activeMonthShifts.length === 0 && <div className={`p-6 text-center text-xs font-bold ${T.muted}`}>No shifts published for this period.</div>}
+                   </React.Fragment>
+                 )
+              })}
+              {filteredRosterShifts.length === 0 && <div className={`p-6 text-center text-xs font-bold ${T.muted}`}>No shifts found for this selection.</div>}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
-      {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} /></div>}
+      {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} appUser={appUser} /></div>}
       {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}  
     </div>
   );
@@ -2320,7 +2331,7 @@ const handleExportTimesheets = () => {
 };
 
 // --- COMPACT MONTH VIEW ---
-const TabMonth = ({ currentDate, users, shifts }) => {
+const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   const [roleFilter, setRoleFilter] = useState('All');
   const uniqueRoles = ['All', ...new Set(users.map(u => u.role).filter(Boolean))].sort();
 
@@ -2424,8 +2435,10 @@ const TabMonth = ({ currentDate, users, shifts }) => {
 <div className="flex justify-between items-center p-2 no-print border-b border-[#2A353D] bg-[#12161A]">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 hidden sm:inline">Filter Role:</span>
-          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer shadow-inner">
-            {uniqueRoles.map(r => <option key={r} value={r}>{r === 'All' ? 'Whole Schedule' : r}</option>)}
+    <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer shadow-inner">
+            <option value="All">Whole Schedule</option>
+            <option value="ME">My Shifts Only</option>
+            {uniqueRoles.filter(r => r !== 'All').map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
         <button onClick={()=>window.print()} className={T.btnAlt}>🖨️ Print Calendar</button>
@@ -2442,8 +2455,8 @@ const TabMonth = ({ currentDate, users, shifts }) => {
         
 {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
-const dayShifts = shifts
-            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || s.role === roleFilter))
+          const dayShifts = shifts
+            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || (roleFilter === 'ME' ? s.employeeId === appUser?.id : s.role === roleFilter)))
             .sort((a, b) => {
               if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
               return (a.startTime || '').localeCompare(b.startTime || '');
