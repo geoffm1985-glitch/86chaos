@@ -1297,13 +1297,18 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [endTime, setEndTime] = useState('21:00');
   
   const [isEventModalOpen, setIsEventModalOpen] = useState(false); 
-  const [eventDate, setEventDate] = useState(getToday()); 
+const [eventDate, setEventDate] = useState(getToday()); 
   const [eventTime, setEventTime] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventNotes, setEventNotes] = useState('');
   const [editingEventId, setEditingEventId] = useState(null);
   const [eventImageFile, setEventImageFile] = useState(null);
   const [isEventUploading, setIsEventUploading] = useState(false);
+  
+  // Repeating Events State
+  const [isRepeating, setIsRepeating] = useState(false);
+  const [repeatType, setRepeatType] = useState('weekly');
+  const [repeatUntil, setRepeatUntil] = useState('');
 
   // --- AUTO-POPULATE STATE ---
   const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
@@ -1548,7 +1553,7 @@ const handlePublish = async () => {
     }
   };
   
-  const handleAddEvent = async (e) => { 
+const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
     setIsEventUploading(true);
@@ -1566,17 +1571,39 @@ const handlePublish = async () => {
       }
     }
 
-    const eventData = { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim() };
-    if (photoUrl) eventData.imageUrl = photoUrl; 
+    const baseEventData = { type: 'special_event', time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name, restaurantId: appUser.restaurantId };
+    if (photoUrl) baseEventData.imageUrl = photoUrl; 
 
     if (editingEventId) {
-      await updateDoc(doc(db, "events", editingEventId), eventData);
+      await updateDoc(doc(db, "events", editingEventId), { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), ...(photoUrl && { imageUrl: photoUrl }) });
       addToast('Updated', 'Event modified successfully.');
     } else {
-      await addDoc(collection(db, "events"), { type: 'special_event', ...eventData, addedBy: appUser.name, restaurantId: appUser.restaurantId }); 
-      addToast('Event Added', 'Calendar updated.');
+      if (isRepeating && repeatUntil) {
+        const seriesId = Date.now().toString();
+        let currentDateObj = new Date(eventDate + 'T12:00:00');
+        const endDateObj = new Date(repeatUntil + 'T12:00:00');
+        const promises = [];
+        let count = 0;
+
+        while (currentDateObj <= endDateObj && count < 365) { // Hard cap at 365 events to prevent DB crash loops
+          const dateStr = currentDateObj.toISOString().split('T')[0];
+          promises.push(addDoc(collection(db, "events"), { ...baseEventData, date: dateStr, seriesId }));
+          
+          if (repeatType === 'daily') currentDateObj.setDate(currentDateObj.getDate() + 1);
+          else if (repeatType === 'weekly') currentDateObj.setDate(currentDateObj.getDate() + 7);
+          else if (repeatType === 'bi-weekly') currentDateObj.setDate(currentDateObj.getDate() + 14);
+          else if (repeatType === 'monthly') currentDateObj.setMonth(currentDateObj.getMonth() + 1);
+          else if (repeatType === 'yearly') currentDateObj.setFullYear(currentDateObj.getFullYear() + 1);
+          count++;
+        }
+        await Promise.all(promises);
+        addToast('Events Generated', `Created ${count} recurring events.`);
+      } else {
+        await addDoc(collection(db, "events"), { ...baseEventData, date: eventDate }); 
+        addToast('Event Added', 'Calendar updated.');
+      }
     }
-    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventUploading(false); setIsEventModalOpen(false); 
+    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventUploading(false); setIsEventModalOpen(false); setIsRepeating(false); setRepeatUntil(''); 
   };
 
   const openEditEventModal = (ev) => {
@@ -1883,7 +1910,36 @@ const handleExportTimesheets = () => {
               <input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/>
             </div>
           </div>
-        <div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
+<div><label className={T.label}>Event Title</label><input type="text" value={eventTitle} onChange={e=>setEventTitle(e.target.value)} className={T.input} placeholder="e.g., Packers Playoff Game" required/></div>
+        
+        {!editingEventId && (
+          <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer mb-2">
+              <input type="checkbox" checked={isRepeating} onChange={e => setIsRepeating(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />
+              Make this a repeating event
+            </label>
+            
+            {isRepeating && (
+              <div className="grid grid-cols-2 gap-3 mt-3 animate-[slideIn_0.2s_ease-out]">
+                <div>
+                  <label className={T.label}>Repeats Every</label>
+                  <select value={repeatType} onChange={e => setRepeatType(e.target.value)} className={T.input}>
+                    <option value="daily">Day</option>
+                    <option value="weekly">Week</option>
+                    <option value="bi-weekly">Two Weeks</option>
+                    <option value="monthly">Month</option>
+                    <option value="yearly">Year</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Until Date</label>
+                  <input type="date" min={eventDate} value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} className={T.input} required={isRepeating} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
           <div>
             <label className={T.label}>Notes & Photo (Optional)</label>
             <textarea rows="2" value={eventNotes} onChange={e=>setEventNotes(e.target.value)} className={`${T.input} mb-2`} placeholder="Extra details..."/>
