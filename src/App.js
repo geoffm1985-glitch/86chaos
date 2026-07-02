@@ -5829,7 +5829,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
 <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
           
-  // --- THE TIER PRESET ENGINE ---
+// --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
             const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
@@ -5838,14 +5838,14 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             
             // 2. Merge only the allowed features as TRUE over the baseline
             if (tier === 'Starter') {
-                // Starter: Core features only
                 updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true };
             } else if (tier === 'Pro') {
-                // Pro: Starter + Inventory, Recipes, and Sales
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, inventory: true, recipes: true, sales: true };
-            } else if (tier === 'Elite' || tier === 'Enterprise') {
-                // Elite/Enterprise: Everything + Maintenance, Timesheets, and Labor Projections
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, inventory: true, recipes: true, sales: true, maintenance: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
+            } else if (tier === 'Elite') {
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+            } else if (tier === 'Enterprise') {
+                // Enterprise: Everything (Up to 5 Locations)
+                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
                 newLabs = { laborProjection: true };
             }
 
@@ -5857,7 +5857,8 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                 labs: newLabs
             });
           };
-
+       
+    
           return (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
               <form onSubmit={handleUpdateTenant} className="space-y-4">
@@ -5886,8 +5887,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                     <button type="button" onClick={() => applyTierPreset('Starter')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
                     <button type="button" onClick={() => applyTierPreset('Pro')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
                     <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
-                    <button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`}>Enterprise</button>
-                  </div>
+<button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`} title="Up to 5 Locations">Enterprise</button>                  </div>
                   <button type="button" onClick={() => {
                     applyTierPreset('Pro');
                     setEditingRest(prev => ({...prev, planType: 'Trial', billingStatus: 'Trial'}));
@@ -6431,7 +6431,7 @@ export default function App() {
   const clientFeatures = clientData?.features || {};
 
 // THE FIX: Safely attach BOTH the System Settings and the Plan Tier to the live user
-  if (liveAppUser && clientData) {
+if (liveAppUser && clientData) {
      liveAppUser = { 
        ...liveAppUser, 
        systemSettings: clientData.systemSettings || {},
