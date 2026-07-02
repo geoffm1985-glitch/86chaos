@@ -5738,9 +5738,184 @@ const handleUpdateTenant = async (e) => {
       setEditingRest(null); 
     } catch (err) {
       addToast('Error', 'Authentication failed or deletion error. Check your password.');
-    }
+}
     setIsNuking(false);
   };
+
+// --- SHOWCASE GENERATOR (DEMO WORKSPACE) ---
+  const handleInjectDemoWorkspace = async () => {
+    if (!window.confirm("Deploy a fully populated Demo Workspace? This will inject massive amounts of data and take a few seconds.")) return;
+    addToast('Building...', 'Injecting massive showcase data. Please wait...');
+
+    try {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      const getOffsetDate = (days) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().split('T')[0];
+      };
+
+      const next7Days = Array.from({length: 7}).map((_, i) => getOffsetDate(i));
+      const past7Days = Array.from({length: 7}).map((_, i) => getOffsetDate(-i));
+
+      // 1. Create Restaurant
+      const restRef = await addDoc(collection(db, "restaurants"), {
+         name: "Showcase Bistro (Demo)",
+         ownerName: "Sales Demo",
+         ownerEmail: "demo@86chaos.com",
+         isActive: true,
+         isReadOnly: false,
+         features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true },
+         labs: { laborProjection: true },
+         planType: 'Enterprise',
+         billingStatus: 'Paid',
+         createdAt: new Date().toISOString(),
+         lastActive: new Date().toISOString(),
+         systemSettings: { address: '123 Demo St', geofenceRadius: 300, overtime: 40, enableTargets: true, targetSales: 55000, targetLaborPct: 22.5 }
+      });
+      const rId = restRef.id;
+
+      // 2. Create 20 Users
+      const dummyUsers = [
+         { name: 'Alice Admin', role: 'General Manager', isAdmin: true, wage: 30 },
+         { name: 'Sarah Supervisor', role: 'Manager', isAdmin: false, wage: 22 },
+         { name: 'Charlie Chef', role: 'Chef', isAdmin: false, wage: 25 },
+         { name: 'Sam Sous', role: 'Sous Chef', isAdmin: false, wage: 20 },
+         { name: 'Bob Bartender', role: 'Bartender', isAdmin: false, wage: 10 },
+         { name: 'Betty Bartender', role: 'Bartender', isAdmin: false, wage: 10 },
+         { name: 'Eve Server', role: 'Server', isAdmin: false, wage: 8 },
+         { name: 'Sammy Server', role: 'Server', isAdmin: false, wage: 8 },
+         { name: 'Sally Server', role: 'Server', isAdmin: false, wage: 8 },
+         { name: 'Steven Server', role: 'Server', isAdmin: false, wage: 8 },
+         { name: 'Larry Line', role: 'Line Cook', isAdmin: false, wage: 17 },
+         { name: 'Lenny Line', role: 'Line Cook', isAdmin: false, wage: 17 },
+         { name: 'Frank Fry', role: 'Line Cook', isAdmin: false, wage: 16 },
+         { name: 'Gina Grill', role: 'Line Cook', isAdmin: false, wage: 18 },
+         { name: 'Paul Prep', role: 'Prep Cook', isAdmin: false, wage: 15 },
+         { name: 'Penny Prep', role: 'Prep Cook', isAdmin: false, wage: 15 },
+         { name: 'Holly Host', role: 'Host', isAdmin: false, wage: 13 },
+         { name: 'Hunter Host', role: 'Host', isAdmin: false, wage: 13 },
+         { name: 'Dave Dish', role: 'Dishwasher', isAdmin: false, wage: 14 },
+         { name: 'Dan Dish', role: 'Dishwasher', isAdmin: false, wage: 14 }
+      ];
+      
+      const userIds = [];
+      const userPromises = dummyUsers.map(async (u) => {
+         const uRef = await addDoc(collection(db, "users"), {
+           ...u, email: u.name.split(' ')[0].toLowerCase() + '@demo.com', restaurantId: rId, isActive: true, password: 'password123'
+         });
+         userIds.push({ ...u, id: uRef.id });
+      });
+      await Promise.all(userPromises);
+
+      // 3. Create Full Schedule (7 Days of Shifts)
+      const shiftPromises = [];
+      next7Days.forEach(date => {
+        // Morning Crew
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[1].id, role: 'Manager', date, startTime: '08:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[14].id, role: 'Prep Cook', date, startTime: '07:00', endTime: '14:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[10].id, role: 'Line Cook', date, startTime: '09:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[6].id, role: 'Server', date, startTime: '10:30', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[4].id, role: 'Bartender', date, startTime: '10:30', endTime: '17:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[18].id, role: 'Dishwasher', date, startTime: '11:00', endTime: '16:00', isPublished: true }));
+        
+        // Night Crew
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[3].id, role: 'Sous Chef', date, startTime: '14:00', endTime: '22:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[11].id, role: 'Line Cook', date, startTime: '15:00', endTime: '22:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[12].id, role: 'Line Cook', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[7].id, role: 'Server', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[8].id, role: 'Server', date, startTime: '17:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[5].id, role: 'Bartender', date, startTime: '16:30', endTime: '23:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[16].id, role: 'Host', date, startTime: '16:30', endTime: '21:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[19].id, role: 'Dishwasher', date, startTime: '16:00', endTime: '23:30', isPublished: true }));
+      });
+      await Promise.all(shiftPromises);
+
+      // Add a Shift Trade
+      const targetShift = await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', isPublished: true });
+      await addDoc(collection(db, "shiftSwaps"), { restaurantId: rId, shiftId: targetShift.id, originalEmployeeId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', status: 'available', listedAt: new Date().toISOString() });
+
+      // 4. Time Off & Punches
+      await addDoc(collection(db, "timeOffRequests"), { restaurantId: rId, userId: userIds[6].id, userName: 'Eve Server', date: getOffsetDate(3), status: 'pending', submittedAt: new Date().toISOString(), isPartial: false });
+      await addDoc(collection(db, "timeOffRequests"), { restaurantId: rId, userId: userIds[10].id, userName: 'Larry Line', date: getOffsetDate(5), status: 'approved', submittedAt: new Date().toISOString(), isPartial: false });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[1].id, employeeName: 'Sarah Supervisor', date: todayStr, clockInTime: new Date(today.setHours(7, 55, 0)).toISOString(), status: 'clocked_in' });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[14].id, employeeName: 'Paul Prep', date: todayStr, clockInTime: new Date(today.setHours(6, 50, 0)).toISOString(), status: 'clocked_in' });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[10].id, employeeName: 'Larry Line', date: todayStr, clockInTime: new Date(today.setHours(8, 58, 0)).toISOString(), status: 'clocked_in' });
+
+      // 5. Messages / Events
+      await addDoc(collection(db, "events"), { restaurantId: rId, type: 'note', title: 'Welcome to the Demo Workspace! Feel free to click around and explore the features.', author: 'Alice Admin', date: new Date().toISOString(), isImportant: true, replies: [] });
+      await addDoc(collection(db, "events"), { restaurantId: rId, type: 'note', title: '86 the Salmon for tonight. Distributor shorted us.', author: 'Charlie Chef', date: new Date().toISOString(), isImportant: false, replies: [{ id: '1', author: 'Eve Server', text: 'Heard, thank you chef!', timestamp: new Date().toISOString() }] });
+      await addDoc(collection(db, "events"), { restaurantId: rId, type: 'special_event', title: 'Live Music Night', date: todayStr, time: '19:00', notes: 'Local band playing. Expect heavy volume from 7-10.', addedBy: 'System' });
+      await addDoc(collection(db, "events"), { restaurantId: rId, type: 'special_event', title: 'Private Party Catering', date: getOffsetDate(4), time: '18:00', notes: '50-top in the back room. Set menu.', addedBy: 'System' });
+
+      // 6. Prep & Tasks
+      const prepItems = [
+        { text: 'Dice Onions (4 Qt)', station: 'Prep Table', isMaster: true },
+        { text: 'Portion Burger Patties (50x)', station: 'Grill', isMaster: true },
+        { text: 'Cut Lemons & Limes', station: 'Expo', isMaster: true },
+        { text: 'Blend House Ranch', station: 'Salad/Cold', isMaster: true },
+        { text: 'Blanch French Fries', station: 'Fry', isMaster: true },
+        { text: 'Thaw Chicken Breasts', station: 'Prep Table', isMaster: true }
+      ];
+      await Promise.all(prepItems.map(p => addDoc(collection(db, "prepItems"), { restaurantId: rId, date: 'MASTER', text: p.text, station: p.station, isCompleted: false, qty: 1, isMaster: true, completedDates: {} })));
+      
+      await addDoc(collection(db, "prepItems"), { restaurantId: rId, date: todayStr, text: 'Emergency 86 Prep: Thaw Shrimp', station: 'Grill', isCompleted: false, qty: 1 });
+      await addDoc(collection(db, "tasks"), { restaurantId: rId, title: 'Clean Deep Fryer', category: 'Cleaning', frequency: 'daily', completions: {} });
+      await addDoc(collection(db, "tasks"), { restaurantId: rId, title: 'Wipe Down Walk-in Shelves', category: 'Cleaning', frequency: 'weekly', targetDay: 'Monday', completions: {} });
+      await addDoc(collection(db, "tasks"), { restaurantId: rId, title: 'Check First Aid Kit', category: 'General', frequency: 'monthly', targetDate: '1', completions: {} });
+
+      // 7. Inventory & Vendors & Line Checks
+      const v1 = await addDoc(collection(db, "vendors"), { restaurantId: rId, name: 'Sysco (Demo)', rep: 'John', phone: '555-0192', cutOffDays: ['Monday', 'Thursday'], cutOffTime: '16:00' });
+      const v2 = await addDoc(collection(db, "vendors"), { restaurantId: rId, name: 'US Foods (Demo)', rep: 'Sarah', phone: '555-3841', cutOffDays: ['Tuesday', 'Friday'], cutOffTime: '15:00' });
+      const v3 = await addDoc(collection(db, "vendors"), { restaurantId: rId, name: 'Local Produce Farm', rep: 'Mike', phone: '555-9988' });
+
+      const invItems = [
+        { name: 'French Fries (3/8)', cat: 'Frozen', v: v1.id, pack: '6/5#', y: 1, p: 35.50, par: 10, stock: 4, code: '78321' },
+        { name: 'Ketchup', cat: 'Dry Goods', v: v1.id, pack: '6/#10', y: 1, p: 28.00, par: 3, stock: 1, code: '11223' },
+        { name: 'Chicken Breast (6oz)', cat: 'Meat', v: v2.id, pack: '2/10#', y: 1, p: 65.00, par: 8, stock: 9, code: '44556' },
+        { name: 'Ground Beef (80/20)', cat: 'Meat', v: v2.id, pack: '4/10#', y: 1, p: 120.00, par: 6, stock: 2, code: '44557' },
+        { name: 'Romaine Lettuce', cat: 'Produce', v: v3.id, pack: '24ct', y: 1, p: 22.00, par: 5, stock: 2, code: '99881' },
+        { name: 'Roma Tomatoes', cat: 'Produce', v: v3.id, pack: '25#', y: 1, p: 18.00, par: 4, stock: 1, code: '99882' },
+        { name: 'Heavy Cream', cat: 'Dairy', v: v1.id, pack: '12/1qt', y: 1, p: 45.00, par: 3, stock: 4, code: '33441' },
+        { name: 'Cheddar Block', cat: 'Dairy', v: v1.id, pack: '4/5#', y: 1, p: 55.00, par: 4, stock: 1, code: '33442' },
+        { name: 'Fry Oil', cat: 'Supplies', v: v2.id, pack: '35# jug', y: 1, p: 38.00, par: 8, stock: 8, code: '77881' },
+        { name: 'To-Go Boxes', cat: 'Supplies', v: v1.id, pack: '200ct', y: 1, p: 42.00, par: 5, stock: 2, code: '11990' }
+      ];
+      await Promise.all(invItems.map(i => addDoc(collection(db, "inventoryItems"), { restaurantId: rId, name: i.name, category: i.cat, supplierId: i.v, packSize: i.pack, yieldQty: i.y, price: i.p, parLevel: i.par, currentStock: i.stock, pendingQty: 0, pfgCode: i.code, isStarred: false })));
+
+      await addDoc(collection(db, "lineCheckItems"), { restaurantId: rId, name: 'Salad Station Cooler', category: 'Cold Holding (≤ 41°F)' });
+      await addDoc(collection(db, "lineCheckItems"), { restaurantId: rId, name: 'Grill Drawers', category: 'Cold Holding (≤ 41°F)' });
+      await addDoc(collection(db, "lineCheckItems"), { restaurantId: rId, name: 'Soup Warmer', category: 'Hot Holding (≥ 135°F)' });
+
+      // 8. Recipes
+      await addDoc(collection(db, "recipes"), { restaurantId: rId, title: 'House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 Gallon', ingredients: '1 Gal Mayo\n1/2 Gal Buttermilk\n1 Cup Ranch Seasoning', instructions: '1. Combine all in 12qt Cambro.\n2. Whisk until smooth.\n3. Date and label.', authorName: 'Alice Admin', lastUpdated: new Date().toISOString() });
+      await addDoc(collection(db, "recipes"), { restaurantId: rId, title: 'Beer Cheese', category: 'Sauce/Dressing', prepTime: '30 mins', yieldAmt: '1.5 Gallons', ingredients: '1 lb Butter\n1 lb Flour\n1 Tablespoon Salt\n1 Pint Light Beer\n1 gallon milk\n8 cups shredded cheddar', instructions: '1. Melt butter and whisk in flour to create roux.\n2. Add beer and stir.\n3. Whisk in hot milk.\n4. Fold in cheese until melted.', authorName: 'Charlie Chef', lastUpdated: new Date().toISOString() });
+      await addDoc(collection(db, "recipes"), { restaurantId: rId, title: 'Signature Burger Prep', category: 'Meat Prep', prepTime: '20 mins', yieldAmt: '24 Patties', ingredients: '10 lbs Ground Beef (80/20)\n1/2 Cup Kosher Salt\n1/4 Cup Black Pepper\n2 Tbsp Garlic Powder', instructions: '1. Gently mix seasonings into ground beef.\n2. Portion into 6.5oz balls.\n3. Press into patties.\n4. Layer with parchment paper.', authorName: 'Charlie Chef', lastUpdated: new Date().toISOString() });
+
+      // 9. Sales (7 Days Historical)
+      const salesPromises = past7Days.map((d, index) => {
+         const base = 5000 + (Math.random() * 2000);
+         const isWeekend = index === 1 || index === 2; // Rough assumption for random peaks
+         const gross = isWeekend ? base * 1.5 : base;
+         return addDoc(collection(db, "sales"), { restaurantId: rId, date: d, grossSales: gross, laborCost: gross * 0.22, foodCost: gross * 0.28, notes: isWeekend ? 'Busy weekend shift.' : 'Standard service.' });
+      });
+      await Promise.all(salesPromises);
+
+      // 10. Maintenance & PM
+      await addDoc(collection(db, "maintenanceLogs"), { restaurantId: rId, equipment: 'Ice Machine', issue: 'Leaking water on the floor near drain', urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: 'Bob Bartender' });
+      await addDoc(collection(db, "maintenanceLogs"), { restaurantId: rId, equipment: 'Fryer #2', issue: 'Pilot light keeps going out', urgency: 'Critical', status: 'Pending Parts', notes: 'Called Hobart. Waiting on thermocouple.', reportedAt: new Date().toISOString(), reportedBy: 'Alice Admin' });
+      await addDoc(collection(db, "pmSchedules"), { restaurantId: rId, title: 'Degrease Hood Filters', equipment: 'Line Vents', frequencyDays: 30, lastCompleted: getOffsetDate(-29) }); // Overdue tomorrow
+      await addDoc(collection(db, "pmSchedules"), { restaurantId: rId, title: 'Descale Dish Machine', equipment: 'Dishwasher', frequencyDays: 14, lastCompleted: getOffsetDate(-5) });
+
+      addToast('Demo Live', 'Massive Showcase Workspace successfully deployed. Check your Clients list.');
+    } catch(e) {
+      addToast('Error', e.message);
+    }
+  };
+
+  // --- 2. SYSTEM OPERATIONS & FORGE ---
 
   // --- 2. SYSTEM OPERATIONS & FORGE ---
   const handleMegaphone = async (e) => {
@@ -6101,25 +6276,58 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
 
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white">Client Roster</h3><span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurants.length} Total</span></div>
-            <div className={`divide-y ${T.border}`}>
-              {restaurants.map(r => (
-                <div key={r.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
-                  <div>
+<div className={`divide-y ${T.border}`}>
+              {restaurants.map(r => {
+                // Subscription Math Engine
+                const createdDate = new Date(r.createdAt || Date.now());
+                const trialEndDate = new Date(createdDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+                const isTrialActive = r.billingStatus === 'Trial';
+                const daysInTrial = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                
+                const nextBill = new Date();
+                nextBill.setDate(createdDate.getDate());
+                if (nextBill <= new Date()) nextBill.setMonth(nextBill.getMonth() + 1);
+
+                return (
+                <div key={r.id} className={`${T.row} flex flex-col xl:flex-row justify-between xl:items-center gap-4`}>
+                  <div className="flex-1 min-w-0">
                     <div className="font-black text-white text-lg flex items-center gap-2 flex-wrap">
-                      {r.name} 
+                      <span className="truncate">{r.name}</span>
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
-{r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : r.billingStatus === 'Trial' ? <span className="bg-blue-900 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">14-Day Trial</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}                    </div>
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1"> </span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1"> </span> {r.ownerPhone}</>}</div>
-                    <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1">•</span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1">•</span> {r.ownerPhone}</>}</div>
+                    
+                    {/* BILLING & SUBSCRIPTION HUD */}
+                    <div className="flex flex-wrap items-center gap-3 mt-2 mb-1 bg-[#0B0E11] border border-[#2A353D] p-2.5 rounded-lg w-full xl:w-max">
+                      <div className="flex flex-col">
+                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Service Started</span>
+                        <span className="text-[10px] font-bold text-slate-300">{createdDate.toLocaleDateString()}</span>
+                      </div>
+                      <div className="h-6 w-px bg-[#2A353D]"></div>
+                      {isTrialActive ? (
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-black uppercase tracking-widest text-blue-400">14-Day Free Trial</span>
+                          <span className="text-[10px] font-bold text-blue-300">Ends {trialEndDate.toLocaleDateString()} ({daysInTrial > 0 ? `${daysInTrial} days left` : 'Expired'})</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col">
+                          <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500">Next Billing Cycle</span>
+                          <span className="text-[10px] font-bold text-emerald-400">{r.billingStatus === 'Past Due' ? 'PAYMENT FAILED' : nextBill.toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-[9px] text-slate-500 font-medium mt-1.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 flex-shrink-0">
                     <button onClick={() => setGhostTenant({ id: r.id, name: r.name })} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
                     <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors shadow-sm">Manage</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         </div>
@@ -6342,6 +6550,11 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
           </div>
           
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`${T.card} p-5 border-amber-900/30`}>
+              <h3 className="font-black text-white mb-1">Deploy Demo Workspace</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Automatically inject a fake restaurant populated with staff, shifts, prep lists, and data across every tab for showcasing.</p>
+              <button onClick={handleInjectDemoWorkspace} type="button" className="w-full bg-amber-900/20 text-amber-400 border border-amber-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-amber-900/40 transition-colors flex items-center justify-center gap-2"><Star size={16}/> Build Showcase</button>
+            </div>
             <div className={`${T.card} p-5 border-fuchsia-900/30`}>
               <h3 className="font-black text-white mb-1">Test Push Notifications</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Fires a live test ping through Vercel to verify tokens and Firebase Admin credentials are working.</p>
