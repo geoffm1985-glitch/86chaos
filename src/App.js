@@ -5384,6 +5384,10 @@ const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
 
+// Pricing & MRR States
+  const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
+  const [isEditingPrices, setIsEditingPrices] = useState(false);
+  
   // Live Banner States
   const [bannerTarget, setBannerTarget] = useState('ALL');
   const [bannerText, setBannerText] = useState('');
@@ -5451,12 +5455,15 @@ const [editingRest, setEditingRest] = useState(null);
       setUserCounts(counts);
     });
     const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)));
-    const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
+const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
        setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
     });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
+    const unsubPricing = onSnapshot(doc(db, 'system', 'pricing'), doc => {
+       if (doc.exists()) setTierPrices(doc.data());
+    });
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); };
   }, []);
 
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
@@ -5783,8 +5790,8 @@ const handleUpdateTenant = async (e) => {
 
 const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Access given. The user MUST log out and log back in to see the new tab.'); };  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
 
-  // --- CALCULATIONS ---
-  const mrr = restaurants.reduce((acc, r) => acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Pro' ? 99 : 0), 0);
+// --- CALCULATIONS ---
+  const mrr = restaurants.filter(r => r.billingStatus === 'Paid').reduce((acc, r) => acc + (tierPrices[r.planType] || 0), 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
@@ -5800,7 +5807,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
 <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
           
-          // --- THE TIER PRESET ENGINE ---
+  // --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
             const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
@@ -5809,10 +5816,13 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             
             // 2. Merge only the allowed features as TRUE over the baseline
             if (tier === 'Starter') {
+                // Starter: Core features only
                 updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true };
             } else if (tier === 'Pro') {
+                // Pro: Starter + Inventory, Recipes, and Sales
                 updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, inventory: true, recipes: true, sales: true };
             } else if (tier === 'Elite' || tier === 'Enterprise') {
+                // Elite/Enterprise: Everything + Maintenance, Timesheets, and Labor Projections
                 updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, inventory: true, recipes: true, sales: true, maintenance: true, timesheets: true };
                 newLabs = { laborProjection: true };
             }
@@ -5842,9 +5852,9 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                   <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
-                  <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
+  <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
+                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
                 </div>
 
                 {/* QUICK APPLY TIER PRESETS */}
@@ -5946,13 +5956,44 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
       {/* --- TAB: OVERVIEW --- */}
       {subTab === 'overview' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
+<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr.toLocaleString()}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
             {appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
               <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
             )}          
+          </div>
+
+          {/* PRICING & MRR CONFIG */}
+          <div className={`${T.card} p-6 border-[#D4A381]/30`}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-black text-lg text-white flex items-center gap-2"><Settings className={T.copper} size={18}/> Subscription Pricing</h3>
+              <button onClick={() => setIsEditingPrices(!isEditingPrices)} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] px-3 py-1.5 rounded-lg border border-[#2A353D]">{isEditingPrices ? 'Cancel' : 'Edit Prices'}</button>
+            </div>
+            {isEditingPrices ? (
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                await setDoc(doc(db, "system", "pricing"), tierPrices);
+                setIsEditingPrices(false);
+                addToast('Saved', 'Global tier pricing updated. MRR recalculated.');
+              }} className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div><label className={T.label}>Starter ($)</label><input type="number" min="0" value={tierPrices.Starter || 0} onChange={e => setTierPrices({...tierPrices, Starter: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                  <div><label className={T.label}>Pro ($)</label><input type="number" min="0" value={tierPrices.Pro || 0} onChange={e => setTierPrices({...tierPrices, Pro: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                  <div><label className={T.label}>Elite ($)</label><input type="number" min="0" value={tierPrices.Elite || 0} onChange={e => setTierPrices({...tierPrices, Elite: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                  <div><label className={T.label}>Enterprise ($)</label><input type="number" min="0" value={tierPrices.Enterprise || 0} onChange={e => setTierPrices({...tierPrices, Enterprise: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                </div>
+                <button type="submit" className={`w-full ${T.btn} py-3 text-sm`}>Save Pricing Model</button>
+              </form>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Starter</div><div className="text-xl font-black text-white">${tierPrices.Starter || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Pro</div><div className="text-xl font-black text-white">${tierPrices.Pro || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Elite</div><div className="text-xl font-black text-white">${tierPrices.Elite || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Enterprise</div><div className="text-xl font-black text-white">${tierPrices.Enterprise || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+              </div>
+            )}
           </div>
 
           {/* STALE ACCOUNT ALERTS */}
@@ -6003,8 +6044,7 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                       {r.name} 
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
-                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
-                    </div>
+{r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : r.billingStatus === 'Trial' ? <span className="bg-blue-900 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">14-Day Trial</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}                    </div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1"> </span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1"> </span> {r.ownerPhone}</>}</div>
                     <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
