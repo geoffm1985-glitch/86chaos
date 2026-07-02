@@ -2930,7 +2930,8 @@ const TabInventory = ({ addToast, appUser }) => {
   const vendors = useLiveCollection('vendors', appUser?.restaurantId);
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId);
   const [invTab, setInvTab] = useState('count');
-  const [searchTerm, setSearchTerm] = useState(''); 
+const [searchTerm, setSearchTerm] = useState(''); 
+  const [groupBy, setGroupBy] = useState('Category');
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
   // Fetch invoices securely directly inside this tab
@@ -3236,10 +3237,22 @@ for (const item of scannedInvoice.lineItems) {
           // Catch every possible key name the AI might use for the SKU/Product Code
           const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
 
-          if (item.matchedItemId === 'CREATE_NEW') {
+if (item.matchedItemId === 'CREATE_NEW') {
+             // Smart Auto-Categorizer
+             const n = (item.itemName || '').toLowerCase();
+             let autoCat = 'Other';
+             if (n.includes('beef') || n.includes('chicken') || n.includes('pork') || n.includes('steak') || n.includes('bacon') || n.includes('sausage') || n.includes('turkey')) autoCat = 'Meat';
+             else if (n.includes('lettuce') || n.includes('tomato') || n.includes('onion') || n.includes('potato') || n.includes('apple') || n.includes('lemon') || n.includes('lime') || n.includes('pepper') || n.includes('produce')) autoCat = 'Produce';
+             else if (n.includes('milk') || n.includes('cheese') || n.includes('cream') || n.includes('butter') || n.includes('yogurt') || n.includes('dairy')) autoCat = 'Dairy';
+             else if (n.includes('bread') || n.includes('bun') || n.includes('roll') || n.includes('tortilla') || n.includes('dough')) autoCat = 'Bakery';
+             else if (n.includes('fish') || n.includes('shrimp') || n.includes('salmon') || n.includes('crab') || n.includes('seafood')) autoCat = 'Seafood';
+             else if (n.includes('fry') || n.includes('fries') || n.includes('frozen') || n.includes('ice')) autoCat = 'Frozen';
+             else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
+             else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
+
              await addDoc(collection(db, "inventoryItems"), {
                 name: item.itemName,
-                category: 'Other', 
+                category: autoCat, 
                 pfgCode: incomingCode, 
                 supplierId: vId,
                 packSize: item.packSize || '1 CS',
@@ -3279,7 +3292,10 @@ for (const item of scannedInvoice.lineItems) {
      }
   };
 
-  const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { const cat = item.category || 'Uncategorized'; if (!acc[cat]) acc[cat] = []; acc[cat].push(item); return acc; }, {});
+const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { 
+    const key = groupBy === 'Vendor' ? (vendors.find(v=>v.id===item.supplierId)?.name || 'Unassigned Vendor') : (item.category || 'Uncategorized');
+    if (!acc[key]) acc[key] = []; acc[key].push(item); return acc; 
+  }, {});
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
 
   return (
@@ -3429,10 +3445,16 @@ for (const item of scannedInvoice.lineItems) {
         </div>
       </div>
 
-      {invTab === 'count' && (
+{invTab === 'count' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <input type="text" placeholder="Search product or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={T.input} />
-          {Object.entries(groupedItems).map(([category, items]) => (
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input type="text" placeholder="Search product or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={`${T.input} flex-1`} />
+            <select value={groupBy} onChange={e => setGroupBy(e.target.value)} className={`${T.input} sm:w-48 font-bold`}>
+              <option value="Category">Group by Category</option>
+              <option value="Vendor">Group by Vendor</option>
+            </select>
+          </div>
+          {Object.entries(groupedItems).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
             <div key={category} className="space-y-2">
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
