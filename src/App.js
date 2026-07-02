@@ -4673,7 +4673,7 @@ const handleEnableNotifications = async () => {
         </div>
       )}
 
-      {subTab === 'workspace' && appUser?.isAdmin && (
+{subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
@@ -4683,8 +4683,10 @@ const handleEnableNotifications = async () => {
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
-              <Toggle label="Strict Geofencing (Time Clock)" desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} />
-              {sysGeofence && (
+              <div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to enforce Strict GPS Geofencing.'); } }}>
+                <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Strict Geofencing (Elite)' : 'Strict Geofencing (Time Clock)'} desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+              </div>
+              {sysGeofence && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro' && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
                    <div>
                      <label className={T.label}>Street Address (To auto-find coordinates)</label>
@@ -4700,7 +4702,9 @@ const handleEnableNotifications = async () => {
                    </div>
                  </div>
                )}
-               <Toggle label="Unpaid Break Tracking" desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} />
+               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to unlock Unpaid Break Tracking.'); } }}>
+                 <Toggle label={appUser?.planType === 'Starter' ? '🔒 Unpaid Break Tracking (Pro)' : 'Unpaid Break Tracking'} desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} disabled={appUser?.planType === 'Starter'} />
+               </div>
                <Toggle label="Block Early Clock-Ins" desc="Prevent staff from punching in before their grace period begins." checked={sysBlockEarly} onChange={e => setSysBlockEarly(e.target.checked)} />
                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
                  <div>
@@ -4709,7 +4713,7 @@ const handleEnableNotifications = async () => {
                  </div>
                  <input type="number" min="0" value={sysGracePeriod} onChange={e => setSysGracePeriod(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
                </div>
-      </div>
+             </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Shift Board Rules</div>
              <div className="space-y-2">
@@ -4721,19 +4725,23 @@ const handleEnableNotifications = async () => {
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-2">
                <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
-               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
+               
+               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to set Overtime Alert Thresholds.'); } }} className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3 ${appUser?.planType === 'Starter' ? 'opacity-50 cursor-not-allowed' : ''}`}>
                  <div>
-                   <div className="text-xs font-bold text-white">Overtime Alert Threshold</div>
+                   <div className="text-xs font-bold text-white">{appUser?.planType === 'Starter' ? '🔒 Overtime Alert Threshold (Pro)' : 'Overtime Alert Threshold'}</div>
                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
                  </div>
-                 <input type="number" min="1" value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs`} />
+                 <input type="number" min="1" disabled={appUser?.planType === 'Starter'} value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs disabled:opacity-50`} />
                </div>
              </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Security & Access Control</div>
              <div className="space-y-2">
-               <Toggle label="Strict IP Whitelisting" desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} />
-               {sysEnableIpWhitelist && (
+               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to enforce Strict IP Whitelisting.'); } }}>
+                 <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Strict IP Whitelisting (Elite)' : 'Strict IP Whitelisting'} desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+               </div>
+               
+               {sysEnableIpWhitelist && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro' && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl animate-[slideIn_0.2s_ease-out] ml-4">
                    <label className={T.label}>Authorized IP Addresses (Comma Separated)</label>
                    <input type="text" value={sysIpWhitelist} onChange={e=>setSysIpWhitelist(e.target.value)} className={`${T.input} py-1.5 text-xs font-mono`} placeholder="e.g. 192.168.1.1, 10.0.0.5" />
