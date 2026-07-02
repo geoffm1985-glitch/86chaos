@@ -6328,15 +6328,13 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
                     <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors shadow-sm">Manage</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
-                </div>
-              )})}
-            </div>
-          
-      
-   
-
-      {/* --- TAB: GLOBAL USERS --- */}
-      {subTab === 'users' && (
+       </> 
+)})}
+</>
+</div>
+</div>
+{/* --- TAB: GLOBAL USERS --- */}
+{subTab === 'users' && (...)}
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-4 flex gap-3 items-center`}>
             <Search className={T.copper} size={20}/>
