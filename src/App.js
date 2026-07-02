@@ -4256,8 +4256,8 @@ const MapClickListener = ({ setLat, setLon }) => {
   return null;
 };
 
-// --- THE EXPANDED SETTINGS COMMAND CENTER ---const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {
-  const [subTab, setSubTab] = useState('profile');
+// --- THE EXPANDED SETTINGS COMMAND CENTER ---
+const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
 
   // --- Profile State ---
