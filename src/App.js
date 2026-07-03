@@ -1488,10 +1488,24 @@ const [eventDate, setEventDate] = useState(getToday());
   const [eventImageFile, setEventImageFile] = useState(null);
   const [isEventUploading, setIsEventUploading] = useState(false);
   
-  // Repeating Events State
+// Repeating Events State
   const [isRepeating, setIsRepeating] = useState(false);
   const [repeatType, setRepeatType] = useState('weekly');
   const [repeatUntil, setRepeatUntil] = useState('');
+
+  // --- EVENTS CALENDAR STATE ---
+  const [eventsCalMonth, setEventsCalMonth] = useState(getMonthStr(currentDate));
+  useEffect(() => { setEventsCalMonth(getMonthStr(currentDate)); }, [currentDate]);
+
+  const changeEventsMonth = (offset) => {
+    const d = new Date(eventsCalMonth + '-01T12:00:00');
+    d.setMonth(d.getMonth() + offset);
+    setEventsCalMonth(d.toISOString().substring(0, 7));
+  };
+  
+  const eventsMonthDays = Array.from({length: getDaysInMonth(eventsCalMonth)}).map((_, i) => `${eventsCalMonth}-${String(i+1).padStart(2, '0')}`);
+  const eventsFirstDayOffset = new Date(eventsCalMonth+'-01T12:00:00').getDay();
+  const eventsCalEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(eventsCalMonth));
 
   // --- AUTO-POPULATE STATE ---
   const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
@@ -2440,19 +2454,54 @@ const handleExportTimesheets = () => {
         </div>
       )}
 
-      {/* --- THE NEW EVENTS LEDGER SUB-TAB --- */}
+{/* --- THE NEW EVENTS LEDGER SUB-TAB --- */}
       {subTab === 'events' && (
-        <div className="animate-[slideIn_0.2s_ease-out] space-y-4">
-          <div className="flex gap-2">
-             <button onClick={openNewEventModal} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={16}/> Add Special Event</button>
-          </div>
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
+        <div className="animate-[slideIn_0.2s_ease-out] space-y-6">
+          
+          {/* INTERACTIVE CALENDAR */}
+          <div className={`${T.card} overflow-hidden shadow-2xl`}>
+            <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
+              <button onClick={() => changeEventsMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button>
+              <h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(eventsCalMonth)}</h3>
+              <button onClick={() => changeEventsMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button>
             </div>
+            <div className={`grid grid-cols-7 border-t ${T.border}`}>
+              {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`py-1.5 text-center text-[9px] font-black ${T.copper} uppercase border-b border-[#2A353D] bg-[#12161A]`}>{d}</div>)}
+              {Array.from({length: eventsFirstDayOffset}).map((_,i) => <div key={`empty-${i}`} className={`p-1 border-b border-r ${T.border} bg-[#1A2126] min-h-[45px]`} />)}
+              {eventsMonthDays.map(d => {
+                const holiday = getHoliday(d);
+                const dayEvents = eventsCalEvents.filter(e => e.date === d);
+
+                return (
+                  <div key={d} onClick={() => {
+                    setEventDate(d); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventModalOpen(true);
+                  }} className={`p-1 border-b border-r ${T.border} min-h-[70px] flex flex-col items-center justify-start pt-1 transition-colors hover:bg-[#12161A]/50 cursor-pointer group`}>
+                    <span className={`text-xs font-black ${d === getToday() ? T.copper : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                    
+                    {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
+                    {dayEvents.map(ev => (
+                      <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-1 px-1 py-0.5 w-full truncate bg-blue-900/20 border border-blue-900/50 rounded" title={ev.title}>
+                        {ev.time ? `${formatShortTime(ev.time)} ` : ''}{ev.title}
+                      </span>
+                    ))}
+                    <div className="mt-auto pt-1 opacity-0 group-hover:opacity-100 text-[8px] text-slate-500 font-bold uppercase transition-opacity pb-1">
+                      + Add
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex justify-between items-end">
+             <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Events Ledger</h3>
+             <button onClick={openNewEventModal} className={`${T.btn} flex items-center justify-center gap-2 py-2 px-4 text-xs`}><Plus size={14}/> Add Event</button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
             <div className={`divide-y ${T.border}`}>
-              {monthEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
-              {monthEvents.map(ev => (
+              {eventsCalEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
+              {eventsCalEvents.sort((a,b) => (a.date || '').localeCompare(b.date || '')).map(ev => (
                 <div key={ev.id} className={`${T.row} flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
                   <div className="flex items-start sm:items-center gap-4">
                     <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
