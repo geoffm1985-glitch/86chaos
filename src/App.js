@@ -6081,6 +6081,12 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
         })
       });
 
+      // SAFETY NET: Prevent the "Unexpected token" HTML crash if Vercel throws a 404 or 500
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+         throw new Error("API Route Missing! Did you push api/deploy-tenant.js to GitHub/Vercel?");
+      }
+
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to deploy tenant.');
 
