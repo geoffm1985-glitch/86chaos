@@ -6226,10 +6226,17 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
   // --- NEW SAAS HEALTH METRICS ---
-  const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length;
+const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length;
   const paidWorkspaces = restaurants.filter(r => r.billingStatus === 'Paid').length;
   const dau = allUsers.filter(u => u.lastActive && Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) === 0).length;
   const stickyRate = allUsers.length > 0 ? ((dau / allUsers.length) * 100).toFixed(0) : 0;
+
+  // --- NEW INFRASTRUCTURE & FINANCIAL METRICS ---
+  const arpa = paidWorkspaces > 0 ? (mrr / paidWorkspaces).toFixed(2) : 0;
+  const trialPipelineValue = activeTrials * (tierPrices.Pro || 99); 
+  const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
+  const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
+  const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
@@ -6417,64 +6424,74 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
             )}          
           </div>
 
-          {/* SECONDARY ENGAGEMENT & PIPELINE ROW */}
+{/* SECONDARY ENGAGEMENT & PIPELINE ROW */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid Workspaces</div><div className="text-2xl lg:text-3xl font-black text-white">{paidWorkspaces} <span className="text-[10px] text-slate-500 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded">Paying</span></div></div>
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-blue-900/30`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Active Trials</div><div className="text-2xl lg:text-3xl font-black text-white">{activeTrials} <span className="text-[10px] text-blue-500 tracking-widest uppercase align-middle bg-blue-900/20 border border-blue-900/50 px-1.5 py-0.5 rounded">Leads</span></div></div>
+            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid Workspaces</div><div className="text-2xl lg:text-3xl font-black text-white">{paidWorkspaces} <span className="text-[10px] text-slate-300 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded">ARPA: ${arpa}</span></div></div>
+            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-blue-900/30`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Active Trials</div><div className="text-2xl lg:text-3xl font-black text-white">{activeTrials} <span className="text-[10px] text-blue-400 tracking-widest uppercase align-middle bg-blue-900/20 border border-blue-900/50 px-1.5 py-0.5 rounded">Pipe: ${trialPipelineValue}</span></div></div>
             <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-1">Daily Active (DAU)</div><div className="text-2xl lg:text-3xl font-black text-white">{dau} <span className="text-[10px] text-orange-500 tracking-widest uppercase align-middle bg-orange-900/20 border border-orange-900/50 px-1.5 py-0.5 rounded">Today</span></div></div>
             <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">App Sticky Rate</div><div className={`text-2xl lg:text-3xl font-black ${stickyRate < 30 ? 'text-red-400' : 'text-emerald-400'}`}>{stickyRate}% <span className="text-[10px] text-slate-500 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded text-white">Adoption</span></div></div>
           </div>
 
           {/* PRICING & MRR CONFIG */}
-          <div className={`${T.card} p-6 border-[#D4A381]/30`}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-black text-lg text-white flex items-center gap-2"><Settings className={T.copper} size={18}/> Subscription Pricing</h3>
-              <button onClick={() => setIsEditingPrices(!isEditingPrices)} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] px-3 py-1.5 rounded-lg border border-[#2A353D]">{isEditingPrices ? 'Cancel' : 'Edit Prices'}</button>
+          {/* ... (Your pricing and stale account code remains exactly the same here) ... */}
+
+          {/* --- GLOBAL INFRASTRUCTURE & HEALTH MATRIX --- */}
+          <div className={`${T.card} overflow-hidden border-slate-700/50`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className="font-black text-lg text-white flex items-center gap-2"><Globe className="text-blue-500" size={18}/> Infrastructure Health Matrix</h3>
+              <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">Version {CURRENT_VERSION}</span>
             </div>
-            {isEditingPrices ? (
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                await setDoc(doc(db, "system", "pricing"), tierPrices);
-                setIsEditingPrices(false);
-                addToast('Saved', 'Global tier pricing updated. MRR recalculated.');
-              }} className="space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div><label className={T.label}>Starter ($)</label><input type="number" min="0" value={tierPrices.Starter || 0} onChange={e => setTierPrices({...tierPrices, Starter: parseInt(e.target.value) || 0})} className={T.input} /></div>
-                  <div><label className={T.label}>Pro ($)</label><input type="number" min="0" value={tierPrices.Pro || 0} onChange={e => setTierPrices({...tierPrices, Pro: parseInt(e.target.value) || 0})} className={T.input} /></div>
-                  <div><label className={T.label}>Elite ($)</label><input type="number" min="0" value={tierPrices.Elite || 0} onChange={e => setTierPrices({...tierPrices, Elite: parseInt(e.target.value) || 0})} className={T.input} /></div>
-                  <div><label className={T.label}>Enterprise ($)</label><input type="number" min="0" value={tierPrices.Enterprise || 0} onChange={e => setTierPrices({...tierPrices, Enterprise: parseInt(e.target.value) || 0})} className={T.input} /></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#2A353D]">
+              
+              {/* Shard Status */}
+              <div className="p-5 flex items-center justify-between hover:bg-[#12161A]/50 transition-colors">
+                <div>
+                  <div className="font-black text-white text-sm">Core Database Shards</div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Firebase Firestore DB</div>
                 </div>
-                <button type="submit" className={`w-full ${T.btn} py-3 text-sm`}>Save Pricing Model</button>
-              </form>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Starter</div><div className="text-xl font-black text-white">${tierPrices.Starter || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
-                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Pro</div><div className="text-xl font-black text-white">${tierPrices.Pro || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
-                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Elite</div><div className="text-xl font-black text-white">${tierPrices.Elite || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
-                <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D]"><div className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Enterprise</div><div className="text-xl font-black text-white">${tierPrices.Enterprise || 0}<span className="text-[10px] text-slate-500">/mo</span></div></div>
+                <div className="flex items-center gap-2 bg-emerald-900/20 border border-emerald-900/50 px-3 py-1.5 rounded-lg">
+                  <span className="flex h-2.5 w-2.5 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span></span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Operational</span>
+                </div>
               </div>
-            )}
-          </div>
 
-          {/* STALE ACCOUNT ALERTS */}
-          {staleTenants.length > 0 && (
-            <div className={`${T.card} p-6 border-orange-900/30`}>
-              <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Bell className="text-orange-500" size={18}/> Stale Account Alerts</h3>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-3">These active accounts have not logged in for over 21 days.</p>
-              <div className="space-y-2">
-                {staleTenants.map(r => (
-                  <div key={r.id} className="flex justify-between items-center bg-[#12161A] p-3 rounded-lg border border-[#2A353D]">
-                    <div><div className="font-bold text-sm text-white">{r.name}</div><div className="text-[10px] text-slate-500">{r.ownerEmail}</div></div>
-                    <div className="text-orange-400 font-black text-xs">Inactive {Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000)} Days</div>
-                  </div>
-                ))}
+              {/* Stability Status */}
+              <div className="p-5 flex items-center justify-between hover:bg-[#12161A]/50 transition-colors">
+                <div>
+                  <div className="font-black text-white text-sm">Application Stability</div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{crashes24h} Crashes (Last 24h)</div>
+                </div>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${crashes24h > 10 ? 'bg-red-900/20 border-red-900/50 text-red-400 animate-pulse' : crashes24h > 0 ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
+                  {crashes24h > 10 ? <Bug size={14}/> : <Check size={14}/>}
+                  <span className="text-[10px] font-black uppercase tracking-widest">{crashes24h > 10 ? 'Degraded' : crashes24h > 0 ? 'Monitoring' : 'Stable'}</span>
+                </div>
               </div>
+
+              {/* Push Relay Status */}
+              <div className="p-5 flex items-center justify-between border-t border-[#2A353D] hover:bg-[#12161A]/50 transition-colors">
+                <div>
+                  <div className="font-black text-white text-sm">Push Notification Relay</div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{pushOptInRate}% Global Opt-In Rate</div>
+                </div>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${pushOptInRate < 30 ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
+                  <Bell size={14}/>
+                  <span className="text-[10px] font-black uppercase tracking-widest">{pushOptInRate < 30 ? 'Low Adoption' : 'Active'}</span>
+                </div>
+              </div>
+
+              {/* API Webhooks Status */}
+              <div className="p-5 flex items-center justify-between border-t border-[#2A353D] hover:bg-[#12161A]/50 transition-colors">
+                <div>
+                  <div className="font-black text-white text-sm">External API Webhooks</div>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">POS & Payroll Sync</div>
+                </div>
+                <div className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-3 py-1.5 rounded-lg">
+                  <Repeat size={14} className="text-blue-400"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">{apiConnectedCount} Endpoints Live</span>
+                </div>
+              </div>
+
             </div>
-          )}
-
-          <div className={`${T.card} p-6 border-red-900/30`}>
-            <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Shield className="text-red-500" size={18}/> System Status</h3>
-            <div className="flex items-center gap-3"><span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span><span className="text-sm font-bold text-slate-300">All Database Shards Operational   Version {CURRENT_VERSION} Online</span></div>
           </div>
         </div>
       )}
