@@ -365,10 +365,12 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
 const LoginScreen = ({ setAppUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-const [loginError, setLoginError] = useState('');
+  const [loginError, setLoginError] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   
   // New state to hold the user temporarily if they need to change their password
+  const [pendingUser, setPendingUser] = useState(null);
   const [pendingUser, setPendingUser] = useState(null);
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -495,15 +497,65 @@ const [loginError, setLoginError] = useState('');
             <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
               Unlock System
             </button>
-            <div className="pt-3 text-center">
+<div className="pt-3 text-center flex flex-col gap-2">
               <button type="button" onClick={handleForgotCredentials} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">
                 Forgot Password or Username?
+              </button>
+              <button type="button" onClick={() => setIsPrivacyModalOpen(true)} className="text-[10px] font-bold text-slate-600 hover:text-slate-400 transition-colors mt-4">
+                Privacy Policy & Terms of Service
               </button>
             </div>
           </form>
         )}
-
       </div>
+
+      <Modal isOpen={isPrivacyModalOpen} onClose={() => setIsPrivacyModalOpen(false)} title="Privacy Policy">
+        <div className="space-y-4 text-xs font-medium text-slate-300 leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+          <div className="text-center border-b border-[#2A353D] pb-3 mb-3">
+            <h3 className="font-black text-white text-lg uppercase tracking-widest">Privacy Policy for 86chaos</h3>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 2, 2026</p>
+          </div>
+          <p>Chilton App Works, LLC ("we," "us," or "our") operates the 86chaos restaurant operating system (the "Service"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application and website.</p>
+          
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">1. Information We Collect</h4>
+          <p>We collect information that identifies, relates to, describes, or could reasonably be linked to you or your restaurant, including:</p>
+          <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
+            <li><strong className="text-white">Personal & Account Information:</strong> Names, email addresses, phone numbers, and profile photos.</li>
+            <li><strong className="text-white">Employment & Financial Data:</strong> Job titles, hourly wages, time punches, shift schedules, tips declared, and custom permissions.</li>
+            <li><strong className="text-white">Location Data (GPS):</strong> We collect precise location data exclusively when you attempt to clock in or out. This data is used solely to verify your presence within your employer's designated GPS geofence boundary. We do not track your location in the background.</li>
+            <li><strong className="text-white">Device & Telemetry Data:</strong> To improve system stability, we collect device information (Operating System, screen size, user agent), IP addresses (for security whitelisting), and usage telemetry (such as recent buttons clicked) attached to crash reports.</li>
+            <li><strong className="text-white">Images & Camera Data:</strong> We access your device camera and photo library, with your explicit permission, for scanning vendor invoices and attaching photos to the Message Board or Events ledger.</li>
+          </ul>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">2. How We Use Your Information</h4>
+          <p>We use the collected information to:</p>
+          <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
+            <li>Facilitate core operational features, including time tracking, scheduling, and inventory management.</li>
+            <li>Process vendor invoices through our AI integration to extract line items and update stock. (Note: AI processing is used strictly for document parsing, not for biometric or facial recognition).</li>
+            <li>Send push notifications regarding shift changes, trade board requests, and critical manager alerts.</li>
+            <li>Monitor system health, troubleshoot crashes, and prevent fraudulent activity.</li>
+          </ul>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">3. Third-Party Data Sharing</h4>
+          <p>We do not sell your personal data. We share data only with essential third-party service providers who assist in operating the Service:</p>
+          <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
+            <li><strong className="text-white">Cloud Hosting & Database:</strong> Google Cloud/Firebase (for secure data storage and authentication).</li>
+            <li><strong className="text-white">Serverless Infrastructure:</strong> Vercel (for routing and processing data).</li>
+            <li><strong className="text-white">AI Processing:</strong> Third-party AI APIs are used specifically to parse and read uploaded invoice images.</li>
+            <li><strong className="text-white">External Integrations:</strong> If your employer connects 86chaos to third-party Point of Sale (POS) or Payroll providers, data is transmitted to those entities according to your employer's configuration.</li>
+          </ul>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">4. Employer Control (B2B Clause)</h4>
+          <p>86chaos is a B2B service provided to your employer. Your employer acts as the primary Data Controller. If you are an employee seeking to access, modify, or permanently delete your personal data (such as time punches or account records), you must direct those requests to your restaurant management team.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">5. Data Security & Retention</h4>
+          <p>We use industry-standard security measures, including encryption and secure server environments, to protect your data. Data is retained for as long as your employer maintains an active workspace. If an employer deletes a user or a workspace, the associated data is permanently purged from our active databases.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">6. Contact Us</h4>
+          <p>If you have questions about this Privacy Policy, please contact us at:</p>
+          <p className="text-white font-bold mt-1">Email: support@86chaos.com<br/>Company: Chilton App Works, LLC</p>
+        </div>
+      </Modal>
     </div>
   );
 };
