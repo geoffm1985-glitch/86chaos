@@ -3265,13 +3265,44 @@ const [searchTerm, setSearchTerm] = useState('');
   const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
 const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
-  const handleLogWaste = async (e) => {
-    e.preventDefault(); if(!wItemId || !wQty) return; const item = inventoryItems.find(i => i.id === wItemId); if(!item) return;
-    const qtyNum = parseFloat(wQty); const yieldDivider = parseFloat(item.yieldQty) || 1; 
-    const stockDeduction = qtyNum / yieldDivider; const costLost = ((item.price || 0) / yieldDivider) * qtyNum; 
-    await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString(), restaurantId: appUser.restaurantId });
-    await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, item.currentStock - stockDeduction) });
-    setWItemId(''); setWQty(''); setWSearchTerm(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
+const handleLogWaste = async (e) => {
+    e.preventDefault(); 
+    if(!wItemId || !wQty) return; 
+    
+    const item = inventoryItems.find(i => i.id === wItemId); 
+    if(!item) return;
+
+    // 1. Get the raw inputs
+    const unitsWasted = parseFloat(wQty); 
+    const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1; 
+    const pricePerCase = parseFloat(item.price) || 0;
+
+    // 2. Calculate individual unit metrics
+    const pricePerUnit = pricePerCase / yieldPerCase;
+    const totalCostLost = pricePerUnit * unitsWasted;
+    
+    // 3. Calculate how much of a case to deduct from the main stock
+    const stockDeduction = unitsWasted / yieldPerCase; 
+
+    // 4. Save to Database
+    await addDoc(collection(db, "wasteLogs"), { 
+      itemId: item.id, 
+      itemName: item.name, 
+      qty: unitsWasted, 
+      costLost: totalCostLost, 
+      reason: wReason, 
+      loggedBy: appUser.name, 
+      date: getToday(), 
+      timestamp: new Date().toISOString(), 
+      restaurantId: appUser.restaurantId 
+    });
+
+    await updateDoc(doc(db, "inventoryItems", item.id), { 
+      currentStock: Math.max(0, (item.currentStock || 0) - stockDeduction) 
+    });
+
+    setWItemId(''); setWQty(''); setWSearchTerm(''); 
+    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} (${unitsWasted} units) deducted from stock.`);
   };
 
   const handleDeleteWaste = async (log) => {
@@ -3286,23 +3317,35 @@ const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(
     addToast('Log Deleted', 'Stock restored successfully.');
   };
 
-  const handleSaveWasteEdit = async (e) => {
+ const handleSaveWasteEdit = async (e) => {
     e.preventDefault();
     const log = editWaste;
     const item = inventoryItems.find(i => i.id === log.itemId);
+    
     if (item) {
        const originalLog = wasteLogs.find(w => w.id === log.id);
        const oldQty = parseFloat(originalLog.qty) || 0;
        const newQty = parseFloat(log.qty) || 0;
-       const yieldDivider = parseFloat(item.yieldQty) || 1;
-       const stockDifference = (newQty - oldQty) / yieldDivider; 
-       const newCostLost = ((item.price || 0) / yieldDivider) * newQty;
+       
+       const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1;
+       const pricePerCase = parseFloat(item.price) || 0;
+       const pricePerUnit = pricePerCase / yieldPerCase;
 
-       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (item.currentStock||0) - stockDifference) });
-       await updateDoc(doc(db, "wasteLogs", log.id), { qty: newQty, reason: log.reason, costLost: newCostLost });
+       const stockDifference = (newQty - oldQty) / yieldPerCase; 
+       const newCostLost = pricePerUnit * newQty;
+
+       await updateDoc(doc(db, "inventoryItems", item.id), { 
+         currentStock: Math.max(0, (item.currentStock || 0) - stockDifference) 
+       });
+       await updateDoc(doc(db, "wasteLogs", log.id), { 
+         qty: newQty, 
+         reason: log.reason, 
+         costLost: newCostLost 
+       });
     } else {
        await updateDoc(doc(db, "wasteLogs", log.id), { qty: log.qty, reason: log.reason });
     }
+    
     setEditWaste(null);
     addToast('Log Updated', 'Burn log and stock adjusted.');
   };
@@ -3747,8 +3790,9 @@ const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().inc
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
-          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🚨 Burn Log</button>
-        </div>
+<button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>
+            🚨 Burn Log <span className="ml-1 bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+          </button>        </div>
       </div>
 
 {invTab === 'count' && (
@@ -3992,8 +4036,10 @@ const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().inc
           </Modal>
 
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
-            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🚨 The Burn Log</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+<h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">
+              🚨 The Burn Log
+              <span className="bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+            </h3>            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               
               {/* THE FILTERABLE DROPDOWN */}
               <div className="space-y-2">
