@@ -6059,64 +6059,39 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
 
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
   const handleDeployTenant = async (e) => {
-    e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim() || !rAddress.trim()) return;
+    e.preventDefault(); 
+    if (!rName.trim() || !oEmail.trim() || !oName.trim() || !rAddress.trim()) return;
+    
+    addToast('Deploying', `Creating workspace for ${rName}...`);
+    
     try {
-      const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, maintenance: true, timesheets: true };
-      const newRestRef = await addDoc(collection(db, "restaurants"), { 
-        name: rName.trim(), 
-        ownerName: oName.trim(), 
-        ownerEmail: oEmail.toLowerCase().trim(), 
-        ownerPhone: oPhone.trim(),
-        isActive: true, 
-        isReadOnly: false, 
-        features: defaultFeatures, 
-        labs: {}, 
-        planType: 'Trial', 
-        billingStatus: 'Paid', 
-        createdAt: new Date().toISOString(), 
-        lastActive: new Date().toISOString(),
-        systemSettings: { address: rAddress.trim(), geofenceRadius: 300 }
+      const tPass = generateTempPass(); 
+      
+      // Ping the Vercel Backend to bypass Firebase Security Rules safely
+      const response = await secureFetch('/api/deploy-tenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+           rName: rName.trim(),
+           oName: oName.trim(),
+           oEmail: oEmail.trim(),
+           oPhone: oPhone.trim(),
+           rAddress: rAddress.trim(),
+           tPass: tPass
+        })
       });
-      const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
-      await setDoc(doc(db, "users", newAuthUid), { name: oName.trim(), email: oEmail.toLowerCase().trim(), password: tPass, role: 'General Manager', isAdmin: true, isActive: true, forcePasswordChange: true, restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true } });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to deploy tenant.');
+
       const welcomeMsg = `Welcome to 86chaos!\n\nYour restaurant OS is live. Access it here: https://app.86chaos.com\n\nUsername: ${oEmail.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in to set a permanent password.`;
       window.location.href = `mailto:${oEmail.toLowerCase().trim()}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${rName.trim()}`)}&body=${encodeURIComponent(welcomeMsg)}`;
-addToast('Tenant Deployed', `${rName} is now live.`); setRName(''); setOName(''); setOEmail(''); setOPhone(''); setRAddress('');    } catch (error) { addToast('Deployment Failed', error.message); }
-  };
-
-const handleUpdateTenant = async (e) => {
-    e.preventDefault();
-    await updateDoc(doc(db, "restaurants", editingRest.id), {
-      name: editingRest.name,
-      ownerName: editingRest.ownerName || '',
-      ownerEmail: editingRest.ownerEmail || '',
-      ownerPhone: editingRest.ownerPhone || '',
-      'systemSettings.address': editingRest.systemSettings?.address || '',
-      isActive: editingRest.isActive,
-      isReadOnly: editingRest.isReadOnly || false,
-      features: editingRest.features || {},
-      labs: editingRest.labs || {},
-      planType: editingRest.planType || 'Pro',
-      billingStatus: editingRest.billingStatus || 'Paid',
-      customPrice: editingRest.customPrice || '',
-      trialDays: editingRest.trialDays !== undefined ? parseInt(editingRest.trialDays) : 14
-    });
-    setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
-  };
-  const handleDeleteTenant = async (id, name) => {
-    if (prompt(`CRITICAL WARNING: This completely destroys a business's data. Type "NUKE" to erase ${name}.`) !== 'NUKE') return addToast('Aborted', 'Deletion canceled.');
-    await deleteDoc(doc(db, "restaurants", id)); addToast('Deleted', `${name} has been erased from existence.`);
-  };
-
-  const handleExportData = async (rest) => {
-    addToast('Compiling Data', 'Building CSV payload...');
-    const uSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', rest.id)));
-    let csv = "ID,Name,Email,Role,Phone,Status\n";
-    uSnap.forEach(d => { const u = d.data(); csv += `"${d.id}","${u.name}","${u.email}","${u.role}","${u.phone||''}","${u.isActive?'Active':'Terminated'}"\n`; });
-    const link = document.createElement("a"); link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csv)); link.setAttribute("download", `${rest.name.replace(/\s+/g, '_')}_Users_Export.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    addToast('Export Complete', 'Data delivered to downloads folder.');
+      
+      addToast('Tenant Deployed', `${rName} is now live.`); 
+      setRName(''); setOName(''); setOEmail(''); setOPhone(''); setRAddress('');    
+    } catch (error) { 
+      addToast('Deployment Failed', error.message); 
+    }
   };
 
   // --- DATABASE SNAPSHOT ENGINE (BACKUP & RESTORE) ---
