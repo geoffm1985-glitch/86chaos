@@ -1,25 +1,8 @@
 import admin from 'firebase-admin';
 
-// 1. Bulletproof Firebase Init (Matches your Push Notifications perfectly)
-if (!admin.apps.length) {
-  if (process.env.FIREBASE_PRIVATE_KEY) {
-    const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: cleanKey,
-      }),
-    });
-  } else {
-    // Fallback
-    admin.initializeApp({ projectId: 'cheers-34b8d' });
-  }
-}
-
 export const config = {
   regions: ['iad1'],
-  maxDuration: 60, // Tells Vercel to allow up to 60 seconds for the AI to read the invoice
+  maxDuration: 60,
 };
 
 export default async function handler(req, res) {
@@ -27,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  // --- THE BOUNCER: VERIFY FIREBASE AUTH TOKEN ---
+  // --- THE BOUNCER: DYNAMIC TOKEN VERIFICATION ---
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized: Missing or invalid token.' });
@@ -36,11 +19,36 @@ export default async function handler(req, res) {
   const authToken = authHeader.split('Bearer ')[1];
 
   try {
+    // Dynamically initialize the app based on the token so it works in both dev and prod
+    if (!admin.apps.length) {
+      // Decode token without verifying signature just to read which database you are using
+      const decodedUnverified = JSON.parse(Buffer.from(authToken.split('.')[1], 'base64').toString());
+      const projectId = decodedUnverified.aud; 
+
+      if (process.env.FIREBASE_PRIVATE_KEY) {
+        const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
+        admin.initializeApp({
+          credential: admin.credential.cert({
+            projectId: projectId,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: cleanKey,
+          }),
+        });
+      } else {
+        admin.initializeApp({ projectId: projectId });
+      }
+    }
+
+    // Actually verify the token securely now that the app is initialized
     await admin.auth().verifyIdToken(authToken);
+
   } catch (error) {
+    console.error("Auth Error:", error);
     return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
   }
   // --- END OF BOUNCER ---
+
+  // ... (Keep your existing try/catch Gemini fetch logic below here exactly as it is) ...
 
   try {
     const { fileBase64, mimeType } = req.body;
