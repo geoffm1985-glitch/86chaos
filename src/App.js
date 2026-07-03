@@ -1116,9 +1116,13 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState(''); 
   const [replyTexts, setReplyTexts] = useState({});
   const [imageFile, setImageFile] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
+const [isUploading, setIsUploading] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Tracks which threads are expanded
+  const [expandedReplies, setExpandedReplies] = useState({});
+  const toggleReplies = (id) => setExpandedReplies(prev => ({ ...prev, [id]: !prev[id] }));
   
   // --- 30-DAY AUTO-CLEANER ENGINE ---
   useEffect(() => {
@@ -1339,21 +1343,36 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
                       </div>
                     )}
                 
-                    {/* The Reply Thread (Directly beneath content) */}
+{/* The Reply Thread (Directly beneath content) */}
                     {(n.replies && n.replies.length > 0) && (
-                      <div className="mt-4 space-y-4">
-                        {n.replies.map((r, idx) => (
-                          <div key={r.id} className="flex gap-3">
-                            <img src={getAvatar(r.author, users.find(u => u.name === r.author)?.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0 mt-1" alt="pic"/>
-                            <div className="flex-1 bg-[#12161A] border border-[#2A353D] rounded-2xl rounded-tl-sm px-4 py-3">
-                              <div className="flex items-center gap-1.5 leading-none mb-1">
-                                <span className={`font-bold text-sm text-white`}>{r.author}</span>
-                                <span className="text-slate-500 text-xs">· {getTimeAgo(r.timestamp)}</span>
+                      <div className="mt-4">
+                        {/* The Toggle Button */}
+                        <button 
+                          type="button" 
+                          onClick={() => toggleReplies(n.id)}
+                          className="flex items-center gap-2 text-[11px] font-black text-slate-500 hover:text-[#D4A381] uppercase tracking-widest transition-colors mb-3"
+                        >
+                          <MessageSquare size={14} />
+                          {expandedReplies[n.id] ? 'Hide Replies' : `View ${n.replies.length} Replies`}
+                        </button>
+
+                        {/* The Hidden Thread */}
+                        {expandedReplies[n.id] && (
+                          <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+                            {n.replies.map((r, idx) => (
+                              <div key={r.id} className="flex gap-3">
+                                <img src={getAvatar(r.author, users.find(u => u.name === r.author)?.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0 mt-1" alt="pic"/>
+                                <div className="flex-1 bg-[#12161A] border border-[#2A353D] rounded-2xl rounded-tl-sm px-4 py-3">
+                                  <div className="flex items-center gap-1.5 leading-none mb-1">
+                                    <span className={`font-bold text-sm text-white`}>{r.author}</span>
+                                    <span className="text-slate-500 text-xs">· {getTimeAgo(r.timestamp)}</span>
+                                  </div>
+                                  <div className="text-slate-300 font-normal text-sm leading-relaxed">{r.text}</div>
+                                </div>
                               </div>
-                              <div className="text-slate-300 font-normal text-sm leading-relaxed">{r.text}</div>
-                            </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
                 
