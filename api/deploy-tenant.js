@@ -1,12 +1,13 @@
-const admin = require('firebase-admin');
+import admin from 'firebase-admin';
 
-// 1. Bulletproof Firebase Init
+// 1. Truly Bulletproof Firebase Init
 if (!admin.apps.length) {
   if (process.env.FIREBASE_PRIVATE_KEY) {
     const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
     admin.initializeApp({
       credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID, // FIXED: Forces the correct Project ID
+        // THE IDIOT-PROOF FIX: Fallbacks directly to the known ID if Vercel drops the variable
+        projectId: process.env.FIREBASE_PROJECT_ID || 'cheers-34b8d', 
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
         privateKey: cleanKey,
       }),
@@ -17,7 +18,7 @@ if (!admin.apps.length) {
   }
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
@@ -85,4 +86,4 @@ module.exports = async function handler(req, res) {
     console.error("Deployment Error:", error);
     return res.status(500).json({ error: error.message || "Failed to deploy workspace." });
   }
-};
+}
