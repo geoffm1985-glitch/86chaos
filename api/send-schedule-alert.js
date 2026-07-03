@@ -1,6 +1,7 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { getAuth } from 'firebase-admin/auth'; // <-- Added this to check the security badge
 
 // Initialize Firebase Admin using the secure Vercel environment variable
 if (!getApps().length) {
@@ -14,6 +15,23 @@ const db = getFirestore();
 export default async function handler(req, res) {
   // Only accept POST requests from your app
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+
+  // --- THE BOUNCER: VERIFY FIREBASE AUTH TOKEN ---
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Bots get bounced.' });
+  }
+
+  const authToken = authHeader.split('Bearer ')[1];
+
+  try {
+    // This checks with Google's servers to guarantee the user is actually logged into 86chaos
+    await getAuth().verifyIdToken(authToken);
+    // The user is verified. The velvet rope opens.
+  } catch (error) {
+    return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
+  }
+  // --- END OF BOUNCER ---
 
   try {
     const { restaurantId, restaurantName } = req.body;
