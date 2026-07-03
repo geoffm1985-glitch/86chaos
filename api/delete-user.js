@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+const admin = require('firebase-admin');
 
 // 1. Bulletproof Firebase Init
 if (!admin.apps.length) {
@@ -17,7 +17,7 @@ if (!admin.apps.length) {
   }
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
@@ -47,4 +47,4 @@ export default async function handler(req, res) {
     console.error("Delete User Error:", error);
     return res.status(500).json({ error: error.message || "Failed to delete user." });
   }
-}
+};
