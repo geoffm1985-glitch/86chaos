@@ -69,6 +69,20 @@ enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:"
 
 const auth = getAuth(app);
 
+// --- SECURE API KEYCHAIN ---
+// This automatically grabs the user's secure Firebase token and attaches it to backend Vercel requests
+const secureFetch = async (url, options = {}) => {
+  if (!auth.currentUser) throw new Error("Unauthorized: No active user session.");
+  
+  const token = await auth.currentUser.getIdToken();
+  
+  const headers = {
+    ...options.headers,
+    'Authorization': `Bearer ${token}`
+  };
+  
+  return fetch(url, { ...options, headers });
+};
 // --- Master Configuration ---
 const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
@@ -745,7 +759,7 @@ const handleOfferSwap = async (shift) => {
 
       // 2. Trigger the Universal Push Cannon
       try {
-        await fetch('/api/send-push', {
+        await securesecureFetch('/api/send-push', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -1234,7 +1248,7 @@ const [isUploading, setIsUploading] = useState(false);
     }); 
     
     try {
-      await fetch('/api/send-push', {
+      await securesecureFetch('/api/send-push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -1689,7 +1703,7 @@ const handlePublish = async () => {
 // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
       try {
         addToast('Pinging Server', 'Sending alert request to Vercel...');
-        const pushRes = await fetch('/api/send-schedule-alert', {
+        const pushRes = await securesecureFetch('/api/send-schedule-alert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -3449,7 +3463,7 @@ const executeOrder = async (method) => {
       const mimeType = file.type;
 
       try {
-        const response = await fetch('/api/scan-invoice', {
+        const response = await securesecureFetch('/api/scan-invoice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileBase64: base64String, mimeType })
@@ -4095,7 +4109,7 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
 
         try {
           // THIS IS THE CRITICAL BLOCK. It MUST explicitly say POST.
-          const response = await fetch('/api/scan', {
+          const response = await securesecureFetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ imageBase64: base64Compressed })
@@ -6300,7 +6314,7 @@ const handleUpdateTenant = async (e) => {
     if (!window.confirm("Fire a test notification to all opted-in devices in your workspace?")) return;
     addToast('Pinging Server', 'Firing test shot to Vercel...');
     try {
-      const pushRes = await fetch('/api/send-schedule-alert', {
+      const pushRes = await securesecureFetch('/api/send-schedule-alert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
