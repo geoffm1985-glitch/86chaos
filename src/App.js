@@ -1067,8 +1067,22 @@ const TabTeam = ({ users, appUser, addToast }) => {
 
 const handleDeactivate = async (u) => { 
     if (!window.confirm(`Terminate ${u.name}? This will permanently delete their global account from the entire system.`)) return; 
-    await deleteDoc(doc(db, "users", u.id)); 
-    addToast('Terminated', `${u.name}'s account has been completely erased.`); 
+    
+    addToast('Terminating', `Erasing ${u.name} from the system...`);
+    try {
+      // 1. Nuke the Authentication Login via Vercel
+      await secureFetch('/api/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: u.id })
+      });
+      
+      // 2. Nuke the Database Profile
+      await deleteDoc(doc(db, "users", u.id)); 
+      addToast('Terminated', `${u.name}'s account has been completely erased.`); 
+    } catch (err) {
+      addToast('Error', 'Could not delete authentication credential. See logs.');
+    }
   };
 
   const handlePasswordReset = async (u) => {
@@ -6214,15 +6228,25 @@ const handleUpdateTenant = async (e) => {
     e.target.value = '';
   };
 
-  const handleDeleteGlobalUser = async (u) => {
+const handleDeleteGlobalUser = async (u) => {
     if (prompt(`CRITICAL: Type "DELETE" to permanently erase ${u.name} and all their access.`) !== 'DELETE') {
       return addToast('Aborted', 'User deletion canceled.');
     }
+    
+    addToast('Terminating', 'Nuking user from all systems...');
     try {
+      // 1. Nuke the Authentication Login via Vercel
+      await secureFetch('/api/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: u.id })
+      });
+      
+      // 2. Nuke the Database Profile
       await deleteDoc(doc(db, "users", u.id));
       addToast('Terminated', `User ${u.name} has been erased.`);
     } catch (err) {
-      addToast('Error', 'Could not delete user.');
+      addToast('Error', 'Could not delete user. ' + err.message);
     }
   };
 
