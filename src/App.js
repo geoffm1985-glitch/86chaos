@@ -1488,10 +1488,24 @@ const [eventDate, setEventDate] = useState(getToday());
   const [eventImageFile, setEventImageFile] = useState(null);
   const [isEventUploading, setIsEventUploading] = useState(false);
   
-  // Repeating Events State
+// Repeating Events State
   const [isRepeating, setIsRepeating] = useState(false);
   const [repeatType, setRepeatType] = useState('weekly');
   const [repeatUntil, setRepeatUntil] = useState('');
+
+  // --- EVENTS CALENDAR STATE ---
+  const [eventsCalMonth, setEventsCalMonth] = useState(getMonthStr(currentDate));
+  useEffect(() => { setEventsCalMonth(getMonthStr(currentDate)); }, [currentDate]);
+
+  const changeEventsMonth = (offset) => {
+    const d = new Date(eventsCalMonth + '-01T12:00:00');
+    d.setMonth(d.getMonth() + offset);
+    setEventsCalMonth(d.toISOString().substring(0, 7));
+  };
+  
+  const eventsMonthDays = Array.from({length: getDaysInMonth(eventsCalMonth)}).map((_, i) => `${eventsCalMonth}-${String(i+1).padStart(2, '0')}`);
+  const eventsFirstDayOffset = new Date(eventsCalMonth+'-01T12:00:00').getDay();
+  const eventsCalEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(eventsCalMonth));
 
   // --- AUTO-POPULATE STATE ---
   const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
@@ -2440,19 +2454,54 @@ const handleExportTimesheets = () => {
         </div>
       )}
 
-      {/* --- THE NEW EVENTS LEDGER SUB-TAB --- */}
+{/* --- THE NEW EVENTS LEDGER SUB-TAB --- */}
       {subTab === 'events' && (
-        <div className="animate-[slideIn_0.2s_ease-out] space-y-4">
-          <div className="flex gap-2">
-             <button onClick={openNewEventModal} className={`${T.btn} flex items-center justify-center gap-2`}><Plus size={16}/> Add Special Event</button>
-          </div>
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Monthly Events Ledger</h3>
+        <div className="animate-[slideIn_0.2s_ease-out] space-y-6">
+          
+          {/* INTERACTIVE CALENDAR */}
+          <div className={`${T.card} overflow-hidden shadow-2xl`}>
+            <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
+              <button onClick={() => changeEventsMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button>
+              <h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(eventsCalMonth)}</h3>
+              <button onClick={() => changeEventsMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button>
             </div>
+            <div className={`grid grid-cols-7 border-t ${T.border}`}>
+              {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`py-1.5 text-center text-[9px] font-black ${T.copper} uppercase border-b border-[#2A353D] bg-[#12161A]`}>{d}</div>)}
+              {Array.from({length: eventsFirstDayOffset}).map((_,i) => <div key={`empty-${i}`} className={`p-1 border-b border-r ${T.border} bg-[#1A2126] min-h-[45px]`} />)}
+              {eventsMonthDays.map(d => {
+                const holiday = getHoliday(d);
+                const dayEvents = eventsCalEvents.filter(e => e.date === d);
+
+                return (
+                  <div key={d} onClick={() => {
+                    setEventDate(d); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventModalOpen(true);
+                  }} className={`p-1 border-b border-r ${T.border} min-h-[70px] flex flex-col items-center justify-start pt-1 transition-colors hover:bg-[#12161A]/50 cursor-pointer group`}>
+                    <span className={`text-xs font-black ${d === getToday() ? T.copper : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                    
+                    {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
+                    {dayEvents.map(ev => (
+                      <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-1 px-1 py-0.5 w-full truncate bg-blue-900/20 border border-blue-900/50 rounded" title={ev.title}>
+                        {ev.time ? `${formatShortTime(ev.time)} ` : ''}{ev.title}
+                      </span>
+                    ))}
+                    <div className="mt-auto pt-1 opacity-0 group-hover:opacity-100 text-[8px] text-slate-500 font-bold uppercase transition-opacity pb-1">
+                      + Add
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex justify-between items-end">
+             <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Star className={T.copper}/> Events Ledger</h3>
+             <button onClick={openNewEventModal} className={`${T.btn} flex items-center justify-center gap-2 py-2 px-4 text-xs`}><Plus size={14}/> Add Event</button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
             <div className={`divide-y ${T.border}`}>
-              {monthEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
-              {monthEvents.map(ev => (
+              {eventsCalEvents.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No special events scheduled this month.</div>}
+              {eventsCalEvents.sort((a,b) => (a.date || '').localeCompare(b.date || '')).map(ev => (
                 <div key={ev.id} className={`${T.row} flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
                   <div className="flex items-start sm:items-center gap-4">
                     <div className={`bg-[#12161A] border ${T.border} ${T.copper} font-black text-center rounded-xl p-2 w-14 shadow-sm flex-shrink-0`}>
@@ -3265,13 +3314,44 @@ const [searchTerm, setSearchTerm] = useState('');
   const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
 const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
-  const handleLogWaste = async (e) => {
-    e.preventDefault(); if(!wItemId || !wQty) return; const item = inventoryItems.find(i => i.id === wItemId); if(!item) return;
-    const qtyNum = parseFloat(wQty); const yieldDivider = parseFloat(item.yieldQty) || 1; 
-    const stockDeduction = qtyNum / yieldDivider; const costLost = ((item.price || 0) / yieldDivider) * qtyNum; 
-    await addDoc(collection(db, "wasteLogs"), { itemId: item.id, itemName: item.name, qty: qtyNum, costLost, reason: wReason, loggedBy: appUser.name, date: getToday(), timestamp: new Date().toISOString(), restaurantId: appUser.restaurantId });
-    await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, item.currentStock - stockDeduction) });
-    setWItemId(''); setWQty(''); setWSearchTerm(''); addToast('Burn Logged', `$${costLost.toFixed(2)} deducted from stock.`);
+const handleLogWaste = async (e) => {
+    e.preventDefault(); 
+    if(!wItemId || !wQty) return; 
+    
+    const item = inventoryItems.find(i => i.id === wItemId); 
+    if(!item) return;
+
+    // 1. Get the raw inputs
+    const unitsWasted = parseFloat(wQty); 
+    const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1; 
+    const pricePerCase = parseFloat(item.price) || 0;
+
+    // 2. Calculate individual unit metrics
+    const pricePerUnit = pricePerCase / yieldPerCase;
+    const totalCostLost = pricePerUnit * unitsWasted;
+    
+    // 3. Calculate how much of a case to deduct from the main stock
+    const stockDeduction = unitsWasted / yieldPerCase; 
+
+    // 4. Save to Database
+    await addDoc(collection(db, "wasteLogs"), { 
+      itemId: item.id, 
+      itemName: item.name, 
+      qty: unitsWasted, 
+      costLost: totalCostLost, 
+      reason: wReason, 
+      loggedBy: appUser.name, 
+      date: getToday(), 
+      timestamp: new Date().toISOString(), 
+      restaurantId: appUser.restaurantId 
+    });
+
+    await updateDoc(doc(db, "inventoryItems", item.id), { 
+      currentStock: Math.max(0, (item.currentStock || 0) - stockDeduction) 
+    });
+
+    setWItemId(''); setWQty(''); setWSearchTerm(''); 
+    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} (${unitsWasted} units) deducted from stock.`);
   };
 
   const handleDeleteWaste = async (log) => {
@@ -3286,23 +3366,35 @@ const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(
     addToast('Log Deleted', 'Stock restored successfully.');
   };
 
-  const handleSaveWasteEdit = async (e) => {
+ const handleSaveWasteEdit = async (e) => {
     e.preventDefault();
     const log = editWaste;
     const item = inventoryItems.find(i => i.id === log.itemId);
+    
     if (item) {
        const originalLog = wasteLogs.find(w => w.id === log.id);
        const oldQty = parseFloat(originalLog.qty) || 0;
        const newQty = parseFloat(log.qty) || 0;
-       const yieldDivider = parseFloat(item.yieldQty) || 1;
-       const stockDifference = (newQty - oldQty) / yieldDivider; 
-       const newCostLost = ((item.price || 0) / yieldDivider) * newQty;
+       
+       const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1;
+       const pricePerCase = parseFloat(item.price) || 0;
+       const pricePerUnit = pricePerCase / yieldPerCase;
 
-       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (item.currentStock||0) - stockDifference) });
-       await updateDoc(doc(db, "wasteLogs", log.id), { qty: newQty, reason: log.reason, costLost: newCostLost });
+       const stockDifference = (newQty - oldQty) / yieldPerCase; 
+       const newCostLost = pricePerUnit * newQty;
+
+       await updateDoc(doc(db, "inventoryItems", item.id), { 
+         currentStock: Math.max(0, (item.currentStock || 0) - stockDifference) 
+       });
+       await updateDoc(doc(db, "wasteLogs", log.id), { 
+         qty: newQty, 
+         reason: log.reason, 
+         costLost: newCostLost 
+       });
     } else {
        await updateDoc(doc(db, "wasteLogs", log.id), { qty: log.qty, reason: log.reason });
     }
+    
     setEditWaste(null);
     addToast('Log Updated', 'Burn log and stock adjusted.');
   };
@@ -3747,8 +3839,9 @@ const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().inc
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
-          <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>🚨 Burn Log</button>
-        </div>
+<button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>
+            🚨 Burn Log <span className="ml-1 bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+          </button>        </div>
       </div>
 
 {invTab === 'count' && (
@@ -3992,8 +4085,10 @@ const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().inc
           </Modal>
 
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
-            <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">🚨 The Burn Log</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+<h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">
+              🚨 The Burn Log
+              <span className="bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+            </h3>            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               
               {/* THE FILTERABLE DROPDOWN */}
               <div className="space-y-2">
