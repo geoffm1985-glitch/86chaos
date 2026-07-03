@@ -263,11 +263,11 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
-  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'My Shift', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'The Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
-  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Spec Book', icon: <BookOpen size={18}/> });
-  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Stock & Orders', icon: <Package size={18}/> });  
+  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
+  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert });
   if (isEnabled('team') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
@@ -276,7 +276,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const isTrueGod = (appUser?.email || '').toLowerCase() === 'geoffm1985@gmail.com' || appUser?.isSuperAdmin === true || (appUser?.name || '').includes('Geoff');
   if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
   if (appUser?.isAdmin || isTrueGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
-  tabs.push({ id: 'settings', label: 'Preferences', icon: <Settings size={18}/> });
+  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   return (
     <>
@@ -4062,7 +4062,7 @@ const TabRecipes = ({ appUser, addToast }) => {
   const [isFormOpen, setIsFormOpen] = useState(false); 
   const [activeRecipe, setActiveRecipe] = useState(null); 
   const [yieldMult, setYieldMult] = useState(1);
-const [editingRecipeId, setEditingRecipeId] = useState(null);
+  const [editingRecipeId, setEditingRecipeId] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
 
   // --- SCREEN WAKE LOCK ENGINE ---
@@ -4094,7 +4094,6 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
     }
   };
 
-// --- RECIPE SCANNER ---
   const handleScanRecipe = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -4108,10 +4107,13 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
       const img = new Image();
       img.src = event.target.result;
       img.onload = async () => {
+        // Compress the image on the device BEFORE sending it to Vercel/Gemini
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200; 
+        const MAX_WIDTH = 1200; // Drops a massive photo down to ~200KB instantly
         let scaleSize = 1;
-        if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
+        if (img.width > MAX_WIDTH) {
+           scaleSize = MAX_WIDTH / img.width;
+        }
         canvas.width = img.width * scaleSize;
         canvas.height = img.height * scaleSize;
         const ctx = canvas.getContext('2d');
@@ -4121,6 +4123,7 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
         const base64Data = base64Compressed.split(',')[1];
 
         try {
+          // THIS IS THE CRITICAL BLOCK. It MUST explicitly say POST.
           const response = await secureFetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -4151,7 +4154,7 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
         }
       };
     };
-    e.target.value = '';
+    e.target.value = ''; // Reset input so you can scan the same file again if needed
   };
   
   const parseAndMultiply = (text, mult) => { if (mult === 1) return text; const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/); if (!match) return text; let numStr = match[1], rest = match[2], val = 0; if (numStr.includes('/')) { const parts = numStr.split(' '); if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); } else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); } } else { val = parseFloat(numStr); } let finalVal = val * mult; let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2); if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim(); else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim(); else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim(); else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim(); else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim(); if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); return `${cleanVal} ${rest}`; };
@@ -4213,7 +4216,7 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
       {
         title: "Chili", category: "Entree", prepTime: "1 hour", yieldAmt: "--",
         ingredients: "2 (5lb) Beef logs\nPeppers/Onion\n3 cans Tomato Soup (Basement)\n4 cans Tomato Juice (Basement)\n1 can Chili Bean (Basement)\n1 can Diced Tomato (Basement)\n2 (4oz) cups Chili powder\n1 (4oz) cup Kosher salt\n1 (2oz) cup pepper\n1 (2oz) cup garlic granulated\n1 (2oz) cup oregano\n1 (2oz) cup Italian\n1/2 (2oz) cup red pep flakes",
-        instructions: "Brown the beef logs and drain grease.\nSaut  peppers and onions.\nCombine beef, saut ed veggies, tomato soup, tomato juice, chili beans, and diced tomatoes in a large pot.\nStir in all seasonings (chili powder, salt, pepper, garlic, oregano, italian, red pepper flakes).\nSimmer until flavors are thoroughly combined."
+        instructions: "Brown the beef logs and drain grease.\nSauté peppers and onions.\nCombine beef, sautéed veggies, tomato soup, tomato juice, chili beans, and diced tomatoes in a large pot.\nStir in all seasonings (chili powder, salt, pepper, garlic, oregano, italian, red pepper flakes).\nSimmer until flavors are thoroughly combined."
       },
       {
         title: "Beer Dip", category: "Appetizer", prepTime: "15 mins", yieldAmt: "--",
@@ -4244,69 +4247,132 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
 
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
 
-// Determine if the current user has permission to edit/delete the viewed recipe
+  // Determine if the current user has permission to edit/delete the viewed recipe
   const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
-return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-12">
-      <div className={`${T.card} p-4 sm:p-5 flex flex-col gap-4`}>
-        
-        {/* Top Row: Search and Category Filter */}
-        <div className="flex flex-col md:flex-row gap-3 w-full">
-          <div className="flex-1 w-full relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/>
-            <input type="text" placeholder="Search recipes or ingredients..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-[slideIn_0.2s_ease-out]">
+      
+      {/* THE NEW SLEEK CONTROL PANEL */}
+      <div className="bg-[#1A2126] border border-[#2A353D] rounded-3xl shadow-xl overflow-hidden mb-6">
+        {/* Search / Filter Area */}
+        <div className="p-4 sm:p-5 flex flex-col md:flex-row gap-4 border-b border-[#2A353D] bg-[#12161A]/50">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+            <input 
+              type="text" 
+              placeholder="Search specs or ingredients..." 
+              value={searchTerm} 
+              onChange={(e)=>setSearchTerm(e.target.value)} 
+              className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm font-medium rounded-xl pl-11 pr-4 py-3 outline-none focus:border-[#D4A381] transition-colors shadow-inner"
+            />
           </div>
-          <select value={filterCat} onChange={(e)=>setFilterCat(e.target.value)} className={`${T.input} md:w-48`}>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <div className="relative md:w-64 shrink-0">
+            <select 
+              value={filterCat} 
+              onChange={(e)=>setFilterCat(e.target.value)} 
+              className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm font-bold rounded-xl px-4 py-3 outline-none focus:border-[#D4A381] transition-colors appearance-none shadow-inner cursor-pointer"
+            >
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none rotate-90" size={16}/>
+          </div>
         </div>
 
-{/* Bottom Row: Action Buttons */}
-        <div className="flex flex-wrap gap-2 justify-end w-full">
+        {/* Action Buttons Area */}
+        <div className="p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
           
-          <button onClick={toggleWakeLock} className={`bg-[#12161A] border border-[#2A353D] font-bold rounded-xl transition-all px-4 py-2 text-xs flex items-center justify-center gap-2 ${isAwake ? 'text-amber-400 border-amber-900/50 bg-amber-900/10' : 'text-slate-300 hover:text-amber-400'}`} title="Keep Screen On">
-            <Sun size={16} className={isAwake ? 'animate-pulse' : ''} />
-            {isAwake ? 'Screen Locked On' : 'Keep Screen On'}
-          </button>
+          {/* Left Side Actions (Screen Lock / Import) */}
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button 
+              onClick={toggleWakeLock} 
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border ${isAwake ? 'bg-amber-900/20 text-amber-400 border-amber-900/50 shadow-[0_0_10px_rgba(251,191,36,0.1)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:text-amber-400 hover:border-amber-900/50'}`}
+              title="Keep Screen On"
+            >
+              <Sun size={16} className={isAwake ? 'animate-pulse' : ''} />
+              <span className="hidden sm:inline">{isAwake ? 'Screen Locked' : 'Keep Awake'}</span>
+              <span className="sm:hidden">Awake</span>
+            </button>
 
-          {/* ONLY GEOFF CAN SEE THIS BUTTON */}
-          {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
-            <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-xs flex items-center justify-center gap-2`} title="Inject Card Recipes"><Package size={16} /> Import</button>
-          )}
+            {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
+              <button onClick={handleInjectLegacyRecipes} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest bg-[#12161A] text-slate-400 border border-[#2A353D] hover:text-emerald-400 transition-all">
+                <Package size={16} /> <span className="hidden sm:inline">Import</span>
+              </button>
+            )}
+          </div>
 
+          {/* Right Side Actions (AI Scan & New Spec) */}
           {canManageRecipes && (
-            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
               
-              <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
-                 <label className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-slate-300 hover:text-[#D4A381]" title="Take Photo">
+              {/* Unified Scan/Upload Button */}
+              <div className={`flex w-full sm:w-auto bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
+                 <label className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-slate-300 hover:text-[#D4A381]" title="Take Photo">
                     {isScanning ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
-                    {/* capture="environment" forces the camera open instantly */}
+                    <span className="text-[11px] font-black uppercase tracking-widest sm:hidden">Photo</span>
                     <input type="file" accept="image/*" capture="environment" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
                  </label>
-                 <label className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 cursor-pointer hover:bg-[#1A2126] transition-colors text-slate-300 hover:text-[#D4A381]" title="Upload Photo">
-                    <span className="text-[10px] font-black uppercase tracking-wider">Upload</span>
-                    {/* No capture tag allows file gallery selection */}
+                 <label className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-[#1A2126] transition-colors text-slate-300 hover:text-[#D4A381]" title="Upload File">
+                    <span className="text-[11px] font-black uppercase tracking-widest">Upload File</span>
                     <input type="file" accept="image/*" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
                  </label>
               </div>
 
-              <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`${T.btn} flex-1 sm:flex-none flex items-center justify-center gap-2 whitespace-nowrap py-2 px-4 text-xs`}>
+              {/* Primary CTA */}
+              <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`w-full sm:w-auto bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:from-[#D4A381] hover:to-[#A37050] text-slate-900 shadow-lg px-6 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all`}>
                 <Plus size={16}/> New Spec
               </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* RECIPE GRID */}
       {filteredRecipes.length === 0 ? (
-        <div className={`text-center py-20 px-4 border-2 border-dashed ${T.border} rounded-3xl`}><ChefHat className={`mx-auto ${T.copper} mb-4`} size={48}/><h3 className={`text-lg font-black ${T.muted}`}>No recipes found.</h3></div>
+        <div className={`text-center py-24 px-4 border border-dashed border-[#2A353D] bg-[#1A2126]/50 rounded-3xl`}>
+          <div className="bg-[#12161A] w-20 h-20 mx-auto rounded-full flex items-center justify-center border border-[#2A353D] mb-4 shadow-inner">
+            <ChefHat className={T.copper} size={32}/>
+          </div>
+          <h3 className="text-lg font-black text-white">No specs found.</h3>
+          <p className="text-sm font-medium text-slate-500 mt-2">Try adjusting your search or category filter.</p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredRecipes.map(r => (
-            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className={`${T.card} p-5 hover:border-[#D4A381] transition-all cursor-pointer group flex flex-col h-full`}>
-              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{r.category}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec →</span></div>
-              <h3 className="text-xl font-black text-white mb-auto leading-tight">{r.title}</h3>
-              <div className={`flex items-center gap-4 mt-5 pt-4 border-t ${T.border}`}><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Clock size={14}/> {r.prepTime}</div><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Scale size={14}/> Yield: {r.yieldAmt}</div></div>
+            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="group relative bg-[#1A2126] rounded-2xl border border-[#2A353D] hover:border-[#D4A381]/50 overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.3)] hover:-translate-y-1">
+              
+              {/* Card Header Pattern */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#C59373] to-[#8F6040] opacity-20 group-hover:opacity-100 transition-opacity"></div>
+              
+              <div className="p-5 flex flex-col flex-grow">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-[9px] font-black uppercase tracking-widest bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2.5 py-1 rounded-md shadow-sm">
+                    {r.category}
+                  </span>
+                  <div className="w-8 h-8 rounded-full bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-slate-400 group-hover:text-[#D4A381] group-hover:bg-[#1A2126] transition-all">
+                    <ChevronRight size={14} />
+                  </div>
+                </div>
+                
+                <h3 className="text-xl font-black text-white mb-2 leading-tight group-hover:text-[#D4A381] transition-colors line-clamp-2">
+                  {r.title}
+                </h3>
+                
+                <div className="mt-auto pt-5">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-400 bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Clock size={14} className="text-slate-500 shrink-0"/> 
+                      <span className="truncate">{r.prepTime}</span>
+                    </div>
+                    <div className="w-px h-4 bg-[#2A353D] shrink-0 mx-2"></div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Scale size={14} className="text-slate-500 shrink-0"/> 
+                      <span className="truncate">Yield: {r.yieldAmt}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -4315,8 +4381,7 @@ return (
       <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
         {activeRecipe && (
           <div className="space-y-6">
-            <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{activeRecipe.title}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{activeRecipe.category}</span><span className={`bg-[#12161A]
-border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {activeRecipe.prepTime}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span></div></div>
+            <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{activeRecipe.title}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{activeRecipe.category}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {activeRecipe.prepTime}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span></div></div>
             <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#12161A] p-3 rounded-xl border ${T.border} mb-6`}><span className={`text-[10px] font-black uppercase ${T.muted} tracking-widest`}>Yield Multiplier</span><div className={`flex bg-[#1A2126] rounded-lg p-1 border ${T.border}`}>{[0.5, 1, 2, 4].map(m => (<button key={m} onClick={() => setYieldMult(m)} className={`px-4 py-1.5 text-xs font-black rounded-md transition-all ${yieldMult === m ? `${T.grad} text-slate-900` : `text-slate-500 hover:text-white`}`}>{m}x</button>))}</div></div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               <div className="md:col-span-2 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Ingredients <span className={`lowercase ml-1 ${yieldMult !== 1 ? T.copper : ''}`}>({yieldMult}x)</span></h4><ul className="space-y-2 text-sm font-bold text-slate-300">{activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${yieldMult !== 1 ? 'bg-[#D4A381]' : 'bg-slate-500'}`}/><span>{parseAndMultiply(ing, yieldMult)}</span></li>)}</ul></div>
