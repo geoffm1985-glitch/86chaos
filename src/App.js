@@ -88,7 +88,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '11.0.0';
+const CURRENT_VERSION = '11.5.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -3469,7 +3469,10 @@ const executeOrder = async (method) => {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ fileBase64: event.target.result, mimeType })
             });
-            if (!response.ok) throw new Error('Failed to scan invoice. Check backend logs.');
+            if (!response.ok) {
+              const errData = await response.json().catch(() => ({}));
+              throw new Error(errData.error || 'Failed to scan invoice. Check backend logs.');
+            }
             const data = await response.json();
             const reconciledItems = (data.lineItems || []).map(item => {
                const match = inventoryItems.find(inv => 
@@ -3487,6 +3490,61 @@ const executeOrder = async (method) => {
           }
           return;
       }
+
+      // 2. Shrink Images before sending to Vercel
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
+
+        try {
+          const response = await secureFetch('/api/scan-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileBase64: base64Compressed, mimeType: 'image/jpeg' })
+          });
+
+          if (!response.ok) {
+             if (response.status === 413) throw new Error("File too large. Vercel blocks payloads over 4.5MB.");
+             
+             const isJson = response.headers.get('content-type')?.includes('application/json');
+             if (!isJson) {
+                 throw new Error(`Vercel Timeout (${response.status}). The image took too long to process.`);
+             }
+
+             const errData = await response.json();
+             throw new Error(errData.error || `Server rejected the request (${response.status}).`);
+          }
+
+          const data = await response.json();
+          const reconciledItems = (data.lineItems || []).map(item => {
+             const match = inventoryItems.find(inv => 
+                inv.name.toLowerCase() === item.itemName.toLowerCase() || 
+                (inv.pfgCode && item.itemName.includes(inv.pfgCode))
+             );
+             return { ...item, matchedItemId: match ? match.id : "" };
+          });
+
+          setScannedInvoice({ ...data, lineItems: reconciledItems });
+          addToast('Success', 'Invoice extracted! Please verify matched items.');
+        } catch (err) {
+          addToast('Error', err.message);
+        } finally {
+          setIsScanningInvoice(false);
+        }
+      };
+    };
+    e.target.value = '';
+  };
 
       // 2. Shrink Images before sending to Vercel
       const img = new Image();
@@ -4153,7 +4211,10 @@ const handleScanRecipe = async (e) => {
           });
 
           if (!response.ok) {
-            throw new Error('Failed to scan. Check Vercel logs.');
+             const isJson = response.headers.get('content-type')?.includes('application/json');
+             if (!isJson) throw new Error(`Vercel Timeout (${response.status}). The image took too long to process.`);
+             const errData = await response.json();
+             throw new Error(errData.error || `Failed to scan. Check Vercel logs.`);
           }
 
           const data = await response.json();
@@ -4175,7 +4236,6 @@ const handleScanRecipe = async (e) => {
     };
     e.target.value = ''; 
   };
-
   const parseAndMultiply = (text, mult) => { if (mult === 1) return text; const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/); if (!match) return text; let numStr = match[1], rest = match[2], val = 0; if (numStr.includes('/')) { const parts = numStr.split(' '); if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); } else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); } } else { val = parseFloat(numStr); } let finalVal = val * mult; let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2); if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim(); else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim(); else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim(); else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim(); else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim(); if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); return `${cleanVal} ${rest}`; };
   
   const [title, setTitle] = useState(''); 
@@ -7461,7 +7521,7 @@ return (
       
 <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.0.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.5.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
