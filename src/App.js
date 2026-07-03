@@ -1135,10 +1135,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
       }
     };
     
-    // Run silently in the background
-    if (events.length > 0) {
-      cleanOldMessages();
-    }
+    if (events.length > 0) cleanOldMessages();
   }, [events]);
 
   const allNotes = events
@@ -1194,20 +1191,13 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
           isCritical: isCritical
         })
       });
-    } catch (err) {
-      console.error("Failed to trigger push:", err);
-    }
+    } catch (err) { console.error("Push failed:", err); }
 
-    setMessage(''); 
-    setImageFile(null);
-    setIsUploading(false);
-    setIsImportant(false);
+    setMessage(''); setImageFile(null); setIsUploading(false); setIsImportant(false);
     addToast('Posted', 'Message sent.'); 
   };
 
-  const handleReplyChange = (id, text) => {
-    setReplyTexts(prev => ({ ...prev, [id]: text }));
-  };
+  const handleReplyChange = (id, text) => { setReplyTexts(prev => ({ ...prev, [id]: text })); };
 
   const handleSendReply = async (e, eventId) => {
     e.preventDefault();
@@ -1216,162 +1206,179 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 
     const targetEvent = events.find(ev => ev.id === eventId);
     const currentReplies = targetEvent.replies || [];
-    const newReply = {
-        id: Date.now().toString(),
-        author: appUser.name,
-        text: text.trim(),
-        timestamp: new Date().toISOString()
-    };
+    const newReply = { id: Date.now().toString(), author: appUser.name, text: text.trim(), timestamp: new Date().toISOString() };
 
     try {
-        await updateDoc(doc(db, "events", eventId), {
-            replies: [...currentReplies, newReply]
-        });
+        await updateDoc(doc(db, "events", eventId), { replies: [...currentReplies, newReply] });
         setReplyTexts(prev => ({ ...prev, [eventId]: '' }));
-    } catch (err) {
-        addToast('Error', 'Could not post reply.');
-    }
+    } catch (err) { addToast('Error', 'Could not post reply.'); }
+  };
+
+  // Helper for "time ago" formatting (e.g., "2h", "5m")
+  const getTimeAgo = (dateString) => {
+    const mins = Math.floor((new Date() - new Date(dateString)) / 60000);
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    return new Date(dateString).toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-4">
       
-      {/* SEARCH BAR */}
-      <div className="relative w-full shadow-sm">
+      {/* SLEEK SEARCH BAR */}
+      <div className="relative w-full">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
         <input 
            type="text" 
-           placeholder="Search announcements by keyword or author..." 
+           placeholder="Search announcements..." 
            value={searchTerm} 
            onChange={(e)=>setSearchTerm(e.target.value)} 
-           className={`${T.input} pl-12 h-12 text-sm bg-[#1A2126] focus:bg-[#12161A] transition-colors`}
+           className="w-full pl-11 pr-4 py-3 bg-[#1A2126] border border-[#2A353D] text-white text-sm rounded-full outline-none focus:border-[#D4A381] focus:bg-[#12161A] transition-colors placeholder-slate-500"
         />
       </div>
 
-      {/* PROFESSIONAL COMPOSE BOX */}
-      <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-md overflow-hidden focus-within:border-[#D4A381] transition-colors">
-        <form onSubmit={handleBroadcast} className="flex flex-col">
-          <textarea 
-            value={message} 
-            onChange={e=>setMessage(e.target.value)} 
-            className="w-full bg-transparent text-white px-5 py-4 outline-none resize-none min-h-[100px] placeholder-slate-500 font-medium text-sm leading-relaxed" 
-            placeholder="Share an update, post a pass-down, or announce a special..."
-          />
-          
-          {imageFile && (
-            <div className="mx-5 mb-3 text-xs text-emerald-400 font-bold bg-emerald-900/20 px-3 py-2 rounded-xl border border-emerald-900/50 flex justify-between items-center w-max shadow-inner">
-              <span className="truncate pr-4 flex items-center gap-2"><Camera size={14}/> {imageFile.name}</span>
-              <button type="button" onClick={()=>setImageFile(null)} className="text-red-400 hover:text-red-300 p-1 bg-[#12161A] rounded-md transition-colors"><X size={12}/></button>
+      {/* TIMELINE WRAPPER */}
+      <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl overflow-hidden shadow-xl">
+        
+        {/* TRUE SOCIAL COMPOSE BOX */}
+        <div className="p-4 border-b-4 border-[#12161A] bg-[#1A2126]">
+          <form onSubmit={handleBroadcast}>
+            <div className="flex gap-3">
+              <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-12 h-12 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
+              <div className="flex-1 min-w-0 pt-1">
+                <textarea 
+                  value={message} 
+                  onChange={e=>setMessage(e.target.value)} 
+                  className="w-full bg-transparent text-white text-lg outline-none resize-none min-h-[60px] placeholder-slate-500 leading-snug" 
+                  placeholder="What's happening in the kitchen?"
+                />
+                
+                {imageFile && (
+                  <div className="mb-3 text-xs text-blue-400 font-bold bg-blue-900/10 px-3 py-2 rounded-xl border border-blue-900/30 flex justify-between items-center w-max">
+                    <span className="truncate pr-4 flex items-center gap-2"><Camera size={14}/> {imageFile.name}</span>
+                    <button type="button" onClick={()=>setImageFile(null)} className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"><X size={12}/></button>
+                  </div>
+                )}
+                
+                <div className="flex justify-between items-center pt-2 border-t border-[#2A353D] mt-2">
+                  <div className="flex items-center gap-4">
+                    <label className="text-[#D4A381] hover:text-[#C59373] hover:bg-[#D4A381]/10 p-2 rounded-full cursor-pointer transition-colors" title="Attach Photo">
+                      <Camera size={20} />
+                      <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded bg-[#12161A] border-[#2A353D] accent-red-500 cursor-pointer" />
+                      <span className={`text-[11px] font-black uppercase tracking-widest transition-colors ${isImportant ? 'text-red-500' : 'text-slate-500 group-hover:text-slate-300'}`}>High Priority</span>
+                    </label>
+                  </div>
+                  <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-xs py-2 px-6 rounded-full transition-all disabled:opacity-50`}>
+                    {isUploading ? <Loader2 className="animate-spin" size={16}/> : 'Post'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        {/* THE FLAT FEED */}
+        <div className="divide-y divide-[#2A353D]">
+          {allNotes.length === 0 && (
+            <div className="text-center py-16 bg-[#1A2126]">
+               <MessageSquare size={32} className="mx-auto text-slate-600 mb-3" />
+               <p className="text-sm font-bold text-slate-500">{searchTerm ? 'No announcements matched your search.' : 'The timeline is quiet.'}</p>
             </div>
           )}
-
-          {/* ACTION BAR */}
-          <div className="bg-[#12161A] px-4 py-3 border-t border-[#2A353D] flex flex-wrap sm:flex-nowrap justify-between items-center gap-3">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center justify-center p-2 rounded-full cursor-pointer text-slate-400 hover:text-[#D4A381] hover:bg-[#1A2126] transition-colors group" title="Attach Photo">
-                <Camera size={18} />
-                <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
-              </label>
-
-              <div className="w-px h-5 bg-[#2A353D]"></div>
-
-              <label className="flex items-center gap-2.5 cursor-pointer group">
-                <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-red-500 cursor-pointer" />
-                <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${isImportant ? 'text-red-500' : 'text-slate-500 group-hover:text-slate-300'}`}>High Priority</span>
-              </label>
-            </div>
-
-            <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`${T.btn} py-2 px-6 flex items-center justify-center disabled:opacity-50 text-xs`}>
-              {isUploading ? <Loader2 className="animate-spin" size={16}/> : <><Send size={14} className="inline mr-2"/> Post</>}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* SOCIAL FEED */}
-      <div className="space-y-5 pb-8">
-        {allNotes.length === 0 && (
-          <div className="text-center py-12 border-2 border-dashed border-[#2A353D] rounded-3xl bg-[#1A2126]/50">
-             <MessageSquare size={32} className="mx-auto text-slate-600 mb-3" />
-             <p className="text-sm font-bold text-slate-500">{searchTerm ? 'No announcements matched your search.' : 'The board is quiet. Nothing posted in the last 30 days.'}</p>
-          </div>
-        )}
-        
-        {allNotes.map(n => {
-          const authorUser = users.find(u => u.name === n.author);
-          return (
-            <div key={n.id} className={`${T.card} overflow-hidden ${n.isImportant ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)] ring-1 ring-red-500/20' : ''}`}>
-              
-              {/* IMPORTANT BANNER */}
-              {n.isImportant && (
-                <div className="bg-red-500/20 border-b border-red-500/50 px-5 py-2 flex items-center gap-2 text-red-400">
-                  <Bell size={14} className="animate-pulse" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Important Update</span>
-                </div>
-              )}
-
-              {/* CARD HEADER */}
-              <div className="px-5 pt-5 pb-3 flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 rounded-full border border-[#2A353D] object-cover bg-[#12161A]`} alt="pic"/>}
-                  <div>
-                    <div className="flex items-center gap-2">
-                       <span className={`font-black text-sm ${n.isImportant ? 'text-red-400' : 'text-white'}`}>{n.author}</span>
-                       {authorUser?.isAdmin && <span className="bg-[#12161A] border border-[#2A353D] text-[#D4A381] text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Admin</span>}
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-500">{new Date(n.date).toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'})} at {new Date(n.date).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
-                  </div>
-                </div>
-                {appUser?.isAdmin && <button onClick={() => { if(window.confirm("Delete this post?")) deleteDoc(doc(db, "events", n.id)); }} className="text-slate-500 hover:text-red-500 p-2 rounded-lg hover:bg-[#12161A] transition-colors"><Trash2 size={16}/></button>}
-              </div>
-
-              {/* CARD BODY */}
-              <div className="px-5 pb-4">
-                {n.title && <p className="font-medium text-sm leading-relaxed text-slate-200 break-words whitespace-pre-wrap">{n.title}</p>}
-              
-                {/* RENDER THE IMAGE IF IT HAS ONE (FULL BLEED) */}
-                {n.imageUrl && (
-                  <div className="mt-4 -mx-5 border-y border-[#2A353D] bg-[#0B0E11]">
-                    <img src={n.imageUrl} alt="Attached" className="w-full max-h-[500px] object-contain" />
+          
+          {allNotes.map(n => {
+            const authorUser = users.find(u => u.name === n.author);
+            return (
+              <div key={n.id} className={`p-4 sm:p-5 transition-colors ${n.isImportant ? 'bg-red-900/5 hover:bg-red-900/10' : 'bg-[#1A2126] hover:bg-[#1A2126]/80'}`}>
+                
+                {n.isImportant && (
+                  <div className="flex items-center gap-2 text-red-500 mb-2 pl-14">
+                    <Bell size={12} className="animate-pulse" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Important Update</span>
                   </div>
                 )}
-              </div>
-              
-              {/* REPLIES & ACTIONS */}
-              <div className="bg-[#12161A] border-t border-[#2A353D] p-5">
-                {(n.replies && n.replies.length > 0) && (
-                  <div className="space-y-3 mb-4">
-                    <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{n.replies.length} Replies</div>
-                    {n.replies.map(r => (
-                      <div key={r.id} className="text-sm break-words flex gap-3">
-                        <img src={getAvatar(r.author, users.find(u => u.name === r.author)?.photoURL)} className="w-6 h-6 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
-                        <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[85%]">
-                          <div className={`font-black text-[10px] uppercase tracking-widest mb-0.5 ${T.copper}`}>{r.author}</div>
-                          <div className="text-slate-300 font-medium text-xs leading-relaxed">{r.text}</div>
-                        </div>
+
+                <div className="flex gap-3 sm:gap-4">
+                  {/* Left Column: Avatar & Thread Line */}
+                  <div className="flex flex-col items-center">
+                    <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-[#2A353D] object-cover bg-[#12161A] flex-shrink-0 ${n.isImportant ? 'ring-2 ring-red-500/50 ring-offset-2 ring-offset-[#1A2126]' : ''}`} alt="pic"/>
+                    {n.replies && n.replies.length > 0 && (
+                       <div className="w-px h-full bg-[#2A353D] mt-2 mb-1 rounded-full"></div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-1.5 flex-wrap leading-none">
+                         <span className={`font-bold text-[15px] ${n.isImportant ? 'text-red-400' : 'text-white'}`}>{n.author}</span>
+                         <span className="text-slate-500 text-sm">@{n.author.split(' ')[0].toLowerCase()}</span>
+                         <span className="text-slate-600 text-sm">·</span>
+                         <span className="text-slate-500 text-sm hover:underline cursor-pointer" title={new Date(n.date).toLocaleString()}>{getTimeAgo(n.date)}</span>
+                         {authorUser?.isAdmin && <span className="ml-1 bg-[#12161A] border border-[#2A353D] text-[#D4A381] text-[8px] px-1.5 py-0.5 rounded-sm uppercase font-black tracking-widest leading-none align-middle">Admin</span>}
                       </div>
-                    ))}
+                      
+                      {appUser?.isAdmin && (
+                        <button onClick={() => { if(window.confirm("Delete this post?")) deleteDoc(doc(db, "events", n.id)); }} className="text-slate-600 hover:text-red-500 transition-colors p-1 -mr-2">
+                          <Trash2 size={14}/>
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Post Text */}
+                    {n.title && <p className="font-normal text-[15px] sm:text-base leading-relaxed text-slate-200 break-words whitespace-pre-wrap mt-1">{n.title}</p>}
+                
+                    {/* Post Image */}
+                    {n.imageUrl && (
+                      <div className="mt-3 rounded-2xl overflow-hidden border border-[#2A353D] bg-[#0B0E11]">
+                        <img src={n.imageUrl} alt="Attached" className="w-full max-h-[400px] object-cover" />
+                      </div>
+                    )}
+                
+                    {/* The Reply Thread (Directly beneath content) */}
+                    {(n.replies && n.replies.length > 0) && (
+                      <div className="mt-4 space-y-4">
+                        {n.replies.map((r, idx) => (
+                          <div key={r.id} className="flex gap-3">
+                            <img src={getAvatar(r.author, users.find(u => u.name === r.author)?.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0 mt-1" alt="pic"/>
+                            <div className="flex-1 bg-[#12161A] border border-[#2A353D] rounded-2xl rounded-tl-sm px-4 py-3">
+                              <div className="flex items-center gap-1.5 leading-none mb-1">
+                                <span className={`font-bold text-sm text-white`}>{r.author}</span>
+                                <span className="text-slate-500 text-xs">· {getTimeAgo(r.timestamp)}</span>
+                              </div>
+                              <div className="text-slate-300 font-normal text-sm leading-relaxed">{r.text}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                
+                    {/* Reply Input Box */}
+                    {n.author !== 'System Alert' && (
+                      <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-3 mt-4 items-center">
+                        <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
+                        <div className="relative flex-1">
+                          <input 
+                            type="text" 
+                            placeholder="Reply to thread..." 
+                            value={replyTexts[n.id] || ''} 
+                            onChange={(e) => handleReplyChange(n.id, e.target.value)} 
+                            className="w-full bg-[#12161A] border border-[#2A353D] text-white text-sm font-normal rounded-full pl-4 pr-10 py-2 outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600"
+                          />
+                          <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="absolute right-1 top-1/2 -translate-y-1/2 text-[#D4A381] disabled:opacity-30 hover:bg-[#D4A381]/10 p-1.5 rounded-full transition-colors"><Send size={14}/></button>
+                        </div>
+                      </form>
+                    )}
                   </div>
-                )}
-              
-                {/* SLEEK REPLY INPUT */}
-                {n.author !== 'System Alert' && (
-                  <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-3 relative items-center">
-                    <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
-                    <input 
-                      type="text" 
-                      placeholder="Write a reply..." 
-                      value={replyTexts[n.id] || ''} 
-                      onChange={(e) => handleReplyChange(n.id, e.target.value)} 
-                      className="flex-1 bg-[#1A2126] border border-[#2A353D] text-white text-xs font-medium rounded-full pl-4 pr-10 py-2.5 outline-none focus:border-[#D4A381] transition-colors"
-                    />
-                    <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#D4A381] disabled:opacity-50 p-2 transition-colors bg-[#1A2126] rounded-full"><Send size={14}/></button>
-                  </form>
-                )}
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )
