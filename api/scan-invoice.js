@@ -1,13 +1,3 @@
-import admin from 'firebase-admin';
-
-// Safely initialize Firebase Admin for Vercel
-// Fun fact: Token verification only requires the Project ID, not a full service account key!
-if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: 'cheers-34b8d' // Your exact Firebase Project ID
-  });
-}
-
 // Force Vercel to run strictly in the US (Washington D.C.)
 export const config = {
   regions: ['iad1'],
@@ -17,23 +7,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
-
-  // --- THE BOUNCER: VERIFY FIREBASE TOKEN ---
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Bots get bounced.' });
-  }
-
-  const token = authHeader.split('Bearer ')[1];
-
-  try {
-    // This checks with Google's servers to guarantee the token is real and hasn't expired
-    await admin.auth().verifyIdToken(token);
-    // The user is verified. The velvet rope opens.
-  } catch (error) {
-    return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
-  }
-  // --- END OF BOUNCER ---
 
   try {
     const { fileBase64, mimeType } = req.body;
