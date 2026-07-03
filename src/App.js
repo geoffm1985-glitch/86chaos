@@ -371,7 +371,6 @@ const LoginScreen = ({ setAppUser }) => {
   
   // New state to hold the user temporarily if they need to change their password
   const [pendingUser, setPendingUser] = useState(null);
-  const [pendingUser, setPendingUser] = useState(null);
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
 
