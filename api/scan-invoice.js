@@ -19,6 +19,7 @@ if (!admin.apps.length) {
 
 export const config = {
   regions: ['iad1'],
+  maxDuration: 60, // Tells Vercel to allow up to 60 seconds for the AI to read the invoice
 };
 
 export default async function handler(req, res) {
