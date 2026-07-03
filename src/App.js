@@ -3445,54 +3445,65 @@ const executeOrder = async (method) => {
     e.target.value = ''; 
   };
 
-// --- AI INVOICE SCANNER ENGINE (WITH RECONCILIATION) ---
-const handleScanInvoice = async (e) => {
+// --- INVOICE SCANNER (NOW WITH COMPRESSION) ---
+  const handleScanInvoice = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-       addToast('Error', 'File too large. Please keep images or PDFs under 5MB.');
-       return;
-    }
-
     setIsScanningInvoice(true);
-    addToast('Scanning Invoice', 'Extracting line items and checking stock...');
+    addToast('Scanning Invoice', 'Compressing image and extracting data...');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = async (event) => {
-      const base64String = event.target.result;
-      const mimeType = file.type;
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = async () => {
+        // Force compression so Vercel doesn't crash on payloads > 4.5MB
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-      try {
-        // CHANGED TO secureFetch: This passes the Bouncer in Vercel
-        const response = await secureFetch('/api/scan-invoice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileBase64: base64String, mimeType })
-        });
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
+        const base64Data = base64Compressed.split(',')[1];
 
-        const data = await response.json();
+        try {
+          const response = await secureFetch('/api/scan-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileBase64: base64Data, mimeType: 'image/jpeg' })
+          });
 
-        // Properly extracts the Vercel error so you aren't flying blind
-        if (!response.ok) throw new Error(data.error || 'Failed to scan invoice. Check backend logs.');
-        
-        // AUTO-MATCHING LOGIC
-        const reconciledItems = (data.lineItems || []).map(item => {
-           const match = inventoryItems.find(inv => 
-              inv.name.toLowerCase() === item.itemName.toLowerCase() || 
-              (inv.pfgCode && item.itemName.includes(inv.pfgCode))
-           );
-           return { ...item, matchedItemId: match ? match.id : "" };
-        });
+          // Prevent the "Unexpected token A" HTML crash
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+             throw new Error("Vercel Server Error: Payload too large or backend crashed.");
+          }
 
-        setScannedInvoice({ ...data, lineItems: reconciledItems });
-        addToast('Success', 'Invoice extracted! Please verify matched items.');
-      } catch (err) {
-        addToast('Error', err.message);
-      } finally {
-        setIsScanningInvoice(false);
-      }
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to scan invoice.');
+          
+          const reconciledItems = (data.lineItems || []).map(item => {
+             const match = inventoryItems.find(inv => 
+                inv.name.toLowerCase() === item.itemName.toLowerCase() || 
+                (inv.pfgCode && item.itemName.includes(inv.pfgCode))
+             );
+             return { ...item, matchedItemId: match ? match.id : "" };
+          });
+
+          setScannedInvoice({ ...data, lineItems: reconciledItems });
+          addToast('Success', 'Invoice extracted! Please verify matched items.');
+        } catch (err) {
+          addToast('Error', err.message);
+        } finally {
+          setIsScanningInvoice(false);
+        }
+      };
     };
     e.target.value = '';
   };
@@ -4083,8 +4094,8 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
     }
   };
 
-// --- AI RECIPE SCANNER (DIRECT TO GEMINI BYPASS) ---
-const handleScanRecipe = async (e) => {
+// --- RECIPE SCANNER ---
+  const handleScanRecipe = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -4100,28 +4111,30 @@ const handleScanRecipe = async (e) => {
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 1200; 
         let scaleSize = 1;
-        if (img.width > MAX_WIDTH) {
-           scaleSize = MAX_WIDTH / img.width;
-        }
+        if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
         canvas.width = img.width * scaleSize;
         canvas.height = img.height * scaleSize;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
         const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
+        const base64Data = base64Compressed.split(',')[1];
 
         try {
-          // CHANGED TO secureFetch: This passes the Bouncer in Vercel
           const response = await secureFetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64Compressed })
+            body: JSON.stringify({ imageBase64: base64Data })
           });
 
+          // Prevent the "Unexpected token A" HTML crash
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+             throw new Error("Vercel Server Error: Payload too large or backend crashed.");
+          }
+
           const data = await response.json();
-          
-          // Properly extracts the Vercel error so you aren't flying blind
-          if (!response.ok) throw new Error(data.error || 'Failed to scan recipe. Check backend logs.');
+          if (!response.ok) throw new Error(data.error || 'Failed to scan recipe.');
 
           setTitle(data.title || '');
           setPrepTime(data.prepTime || '--');
