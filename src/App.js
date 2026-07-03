@@ -3448,60 +3448,70 @@ const executeOrder = async (method) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-       addToast('Error', 'File too large. Please keep images or PDFs under 5MB.');
-       return;
-    }
-
     setIsScanningInvoice(true);
-    addToast('Scanning Invoice', 'Extracting line items and checking stock...');
+    addToast('Compressing & Scanning', 'Optimizing image for fast upload...');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = async (event) => {
-      const base64String = event.target.result;
-      const mimeType = file.type;
-
-      try {
-        const response = await secureFetch('/api/scan-invoice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileBase64: base64String, mimeType })
-        });
-
- // 1. Safely check if Vercel crashed BEFORE trying to read JSON
-        if (!response.ok) {
-           if (response.status === 413) throw new Error("File too large. Vercel blocks payloads over 4.5MB.");
-           
-           // If Vercel timed out or crashed, it sends HTML/Text, not JSON. This catches it safely.
-           const isJson = response.headers.get('content-type')?.includes('application/json');
-           if (!isJson) {
-               throw new Error(`Vercel Timeout (${response.status}). The image took too long to process.`);
-           }
-
-           const errData = await response.json();
-           throw new Error(errData.error || `Server rejected the request (${response.status}).`);
+    reader.onload = (event) => {
+      // COMPRESSION ENGINE: Shrink the giant phone photo down to 1200px before uploading
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) {
+          scaleSize = MAX_WIDTH / img.width;
         }
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // This is the magic. It turns a massive photo into a tiny, lightning-fast payload.
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
 
-        // 2. It is safe to parse the JSON now
-        const data = await response.json();
+        try {
+          const response = await secureFetch('/api/scan-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileBase64: base64Compressed, mimeType: 'image/jpeg' })
+          });
 
-        // AUTO-MATCHING LOGIC
-        const reconciledItems = (data.lineItems || []).map(item => {
-           const match = inventoryItems.find(inv => 
-              inv.name.toLowerCase() === item.itemName.toLowerCase() || 
-              (inv.pfgCode && item.itemName.includes(inv.pfgCode))
-           );
-           return { ...item, matchedItemId: match ? match.id : "" };
-        });
+          // 1. Safely check if Vercel crashed BEFORE trying to read JSON
+          if (!response.ok) {
+             if (response.status === 413) throw new Error("File too large. Vercel blocks payloads over 4.5MB.");
+             
+             const isJson = response.headers.get('content-type')?.includes('application/json');
+             if (!isJson) {
+                 throw new Error(`Vercel Timeout (${response.status}). The image took too long to process.`);
+             }
 
-        setScannedInvoice({ ...data, lineItems: reconciledItems });
-        addToast('Success', 'Invoice extracted! Please verify matched items.');
-      } catch (err) {
-        addToast('Server Error', err.message);
-      } finally {
-        setIsScanningInvoice(false);
-      }
+             const errData = await response.json();
+             throw new Error(errData.error || `Server rejected the request (${response.status}).`);
+          }
+
+          // 2. It is safe to parse the JSON now
+          const data = await response.json();
+
+          // AUTO-MATCHING LOGIC
+          const reconciledItems = (data.lineItems || []).map(item => {
+             const match = inventoryItems.find(inv => 
+                inv.name.toLowerCase() === item.itemName.toLowerCase() || 
+                (inv.pfgCode && item.itemName.includes(inv.pfgCode))
+             );
+             return { ...item, matchedItemId: match ? match.id : "" };
+          });
+
+          setScannedInvoice({ ...data, lineItems: reconciledItems });
+          addToast('Success', 'Invoice extracted! Please verify matched items.');
+        } catch (err) {
+          addToast('Server Error', err.message);
+        } finally {
+          setIsScanningInvoice(false);
+        }
+      };
     };
     e.target.value = '';
   };
