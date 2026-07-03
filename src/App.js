@@ -6058,6 +6058,20 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
   }, []);
 
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
+
+   const handleDeleteTenant = async (tenantId, tenantName) => {
+    if (prompt(`CRITICAL: Type "DELETE" to permanently remove the workspace registry for ${tenantName}. \n\nNOTE: You should use the 'Danger Zone' Nuke tool in the Manage menu first to wipe their underlying data.`) !== 'DELETE') {
+      return addToast('Aborted', 'Workspace deletion canceled.');
+    }
+
+    addToast('Deleting', `Removing workspace ${tenantName}...`);
+    try {
+      await deleteDoc(doc(db, "restaurants", tenantId));
+      addToast('Deleted', `${tenantName} has been permanently removed from the roster.`);
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };                 
   const handleDeployTenant = async (e) => {
     e.preventDefault(); 
     if (!rName.trim() || !oEmail.trim() || !oName.trim() || !rAddress.trim()) return;
