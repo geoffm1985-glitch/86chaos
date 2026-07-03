@@ -3446,7 +3446,7 @@ const executeOrder = async (method) => {
   };
 
 // --- AI INVOICE SCANNER ENGINE (WITH RECONCILIATION) ---
-  const handleScanInvoice = async (e) => {
+const handleScanInvoice = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -3465,19 +3465,20 @@ const executeOrder = async (method) => {
       const mimeType = file.type;
 
       try {
-        const response = await fetch('/api/scan-invoice', {
+        // CHANGED TO secureFetch: This passes the Bouncer in Vercel
+        const response = await secureFetch('/api/scan-invoice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileBase64: base64String, mimeType })
         });
 
-        if (!response.ok) throw new Error('Failed to scan invoice. Check backend logs.');
-
         const data = await response.json();
+
+        // Properly extracts the Vercel error so you aren't flying blind
+        if (!response.ok) throw new Error(data.error || 'Failed to scan invoice. Check backend logs.');
         
         // AUTO-MATCHING LOGIC
         const reconciledItems = (data.lineItems || []).map(item => {
-           // Attempt to find a direct match in the database by name or code
            const match = inventoryItems.find(inv => 
               inv.name.toLowerCase() === item.itemName.toLowerCase() || 
               (inv.pfgCode && item.itemName.includes(inv.pfgCode))
@@ -4083,12 +4084,12 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
   };
 
 // --- AI RECIPE SCANNER (DIRECT TO GEMINI BYPASS) ---
-  const handleScanRecipe = async (e) => {
+const handleScanRecipe = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setIsScanning(true);
-    addToast('Scanning', 'Optimizing and reading recipe directly...');
+    addToast('Scanning', 'Optimizing and reading recipe...');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -4110,41 +4111,23 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
         const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
 
         try {
-          // GitHub Secret Scanner Bypass (Split Key)
-          const keyPart1 = "AQ.Ab8RN6Kfu";
-          const keyPart2 = "pPwQP3cGgxRA6L1ywBNB7c09ya651we4UGQKTHdJw";
-          const apiKey = keyPart1 + keyPart2;
-
-          const prompt = `You are an expert culinary assistant. Extract the recipe from this image and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\n\nRequired keys:\n- "title" (string)\n- "prepTime" (string, e.g. "15 mins". If not found, return "--")\n- "yieldAmt" (string, e.g. "4 Quarts" or "24 Patties". If not found, return "--")\n- "ingredients" (string, list one per line, use \\n for line breaks)\n- "instructions" (string, list one step per line, use \\n for line breaks).`;
-
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          // CHANGED TO secureFetch: This passes the Bouncer in Vercel
+          const response = await secureFetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{
-                parts: [
-                  { text: prompt },
-                  { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-                ]
-              }]
-            })
+            body: JSON.stringify({ imageBase64: base64Compressed })
           });
 
-          if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error?.message || `Google API Error: ${response.status}`);
-          }
-
           const data = await response.json();
-          const rawText = data.candidates[0].content.parts[0].text;
-          const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-          const recipeData = JSON.parse(cleanText);
           
-          setTitle(recipeData.title || '');
-          setPrepTime(recipeData.prepTime || '--');
-          setYieldAmt(recipeData.yieldAmt || '--');
-          setIngredients(recipeData.ingredients || '');
-          setInstructions(recipeData.instructions || '');
+          // Properly extracts the Vercel error so you aren't flying blind
+          if (!response.ok) throw new Error(data.error || 'Failed to scan recipe. Check backend logs.');
+
+          setTitle(data.title || '');
+          setPrepTime(data.prepTime || '--');
+          setYieldAmt(data.yieldAmt || '--');
+          setIngredients(data.ingredients || '');
+          setInstructions(data.instructions || '');
           
           setIsFormOpen(true);
           addToast('Success', 'Recipe extracted! Please review.');
@@ -4155,7 +4138,7 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
         }
       };
     };
-    e.target.value = ''; 
+    e.target.value = '';
   };
   
   const parseAndMultiply = (text, mult) => { if (mult === 1) return text; const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/); if (!match) return text; let numStr = match[1], rest = match[2], val = 0; if (numStr.includes('/')) { const parts = numStr.split(' '); if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); } else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); } } else { val = parseFloat(numStr); } let finalVal = val * mult; let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2); if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim(); else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim(); else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim(); else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim(); else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim(); if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); return `${cleanVal} ${rest}`; };
