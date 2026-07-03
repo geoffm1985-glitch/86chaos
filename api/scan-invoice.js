@@ -1,14 +1,22 @@
 import admin from 'firebase-admin';
 
-// Safely initialize Firebase Admin for Vercel
-// Fun fact: Token verification only requires the Project ID, not a full service account key!
+// 1. Bulletproof Firebase Init (Matches your Push Notifications perfectly)
 if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: 'cheers-34b8d' // Your exact Firebase Project ID
-  });
+  if (process.env.FIREBASE_PRIVATE_KEY) {
+    const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: cleanKey,
+      }),
+    });
+  } else {
+    // Fallback
+    admin.initializeApp({ projectId: 'cheers-34b8d' });
+  }
 }
 
-// Force Vercel to run strictly in the US (Washington D.C.)
 export const config = {
   regions: ['iad1'],
 };
@@ -18,18 +26,16 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  // --- THE BOUNCER: VERIFY FIREBASE TOKEN ---
+  // --- THE BOUNCER: VERIFY FIREBASE AUTH TOKEN ---
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Bots get bounced.' });
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token.' });
   }
 
-  const token = authHeader.split('Bearer ')[1];
+  const authToken = authHeader.split('Bearer ')[1];
 
   try {
-    // This checks with Google's servers to guarantee the token is real and hasn't expired
-    await admin.auth().verifyIdToken(token);
-    // The user is verified. The velvet rope opens.
+    await admin.auth().verifyIdToken(authToken);
   } catch (error) {
     return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
   }
@@ -38,15 +44,11 @@ export default async function handler(req, res) {
   try {
     const { fileBase64, mimeType } = req.body;
     
-    // Clean the API key
     const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/['"]/g, '');
-
     if (!apiKey) throw new Error("API Key is missing from Vercel.");
 
-    // Strip the data URL prefix (e.g., "data:application/pdf;base64,")
     const base64Data = fileBase64.split(',')[1] || fileBase64;
 
-    // Strict accounting prompt with generalized SKU/Product Code extraction rules
     const prompt = `You are an expert restaurant accountant. Extract the data from this invoice and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\n\nCRITICAL: You MUST extract the product code (SKU, Item #, Product ID) for EVERY item. Supplier formats vary wildly. Look for alphanumeric strings/numbers under headers like "Item", "SKU", "Code", or floating near the item description/brand name (e.g., 13206, VF480, SYS-998). Isolate this code completely; do not merge it into the item name. If no code exists, return an empty string.\n\nRequired keys:\n- "vendorName" (string)\n- "invoiceDate" (string)\n- "invoiceTotal" (number)\n- "lineItems" (an array of objects containing "itemName" (string), "productCode" (string), "quantity" (number), "packSize" (string), "unitPrice" (number), and "totalPrice" (number)).`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
@@ -56,12 +58,7 @@ export default async function handler(req, res) {
         contents: [{
           parts: [
             { text: prompt },
-            {
-              inline_data: {
-                mime_type: mimeType || "application/pdf",
-                data: base64Data
-              }
-            }
+            { inline_data: { mime_type: mimeType || "application/pdf", data: base64Data } }
           ]
         }]
       })
@@ -72,11 +69,9 @@ export default async function handler(req, res) {
     if (data.error) throw new Error(data.error.message);
 
     const rawText = data.candidates[0].content.parts[0].text;
-    
-    // Safety net for JSON parsing
     const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    
     const invoiceData = JSON.parse(cleanText);
+
     return res.status(200).json(invoiceData);
 
   } catch (error) {
