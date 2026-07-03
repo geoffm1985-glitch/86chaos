@@ -3448,63 +3448,72 @@ const executeOrder = async (method) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    if (file.size > 5 * 1024 * 1024 && file.type === 'application/pdf') {
+       addToast('Error', 'PDF too large. Please keep under 5MB.');
+       return;
+    }
+
     setIsScanningInvoice(true);
-    addToast('Compressing & Scanning', 'Reading invoice directly (bypassing Vercel limits)...');
+    addToast('Compressing & Scanning', 'Extracting line items and checking stock...');
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
+      const mimeType = file.type;
+      
+      // 1. Bypass compression for PDFs, send straight to Vercel
+      if (mimeType === 'application/pdf') {
+          try {
+            const response = await secureFetch('/api/scan-invoice', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileBase64: event.target.result, mimeType })
+            });
+            if (!response.ok) throw new Error('Failed to scan invoice. Check backend logs.');
+            const data = await response.json();
+            const reconciledItems = (data.lineItems || []).map(item => {
+               const match = inventoryItems.find(inv => 
+                  inv.name.toLowerCase() === item.itemName.toLowerCase() || 
+                  (inv.pfgCode && item.itemName.includes(inv.pfgCode))
+               );
+               return { ...item, matchedItemId: match ? match.id : "" };
+            });
+            setScannedInvoice({ ...data, lineItems: reconciledItems });
+            addToast('Success', 'Invoice extracted! Please verify matched items.');
+          } catch (err) {
+            addToast('Error', err.message);
+          } finally {
+            setIsScanningInvoice(false);
+          }
+          return;
+      }
+
+      // 2. Shrink Images before sending to Vercel
       const img = new Image();
       img.src = event.target.result;
       img.onload = async () => {
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 1200;
         let scaleSize = 1;
-        if (img.width > MAX_WIDTH) {
-          scaleSize = MAX_WIDTH / img.width;
-        }
+        if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
         canvas.width = img.width * scaleSize;
         canvas.height = img.height * scaleSize;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
-        const base64Full = canvas.toDataURL('image/jpeg', 0.8);
-        const base64Data = base64Full.split(',')[1];
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
 
         try {
-// GitHub Secret Scanner Bypass
-          const keyPart1 = "AQ.Ab8RN6Kfu";
-          const keyPart2 = "pPwQP3cGgxRA6L1ywBNB7c09ya651we4UGQKTHdJw";
-          const apiKey = keyPart1 + keyPart2;          
-          const prompt = `You are an expert restaurant accountant. Extract the data from this invoice and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\n\nCRITICAL: You MUST extract the product code (SKU, Item #, Product ID) for EVERY item. Supplier formats vary wildly. Look for alphanumeric strings/numbers under headers like "Item", "SKU", "Code", or floating near the item description/brand name (e.g., 13206, VF480, SYS-998). Isolate this code completely; do not merge it into the item name. If no code exists, return an empty string.\n\nRequired keys:\n- "vendorName" (string)\n- "invoiceDate" (string)\n- "invoiceTotal" (number)\n- "lineItems" (an array of objects containing "itemName" (string), "productCode" (string), "quantity" (number), "packSize" (string), "unitPrice" (number), and "totalPrice" (number)).`;
-
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
+          const response = await secureFetch('/api/scan-invoice', {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey
-            },
-            body: JSON.stringify({
-              contents: [{
-                parts: [
-                  { text: prompt },
-                  { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-                ]
-              }]
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileBase64: base64Compressed, mimeType: 'image/jpeg' })
           });
 
-          if (!response.ok) {
-             const errData = await response.json();
-             throw new Error(errData.error?.message || `Google API Error: ${response.status}`);
-          }
+          if (!response.ok) throw new Error('Failed to scan invoice. Check backend logs.');
 
           const data = await response.json();
-          const rawText = data.candidates[0].content.parts[0].text;
-          const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-          const invoiceData = JSON.parse(cleanText);
-
-          const reconciledItems = (invoiceData.lineItems || []).map(item => {
+          const reconciledItems = (data.lineItems || []).map(item => {
              const match = inventoryItems.find(inv => 
                 inv.name.toLowerCase() === item.itemName.toLowerCase() || 
                 (inv.pfgCode && item.itemName.includes(inv.pfgCode))
@@ -3512,10 +3521,10 @@ const executeOrder = async (method) => {
              return { ...item, matchedItemId: match ? match.id : "" };
           });
 
-          setScannedInvoice({ ...invoiceData, lineItems: reconciledItems });
+          setScannedInvoice({ ...data, lineItems: reconciledItems });
           addToast('Success', 'Invoice extracted! Please verify matched items.');
         } catch (err) {
-          addToast('Scan Failed', err.message);
+          addToast('Error', err.message);
         } finally {
           setIsScanningInvoice(false);
         }
@@ -4134,47 +4143,26 @@ const handleScanRecipe = async (e) => {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
-        const base64Full = canvas.toDataURL('image/jpeg', 0.8);
-        const base64Data = base64Full.split(',')[1];
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
 
         try {
-// GitHub Secret Scanner Bypass
-          const keyPart1 = "AQ.Ab8RN6Kfu";
-          const keyPart2 = "pPwQP3cGgxRA6L1ywBNB7c09ya651we4UGQKTHdJw";
-          const apiKey = keyPart1 + keyPart2;
-          const prompt = `You are an expert culinary assistant. Extract the recipe from this image and return it strictly as a raw JSON object. Do not include markdown formatting or backticks.\n\nRequired keys:\n- "title" (string)\n- "prepTime" (string, e.g. "15 mins". If not found, return "--")\n- "yieldAmt" (string, e.g. "4 Quarts" or "24 Patties". If not found, return "--")\n- "ingredients" (string, list one per line, use \\n for line breaks)\n- "instructions" (string, list one step per line, use \\n for line breaks).`;
-
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
+          const response = await secureFetch('/api/scan', {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey
-            },
-            body: JSON.stringify({
-              contents: [{
-                parts: [
-                  { text: prompt },
-                  { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-                ]
-              }]
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64Compressed })
           });
 
           if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.error?.message || `Google API Error: ${response.status}`);
+            throw new Error('Failed to scan. Check Vercel logs.');
           }
 
           const data = await response.json();
-          const rawText = data.candidates[0].content.parts[0].text;
-          const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-          const recipeData = JSON.parse(cleanText);
           
-          setTitle(recipeData.title || '');
-          setPrepTime(recipeData.prepTime || '--');
-          setYieldAmt(recipeData.yieldAmt || '--');
-          setIngredients(recipeData.ingredients || '');
-          setInstructions(recipeData.instructions || '');
+          setTitle(data.title || '');
+          setPrepTime(data.prepTime || '--');
+          setYieldAmt(data.yieldAmt || '--');
+          setIngredients(data.ingredients || '');
+          setInstructions(data.instructions || '');
           
           setIsFormOpen(true);
           addToast('Success', 'Recipe extracted! Please review.');
