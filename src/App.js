@@ -3469,17 +3469,22 @@ const executeOrder = async (method) => {
           body: JSON.stringify({ fileBase64: base64String, mimeType })
         });
 
-        // 1. Catch Vercel's hard size limit instantly
-        if (response.status === 413) {
-           throw new Error("File too large. Vercel blocks payloads over 4.5MB. Try a smaller photo.");
+ // 1. Safely check if Vercel crashed BEFORE trying to read JSON
+        if (!response.ok) {
+           if (response.status === 413) throw new Error("File too large. Vercel blocks payloads over 4.5MB.");
+           
+           // If Vercel timed out or crashed, it sends HTML/Text, not JSON. This catches it safely.
+           const isJson = response.headers.get('content-type')?.includes('application/json');
+           if (!isJson) {
+               throw new Error(`Vercel Timeout (${response.status}). The image took too long to process.`);
+           }
+
+           const errData = await response.json();
+           throw new Error(errData.error || `Server rejected the request (${response.status}).`);
         }
 
+        // 2. It is safe to parse the JSON now
         const data = await response.json();
-        
-        // 2. THIS IS THE FIX: Actually read the backend error instead of swallowing it
-        if (!response.ok) {
-           throw new Error(data.error || 'Server rejected the request.');
-        }
 
         // AUTO-MATCHING LOGIC
         const reconciledItems = (data.lineItems || []).map(item => {
