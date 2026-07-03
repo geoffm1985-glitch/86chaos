@@ -759,7 +759,7 @@ const handleOfferSwap = async (shift) => {
 
       // 2. Trigger the Universal Push Cannon
       try {
-        await securesecureFetch('/api/send-push', {
+        await secureFetch('/api/send-push', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -1248,7 +1248,7 @@ const [isUploading, setIsUploading] = useState(false);
     }); 
     
     try {
-      await securesecureFetch('/api/send-push', {
+      await secureFetch('/api/send-push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -1703,7 +1703,7 @@ const handlePublish = async () => {
 // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
       try {
         addToast('Pinging Server', 'Sending alert request to Vercel...');
-        const pushRes = await securesecureFetch('/api/send-schedule-alert', {
+        const pushRes = await secureFetch('/api/send-schedule-alert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -3463,7 +3463,7 @@ const executeOrder = async (method) => {
       const mimeType = file.type;
 
       try {
-        const response = await securesecureFetch('/api/scan-invoice', {
+        const response = await secureFetch('/api/scan-invoice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileBase64: base64String, mimeType })
@@ -4109,7 +4109,7 @@ const [editingRecipeId, setEditingRecipeId] = useState(null);
 
         try {
           // THIS IS THE CRITICAL BLOCK. It MUST explicitly say POST.
-          const response = await securesecureFetch('/api/scan', {
+          const response = await secureFetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ imageBase64: base64Compressed })
@@ -6314,7 +6314,7 @@ const handleUpdateTenant = async (e) => {
     if (!window.confirm("Fire a test notification to all opted-in devices in your workspace?")) return;
     addToast('Pinging Server', 'Firing test shot to Vercel...');
     try {
-      const pushRes = await securesecureFetch('/api/send-schedule-alert', {
+      const pushRes = await secureFetch('/api/send-schedule-alert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
