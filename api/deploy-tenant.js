@@ -1,5 +1,22 @@
 import admin from 'firebase-admin';
 
+// 1. Bulletproof Firebase Init
+if (!admin.apps.length) {
+  if (process.env.FIREBASE_PRIVATE_KEY) {
+    const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID, // FIXED: Forces the correct Project ID
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: cleanKey,
+      }),
+    });
+  } else {
+    // Fallback
+    admin.initializeApp({ projectId: 'cheers-34b8d' });
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
@@ -14,25 +31,6 @@ export default async function handler(req, res) {
   const authToken = authHeader.split('Bearer ')[1];
 
   try {
-    // Dynamically initialize the app so it works in Test and Live modes
-    if (!admin.apps.length) {
-      const decodedUnverified = JSON.parse(Buffer.from(authToken.split('.')[1], 'base64').toString());
-      const projectId = decodedUnverified.aud; 
-
-      if (process.env.FIREBASE_PRIVATE_KEY) {
-        const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
-        admin.initializeApp({
-          credential: admin.credential.cert({
-            projectId: projectId,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: cleanKey,
-          }),
-        });
-      } else {
-        admin.initializeApp({ projectId: projectId });
-      }
-    }
-
     // Verify the admin requesting the deployment
     await admin.auth().verifyIdToken(authToken);
 
