@@ -1117,6 +1117,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   const [replyTexts, setReplyTexts] = useState({});
   const [imageFile, setImageFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isImportant, setIsImportant] = useState(false);
   
   const allNotes = events.filter(e => e.type === 'note').sort((a,b) => new Date(b.date) - new Date(a.date));
   
@@ -1138,7 +1139,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
       }
     }
 
-const isCritical = message.trim().toLowerCase().includes('!critical');
+    // Fallback support for the old text command, plus the new UI toggle
+    const isCritical = isImportant || message.trim().toLowerCase().includes('!critical');
     const finalMessage = message.trim().replace(/!critical/ig, '').trim();
 
     await addDoc(collection(db, "events"), { 
@@ -1152,7 +1154,6 @@ const isCritical = message.trim().toLowerCase().includes('!critical');
       imageUrl: photoUrl 
     }); 
     
-    // --- NEW: TRIGGER UNIVERSAL PUSH NOTIFICATION ---
     try {
       await fetch('/api/send-push', {
         method: 'POST',
@@ -1173,6 +1174,7 @@ const isCritical = message.trim().toLowerCase().includes('!critical');
     setMessage(''); 
     setImageFile(null);
     setIsUploading(false);
+    setIsImportant(false);
     addToast('Posted', 'Message sent.'); 
   };
 
@@ -1205,84 +1207,111 @@ const isCritical = message.trim().toLowerCase().includes('!critical');
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      <div className={`${T.card} p-4`}>
-        <form onSubmit={handleBroadcast} className="flex flex-col gap-3">
-          <textarea value={message} onChange={e=>setMessage(e.target.value)} className={T.input} rows="2" placeholder="Message the team... (Photo optional)"></textarea>
+    <div className="max-w-3xl mx-auto space-y-6">
+      
+      {/* PROFESSIONAL COMPOSE BOX */}
+      <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-xl overflow-hidden focus-within:border-[#D4A381] transition-colors">
+        <form onSubmit={handleBroadcast} className="flex flex-col">
+          <textarea 
+            value={message} 
+            onChange={e=>setMessage(e.target.value)} 
+            className="w-full bg-transparent text-white p-4 outline-none resize-none min-h-[100px] placeholder-slate-500 font-medium" 
+            placeholder="Share an update, post a pass-down, or announce a special..."
+          />
           
           {imageFile && (
-            <div className="text-xs text-emerald-400 font-bold bg-emerald-900/20 p-2 rounded-lg border border-emerald-900/50 flex justify-between items-center">
-              <span className="truncate pr-2">📷 {imageFile.name} attached</span>
-              <button type="button" onClick={()=>setImageFile(null)} className="text-red-400 hover:text-red-300 p-1"><X size={14}/></button>
+            <div className="mx-4 mb-3 text-xs text-emerald-400 font-bold bg-emerald-900/20 px-3 py-2 rounded-lg border border-emerald-900/50 flex justify-between items-center w-max shadow-inner">
+              <span className="truncate pr-4 flex items-center gap-2"><Camera size={14}/> {imageFile.name}</span>
+              <button type="button" onClick={()=>setImageFile(null)} className="text-red-400 hover:text-red-300 p-1 bg-[#12161A] rounded-md"><X size={12}/></button>
             </div>
           )}
 
-<div className="flex flex-wrap sm:flex-nowrap gap-2 items-center w-full">
-            <div className={`flex flex-1 sm:flex-none bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-12 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-               <label className="flex-1 sm:w-16 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
-                  <Camera size={20} />
-                  <input type="file" accept="image/*" capture="environment" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
-               </label>
-               <label className="flex-1 sm:w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381]" title="Upload Photo">
-                  <span className="text-[10px] font-black uppercase tracking-wider">Upload</span>
-                  <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
-               </label>
+          {/* ACTION BAR */}
+          <div className="bg-[#12161A] p-3 border-t border-[#2A353D] flex flex-wrap sm:flex-nowrap justify-between items-center gap-3">
+            <div className="flex items-center gap-4 pl-1">
+              <label className="flex items-center justify-center cursor-pointer text-slate-400 hover:text-[#D4A381] transition-colors group" title="Attach Photo">
+                <Camera size={20} />
+                <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
+              </label>
+
+              <div className="w-px h-6 bg-[#2A353D]"></div>
+
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-red-500 cursor-pointer" />
+                <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${isImportant ? 'text-red-500' : 'text-slate-500 group-hover:text-slate-300'}`}>High Priority Alert</span>
+              </label>
             </div>
-            <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`flex-1 sm:flex-1 ${T.btn} h-12 disabled:opacity-50 flex items-center justify-center`}>
-              {isUploading ? <Loader2 className="animate-spin" size={20}/> : 'Post'}
+
+            <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`${T.btn} py-2 px-6 flex items-center justify-center disabled:opacity-50`}>
+              {isUploading ? <Loader2 className="animate-spin" size={18}/> : <><Send size={16} className="inline mr-2"/> Post</>}
             </button>
           </div>
         </form>
       </div>
 
-      <div className="space-y-3">{allNotes.map(n => {
-        const authorUser = users.find(u => u.name === n.author);
-        return (
-        <div key={n.id} className={`p-4 flex gap-3 ${n.isImportant ? `bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 rounded-2xl shadow-sm` : T.card}`}>
-          {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 rounded-full border ${T.border} flex-shrink-0 object-cover`} alt="pic"/>}
-          <div className="flex-1 min-w-0">
-            <div className="flex justify-between items-start mb-1">
-              <span className={`font-black text-sm ${n.isImportant ? 'text-red-500' : T.copper}`}>{n.author}</span>
-              <span className="text-[10px] font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span>
-            </div>
-            {n.title && <p className="font-medium leading-snug text-slate-200 break-words whitespace-pre-wrap">{n.title}</p>}
-            
-            {/* RENDER THE IMAGE IF IT HAS ONE */}
-            {n.imageUrl && (
-              <div className="mt-3 overflow-hidden rounded-xl border border-[#2A353D] shadow-inner bg-[#0B0E11]">
-                <img src={n.imageUrl} alt="Attached" className="w-full max-h-96 object-contain" />
-              </div>
-            )}
-            
-            {/* Replies Section */}
-            {(n.replies && n.replies.length > 0) && (
-              <div className="space-y-2 mt-3 mb-3 pl-3 border-l-2 border-[#2A353D]">
-                {n.replies.map(r => (
-                  <div key={r.id} className="text-sm break-words">
-                    <span className={`font-black text-[9px] uppercase tracking-widest mr-2 ${T.copper}`}>{r.author}</span>
-                    <span className="text-slate-300 font-medium text-xs">{r.text}</span>
+      {/* FEED */}
+      <div className="space-y-4">
+        {allNotes.map(n => {
+          const authorUser = users.find(u => u.name === n.author);
+          return (
+            <div key={n.id} className={`${T.card} overflow-hidden ${n.isImportant ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : ''}`}>
+              
+              {/* IMPORTANT BANNER */}
+              {n.isImportant && (
+                <div className="bg-red-500/20 border-b border-red-500/50 px-4 py-1.5 flex items-center gap-2 text-red-500">
+                  <Bell size={14} className="animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Important Update</span>
+                </div>
+              )}
+
+              <div className="p-4 flex gap-3">
+                {n.author !== 'System Alert' && <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 rounded-full border ${T.border} flex-shrink-0 object-cover`} alt="pic"/>}
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className={`font-black text-sm ${n.isImportant ? 'text-red-500' : T.copper}`}>{n.author}</span>
+                    <span className="text-[10px] font-bold text-slate-400">{new Date(n.date).toLocaleDateString()}</span>
                   </div>
-                ))}
+                  {n.title && <p className="font-medium leading-relaxed text-slate-200 break-words whitespace-pre-wrap">{n.title}</p>}
+              
+                  {/* RENDER THE IMAGE IF IT HAS ONE */}
+                  {n.imageUrl && (
+                    <div className="mt-3 overflow-hidden rounded-xl border border-[#2A353D] shadow-inner bg-[#0B0E11]">
+                      <img src={n.imageUrl} alt="Attached" className="w-full max-h-96 object-contain" />
+                    </div>
+                  )}
+              
+                  {/* Replies Section */}
+                  {(n.replies && n.replies.length > 0) && (
+                    <div className="space-y-2 mt-4 mb-3 pl-3 border-l-2 border-[#2A353D]">
+                      {n.replies.map(r => (
+                        <div key={r.id} className="text-sm break-words bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">
+                          <span className={`font-black text-[9px] uppercase tracking-widest mr-2 ${T.copper}`}>{r.author}</span>
+                          <span className="text-slate-300 font-medium text-xs">{r.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+              
+                  {/* SLEEK REPLY INPUT */}
+                  {n.author !== 'System Alert' && (
+                    <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-2 mt-4 relative">
+                      <input 
+                        type="text" 
+                        placeholder="Write a reply..." 
+                        value={replyTexts[n.id] || ''} 
+                        onChange={(e) => handleReplyChange(n.id, e.target.value)} 
+                        className="flex-1 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-xl pl-4 pr-10 py-2.5 outline-none focus:border-[#D4A381] transition-colors"
+                      />
+                      <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#D4A381] disabled:opacity-50 p-1.5 transition-colors"><Send size={14}/></button>
+                    </form>
+                  )}
+                </div>
+                {appUser?.isAdmin && <button onClick={() => deleteDoc(doc(db, "events", n.id))} className="text-slate-400 hover:text-red-500 self-start p-1 bg-[#12161A] rounded-md border border-[#2A353D]"><Trash2 size={14}/></button>}
               </div>
-            )}
-            
-            {/* Reply Input */}
-            {n.author !== 'System Alert' && (
-              <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-2 mt-3">
-                <input 
-                  type="text" 
-                  placeholder="Reply..." 
-                  value={replyTexts[n.id] || ''} 
-                  onChange={(e) => handleReplyChange(n.id, e.target.value)} 
-                  className="flex-1 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg px-3 py-2 outline-none focus:border-[#D4A381] transition-colors"
-                />
-                <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="bg-[#1A2126] text-[#D4A381] px-3 py-2 rounded-lg flex items-center justify-center border border-[#2A353D] disabled:opacity-50 hover:bg-[#2A353D] transition-colors"><Send size={14}/></button>
-              </form>
-            )}
-          </div>
-          {appUser?.isAdmin && <button onClick={() => deleteDoc(doc(db, "events", n.id))} className="text-slate-400 hover:text-red-500 self-start p-1"><Trash2 size={16}/></button>}
-        </div>
-      )})}</div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 };
