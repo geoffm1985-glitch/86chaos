@@ -3443,7 +3443,7 @@ const executeOrder = async (method) => {
     e.target.value = ''; 
   };
 
-  // --- AI INVOICE SCANNER ENGINE (WITH RECONCILIATION) ---
+// --- AI INVOICE SCANNER ENGINE (WITH RECONCILIATION) ---
   const handleScanInvoice = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -3469,13 +3469,20 @@ const executeOrder = async (method) => {
           body: JSON.stringify({ fileBase64: base64String, mimeType })
         });
 
-        if (!response.ok) throw new Error('Failed to scan invoice. Check backend logs.');
+        // 1. Catch Vercel's hard size limit instantly
+        if (response.status === 413) {
+           throw new Error("File too large. Vercel blocks payloads over 4.5MB. Try a smaller photo.");
+        }
 
         const data = await response.json();
         
+        // 2. THIS IS THE FIX: Actually read the backend error instead of swallowing it
+        if (!response.ok) {
+           throw new Error(data.error || 'Server rejected the request.');
+        }
+
         // AUTO-MATCHING LOGIC
         const reconciledItems = (data.lineItems || []).map(item => {
-           // Attempt to find a direct match in the database by name or code
            const match = inventoryItems.find(inv => 
               inv.name.toLowerCase() === item.itemName.toLowerCase() || 
               (inv.pfgCode && item.itemName.includes(inv.pfgCode))
@@ -3486,7 +3493,7 @@ const executeOrder = async (method) => {
         setScannedInvoice({ ...data, lineItems: reconciledItems });
         addToast('Success', 'Invoice extracted! Please verify matched items.');
       } catch (err) {
-        addToast('Error', err.message);
+        addToast('Server Error', err.message);
       } finally {
         setIsScanningInvoice(false);
       }
