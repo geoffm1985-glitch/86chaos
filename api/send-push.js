@@ -1,6 +1,7 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { getAuth } from 'firebase-admin/auth'; // <-- Added this to check the token
 
 if (!getApps().length) {
   initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS)) });
@@ -9,6 +10,23 @@ const db = getFirestore();
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+
+  // --- THE BOUNCER: VERIFY FIREBASE AUTH TOKEN ---
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Bots get bounced.' });
+  }
+
+  const authToken = authHeader.split('Bearer ')[1];
+
+  try {
+    // This checks with Google's servers to guarantee the user is actually logged into 86chaos
+    await getAuth().verifyIdToken(authToken);
+    // The user is verified. The velvet rope opens.
+  } catch (error) {
+    return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
+  }
+  // --- END OF BOUNCER ---
 
   try {
     const { restaurantId, title, body, type, authorName, isCritical, textContent } = req.body;
