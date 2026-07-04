@@ -580,9 +580,7 @@ const LoginScreen = ({ setAppUser }) => {
 // SECTION 3: MASTER SCHEDULE HUB (Combined Schedule, TimeClock, Month, Requests)
 // ============================================================================
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
-  const [subTab, setSubconst [subTab, setSubTab] = useState(() => {
-  return appUser?.isGhost && appUser?.role === 'System Administrator' ? 'full-schedule' : 'my-schedule';
-});Tab] = useState('my-schedule');
+Tab] = useState('my-schedule');
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
