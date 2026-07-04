@@ -6114,6 +6114,62 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
     }
   };
 
+
+  // --- MISSING CLIENT MANAGEMENT FUNCTIONS ---
+  const handleUpdateTenant = async (e) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, "restaurants", editingRest.id), {
+        name: editingRest.name,
+        ownerName: editingRest.ownerName,
+        ownerEmail: editingRest.ownerEmail,
+        ownerPhone: editingRest.ownerPhone,
+        systemSettings: editingRest.systemSettings || {},
+        planType: editingRest.planType || 'Pro',
+        billingStatus: editingRest.billingStatus || 'Paid',
+        customPrice: editingRest.customPrice || '',
+        trialDays: editingRest.trialDays !== undefined ? editingRest.trialDays : 14,
+        isActive: editingRest.isActive ?? true,
+        isReadOnly: editingRest.isReadOnly ?? false,
+        features: editingRest.features || {},
+        labs: editingRest.labs || {}
+      });
+      addToast('Saved', 'Client workspace configuration updated.');
+      setEditingRest(null);
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  const handleExportData = async (rest) => {
+    try {
+      const usersSnap = await getDocs(query(collection(db, 'users'), where("restaurantId", "==", rest.id)));
+      const usersList = usersSnap.docs.map(d => d.data());
+      if (usersList.length === 0) return addToast('Empty', 'No users found for this workspace.');
+
+      let csv = "Name,Email,Role,Phone,Admin\n" + usersList.map(u => `"${u.name}","${u.email}","${u.role}","${u.phone || ''}","${u.isAdmin || false}"`).join("\n");
+      const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Users_Export_${rest.name.replace(/\s+/g, '_')}.csv`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      addToast('Exported', 'User list downloaded.');
+    } catch (err) { 
+      addToast('Error', 'Export failed.'); 
+    }
+  };
+
+  const handleDeleteTenant = async (id, name) => {
+    if (!window.confirm(`Delete workspace record for ${name}? NOTE: This leaves orphaned data. Use the Nuke tool inside the Manage menu instead for a clean wipe.`)) return;
+    try {
+      await deleteDoc(doc(db, "restaurants", id));
+      addToast('Deleted', 'Workspace record removed.');
+    } catch (err) { 
+      addToast('Error', err.message); 
+    }
+  };
+
   // --- DATABASE SNAPSHOT ENGINE (BACKUP & RESTORE) ---
   const handleCreateBackup = async (rest) => {
     addToast('Backing Up', `Compiling database snapshot for ${rest.name}...`);
