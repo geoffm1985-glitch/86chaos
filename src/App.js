@@ -21,17 +21,17 @@ const customMapIcon = new L.Icon({
 // --- Master Theme (Mapped to Image 6187_2.png) ---
 const T = {
   bg: "bg-[#12161A] text-slate-100",
-  card: "bg-[#1A2126] border border-[#2A353D] shadow-xl rounded-2xl",
+  card: "bg-[#1A2126] border border-[#2A353D] shadow-lg rounded-xl",
   border: "border-[#2A353D]",
   copper: "text-[#D4A381]",
   grad: "bg-gradient-to-r from-[#C59373] to-[#8F6040]",
-  btn: "bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 font-black uppercase tracking-wider rounded-xl shadow-lg hover:opacity-90 transition-all px-4 py-3 text-sm text-center",
-  btnAlt: "bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-4 py-2.5 text-sm",
-  input: "w-full p-3 bg-[#12161A] border border-[#2A353D] text-white rounded-xl outline-none focus:border-[#D4A381] transition-colors font-medium",
+  btn: "bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 font-black uppercase tracking-wider rounded-lg shadow-md hover:opacity-90 transition-all px-3 py-2 text-xs text-center",
+  btnAlt: "bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-lg hover:text-[#D4A381] transition-all px-3 py-2 text-xs",
+  input: "w-full p-2.5 bg-[#12161A] border border-[#2A353D] text-white rounded-lg outline-none focus:border-[#D4A381] transition-colors font-medium text-sm",
   label: "block text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1",
   muted: "text-slate-400",
-  th: "bg-[#12161A] border-b border-[#2A353D] text-[10px] font-black text-[#D4A381] uppercase tracking-widest p-3",
-  row: "hover:bg-[#12161A]/50 border-b border-[#2A353D] transition-colors p-3",
+  th: "bg-[#12161A] border-b border-[#2A353D] text-[10px] font-black text-[#D4A381] uppercase tracking-widest p-2.5",
+  row: "hover:bg-[#12161A]/50 border-b border-[#2A353D] transition-colors p-2.5",
 };
 
 // --- Firebase Initialization ---
@@ -90,7 +90,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '11.5.0';
+const CURRENT_VERSION = '11.6.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -277,8 +277,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.inventory || perms.sales || perms.team) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
+  if (isEnabled('ops') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.ops || perms.prep || perms.inventory || perms.sales || perms.team)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+  if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
@@ -1349,7 +1350,7 @@ const [isUploading, setIsUploading] = useState(false);
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
+    <div className="max-w-3xl mx-auto space-y-3 feed-compact">
       
       {/* SLEEK SEARCH BAR */}
       <div className="relative w-full">
@@ -1367,15 +1368,15 @@ const [isUploading, setIsUploading] = useState(false);
       <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl overflow-hidden shadow-xl">
         
         {/* TRUE SOCIAL COMPOSE BOX */}
-        <div className="p-4 border-b-4 border-[#12161A] bg-[#1A2126]">
+        <div className="p-3 border-b-4 border-[#12161A] bg-[#1A2126]">
           <form onSubmit={handleBroadcast}>
             <div className="flex gap-3">
-              <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-12 h-12 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
+              <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-9 h-9 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
               <div className="flex-1 min-w-0 pt-1">
                 <textarea 
                   value={message} 
                   onChange={e=>setMessage(e.target.value)} 
-                  className="w-full bg-transparent text-white text-lg outline-none resize-none min-h-[60px] placeholder-slate-500 leading-snug" 
+                  className="w-full bg-transparent text-white text-sm outline-none resize-none min-h-[42px] placeholder-slate-500 leading-snug" 
                   placeholder="What's happening in the kitchen?"
                 />
                 
@@ -1388,8 +1389,8 @@ const [isUploading, setIsUploading] = useState(false);
                 
                 <div className="flex justify-between items-center pt-2 border-t border-[#2A353D] mt-2">
                   <div className="flex items-center gap-4">
-                    <label className="text-[#D4A381] hover:text-[#C59373] hover:bg-[#D4A381]/10 p-2 rounded-full cursor-pointer transition-colors" title="Attach Photo">
-                      <Camera size={20} />
+                    <label className="text-[#D4A381] hover:text-[#C59373] hover:bg-[#D4A381]/10 p-1.5 rounded-full cursor-pointer transition-colors" title="Attach Photo">
+                      <Camera size={17} />
                       <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer group">
@@ -1397,7 +1398,7 @@ const [isUploading, setIsUploading] = useState(false);
                       <span className={`text-[11px] font-black uppercase tracking-widest transition-colors ${isImportant ? 'text-red-500' : 'text-slate-500 group-hover:text-slate-300'}`}>High Priority</span>
                     </label>
                   </div>
-                  <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-xs py-2 px-6 rounded-full transition-all disabled:opacity-50`}>
+                  <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-[11px] py-1.5 px-4 rounded-full transition-all disabled:opacity-50`}>
                     {isUploading ? <Loader2 className="animate-spin" size={16}/> : 'Post'}
                   </button>
                 </div>
@@ -1525,8 +1526,8 @@ const [isUploading, setIsUploading] = useState(false);
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
-  const [subTab, setSubTab] = useState('schedule'); 
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, initialSubTab = 'schedule', hideSubTabs = false }) => {
+  const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
   const [presetShift, setPresetShift] = useState('Custom'); 
@@ -2315,18 +2316,20 @@ const handleExportTimesheets = () => {
       </Modal>
 
 {/* TOP NAVIGATION TOGGLE */}
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
-        <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
-        <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
-        {appUser?.isAdmin && (
-          <button onClick={() => {
-            if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Timesheets & Labor.');
-            setSubTab('timesheets');
-          }} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 cursor-not-allowed border border-[#2A353D]' : ''}`}>
-            {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Timesheets (Elite)' : 'Timesheets & Labor'}
-          </button>
-        )}
-      </div>
+      {!hideSubTabs && (
+        <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
+          <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
+          <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
+          {appUser?.isAdmin && (
+            <button onClick={() => {
+              if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Timesheets & Labor.');
+              setSubTab('timesheets');
+            }} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 cursor-not-allowed border border-[#2A353D]' : ''}`}>
+              {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Timesheets (Elite)' : 'Timesheets & Labor'}
+            </button>
+          )}
+        </div>
+      )}
 
       {subTab === 'schedule' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
@@ -4401,12 +4404,12 @@ const TabRecipes = ({ appUser, addToast }) => {
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-6xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
       
       {/* THE NEW SLEEK CONTROL PANEL */}
-      <div className="bg-[#1A2126] border border-[#2A353D] rounded-3xl shadow-xl overflow-hidden mb-6">
+      <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-lg overflow-hidden mb-4">
         {/* Search / Filter Area */}
-        <div className="p-4 sm:p-5 flex flex-col md:flex-row gap-4 border-b border-[#2A353D] bg-[#12161A]/50">
+        <div className="p-3 sm:p-4 flex flex-col md:flex-row gap-3 border-b border-[#2A353D] bg-[#12161A]/50">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
             <input 
@@ -4487,29 +4490,29 @@ const TabRecipes = ({ appUser, addToast }) => {
           <p className="text-sm font-medium text-slate-500 mt-2">Try adjusting your search or category filter.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filteredRecipes.map(r => (
-            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="group relative bg-[#1A2126] rounded-2xl border border-[#2A353D] hover:border-[#D4A381]/50 overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.3)] hover:-translate-y-1">
+            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="group relative bg-[#1A2126] rounded-xl border border-[#2A353D] hover:border-[#D4A381]/50 overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-200 hover:shadow-[0_8px_24px_rgba(0,0,0,0.24)] hover:-translate-y-0.5">
               
               {/* Card Header Pattern */}
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#C59373] to-[#8F6040] opacity-20 group-hover:opacity-100 transition-opacity"></div>
               
-              <div className="p-5 flex flex-col flex-grow">
-                <div className="flex justify-between items-start mb-4">
+              <div className="p-3.5 flex flex-col flex-grow">
+                <div className="flex justify-between items-start mb-2.5">
                   <span className="text-[9px] font-black uppercase tracking-widest bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2.5 py-1 rounded-md shadow-sm">
                     {r.category}
                   </span>
-                  <div className="w-8 h-8 rounded-full bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-slate-400 group-hover:text-[#D4A381] group-hover:bg-[#1A2126] transition-all">
+                  <div className="w-7 h-7 rounded-full bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-slate-400 group-hover:text-[#D4A381] group-hover:bg-[#1A2126] transition-all">
                     <ChevronRight size={14} />
                   </div>
                 </div>
                 
-                <h3 className="text-xl font-black text-white mb-2 leading-tight group-hover:text-[#D4A381] transition-colors line-clamp-2">
+                <h3 className="text-base font-black text-white mb-1.5 leading-tight group-hover:text-[#D4A381] transition-colors line-clamp-2">
                   {r.title}
                 </h3>
                 
-                <div className="mt-auto pt-5">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-400 bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+                <div className="mt-auto pt-3">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">
                     <div className="flex items-center gap-2 min-w-0">
                       <Clock size={14} className="text-slate-500 shrink-0"/> 
                       <span className="truncate">{r.prepTime}</span>
@@ -5064,10 +5067,15 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                   <select value={defaultTab} onChange={e => setDefaultTab(e.target.value)} className={`${T.input} py-2 text-sm`}>
                     <option value="published">My Schedule</option>
                     <option value="messages">Message Board</option>
+                    <option value="events">Event Calendar</option>
                     <option value="team">Team Roster</option>
+                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="ops">Ops Command Center</option> : null}
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
+                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
+                    {appUser?.isAdmin && <option value="inventory">Inventory & Orders</option>}
                     {appUser?.isAdmin && <option value="schedule">Master Schedule</option>}
                     {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
+                    {appUser?.isAdmin && <option value="maintenance">Maintenance Log</option>}
                   </select>
                 </div>
                 <div>
@@ -6790,7 +6798,7 @@ const handleDeleteGlobalUser = async (u) => {
          ownerEmail: "demo@86chaos.com",
          isActive: true,
          isReadOnly: false,
-         features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true },
+         features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true },
          labs: { laborProjection: true },
          planType: 'Enterprise',
          billingStatus: 'Paid',
@@ -7061,12 +7069,82 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
   const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
+  const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+  const nowMs = Date.now();
+  const getLastActiveMs = (u) => {
+    const parsed = new Date(u.lastActive || u.lastSeen || 0).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const isOnlineNow = (u) => {
+    const last = getLastActiveMs(u);
+    return !!last && (nowMs - last) < ONLINE_WINDOW_MS && u.onlineState !== 'offline';
+  };
+  const onlineUsers = allUsers.filter(isOnlineNow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const onlineRestaurantIds = [...new Set(onlineUsers.map(u => u.restaurantId).filter(Boolean))];
+  const onlineRestaurants = restaurants.filter(r => onlineRestaurantIds.includes(r.id));
+  const onlineByRestaurant = onlineRestaurantIds.map(id => ({
+    id,
+    rest: restaurants.find(r => r.id === id),
+    users: onlineUsers.filter(u => u.restaurantId === id)
+  })).sort((a,b) => b.users.length - a.users.length);
+  const recentlyActiveUsers = allUsers.filter(u => {
+    const last = getLastActiveMs(u);
+    return !!last && (nowMs - last) < 15 * 60 * 1000 && !isOnlineNow(u);
+  }).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+
+  const SignalPip = ({ tone = 'emerald', label = 'LIVE', hot = false }) => {
+    const colors = tone === 'red' ? 'text-red-400 bg-red-500' : tone === 'amber' ? 'text-amber-400 bg-amber-400' : tone === 'blue' ? 'text-blue-400 bg-blue-400' : tone === 'purple' ? 'text-fuchsia-400 bg-fuchsia-400' : 'text-emerald-400 bg-emerald-400';
+    return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'slow'} ${colors.split(' ')[1]}`}></span>{label}</span>;
+  };
+
+  const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false }) => (
+    <div className="cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
+        <SignalPip tone={tone} label={hot ? 'HOT' : 'SYNC'} hot={hot} />
+      </div>
+      <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
+      <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
+    </div>
+  );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-6xl mx-auto space-y-5 pb-24 animate-[slideIn_0.2s_ease-out]">
+      {/* 747 COCKPIT COMMAND STRIP */}
+      <div className="cockpit-panel rounded-2xl p-4 overflow-hidden relative">
+        <div className="absolute inset-0 cockpit-grid opacity-60 pointer-events-none"></div>
+        <div className="relative flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <SignalPip tone="emerald" label="PLATFORM LIVE" hot />
+              <SignalPip tone={crashes24h > 0 ? 'amber' : 'emerald'} label={crashes24h > 0 ? 'WATCH' : 'CLEAN'} />
+              <SignalPip tone="blue" label="FIREBASE" />
+              <SignalPip tone="purple" label="GHOST READY" />
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">System Administrator Command Deck</h1>
+            <p className="text-xs text-slate-400 font-bold mt-1">Live platform telemetry, client control, user presence, safety locks, and support tools.</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-widest">
+            {['AUTH','DB','PUSH','RULES','API','GHOST','CACHE','BILLING','LOGS','BACKUP','OCR','LABS'].map((lamp, i) => (
+              <span key={lamp} className="bg-[#0B0E11] border border-[#2A353D] rounded-md px-2 py-1 text-slate-300 flex items-center gap-1.5">
+                <span className={`cockpit-light ${i % 5 === 0 ? 'bg-blue-400 text-blue-400' : i % 3 === 0 ? 'bg-amber-400 text-amber-400' : 'bg-emerald-400 text-emerald-400'}`}></span>{lamp}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="relative grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+          <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} active workspaces`} tone="emerald" hot={onlineUsers.length > 0} />
+          <CockpitMetric label="Users Today" value={dau} detail={`${stickyRate}% daily stickiness`} tone="blue" />
+          <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" />
+          <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Needs eyes' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 0} />
+          <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} />
+          <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} />
+        </div>
+      </div>
+
       {/* MASTER NAVIGATION */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
+      <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2 border-b border-[#2A353D] mb-6 pb-4">
+        {[{id:'overview', label:'Metrics'}, {id:'live', label:'Live Ops'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
       </div>
@@ -7077,20 +7155,20 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 // --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
-            const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
+            const baseFeatures = { schedule: false, events: false, ops: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
             let newLabs = { laborProjection: false };
             let updatedFeatures = { ...baseFeatures };
             
             // 2. Merge only the allowed features as TRUE over the baseline
             if (tier === 'Starter') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true };
             } else if (tier === 'Pro') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
             } else if (tier === 'Elite') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
             } else if (tier === 'Enterprise') {
                 // Enterprise: Everything (Up to 5 Locations)
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
                 newLabs = { laborProjection: true };
             }
 
@@ -7159,7 +7237,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                 <div className="pt-4 border-t border-[#2A353D]">
                    <label className={T.label}>Manual Module Overrides</label>
                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                      {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
+                      {['schedule', 'events', 'ops', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
                         <label key={feat} className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors cursor-pointer ${editingRest.features && editingRest.features[feat] ? 'bg-[#8F6040]/20 border-[#C59373]' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
                           <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : false} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
                           <span className={`text-[11px] font-bold capitalize ${editingRest.features && editingRest.features[feat] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{feat}</span>
@@ -7320,6 +7398,97 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
         </div>
       )}
 
+      {/* --- TAB: LIVE OPS / PRESENCE RADAR --- */}
+      {subTab === 'live' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 cockpit-panel rounded-2xl overflow-hidden">
+              <div className={`bg-[#12161A] p-3 border-b ${T.border} flex items-center justify-between gap-3`}>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Live Users Now</h3>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} active</span>
+              </div>
+              <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
+                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No one is currently heartbeating. Newly loaded clients will appear here within about a minute.</div>}
+                {onlineUsers.map(u => {
+                  const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
+                  return (
+                    <div key={u.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#12161A]/55 transition-colors">
+                      <div className="min-w-0 flex items-center gap-3">
+                        <img src={getAvatar(u.name, u.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/>
+                        <div className="min-w-0">
+                          <div className="text-sm font-black text-white truncate flex items-center gap-2">{u.name || 'Unnamed User'} <SignalPip tone="emerald" label="ONLINE" hot /></div>
+                          <div className="text-[10px] text-slate-400 font-bold truncate">{restName} • {u.role || 'No role'} • {u.activeTab ? `Tab: ${u.activeTab}` : 'Tab: unknown'}</div>
+                          <div className="text-[9px] text-slate-500 font-mono truncate">{u.email || 'No email'} • {u.activeDevice || 'Unknown device'}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, mode: 'user', impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center justify-center gap-1"><Moon size={14} /> Possess</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="cockpit-panel rounded-2xl overflow-hidden">
+              <div className={`bg-[#12161A] p-3 border-b ${T.border}`}>
+                <h3 className="font-black text-sm text-white">Active Workspaces</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by live heartbeat</p>
+              </div>
+              <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
+                {onlineByRestaurant.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No active workspaces.</div>}
+                {onlineByRestaurant.map(group => (
+                  <div key={group.id} className="p-3 hover:bg-[#12161A]/55 transition-colors">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-black text-white text-sm truncate">{group.rest?.name || group.id}</div>
+                      <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-black"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{group.users.length}</div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-bold mt-1 truncate">{group.users.map(u => (u.name || u.email || 'User').split(' ')[0]).join(', ')}</div>
+                    <button onClick={() => { setGhostTenant({ id: group.id, name: group.rest?.name || group.id, mode: 'workspace' }); setActiveTab('published'); }} className="mt-2 w-full px-2 py-1.5 bg-purple-900/20 border border-purple-500/40 text-purple-300 font-black text-[9px] uppercase tracking-widest rounded-lg hover:bg-purple-900/40">Possess Workspace</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="cockpit-panel rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-black text-white text-sm">Recent Activity Buffer</h3>
+                <SignalPip tone="amber" label={`${recentlyActiveUsers.length} warm`} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {recentlyActiveUsers.slice(0, 12).map(u => {
+                  const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown';
+                  return <div key={u.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{restName} • {timeAgo(u.lastActive)}</div></div>
+                })}
+                {recentlyActiveUsers.length === 0 && <div className="text-sm text-slate-500 font-bold">No recently active users outside the live window.</div>}
+              </div>
+            </div>
+
+            <div className="cockpit-panel rounded-2xl p-4">
+              <h3 className="font-black text-white text-sm mb-3">Control Tower Signals</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  ['Auth Gate', 'emerald', 'Firebase Auth ready'],
+                  ['Tenant Rules', 'emerald', 'Super admin override'],
+                  ['Ghost Layer', 'purple', 'Possess enabled'],
+                  ['Push Relay', pushOptInRate < 30 ? 'amber' : 'emerald', `${pushOptInRate}% opt-in`],
+                  ['Crash Intake', crashes24h ? 'amber' : 'emerald', `${crashes24h} today`],
+                  ['Backup Engine', 'blue', 'JSON export ready'],
+                  ['Billing Locks', staleTenants.length ? 'amber' : 'emerald', `${staleTenants.length} stale`],
+                  ['API Routes', 'blue', `${apiConnectedCount} integrations`],
+                  ['Online Radar', onlineUsers.length ? 'emerald' : 'amber', `${onlineUsers.length} live`]
+                ].map(([name, tone, detail]) => (
+                  <div key={name} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2.5 min-h-[70px]">
+                    <SignalPip tone={tone} label={name} hot={tone === 'amber'} />
+                    <div className="text-[10px] text-slate-400 font-bold mt-2 leading-tight">{detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- TAB: TENANTS --- */}
       {subTab === 'tenants' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
@@ -7381,7 +7550,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                       )}
                     </div>
 
-                    <div className="text-[9px] text-slate-500 font-medium mt-1.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{onlineUsers.filter(u => u.restaurantId === r.id).length} Online</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
 <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-[#D4A381] hover:border-[#D4A381]/50 transition-colors shadow-sm flex items-center gap-1"><Settings size={14} /> Manage</button>
@@ -7413,7 +7582,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                   <div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
-                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName} <span className="mx-1">|</span> <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span></div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">{restName}<span>|</span>{isOnlineNow(u) ? <span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span>Online Now</span> : <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span>}</div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
 <button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, mode: 'user', impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
@@ -7784,9 +7953,21 @@ export default function App() {
 
 
 
+  const [activeTabState, setActiveTabState] = useState('published');
+  const [labelsToPrint, setLabelsToPrint] = useState(null);
+
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
+
+  // Safety net: if System Admin disables a module while a user still has that tab open,
+  // send them back to the main Time Clock/Shifts screen instead of showing a blank page.
+  useEffect(() => {
+    const gatedTabs = ['ops', 'events', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'schedule'];
+    if (gatedTabs.includes(activeTabState) && clientFeatures?.[activeTabState] === false) {
+      setActiveTab('published');
+    }
+  }, [activeTabState, clientFeatures]);
 
 // THE FIX: Safely attach BOTH the System Settings and the Plan Tier to the live user
 if (liveAppUser && clientData) {
@@ -7817,29 +7998,56 @@ if (liveAppUser && clientData) {
       }
     });
 
-// 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
+// 2. Live Presence Heartbeat (Only real users, never Ghost Mode)
+    let heartbeatTimer = null;
+    let handleVisibility = null;
+    let handleBeforeUnload = null;
+
     if (!ghostTenant && appUser?.id) {
-      const today = new Date().toDateString();
-      const lastPing = localStorage.getItem(`ping_user_${appUser.id}`);
-      if (lastPing !== today) {
-        updateDoc(doc(db, 'restaurants', rId), { lastActive: new Date().toISOString() }).catch(()=>{});
-        updateDoc(doc(db, 'users', appUser.id), { lastActive: new Date().toISOString() }).catch(()=>{});
-        localStorage.setItem(`ping_user_${appUser.id}`, today);
+      let sessionId = sessionStorage.getItem('chaosSessionId');
+      if (!sessionId) {
+        sessionId = `${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem('chaosSessionId', sessionId);
       }
+
+      const sendHeartbeat = (state = 'online') => {
+        const stamp = new Date().toISOString();
+        const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
+        updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp }).catch(()=>{});
+        updateDoc(doc(db, 'users', appUser.id), {
+          lastActive: stamp,
+          lastSeen: stamp,
+          onlineState: state,
+          activeTab: activeTabState,
+          activeSessionId: sessionId,
+          activeDevice: device,
+          activeHost: window.location.hostname
+        }).catch(()=>{});
+      };
+
+      sendHeartbeat(document.hidden ? 'away' : 'online');
+      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 60000);
+      handleVisibility = () => sendHeartbeat(document.hidden ? 'away' : 'online');
+      handleBeforeUnload = () => sendHeartbeat('offline');
+      document.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('beforeunload', handleBeforeUnload);
     }
 
-    return () => unsub();
-  }, [rId, ghostTenant]);
+    return () => {
+      unsub();
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (handleVisibility) document.removeEventListener('visibilitychange', handleVisibility);
+      if (handleBeforeUnload) window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [rId, ghostTenant, appUser?.id, activeTabState]);
 
  
-  const [activeTabState, setActiveTabState] = useState('published');
-  const [labelsToPrint, setLabelsToPrint] = useState(null);
-
   useEffect(() => {
     const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
     window.addEventListener('popstate', handlePopState);
     const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab') || (appUser?.isAdmin ? 'schedule' : 'published');
+    const preferredTab = appUser?.preferences?.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published');
+    const tab = params.get('tab') || preferredTab;
     setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [appUser]);
@@ -8001,7 +8209,7 @@ useEffect(() => {
   }
 
 return (
-    <div className={`min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div className={`ui-v12-compact cockpit-shell min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST MODE BANNER */}
       {ghostTenant && (
@@ -8027,6 +8235,33 @@ return (
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        .cockpit-shell { --chaos-copper: #D4A381; --chaos-panel: #1A2126; --chaos-deck: #12161A; }
+        .ui-v12-compact button { touch-action: manipulation; }
+        .ui-v12-compact textarea { line-height: 1.35 !important; }
+        .cockpit-light { position: relative; display: inline-flex; width: .55rem; height: .55rem; border-radius: 999px; box-shadow: 0 0 10px currentColor; }
+        .cockpit-light::after { content: ''; position: absolute; inset: -4px; border-radius: 999px; background: currentColor; opacity: .16; animation: cockpitPing 1.65s infinite; }
+        .cockpit-light.slow::after { animation-duration: 2.8s; }
+        .cockpit-light.hot::after { animation-duration: .9s; }
+        @keyframes cockpitPing { 0% { transform: scale(.65); opacity: .42; } 70%,100% { transform: scale(2.25); opacity: 0; } }
+        @keyframes softGlow { 0%,100% { box-shadow: 0 0 0 rgba(212,163,129,0); } 50% { box-shadow: 0 0 18px rgba(212,163,129,.22); } }
+        .cockpit-panel { background: linear-gradient(180deg, rgba(26,33,38,.98), rgba(15,19,24,.98)); border: 1px solid #2A353D; box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 16px 50px rgba(0,0,0,.18); }
+        .cockpit-grid { background-image: radial-gradient(circle at 1px 1px, rgba(212,163,129,.09) 1px, transparent 0); background-size: 18px 18px; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        @media (max-width: 640px) {
+          .ui-v12-compact main { padding: .75rem !important; }
+          .ui-v12-compact button:not(.no-compact) { min-height: 32px !important; padding-top: .42rem !important; padding-bottom: .42rem !important; }
+          .ui-v12-compact textarea { min-height: 42px !important; font-size: 14px !important; }
+          .ui-v12-compact .rounded-3xl { border-radius: 1rem !important; }
+          .ui-v12-compact .rounded-2xl { border-radius: .85rem !important; }
+          .ui-v12-compact .p-6 { padding: 1rem !important; }
+          .ui-v12-compact .p-5 { padding: .85rem !important; }
+          .ui-v12-compact .p-4 { padding: .75rem !important; }
+          .ui-v12-compact .gap-5 { gap: .75rem !important; }
+          .ui-v12-compact .gap-4 { gap: .65rem !important; }
+          .ui-v12-compact .text-2xl { font-size: 1.25rem !important; line-height: 1.55rem !important; }
+          .ui-v12-compact .text-xl { font-size: 1.05rem !important; line-height: 1.4rem !important; }
+          .ui-v12-compact .text-lg { font-size: .98rem !important; line-height: 1.3rem !important; }
+        }
       `}</style>
 
       {/* UPDATE ALERT BANNER */}
@@ -8084,7 +8319,7 @@ return (
         </div>
       )}
       
-      {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+      {['schedule', 'events', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {activeTabState === 'sales' ? (
             <div className="w-full text-center">
@@ -8125,8 +8360,9 @@ return (
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
         {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team) && <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />}
         {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
-        {activeTabState === 'ops' && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
+        {activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isAdmin || liveAppUser?.role === 'Kitchen' || liveAppUser?.permissions?.ops || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.sales || liveAppUser?.permissions?.team) && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
         {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
@@ -8151,7 +8387,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.5.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.7.0 Cockpit UI</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
