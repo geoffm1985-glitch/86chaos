@@ -69,20 +69,50 @@ enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:"
 
 const auth = getAuth(app);
 
-// --- SECURE API KEYCHAIN ---
-// This automatically grabs the user's secure Firebase token and attaches it to backend Vercel requests
+// --- OPTIONAL APP CHECK + SECURE API KEYCHAIN ---
+// Put your Firebase App Check reCAPTCHA Enterprise site key here after enabling App Check in Firebase.
+// Example: const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '6Lc...';
+const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '';
+let appCheckInstance = null;
+
+if (typeof window !== "undefined" && APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY && !window.__chaosAppCheckBooted) {
+  window.__chaosAppCheckBooted = true;
+  import('firebase/app-check')
+    .then(({ initializeAppCheck, ReCaptchaEnterpriseProvider }) => {
+      appCheckInstance = initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY),
+        isTokenAutoRefreshEnabled: true
+      });
+      window.__chaosAppCheckReady = true;
+    })
+    .catch((err) => console.warn('App Check not initialized:', err?.message || err));
+}
+
+const getAppCheckHeader = async () => {
+  if (!appCheckInstance) return {};
+  try {
+    const { getToken: getAppCheckToken } = await import('firebase/app-check');
+    const result = await getAppCheckToken(appCheckInstance, false);
+    return result?.token ? { 'X-Firebase-AppCheck': result.token } : {};
+  } catch (err) {
+    console.warn('App Check token unavailable:', err?.message || err);
+    return {};
+  }
+};
+
+// This attaches the real Firebase Auth token to Vercel API requests.
+// Do not trust client-sent role/email/restaurantId in API routes; verify this token server-side.
 const secureFetch = async (url, options = {}) => {
   if (!auth.currentUser) throw new Error("Unauthorized: No active user session.");
-  
-  // FORCE REFRESH the token so you never get a 403 Forbidden error again
-  const token = await auth.currentUser.getIdToken(true); 
-  
+  const { forceTokenRefresh = false, headers: optionHeaders = {}, ...fetchOptions } = options;
+  const token = await auth.currentUser.getIdToken(forceTokenRefresh);
+  const appCheckHeader = await getAppCheckHeader();
   const headers = {
-    ...options.headers,
+    ...optionHeaders,
+    ...appCheckHeader,
     'Authorization': `Bearer ${token}`
   };
-  
-  return fetch(url, { ...options, headers });
+  return fetch(url, { ...fetchOptions, headers });
 };
 
 // --- Master Configuration ---
@@ -90,7 +120,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '12.0.0';
+const CURRENT_VERSION = '12.2.0-security-admin';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -120,6 +150,22 @@ const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getD
 const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; try { let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; } catch(e){ return t; } };
 const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
+
+const sanitizeCachedUser = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('86chaosUser');
+    if (!raw) return;
+    const cached = JSON.parse(raw);
+    if (cached && Object.prototype.hasOwnProperty.call(cached, 'password')) {
+      delete cached.password;
+      localStorage.setItem('86chaosUser', JSON.stringify(cached));
+    }
+  } catch (err) {
+    localStorage.removeItem('86chaosUser');
+  }
+};
+sanitizeCachedUser();
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
 // --- Global Crash Reporter & Telemetry Engine ---
@@ -277,7 +323,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if (isEnabled('ops') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.ops || perms.prep || perms.inventory || perms.sales || perms.team)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
+  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
@@ -445,15 +491,17 @@ const LoginScreen = ({ setAppUser }) => {
       // 1. Update the secure Firebase Auth password
       await updatePassword(auth.currentUser, newPass);
       
-      // 2. Flip the database flag so they are never asked again, and track the new text password
+      // 2. Flip the database flag so they are never asked again.
+      // Passwords belong ONLY in Firebase Auth, never in Firestore.
       await updateDoc(doc(db, "users", pendingUser.id), { 
         forcePasswordChange: false,
-        password: newPass 
+        passwordPurgedAt: new Date().toISOString()
       });
       
-      // 3. Unlock the system
+      // 3. Unlock the system without caching the password in app state.
       localStorage.setItem('chaosRememberMe', rememberMe);
-      setAppUser({ ...pendingUser, forcePasswordChange: false, password: newPass });
+      const { password, ...safePendingUser } = pendingUser;
+      setAppUser({ ...safePendingUser, forcePasswordChange: false });
       
     } catch (error) {
       setLoginError(error.message);
@@ -1041,7 +1089,8 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
+  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false };
+  const [perms, setPerms] = useState(DEFAULT_PERMISSIONS);
   const [editingUserId, setEditingUserId] = useState(null);
 
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
@@ -1051,11 +1100,11 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
+    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
   };
 
   const handleEditClick = (u) => {
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
+    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1084,8 +1133,9 @@ const TabTeam = ({ users, appUser, addToast }) => {
 
       await setDoc(doc(db, "users", newAuthUid), { 
         name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        password: tPass, role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
-        forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
+        role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
+        forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId,
+        passwordStored: false, passwordPurgedAt: new Date().toISOString()
       }); 
       
       const welcomeMsg = `Welcome to 86chaos!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
@@ -1180,12 +1230,12 @@ return (
           
           {!isAdmin && (
             <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions:</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Ops Command Center is only visible when Ops permission or Store Manager is enabled.</p>
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => (
                   <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
                     <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
-                    {k.replace('team', 'team mgmt').replace('prep', 'recipe/prep')}
+                    {{ schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Daily Ledger', team: 'Team Management' }[k] || k}
                   </label>
                 ))}
               </div>
@@ -5017,7 +5067,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     <option value="messages">Message Board</option>
                     <option value="events">Event Calendar</option>
                     <option value="team">Team Roster</option>
-                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="ops">Ops Command Center</option> : null}
+                    {appUser?.isAdmin || appUser?.permissions?.ops ? <option value="ops">Ops Command Center</option> : null}
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
                     {appUser?.isAdmin && <option value="inventory">Inventory & Orders</option>}
@@ -6481,6 +6531,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
 const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
+  const [bulkDeleteEmails, setBulkDeleteEmails] = useState('');
+  const [isBulkDeletingUsers, setIsBulkDeletingUsers] = useState(false);
 
 // Pricing & MRR States
   const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
@@ -6798,6 +6850,109 @@ const handleDeleteGlobalUser = async (u) => {
     }
   };
 
+
+  const parseBulkEmailList = (raw) => [...new Set((raw || '')
+    .split(/[\s,;]+/)
+    .map(v => v.toLowerCase().trim())
+    .filter(v => v && v.includes('@'))
+  )];
+
+  const handleBulkDeleteUsersByEmail = async (e) => {
+    e.preventDefault();
+    const emails = parseBulkEmailList(bulkDeleteEmails);
+    if (emails.length === 0) return addToast('Nothing to Delete', 'Paste one or more email addresses first.');
+
+    const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
+    const targets = allUsers.filter(u => emails.includes((u.email || '').toLowerCase().trim()) && !protectedEmails.has((u.email || '').toLowerCase().trim()));
+    const skippedProtected = emails.filter(email => protectedEmails.has(email));
+
+    if (targets.length === 0) {
+      return addToast('No Matches', skippedProtected.length ? 'Only protected admin emails were entered.' : 'No user profiles matched those emails.');
+    }
+
+    const duplicateSummary = Object.entries(targets.reduce((acc, u) => {
+      const key = (u.email || '').toLowerCase().trim();
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {})).map(([email, count]) => `${email} (${count})`).join(', ');
+
+    const confirmText = prompt(`This will delete ${targets.length} user profile(s) matching:
+${duplicateSummary}
+
+Type DELETE USERS to continue.`);
+    if (confirmText !== 'DELETE USERS') return addToast('Aborted', 'Bulk deletion canceled.');
+
+    setIsBulkDeletingUsers(true);
+    let authDeleted = 0;
+    let profileDeleted = 0;
+    const errors = [];
+
+    try {
+      // Preferred path: one secure backend call deletes Firebase Auth users and Firestore profiles.
+      try {
+        const response = await secureFetch('/api/delete-users-bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emails })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+          authDeleted = result.authDeleted ?? result.deletedAuthCount ?? targets.length;
+          profileDeleted = result.profileDeleted ?? result.deletedProfileCount ?? targets.length;
+          addToast('Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
+          setBulkDeleteEmails('');
+          await addDoc(collection(db, 'auditLogs'), {
+            userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
+            details: `Bulk deleted users by email: ${emails.join(', ')}`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', isGhost: appUser?.isGhost || false
+          }).catch(()=>{});
+          return;
+        }
+        throw new Error(result.error || 'Bulk delete API unavailable.');
+      } catch (bulkApiErr) {
+        console.warn('Bulk delete API unavailable, falling back to individual user deletion:', bulkApiErr);
+      }
+
+      // Fallback path: try the existing single delete-user endpoint for each UID, then delete the profile doc.
+      for (const u of targets) {
+        try {
+          try {
+            const response = await secureFetch('/api/delete-user', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetUid: u.id })
+            });
+            if (response.ok) authDeleted++;
+          } catch (authErr) {
+            errors.push(`Auth delete failed for ${u.email}: ${authErr.message}`);
+          }
+          await deleteDoc(doc(db, 'users', u.id));
+          profileDeleted++;
+        } catch (profileErr) {
+          errors.push(`Profile delete failed for ${u.email}: ${profileErr.message}`);
+        }
+      }
+
+      await addDoc(collection(db, 'auditLogs'), {
+        userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
+        details: `Bulk deleted ${profileDeleted} profile(s) by email. Auth deleted: ${authDeleted}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
+        timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', isGhost: appUser?.isGhost || false
+      }).catch(()=>{});
+
+      addToast(errors.length ? 'Partial Delete' : 'Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
+      if (!errors.length) setBulkDeleteEmails('');
+    } finally {
+      setIsBulkDeletingUsers(false);
+    }
+  };
+
+  const loadDuplicateEmailsIntoBulkDelete = () => {
+    if (duplicateEmailGroups.length === 0) return addToast('Clean', 'No duplicate email groups found.');
+    setSubTab('users');
+    setBulkDeleteEmails(duplicateEmailGroups.map(([email]) => email).join('
+'));
+    addToast('Loaded', 'Duplicate email groups loaded into the bulk delete box. Review before deleting.');
+  };
+
   // --- OBLITERATION ENGINE ---
   const handleNukeData = async (e) => {
     e.preventDefault();
@@ -6901,7 +7056,7 @@ const handleDeleteGlobalUser = async (u) => {
       const userIds = [];
       const userPromises = dummyUsers.map(async (u) => {
          const uRef = await addDoc(collection(db, "users"), {
-           ...u, email: u.name.split(' ')[0].toLowerCase() + '@demo.com', restaurantId: rId, isActive: true, password: 'password123'
+           ...u, email: u.name.split(' ')[0].toLowerCase() + '@demo.com', restaurantId: rId, isActive: true, passwordStored: false
          });
          userIds.push({ ...u, id: uRef.id });
       });
@@ -7113,7 +7268,40 @@ const handleDeleteGlobalUser = async (u) => {
     addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'suspended' : 'restored'}.`);
   };
 
-const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Access given. The user MUST log out and log back in to see the new tab.'); };  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
+const handleGrantAccess = async (e) => {
+  e.preventDefault();
+  const targetEmail = adminEmail.toLowerCase().trim();
+  if (!targetEmail) return;
+  try {
+    const response = await secureFetch('/api/admin-access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'grant', email: targetEmail })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Grant access failed.');
+    setAdminEmail('');
+    addToast('Granted', 'Custom-claim access granted. The user must log out and back in.');
+  } catch (err) {
+    addToast('Access Error', err.message || 'Could not grant access. Check /api/admin-access and Vercel env vars.');
+  }
+};
+
+const handleRevokeAccess = async (user) => {
+  if (!window.confirm(`Revoke Admin from ${user.name}?`)) return;
+  try {
+    const response = await secureFetch('/api/admin-access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'revoke', email: user.email })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Revoke access failed.');
+    addToast('Revoked', 'Custom-claim access removed. The user must log out and back in.');
+  } catch (err) {
+    addToast('Access Error', err.message || 'Could not revoke access.');
+  }
+};
 
 // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => {
@@ -7177,7 +7365,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -7806,6 +7994,26 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
             <Search className={T.copper} size={20}/>
             <input type="text" placeholder="Search any user by name, email, role, or ID..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
           </div>
+
+          <form onSubmit={handleBulkDeleteUsersByEmail} className={`${T.card} p-4 border-red-900/40 bg-red-950/10`}>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-black text-sm text-red-300 flex items-center gap-2"><Trash2 size={16}/> Bulk Delete Users by Email</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Paste one or many emails. This is for duplicate/bad accounts. Geoff/current admin emails are protected.</p>
+              </div>
+              {duplicateEmailGroups.length > 0 && <button type="button" onClick={loadDuplicateEmailsIntoBulkDelete} className="text-[9px] font-black uppercase tracking-widest text-red-300 border border-red-900/50 px-2 py-1.5 rounded-lg hover:bg-red-900/20">Load Duplicate Emails</button>}
+            </div>
+            <textarea value={bulkDeleteEmails} onChange={e=>setBulkDeleteEmails(e.target.value)} rows="3" className={`${T.input} font-mono text-xs`} placeholder="bad@email.com
+duplicate@email.com
+another@email.com"></textarea>
+            <div className="flex flex-col sm:flex-row gap-2 mt-3">
+              <button type="submit" disabled={isBulkDeletingUsers} className="flex-1 bg-red-900/30 text-red-200 border border-red-700/60 hover:bg-red-900/50 font-black uppercase tracking-widest py-2.5 rounded-lg text-xs disabled:opacity-50 flex items-center justify-center gap-2">
+                {isBulkDeletingUsers ? <Loader2 className="animate-spin" size={14}/> : <Trash2 size={14}/>} Delete Matching Users
+              </button>
+              <button type="button" onClick={() => setBulkDeleteEmails('')} className={`${T.btnAlt} sm:w-32`}>Clear</button>
+            </div>
+          </form>
+
           <div className={`divide-y ${T.border} ${T.card} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
             {allUsers.filter(u => {
               const restName = restaurants.find(r => r.id === u.restaurantId)?.name || '';
@@ -7928,7 +8136,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
               <div className="relative z-10 mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {missingOwnerAccounts.length > 0 && <div className="bg-amber-900/10 border border-amber-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Missing Owner Accounts</div>{missingOwnerAccounts.slice(0,8).map(r => <div key={r.id} className="text-[10px] text-slate-400 font-bold break-all mb-1">{r.name}: {r.ownerEmail}</div>)}</div>}
                 {usersWithoutRestaurant.length > 0 && <div className="bg-amber-900/10 border border-amber-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Users Without Restaurant</div>{usersWithoutRestaurant.slice(0,8).map(u => <div key={u.id} className="text-[10px] text-slate-400 font-bold break-all mb-1">{u.name || 'Unnamed'}: {u.email || u.id}</div>)}</div>}
-                {duplicateEmailGroups.length > 0 && <div className="bg-red-900/10 border border-red-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-2">Duplicate Email Groups</div>{duplicateEmailGroups.slice(0,8).map(([email, group]) => <div key={email} className="text-[10px] text-slate-400 font-bold break-all mb-1">{email}: {group.length} profiles</div>)}</div>}
+                {duplicateEmailGroups.length > 0 && <div className="bg-red-900/10 border border-red-900/50 rounded-xl p-3"><div className="flex items-center justify-between gap-2 mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-red-400">Duplicate Email Groups</div><button onClick={loadDuplicateEmailsIntoBulkDelete} className="text-[8px] font-black uppercase tracking-widest text-red-300 border border-red-900/50 px-2 py-1 rounded hover:bg-red-900/30">Open Cleanup</button></div>{duplicateEmailGroups.slice(0,8).map(([email, group]) => <div key={email} className="text-[10px] text-slate-400 font-bold break-all mb-1">{email}: {group.length} profiles</div>)}</div>}
               </div>
             )}
           </div>
@@ -8199,7 +8407,7 @@ export default function App() {
   const timePunches = useLiveCollection('timePunches', rId);
   
 // --- LIVE APP USER LOGIC ---
-  const fullGhostPermissions = { schedule: true, inventory: true, prep: true, sales: true, team: true };
+  const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true };
   const realAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
   let liveAppUser = realAppUser;
 
@@ -8681,7 +8889,7 @@ return (
         {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team) && <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />}
         {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
-        {activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isAdmin || liveAppUser?.role === 'Kitchen' || liveAppUser?.permissions?.ops || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.sales || liveAppUser?.permissions?.team) && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
+        {activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops) && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
         {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
@@ -8706,7 +8914,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.0.0 Admin/UI Polish</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.8.0 Admin/UI Polish</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
