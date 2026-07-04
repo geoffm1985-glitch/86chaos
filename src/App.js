@@ -580,7 +580,7 @@ const LoginScreen = ({ setAppUser }) => {
 // SECTION 3: MASTER SCHEDULE HUB (Combined Schedule, TimeClock, Month, Requests)
 // ============================================================================
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
-Tab] = useState('my-schedule');
+Tab;] = useState('my-schedule');
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
