@@ -120,7 +120,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '12.4.1';
+const CURRENT_VERSION = '12.4.2';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -147,7 +147,36 @@ const formatDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('e
 const formatDisplayFullDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 const formatDisplayMonth = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getDate();
-const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; try { let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; } catch(e){ return t; } };
+let ACTIVE_TIME_FORMAT = '12h';
+const getPreferredTimeFormat = (userOrFormat) => {
+  if (userOrFormat === '12h' || userOrFormat === '24h') return userOrFormat;
+  return userOrFormat?.preferences?.timeFormat || ACTIVE_TIME_FORMAT || '12h';
+};
+const formatShortTime = (t, userOrFormat) => {
+  if (!t) return '';
+  if (t === 'CLOSE') return 'CL';
+  try {
+    let [h, m = '00'] = String(t).split(':');
+    h = parseInt(h, 10);
+    if (Number.isNaN(h)) return t;
+    const format = getPreferredTimeFormat(userOrFormat);
+    if (format === '24h') return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`;
+  } catch(e){ return t; }
+};
+const formatClockTime = (value, userOrFormat) => {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const format = getPreferredTimeFormat(userOrFormat);
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: format !== '24h' });
+};
+const formatClockDateTime = (value, userOrFormat) => {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${formatClockTime(d, userOrFormat)}`;
+};
 const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 
@@ -191,7 +220,7 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
         }
       }
       if (text.length > 40) text = text.substring(0, 40) + '...';
-      window.breadcrumbs.push({ time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}), action: 'Clicked', target: text.trim().replace(/\n/g, ' ') });
+      window.breadcrumbs.push({ time: formatClockTime(new Date()) + ':' + String(new Date().getSeconds()).padStart(2, '0'), action: 'Clicked', target: text.trim().replace(/\n/g, ' ') });
       if (window.breadcrumbs.length > 15) window.breadcrumbs.shift();
     }
   }, true);
@@ -897,7 +926,7 @@ const handleOfferSwap = async (shift) => {
               <div className="space-y-2 relative z-10">
                 <button onClick={initiateClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
                   <span>CLOCK OUT</span>
-                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {new Date(activePunch.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(activePunch.clockInTime)}</span>
                 </button>
                 {appUser?.systemSettings?.breaks && (
                   activePunch.status === 'on_break' ? (
@@ -1491,7 +1520,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
                             {n.isImportant && <span className="bg-red-500/10 border border-red-500/40 text-red-300 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1"><Bell size={10}/> Important</span>}
                             {n.isImportant && <span className="bg-emerald-900/10 border border-emerald-900/40 text-emerald-300 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest" title={unreadNames ? `Not seen: ${unreadNames}` : 'Everyone active has seen this'}>Seen {readBy.length}/{users.filter(u => u.isActive !== false).length}</span>}
                           </div>
-                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1" title={new Date(n.date).toLocaleString()}>{getTimeAgo(n.date)}</div>
+                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1" title={formatClockDateTime(n.date)}>{getTimeAgo(n.date)}</div>
                         </div>
                         {appUser?.isAdmin && <button onClick={() => { if(window.confirm('Delete this post?')) deleteDoc(doc(db, 'events', n.id)); }} className="text-slate-600 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-900/20"><Trash2 size={14}/></button>}
                       </div>
@@ -2102,8 +2131,8 @@ const handleExportTimesheets = () => {
        const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0); 
        const rate = emp?.wage || 0; 
        const estCost = hours * rate; 
-       const inStr = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown';
-       const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown');
+       const inStr = p.clockInTime ? formatClockTime(p.clockInTime) : 'Unknown';
+       const outStr = p.status === 'clocked_in' ? 'ON CLOCK' : (p.clockOutTime ? formatClockTime(p.clockOutTime) : 'Unknown');
        
        csv += `"${p.employeeName || 'Unknown'}","${p.date || 'Unknown'}","${inStr}","${outStr}","${p.breakMinutes||0}","${hours.toFixed(2)}","$${rate.toFixed(2)}","$${estCost.toFixed(2)}","$${parseFloat(p.cashTips||0).toFixed(2)}","$${parseFloat(p.creditTips||0).toFixed(2)}"\n`;
     });
@@ -2709,8 +2738,8 @@ const handleExportTimesheets = () => {
                const cost = hours * (emp?.wage || 0);
                const isClockedIn = p.status === 'clocked_in' || p.status === 'on_break';
                
-               const safeIn = p.clockInTime ? new Date(p.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR';
-               const safeOut = isClockedIn ? '---' : (p.clockOutTime ? new Date(p.clockOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ERR');
+               const safeIn = p.clockInTime ? formatClockTime(p.clockInTime) : 'ERR';
+               const safeOut = isClockedIn ? '---' : (p.clockOutTime ? formatClockTime(p.clockOutTime) : 'ERR');
                
                return (
                  <div key={p.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
@@ -3094,7 +3123,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
     if (updatedCompletions[periodKey]) { 
       delete updatedCompletions[periodKey]; 
     } else { 
-      updatedCompletions[periodKey] = { by: appUser.name, at: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }; 
+      updatedCompletions[periodKey] = { by: appUser.name, at: formatClockTime(new Date()) }; 
     }
     await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
   };
@@ -3226,7 +3255,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
                         <div className={`text-[10px] font-black mt-2 inline-flex items-center gap-2 px-2 py-1 rounded-md border ${latestLog.status === 'Safe' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>
                           <span className="text-sm">{latestLog.temp}°F</span> 
                           <span>({latestLog.status})</span>
-                          <span className="opacity-70 font-bold border-l border-current pl-2 ml-1">By {latestLog.loggedBy} at {new Date(latestLog.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                          <span className="opacity-70 font-bold border-l border-current pl-2 ml-1">By {latestLog.loggedBy} at {formatClockTime(latestLog.timestamp)}</span>
                         </div>
                       ) : (
                         <div className="text-[10px] text-slate-500 font-bold mt-2 uppercase tracking-widest">Not logged yet today</div>
@@ -4650,7 +4679,7 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
           <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex flex-wrap items-center gap-2`}>
                     {formatDisplayDate(r.date)} {r.isPartial && <span className={`text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}
                     {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1.5 py-0.5 rounded uppercase tracking-widest text-[8px]">Pending</span>}
-                    {r.submittedAt && <span className="text-slate-500 border-l border-[#2A353D] pl-2 ml-1">Req: {new Date(r.submittedAt).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</span>}
+                    {r.submittedAt && <span className="text-slate-500 border-l border-[#2A353D] pl-2 ml-1">Req: {formatClockDateTime(r.submittedAt)}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -4741,7 +4770,7 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
                       ) : (
                         <div className="text-[9px] text-red-400 font-black uppercase tracking-wider mt-0.5">Full Day Off</div>
                       )}
-                      {r.submittedAt && <div className="text-[9px] font-bold text-slate-500 mt-1">Submitted: {new Date(r.submittedAt).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})}</div>}
+                      {r.submittedAt && <div className="text-[9px] font-bold text-slate-500 mt-1">Submitted: {formatClockDateTime(r.submittedAt)}</div>}
                     </div>
                     <button
                       type="button"
@@ -5871,7 +5900,7 @@ const TabAuditLog = ({ appUser }) => {
                 </div>
               </div>
               <div className={`text-[10px] font-bold ${T.muted} whitespace-nowrap`}>
-                {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                {formatClockDateTime(log.timestamp)}
               </div>
             </div>
           ))}
@@ -6322,7 +6351,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
             {timeline.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No timeline activity for this day yet.</div>}
             {timeline.map((item, idx) => (
               <div key={`${item.type}-${idx}`} className={`${T.row} flex gap-3`}>
-                <div className="text-[10px] font-mono text-[#D4A381] w-16 flex-shrink-0">{new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                <div className="text-[10px] font-mono text-[#D4A381] w-16 flex-shrink-0">{formatClockTime(item.at)}</div>
                 <div className="min-w-0">
                   <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{item.type}</div>
                   <div className="text-sm font-bold text-white truncate">{item.title}</div>
@@ -7403,7 +7432,7 @@ const handleRevokeAccess = async (user) => {
   const formatClientCreatedTimestamp = (value) => {
     const d = parseClientDate(value);
     if (!d) return 'Not stamped yet';
-    return d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return formatClockDateTime(d);
   };
 
   const formatClientCreatedDate = (value) => {
@@ -7496,7 +7525,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     `Duplicate email groups: ${duplicateEmailGroups.length}`,
     `Host: ${envReport.host}`,
     `Browser online: ${envReport.online}`,
-    `Generated: ${new Date().toLocaleString()}`
+    `Generated: ${formatClockDateTime(new Date())}`
   ].join('\n');
 
   const adminRiskQueue = [
@@ -8272,7 +8301,7 @@ another@email.com"></textarea>
                 <div key={log.id} className={`${T.row} flex flex-col gap-2 ${(`${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied')) ? 'bg-red-950/20' : ''}`}>
                   <div className="flex justify-between items-start">
                     <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
-                    <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span>
+                    <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{formatClockDateTime(log.time)}</span>
                   </div>
                   {(log.restaurantId || log.user) && (
                     <div className="text-[9px] mt-1 flex flex-wrap gap-1.5">
@@ -8349,7 +8378,7 @@ another@email.com"></textarea>
                     {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">👻 Ghost Action</span>}
                     <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{log.action}</span>
                   </div>
-                  <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.timestamp).toLocaleString()}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{formatClockDateTime(log.timestamp)}</span>
                 </div>
        <div className="text-xs text-slate-300 font-medium mt-1 break-words whitespace-pre-wrap">
                   {log.details} <span className="text-slate-500 ml-1">Target: [{log.target}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {log.restaurantId}</span>
@@ -8660,7 +8689,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
     const now = new Date();
     try {
       await updateDoc(doc(db, 'timePunches', p.id), { clockOutTime: now.toISOString(), status: 'clocked_out', correctionReason: 'Manager force clock-out', correctedBy: appUser.name || appUser.email, correctedAt: now.toISOString(), isApproved: true });
-      addToast('Clocked Out', `${p.employeeName || 'Employee'} was clocked out at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+      addToast('Clocked Out', `${p.employeeName || 'Employee'} was clocked out at ${formatClockTime(now)}.`);
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -8680,8 +8709,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
     payrollRows.forEach(r => rows.push([
       r.emp.name || r.punch.employeeName || 'Unknown',
       r.punch.date || '',
-      r.punch.clockInTime ? new Date(r.punch.clockInTime).toLocaleString() : '',
-      r.punch.clockOutTime ? new Date(r.punch.clockOutTime).toLocaleString() : '',
+      r.punch.clockInTime ? formatClockDateTime(r.punch.clockInTime) : '',
+      r.punch.clockOutTime ? formatClockDateTime(r.punch.clockOutTime) : '',
       r.punch.breakMinutes || 0,
       r.hours.toFixed(2),
       r.punch.cashTips || 0,
@@ -8734,7 +8763,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 
       {subTab === 'fixer' && <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-1 space-y-3">
-          <div className={`${T.card} p-4`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-2">Needs Attention</div>{exceptionPunches.length === 0 ? <div className="text-sm font-bold text-emerald-400 bg-emerald-900/10 border border-emerald-900/30 rounded-xl p-4">No punch fires right now. The time-clock goblin is asleep.</div> : exceptionPunches.slice(0, 12).map(p => <div key={p.id} className="bg-[#12161A] border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-white text-sm">{p.employeeName || 'Unknown'}</div><div className="text-[10px] text-amber-400 font-black uppercase tracking-widest">{getPunchIssue(p)}</div><div className="text-xs text-slate-400 mt-1">{p.date ? formatDisplayDate(p.date) : 'No date'} • In {toLocalTimeInput(p.clockInTime) || '—'} • Out {toLocalTimeInput(p.clockOutTime) || '—'}</div><div className="flex gap-2 mt-2"><button onClick={() => openEditPunch(p)} className="flex-1 bg-[#1A2126] border border-[#2A353D] rounded-lg py-1.5 text-[10px] font-black text-slate-300 hover:text-[#D4A381]">Fix</button>{['clocked_in','on_break'].includes(p.status) && <button onClick={() => forceOut(p)} className="flex-1 bg-red-900/20 border border-red-900/50 rounded-lg py-1.5 text-[10px] font-black text-red-300">Clock Out</button>}{p.isUnscheduled && !p.isApproved && <button onClick={() => approvePunch(p)} className="flex-1 bg-amber-900/20 border border-amber-900/50 rounded-lg py-1.5 text-[10px] font-black text-amber-300">Approve</button>}</div></div>)}</div>
+          <div className={`${T.card} p-4`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-2">Needs Attention</div>{exceptionPunches.length === 0 ? <div className="text-sm font-bold text-emerald-400 bg-emerald-900/10 border border-emerald-900/30 rounded-xl p-4">No punch fires right now. The time-clock goblin is asleep.</div> : exceptionPunches.slice(0, 12).map(p => <div key={p.id} className="bg-[#12161A] border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-white text-sm">{p.employeeName || 'Unknown'}</div><div className="text-[10px] text-amber-400 font-black uppercase tracking-widest">{getPunchIssue(p)}</div><div className="text-xs text-slate-400 mt-1">{p.date ? formatDisplayDate(p.date) : 'No date'} • In {formatClockTime(p.clockInTime) || '—'} • Out {formatClockTime(p.clockOutTime) || '—'}</div><div className="flex gap-2 mt-2"><button onClick={() => openEditPunch(p)} className="flex-1 bg-[#1A2126] border border-[#2A353D] rounded-lg py-1.5 text-[10px] font-black text-slate-300 hover:text-[#D4A381]">Fix</button>{['clocked_in','on_break'].includes(p.status) && <button onClick={() => forceOut(p)} className="flex-1 bg-red-900/20 border border-red-900/50 rounded-lg py-1.5 text-[10px] font-black text-red-300">Clock Out</button>}{p.isUnscheduled && !p.isApproved && <button onClick={() => approvePunch(p)} className="flex-1 bg-amber-900/20 border border-amber-900/50 rounded-lg py-1.5 text-[10px] font-black text-amber-300">Approve</button>}</div></div>)}</div>
         </div>
         <div className="lg:col-span-2"><PunchTable rows={payrollRows} openEditPunch={openEditPunch} forceOut={forceOut} approvePunch={approvePunch} deletePunch={deletePunch} /></div>
       </div>}
@@ -8770,7 +8799,7 @@ const PunchTable = ({ rows, openEditPunch, forceOut, approvePunch, deletePunch }
       {rows.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-500">No punches match this filter.</div>}
       {rows.map(({ punch:p, emp, hours, pay, tips, issue }) => <div key={p.id} className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-[#12161A]/50">
         <div><div className="font-black text-white text-sm">{emp.name || p.employeeName || 'Unknown'} {issue && <span className="ml-2 text-[8px] bg-amber-500 text-slate-900 px-1.5 py-0.5 rounded uppercase tracking-widest">{issue}</span>}</div><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{p.date ? formatDisplayDate(p.date) : 'No date'} • {emp.role || 'No role'}</div></div>
-        <div className="flex flex-wrap md:flex-nowrap items-center gap-3 text-xs font-mono"><span className="text-emerald-400">IN {toLocalTimeInput(p.clockInTime) || '—'}</span><span className="text-red-400">OUT {toLocalTimeInput(p.clockOutTime) || '—'}</span><span className="text-white">{Math.max(0,hours).toFixed(2)}h</span><span className="text-[#D4A381]">${pay.toFixed(2)}</span><span className="text-slate-400">Tips ${tips.toFixed(2)}</span></div>
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-3 text-xs font-mono"><span className="text-emerald-400">IN {formatClockTime(p.clockInTime) || '—'}</span><span className="text-red-400">OUT {formatClockTime(p.clockOutTime) || '—'}</span><span className="text-white">{Math.max(0,hours).toFixed(2)}h</span><span className="text-[#D4A381]">${pay.toFixed(2)}</span><span className="text-slate-400">Tips ${tips.toFixed(2)}</span></div>
         <div className="flex gap-2"><button onClick={() => openEditPunch(p)} className="p-2 bg-[#12161A] border border-[#2A353D] rounded-lg text-slate-400 hover:text-[#D4A381]"><Edit size={14}/></button>{['clocked_in','on_break'].includes(p.status) && <button onClick={() => forceOut(p)} className="px-2 bg-red-900/20 border border-red-900/50 rounded-lg text-[10px] font-black text-red-300">Out</button>}{p.isUnscheduled && !p.isApproved && <button onClick={() => approvePunch(p)} className="px-2 bg-amber-900/20 border border-amber-900/50 rounded-lg text-[10px] font-black text-amber-300">Approve</button>}<button onClick={() => deletePunch(p)} className="p-2 bg-[#12161A] border border-[#2A353D] rounded-lg text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>
       </div>)}
     </div>
@@ -8990,6 +9019,7 @@ const HELP_ARTICLES = [
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'weekly-maintenance', title:'Weekly database maintenance', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh', body:['86 Chaos does not magically update production databases from the browser. Weekly automatic maintenance requires a scheduled server job.','The weekly maintenance route can stamp each client account with the latest maintenance run and log the result for support.','True Firestore backups are a separate Google Cloud scheduled export, not something the React app should do from a user phone.'] },
+  { id:'new-1242', title:'What changed in version 12.4.2', group:'Release Notes', keywords:'new update 12.4.2 time format 12 hour 24 hour military labor timesheets punches settings preferences', body:['Time format preferences now control schedule times, punch ledger times, Labor & Timesheets displays, Ops timeline times, toast messages, maintenance logs, and payroll CSV exports.','Native time entry fields may still use the device/browser picker, but saved/displayed times honor the selected preference.'] },
   { id:'new-124', title:'What changed in version 12.4.1', group:'Release Notes', keywords:'new update 12.4 bug report help center weekly database maintenance cron', body:['Report a Bug / Error moved out of the side menu and into Help Center.','Help Center now includes a searchable article for weekly database maintenance.','The optional weekly maintenance pack adds a Vercel Cron endpoint for support housekeeping.'] }
 ];
 
@@ -9457,6 +9487,8 @@ if (liveAppUser && clientData) {
        planType: clientData.planType || 'Pro'
      };
   }
+  ACTIVE_TIME_FORMAT = liveAppUser?.preferences?.timeFormat || '12h';
+
   useEffect(() => {
     if (!rId) return;
     
