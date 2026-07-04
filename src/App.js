@@ -98,7 +98,14 @@ const useLiveCollection = (coll, restId) => {
   useEffect(() => {
     if (!restId) { setData([]); return; }
     const q = query(collection(db, coll), where("restaurantId", "==", restId));
-    const unsubscribe = onSnapshot(q, snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubscribe = onSnapshot(
+      q,
+      snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err => {
+        console.error(`Live collection error for ${coll} / ${restId}:`, err);
+        setData([]);
+      }
+    );
     return () => unsubscribe();
   }, [coll, restId]);
   return data;
@@ -187,15 +194,21 @@ const getHoliday = (dateStr) => {
 const logAudit = async (user, action, target, details) => {
   if (!user || !user.restaurantId) return;
   try {
+    const isGhost = !!user.isGhost;
     await addDoc(collection(db, "auditLogs"), {
-      userId: user.id || 'system',
-      userName: user.name || 'System',
+      userId: isGhost ? (user.ghostRealUserId || user.id || 'system') : (user.id || 'system'),
+      userName: isGhost
+        ? `${user.ghostRealUserName || user.name || 'System'} (Ghost${user.ghostTargetUserName ? ` as ${user.ghostTargetUserName}` : ''})`
+        : (user.name || 'System'),
+      ghostTargetUserId: user.ghostTargetUserId || null,
+      ghostTargetUserName: user.ghostTargetUserName || null,
+      ghostWorkspaceId: isGhost ? user.restaurantId : null,
       action,
       target,
       details,
       timestamp: new Date().toISOString(),
       restaurantId: user.restaurantId,
-      isGhost: user.isGhost || false
+      isGhost
     });
   } catch (err) { console.error("Audit log failed:", err); }
 };
@@ -6977,7 +6990,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
 <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-[#D4A381] hover:border-[#D4A381]/50 transition-colors shadow-sm flex items-center gap-1"><Settings size={14} /> Manage</button>
-                    <button onClick={() => { setGhostTenant({ id: r.id, name: r.name }); setActiveTab('published'); }} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
+                    <button onClick={() => { setGhostTenant({ id: r.id, name: r.name, mode: 'workspace' }); setActiveTab('published'); }} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
                 </div>
@@ -7008,7 +7021,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                     <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName} <span className="mx-1">|</span> <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span></div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-<button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
+<button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, mode: 'user', impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
                     <button onClick={() => handleBackupEmployee(u)} className="p-1.5 bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-emerald-400 rounded-lg transition-colors shadow-sm" title="Download User Data JSON">
                       💾
                     </button>
@@ -7317,14 +7330,49 @@ export default function App() {
   const timePunches = useLiveCollection('timePunches', rId);
   
 // --- LIVE APP USER LOGIC ---
-  let liveAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
-  if (ghostTenant && liveAppUser) {
+  const fullGhostPermissions = { schedule: true, inventory: true, prep: true, sales: true, team: true };
+  const realAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
+  let liveAppUser = realAppUser;
+
+  if (ghostTenant && realAppUser) {
+    const ghostWorkspaceId = ghostTenant.id || ghostTenant.restaurantId;
+    const realName = realAppUser.name || realAppUser.email || 'System Admin';
+
     if (ghostTenant.impersonate) {
-       // IMPERSONATION MODE: Inherit exact permissions of target user
-       liveAppUser = { ...ghostTenant.impersonate, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isGhost: true };
+       // USER POSSESSION MODE:
+       // Show the target user's "My Schedule" and profile identity, but keep your support/admin powers
+       // so Schedule Builder, Team, Settings, Sales, Inventory, etc. still load for that workspace.
+       liveAppUser = {
+         ...ghostTenant.impersonate,
+         restaurantId: ghostWorkspaceId,
+         restaurantName: ghostTenant.name,
+         isAdmin: true,
+         isSuperAdmin: realAppUser.isSuperAdmin || realAppUser.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase(),
+         role: `Ghosting ${ghostTenant.impersonate.role || 'User'}`,
+         permissions: { ...fullGhostPermissions, ...(ghostTenant.impersonate.permissions || {}) },
+         isGhost: true,
+         ghostMode: 'user',
+         ghostRealUserId: realAppUser.id,
+         ghostRealUserName: realName,
+         ghostTargetUserId: ghostTenant.impersonate.id,
+         ghostTargetUserName: ghostTenant.impersonate.name || ghostTenant.impersonate.email || 'Target User'
+       };
     } else {
-       // STANDARD GHOST MODE: Enter as a super admin
-       liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'System Administrator', isGhost: true };
+       // WORKSPACE GHOST MODE: Enter the client account as a full support administrator.
+       liveAppUser = {
+         ...realAppUser,
+         restaurantId: ghostWorkspaceId,
+         restaurantName: ghostTenant.name,
+         isAdmin: true,
+         isSuperAdmin: true,
+         role: 'System Administrator',
+         permissions: { ...fullGhostPermissions, ...(realAppUser.permissions || {}) },
+         isGhost: true,
+         ghostMode: 'workspace',
+         ghostRealUserId: realAppUser.id,
+         ghostRealUserName: realName,
+         ghostWorkspaceName: ghostTenant.name
+       };
     }
   }
 
@@ -7565,7 +7613,7 @@ return (
         <div className="bg-gradient-to-r from-purple-900 to-fuchsia-900 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[99999] shadow-2xl uppercase tracking-wider border-b border-fuchsia-500/50">
           <div className="flex items-center gap-2 min-w-0">
             <Moon size={16} className="flex-shrink-0 animate-pulse text-fuchsia-300" />
-            <span className="truncate">GHOST MODE OVERRIDE: {ghostTenant.name}</span>
+            <span className="truncate">GHOST MODE OVERRIDE: {ghostTenant.impersonate ? `${ghostTenant.impersonate.name || ghostTenant.impersonate.email} @ ${ghostTenant.name}` : ghostTenant.name}</span>
           </div>
           <button onClick={() => { setGhostTenant(null); window.history.pushState({ tab: 'godmode' }, '', '?tab=godmode'); setActiveTabState('godmode'); }} className="bg-white text-purple-900 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3">
             EXIT GHOST MODE
@@ -7631,6 +7679,15 @@ return (
       )}
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} addToast={addToast} />    
+
+      {ghostTenant?.impersonate && (
+        <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+          <span>Viewing user: <strong>{ghostTenant.impersonate.name || 'Unnamed'}</strong></span>
+          <span>Email: <strong>{ghostTenant.impersonate.email || 'No email'}</strong></span>
+          <span>Role: <strong>{ghostTenant.impersonate.role || 'No role'}</strong></span>
+          <span>User ID: <strong className="font-mono">{ghostTenant.impersonate.id}</strong></span>
+        </div>
+      )}
       
       {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
