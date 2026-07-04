@@ -120,7 +120,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '12.4.0-labor-schedule-help';
+const CURRENT_VERSION = '12.4.1-help-bug-weekly';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -288,35 +288,9 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, clientFeatures = {}, addToast }) => {
-  const [isBugModalOpen, setIsBugModalOpen] = useState(false);
-  const [bugText, setBugText] = useState('');
-  const [isSubmittingBug, setIsSubmittingBug] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
 
-  const handleBugSubmit = async (e) => {
-    e.preventDefault();
-    if (!bugText.trim()) return;
-    setIsSubmittingBug(true);
-    try {
-      await addDoc(collection(db, "crashReports"), {
-        type: 'user_reported_bug',
-        message: `USER REPORT: ${bugText.trim()}`,
-        user: appUser?.name || 'Unknown',
-        restaurantId: appUser?.restaurantId || 'Unknown',
-        userAgent: navigator.userAgent,
-        screenSize: `${window.innerWidth}x${window.innerHeight}`,
-        time: new Date().toISOString()
-      });
-      setBugText('');
-      setIsBugModalOpen(false);
-      if (addToast) addToast('Report Sent', 'Bug sent directly to the dev team. Thanks!');
-    } catch (err) {
-      if (addToast) addToast('Error', 'Failed to send bug report.');
-    }
-    setIsSubmittingBug(false);
-  };
-
-  if (!isOpen && !isBugModalOpen) return null;
+  if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
   const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
@@ -397,34 +371,11 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
-             <button 
-                onClick={() => { setIsBugModalOpen(true); onClose(); }} 
-                className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
-             >
-                <Bug size={16} /> Report a Bug / Error
-             </button>
-             <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
+             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
             </div>
           </div>
         </div>
       )}
-
-      <Modal isOpen={isBugModalOpen} onClose={() => setIsBugModalOpen(false)} title="Report a Bug">
-        <form onSubmit={handleBugSubmit} className="space-y-4">
-          <p className="text-xs text-slate-300 font-bold">Describe the issue you're facing. This goes directly to the development team.</p>
-          <textarea 
-            value={bugText} 
-            onChange={e => setBugText(e.target.value)} 
-            className={T.input} 
-            rows="4" 
-            placeholder="What went wrong? What did you click before it happened?" 
-            required 
-          ></textarea>
-          <button type="submit" disabled={isSubmittingBug} className={`w-full ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}>
-            {isSubmittingBug ? <Loader2 className="animate-spin" size={18} /> : <><Send size={18} /> Send Report</>}
-          </button>
-        </form>
-      </Modal>
     </>
   );
 };
@@ -9037,14 +8988,44 @@ const HELP_ARTICLES = [
   { id:'permissions', title:'Why can’t someone see a tab?', group:'Permissions', keywords:'tab missing access permission role manage user', body:['Check that the restaurant has the module enabled.','Check the employee’s permissions in Staff Roster.','Some tabs also require Admin, Manager, or specific feature permissions.','Super Admin and Ghost Mode can see more because they are support tools.'] },
   { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Ops Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
-  { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use Report a Bug / Error from the menu when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
-  { id:'new-124', title:'What changed in version 12.4', group:'Release Notes', keywords:'new update 12.4 labor help schedule templates menu search', body:['Labor & Timesheets is now its own menu tab for managers.','The menu has a search bar for tools, tabs, and help topics.','Schedule Builder now includes editable templates, coverage targets, copy previous week, smart fill, and publish preview.','Help Center was updated with searchable articles for every new feature in this build.'] }
+  { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
+  { id:'weekly-maintenance', title:'Weekly database maintenance', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh', body:['86 Chaos does not magically update production databases from the browser. Weekly automatic maintenance requires a scheduled server job.','The weekly maintenance route can stamp each client account with the latest maintenance run and log the result for support.','True Firestore backups are a separate Google Cloud scheduled export, not something the React app should do from a user phone.'] },
+  { id:'new-124', title:'What changed in version 12.4.1', group:'Release Notes', keywords:'new update 12.4 bug report help center weekly database maintenance cron', body:['Report a Bug / Error moved out of the side menu and into Help Center.','Help Center now includes a searchable article for weekly database maintenance.','The optional weekly maintenance pack adds a Vercel Cron endpoint for support housekeeping.'] }
 ];
 
 const TabHelpCenter = ({ appUser, activeTab, addToast }) => {
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('All');
   const [selectedId, setSelectedId] = useState('start');
+  const [bugText, setBugText] = useState('');
+  const [bugCategory, setBugCategory] = useState('Bug / Error');
+  const [isSubmittingBug, setIsSubmittingBug] = useState(false);
+
+  const handleBugSubmit = async (e) => {
+    e.preventDefault();
+    if (!bugText.trim()) return;
+    setIsSubmittingBug(true);
+    try {
+      await addDoc(collection(db, "crashReports"), {
+        type: 'user_reported_bug',
+        category: bugCategory,
+        message: `USER REPORT: ${bugText.trim()}`,
+        user: appUser?.name || 'Unknown',
+        userEmail: appUser?.email || '',
+        restaurantId: appUser?.restaurantId || 'Unknown',
+        activeTab: activeTab || 'help',
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        url: window.location.href,
+        time: new Date().toISOString()
+      });
+      setBugText('');
+      addToast?.('Report Sent', 'Support report sent with device details.');
+    } catch (err) {
+      addToast?.('Error', 'Failed to send support report.');
+    }
+    setIsSubmittingBug(false);
+  };
   const groups = ['All', ...Array.from(new Set(HELP_ARTICLES.map(a => a.group)))];
   const q = query.trim().toLowerCase();
   const articles = HELP_ARTICLES.filter(a => group === 'All' || a.group === group).filter(a => !q || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q));
@@ -9061,7 +9042,24 @@ const TabHelpCenter = ({ appUser, activeTab, addToast }) => {
         <div className="lg:col-span-2 space-y-4">
           <div className={`${T.card} p-5`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{selected.group}</div><h3 className="text-2xl font-black text-white mb-4">{selected.title}</h3><div className="space-y-3">{selected.body.map((line, i) => <div key={i} className="flex gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="w-6 h-6 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-xs font-black flex-shrink-0">{i+1}</div><p className="text-sm font-bold text-slate-200 leading-relaxed">{line}</p></div>)}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { navigator.clipboard?.writeText(`${selected.title}\n\n${selected.body.map((b,i)=>`${i+1}. ${b}`).join('\n')}`); addToast?.('Copied', 'Help article copied.'); }} className={T.btnAlt}>Copy Instructions</button><button onClick={() => window.print()} className={T.btnAlt}>Print</button></div></div>
           <div className={`${T.card} p-4`}><h4 className="font-black text-white mb-2">Page-aware help</h4><p className="text-xs text-slate-400 font-bold mb-3">You are signed in as {appUser?.role || 'Staff'}. Start with these common articles:</p><div className="grid sm:grid-cols-3 gap-2">{(related.length ? related : HELP_ARTICLES.slice(0,3)).map(a => <button key={a.id} onClick={()=>setSelectedId(a.id)} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50"><div className="font-black text-white text-sm">{a.title}</div><div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{a.group}</div></button>)}</div></div>
-          <div className={`${T.card} p-4 border-orange-900/40`}><h4 className="font-black text-orange-300 mb-1">Still stuck?</h4><p className="text-xs text-slate-400 font-bold">Use the menu’s Report a Bug / Error button and include exactly what you clicked, what you expected, and what happened. That sends device and screen details with your report.</p></div>
+          <div className={`${T.card} p-4 border-orange-900/40`}>
+            <div className="flex items-center gap-2 mb-2"><Bug size={18} className="text-orange-300"/><h4 className="font-black text-orange-300">Report a Bug / Error</h4></div>
+            <p className="text-xs text-slate-400 font-bold mb-3">Send problems from here instead of the side menu. Include exactly what you clicked, what you expected, and what happened. Device, screen, page, and browser details are attached automatically.</p>
+            <form onSubmit={handleBugSubmit} className="space-y-3">
+              <select value={bugCategory} onChange={e=>setBugCategory(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                <option>Bug / Error</option>
+                <option>Feature Request</option>
+                <option>Login Problem</option>
+                <option>Permission Problem</option>
+                <option>Data Looks Wrong</option>
+                <option>Mobile Layout Problem</option>
+              </select>
+              <textarea value={bugText} onChange={e=>setBugText(e.target.value)} className={T.input} rows="4" placeholder="Example: I clicked Schedule → Apply Template. It said success, but no shifts appeared." required></textarea>
+              <button type="submit" disabled={isSubmittingBug || !bugText.trim()} className={`w-full ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}>
+                {isSubmittingBug ? <Loader2 className="animate-spin" size={18}/> : <><Send size={18}/> Send Support Report</>}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
