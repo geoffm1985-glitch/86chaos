@@ -90,7 +90,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '11.6.0';
+const CURRENT_VERSION = '11.8.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -1235,46 +1235,42 @@ return (
 
 // --- MESSAGE BOARD ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
-  const [message, setMessage] = useState(''); 
+  const [message, setMessage] = useState('');
   const [replyTexts, setReplyTexts] = useState({});
   const [imageFile, setImageFile] = useState(null);
-const [isUploading, setIsUploading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Tracks which threads are expanded
   const [expandedReplies, setExpandedReplies] = useState({});
+  const messageRetentionDays = parseInt(appUser?.systemSettings?.messageRetentionDays || 30, 10);
+
   const toggleReplies = (id) => setExpandedReplies(prev => ({ ...prev, [id]: !prev[id] }));
-  
-  // --- 30-DAY AUTO-CLEANER ENGINE ---
+
+  // --- AUTO-CLEANER ENGINE ---
   useEffect(() => {
     const cleanOldMessages = async () => {
       const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - messageRetentionDays);
       const oldNotes = events.filter(e => e.type === 'note' && new Date(e.date) < thirtyDaysAgo);
-      
       for (const note of oldNotes) {
-        try {
-          await deleteDoc(doc(db, "events", note.id));
-        } catch(e) { console.warn("Silent cleaner failed to delete note", e); }
+        try { await deleteDoc(doc(db, "events", note.id)); }
+        catch(e) { console.warn("Silent cleaner failed to delete note", e); }
       }
     };
-    
     if (events.length > 0) cleanOldMessages();
-  }, [events]);
+  }, [events, messageRetentionDays]);
 
   const allNotes = events
     .filter(e => e.type === 'note')
     .filter(e => {
-       const term = searchTerm.toLowerCase();
-       return (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term);
+      const term = searchTerm.toLowerCase();
+      return (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term);
     })
     .sort((a,b) => new Date(b.date) - new Date(a.date));
-  
-  const handleBroadcast = async (e) => { 
-    e.preventDefault(); 
-    if(!message.trim() && !imageFile) return; 
+
+  const handleBroadcast = async (e) => {
+    e.preventDefault();
+    if(!message.trim() && !imageFile) return;
     setIsUploading(true);
 
     let photoUrl = null;
@@ -1293,22 +1289,22 @@ const [isUploading, setIsUploading] = useState(false);
     const isCritical = isImportant || message.trim().toLowerCase().includes('!critical');
     const finalMessage = message.trim().replace(/!critical/ig, '').trim();
 
-    await addDoc(collection(db, "events"), { 
-      date: new Date().toISOString(), 
-      title: finalMessage, 
-      type: 'note', 
-      author: appUser.name, 
-      isImportant: isCritical, 
-      restaurantId: appUser.restaurantId, 
+    await addDoc(collection(db, "events"), {
+      date: new Date().toISOString(),
+      title: finalMessage,
+      type: 'note',
+      author: appUser.name,
+      isImportant: isCritical,
+      restaurantId: appUser.restaurantId,
       replies: [],
-      imageUrl: photoUrl 
-    }); 
-    
+      imageUrl: photoUrl
+    });
+
     try {
       await secureFetch('/api/send-push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           restaurantId: appUser.restaurantId,
           type: 'message',
           title: isCritical ? '🚨 CRITICAL ALERT' : `New Message from ${appUser.name.split(' ')[0]}`,
@@ -1319,8 +1315,11 @@ const [isUploading, setIsUploading] = useState(false);
       });
     } catch (err) { console.error("Push failed:", err); }
 
-    setMessage(''); setImageFile(null); setIsUploading(false); setIsImportant(false);
-    addToast('Posted', 'Message sent.'); 
+    setMessage('');
+    setImageFile(null);
+    setIsUploading(false);
+    setIsImportant(false);
+    addToast('Posted', 'Message sent.');
   };
 
   const handleReplyChange = (id, text) => { setReplyTexts(prev => ({ ...prev, [id]: text })); };
@@ -1329,20 +1328,18 @@ const [isUploading, setIsUploading] = useState(false);
     e.preventDefault();
     const text = replyTexts[eventId];
     if (!text || !text.trim()) return;
-
     const targetEvent = events.find(ev => ev.id === eventId);
-    const currentReplies = targetEvent.replies || [];
+    const currentReplies = targetEvent?.replies || [];
     const newReply = { id: Date.now().toString(), author: appUser.name, text: text.trim(), timestamp: new Date().toISOString() };
-
     try {
-        await updateDoc(doc(db, "events", eventId), { replies: [...currentReplies, newReply] });
-        setReplyTexts(prev => ({ ...prev, [eventId]: '' }));
+      await updateDoc(doc(db, "events", eventId), { replies: [...currentReplies, newReply] });
+      setReplyTexts(prev => ({ ...prev, [eventId]: '' }));
     } catch (err) { addToast('Error', 'Could not post reply.'); }
   };
 
-  // Helper for "time ago" formatting (e.g., "2h", "5m")
   const getTimeAgo = (dateString) => {
     const mins = Math.floor((new Date() - new Date(dateString)) / 60000);
+    if (mins < 1) return 'now';
     if (mins < 60) return `${mins}m`;
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `${hours}h`;
@@ -1350,179 +1347,125 @@ const [isUploading, setIsUploading] = useState(false);
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-3 feed-compact">
-      
-      {/* SLEEK SEARCH BAR */}
-      <div className="relative w-full">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
-        <input 
-           type="text" 
-           placeholder="Search announcements..." 
-           value={searchTerm} 
-           onChange={(e)=>setSearchTerm(e.target.value)} 
-           className="w-full pl-11 pr-4 py-3 bg-[#1A2126] border border-[#2A353D] text-white text-sm rounded-full outline-none focus:border-[#D4A381] focus:bg-[#12161A] transition-colors placeholder-slate-500"
-        />
-      </div>
-
-      {/* TIMELINE WRAPPER */}
-      <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl overflow-hidden shadow-xl">
-        
-        {/* TRUE SOCIAL COMPOSE BOX */}
-        <div className="p-3 border-b-4 border-[#12161A] bg-[#1A2126]">
-          <form onSubmit={handleBroadcast}>
-            <div className="flex gap-3">
-              <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-9 h-9 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
-              <div className="flex-1 min-w-0 pt-1">
-                <textarea 
-                  value={message} 
-                  onChange={e=>setMessage(e.target.value)} 
-                  className="w-full bg-transparent text-white text-sm outline-none resize-none min-h-[42px] placeholder-slate-500 leading-snug" 
-                  placeholder="What's happening in the kitchen?"
-                />
-                
-                {imageFile && (
-                  <div className="mb-3 text-xs text-blue-400 font-bold bg-blue-900/10 px-3 py-2 rounded-xl border border-blue-900/30 flex justify-between items-center w-max">
-                    <span className="truncate pr-4 flex items-center gap-2"><Camera size={14}/> {imageFile.name}</span>
-                    <button type="button" onClick={()=>setImageFile(null)} className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"><X size={12}/></button>
-                  </div>
-                )}
-                
-                <div className="flex justify-between items-center pt-2 border-t border-[#2A353D] mt-2">
-                  <div className="flex items-center gap-4">
-                    <label className="text-[#D4A381] hover:text-[#C59373] hover:bg-[#D4A381]/10 p-1.5 rounded-full cursor-pointer transition-colors" title="Attach Photo">
-                      <Camera size={17} />
-                      <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded bg-[#12161A] border-[#2A353D] accent-red-500 cursor-pointer" />
-                      <span className={`text-[11px] font-black uppercase tracking-widest transition-colors ${isImportant ? 'text-red-500' : 'text-slate-500 group-hover:text-slate-300'}`}>High Priority</span>
-                    </label>
-                  </div>
-                  <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-[11px] py-1.5 px-4 rounded-full transition-all disabled:opacity-50`}>
-                    {isUploading ? <Loader2 className="animate-spin" size={16}/> : 'Post'}
-                  </button>
-                </div>
-              </div>
+    <div className="max-w-4xl mx-auto space-y-2 message-pro pb-20">
+      <div className="cockpit-panel rounded-xl overflow-hidden">
+        <div className="p-2.5 sm:p-3 flex flex-col sm:flex-row sm:items-center gap-2 border-b border-[#2A353D] bg-[#12161A]/70">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="h-8 w-8 rounded-lg bg-[#0B0E11] border border-[#2A353D] flex items-center justify-center text-[#D4A381]"><MessageSquare size={16}/></div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-black text-white leading-none">Message Board</h2>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-1">Ops announcements, shift notes, and manager alerts</p>
             </div>
-          </form>
+          </div>
+          <div className="relative sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15}/>
+            <input type="text" placeholder="Search posts..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
+          </div>
+          <div className="hidden md:flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{allNotes.length} visible</div>
         </div>
 
-        {/* THE FLAT FEED */}
-        <div className="divide-y divide-[#2A353D]">
-          {allNotes.length === 0 && (
-            <div className="text-center py-16 bg-[#1A2126]">
-               <MessageSquare size={32} className="mx-auto text-slate-600 mb-3" />
-               <p className="text-sm font-bold text-slate-500">{searchTerm ? 'No announcements matched your search.' : 'The timeline is quiet.'}</p>
+        <form onSubmit={handleBroadcast} className="p-2.5 sm:p-3 bg-[#1A2126]">
+          <div className="flex gap-2.5">
+            <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
+            <div className="flex-1 min-w-0">
+              <textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm outline-none resize-none min-h-[38px] rounded-lg px-3 py-2 placeholder-slate-600 focus:border-[#D4A381] transition-colors" placeholder="Post a clear shift note, 86 item, handoff, or manager update..." />
+              {imageFile && (
+                <div className="mt-2 text-[10px] text-blue-300 font-bold bg-blue-900/10 px-2 py-1.5 rounded-lg border border-blue-900/30 flex justify-between items-center w-full sm:w-max max-w-full">
+                  <span className="truncate pr-3 flex items-center gap-1.5"><Camera size={12}/> {imageFile.name}</span>
+                  <button type="button" onClick={()=>setImageFile(null)} className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"><X size={12}/></button>
+                </div>
+              )}
+              <div className="flex justify-between items-center gap-2 mt-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <label className="h-8 w-8 rounded-lg bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] hover:bg-[#12161A] flex items-center justify-center cursor-pointer transition-colors" title="Attach Photo"><Camera size={15} /><input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} /></label>
+                  <label className={`flex items-center gap-2 cursor-pointer rounded-lg px-2.5 py-2 border transition-colors ${isImportant ? 'bg-red-900/20 border-red-500/50 text-red-300' : 'bg-[#0B0E11] border-[#2A353D] text-slate-400 hover:text-slate-200'}`}>
+                    <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-3.5 h-3.5 rounded bg-[#12161A] border-[#2A353D] accent-red-500 cursor-pointer" />
+                    <span className="text-[9px] font-black uppercase tracking-widest">Priority</span>
+                  </label>
+                </div>
+                <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className="bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-[10px] py-2 px-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  {isUploading ? <Loader2 className="animate-spin" size={14}/> : <><Send size={13}/> Post</>}
+                </button>
+              </div>
             </div>
-          )}
-          
-          {allNotes.map(n => {
-            const authorUser = users.find(u => u.name === n.author);
-            return (
-              <div key={n.id} className={`p-4 sm:p-5 transition-colors ${n.isImportant ? 'bg-red-900/5 hover:bg-red-900/10' : 'bg-[#1A2126] hover:bg-[#1A2126]/80'}`}>
-                
-                {n.isImportant && (
-                  <div className="flex items-center gap-2 text-red-500 mb-2 pl-14">
-                    <Bell size={12} className="animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Important Update</span>
-                  </div>
-                )}
+          </div>
+        </form>
+      </div>
 
-                <div className="flex gap-3 sm:gap-4">
-                  {/* Left Column: Avatar & Thread Line */}
-                  <div className="flex flex-col items-center">
-                    <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-[#2A353D] object-cover bg-[#12161A] flex-shrink-0 ${n.isImportant ? 'ring-2 ring-red-500/50 ring-offset-2 ring-offset-[#1A2126]' : ''}`} alt="pic"/>
-                    {n.replies && n.replies.length > 0 && (
-                       <div className="w-px h-full bg-[#2A353D] mt-2 mb-1 rounded-full"></div>
-                    )}
-                  </div>
+      <div className="space-y-2">
+        {allNotes.length === 0 && (
+          <div className="text-center py-12 bg-[#1A2126] border border-[#2A353D] rounded-xl">
+             <MessageSquare size={28} className="mx-auto text-slate-600 mb-2" />
+             <p className="text-sm font-bold text-slate-500">{searchTerm ? 'No posts matched your search.' : 'No active posts. Clean board, clean shift.'}</p>
+             <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mt-1">Messages auto-archive after {messageRetentionDays} days</p>
+          </div>
+        )}
 
-                  {/* Right Column: Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-1.5 flex-wrap leading-none">
-                         <span className={`font-bold text-[15px] ${n.isImportant ? 'text-red-400' : 'text-white'}`}>{n.author}</span>
-                         <span className="text-slate-500 text-sm">@{n.author.split(' ')[0].toLowerCase()}</span>
-                         <span className="text-slate-600 text-sm">·</span>
-                         <span className="text-slate-500 text-sm hover:underline cursor-pointer" title={new Date(n.date).toLocaleString()}>{getTimeAgo(n.date)}</span>
-                         {authorUser?.isAdmin && <span className="ml-1 bg-[#12161A] border border-[#2A353D] text-[#D4A381] text-[8px] px-1.5 py-0.5 rounded-sm uppercase font-black tracking-widest leading-none align-middle">Admin</span>}
+        {allNotes.map(n => {
+          const authorUser = users.find(u => u.name === n.author);
+          const replies = n.replies || [];
+          return (
+            <div key={n.id} className={`message-card-pro rounded-xl border overflow-hidden transition-colors ${n.isImportant ? 'border-red-500/40 bg-red-950/10' : 'border-[#2A353D] bg-[#1A2126] hover:bg-[#1A2126]/90'}`}>
+              <div className="flex">
+                <div className={`w-1.5 flex-shrink-0 ${n.isImportant ? 'bg-red-500' : 'bg-[#2A353D]'}`}></div>
+                <div className="flex-1 min-w-0 p-2.5 sm:p-3">
+                  <div className="flex items-start gap-2.5">
+                    <img src={getAvatar(n.author, authorUser?.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover bg-[#12161A] flex-shrink-0" alt="pic"/>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between gap-2 items-start">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap leading-none">
+                            <span className={`font-black text-sm ${n.isImportant ? 'text-red-300' : 'text-white'}`}>{n.author || 'Unknown'}</span>
+                            {authorUser?.isAdmin && <span className="bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Admin</span>}
+                            {n.isImportant && <span className="bg-red-500/10 border border-red-500/40 text-red-300 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1"><Bell size={10}/> Important</span>}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1" title={new Date(n.date).toLocaleString()}>{getTimeAgo(n.date)}</div>
+                        </div>
+                        {appUser?.isAdmin && <button onClick={() => { if(window.confirm('Delete this post?')) deleteDoc(doc(db, 'events', n.id)); }} className="text-slate-600 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-900/20"><Trash2 size={14}/></button>}
                       </div>
-                      
-                      {appUser?.isAdmin && (
-                        <button onClick={() => { if(window.confirm("Delete this post?")) deleteDoc(doc(db, "events", n.id)); }} className="text-slate-600 hover:text-red-500 transition-colors p-1 -mr-2">
-                          <Trash2 size={14}/>
+
+                      {n.title && <p className="font-medium text-sm leading-snug text-slate-200 break-words whitespace-pre-wrap mt-2">{n.title}</p>}
+                      {n.imageUrl && <div className="mt-2 rounded-lg overflow-hidden border border-[#2A353D] bg-[#0B0E11] max-w-xl"><img src={n.imageUrl} alt="Attached" className="w-full max-h-[260px] object-cover" /></div>}
+
+                      {replies.length > 0 && (
+                        <button type="button" onClick={() => toggleReplies(n.id)} className="mt-2 flex items-center gap-1.5 text-[10px] font-black text-slate-500 hover:text-[#D4A381] uppercase tracking-widest transition-colors">
+                          <MessageSquare size={13} /> {expandedReplies[n.id] ? 'Hide Thread' : `${replies.length} ${replies.length === 1 ? 'Reply' : 'Replies'}`}
                         </button>
                       )}
-                    </div>
-                    
-                    {/* Post Text */}
-                    {n.title && <p className="font-normal text-[15px] sm:text-base leading-relaxed text-slate-200 break-words whitespace-pre-wrap mt-1">{n.title}</p>}
-                
-                    {/* Post Image */}
-                    {n.imageUrl && (
-                      <div className="mt-3 rounded-2xl overflow-hidden border border-[#2A353D] bg-[#0B0E11]">
-                        <img src={n.imageUrl} alt="Attached" className="w-full max-h-[400px] object-cover" />
-                      </div>
-                    )}
-                
-{/* The Reply Thread (Directly beneath content) */}
-                    {(n.replies && n.replies.length > 0) && (
-                      <div className="mt-4">
-                        {/* The Toggle Button */}
-                        <button 
-                          type="button" 
-                          onClick={() => toggleReplies(n.id)}
-                          className="flex items-center gap-2 text-[11px] font-black text-slate-500 hover:text-[#D4A381] uppercase tracking-widest transition-colors mb-3"
-                        >
-                          <MessageSquare size={14} />
-                          {expandedReplies[n.id] ? 'Hide Replies' : `View ${n.replies.length} Replies`}
-                        </button>
 
-                        {/* The Hidden Thread */}
-                        {expandedReplies[n.id] && (
-                          <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-                            {n.replies.map((r, idx) => (
-                              <div key={r.id} className="flex gap-3">
-                                <img src={getAvatar(r.author, users.find(u => u.name === r.author)?.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0 mt-1" alt="pic"/>
-                                <div className="flex-1 bg-[#12161A] border border-[#2A353D] rounded-2xl rounded-tl-sm px-4 py-3">
-                                  <div className="flex items-center gap-1.5 leading-none mb-1">
-                                    <span className={`font-bold text-sm text-white`}>{r.author}</span>
-                                    <span className="text-slate-500 text-xs">· {getTimeAgo(r.timestamp)}</span>
-                                  </div>
-                                  <div className="text-slate-300 font-normal text-sm leading-relaxed">{r.text}</div>
-                                </div>
+                      {expandedReplies[n.id] && replies.length > 0 && (
+                        <div className="mt-2 space-y-2 border-l border-[#2A353D] pl-3 animate-[slideIn_0.2s_ease-out]">
+                          {replies.map((r) => (
+                            <div key={r.id} className="flex gap-2">
+                              <img src={getAvatar(r.author, users.find(u => u.name === r.author)?.photoURL)} className="w-6 h-6 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
+                              <div className="flex-1 bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2.5 py-2">
+                                <div className="flex items-center gap-1.5 leading-none mb-1"><span className="font-bold text-xs text-white">{r.author}</span><span className="text-slate-500 text-[10px]">· {getTimeAgo(r.timestamp)}</span></div>
+                                <div className="text-slate-300 font-medium text-xs leading-snug">{r.text}</div>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                
-                    {/* Reply Input Box */}
-                    {n.author !== 'System Alert' && (
-                      <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-3 mt-4 items-center">
-                        <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
-                        <div className="relative flex-1">
-                          <input 
-                            type="text" 
-                            placeholder="Reply to thread..." 
-                            value={replyTexts[n.id] || ''} 
-                            onChange={(e) => handleReplyChange(n.id, e.target.value)} 
-                            className="w-full bg-[#12161A] border border-[#2A353D] text-white text-sm font-normal rounded-full pl-4 pr-10 py-2 outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600"
-                          />
-                          <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="absolute right-1 top-1/2 -translate-y-1/2 text-[#D4A381] disabled:opacity-30 hover:bg-[#D4A381]/10 p-1.5 rounded-full transition-colors"><Send size={14}/></button>
+                            </div>
+                          ))}
                         </div>
-                      </form>
-                    )}
+                      )}
+
+                      {n.author !== 'System Alert' && (
+                        <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-2 mt-2 items-center">
+                          <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-6 h-6 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
+                          <div className="relative flex-1">
+                            <input type="text" placeholder="Reply..." value={replyTexts[n.id] || ''} onChange={(e) => handleReplyChange(n.id, e.target.value)} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-xs font-medium rounded-lg pl-3 pr-8 py-1.5 outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
+                            <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="absolute right-1 top-1/2 -translate-y-1/2 text-[#D4A381] disabled:opacity-30 hover:bg-[#D4A381]/10 p-1 rounded-md transition-colors"><Send size={12}/></button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            )
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
     </div>
-  )
+  );
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
@@ -2319,7 +2262,6 @@ const handleExportTimesheets = () => {
       {!hideSubTabs && (
         <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
           <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
-          <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
           {appUser?.isAdmin && (
             <button onClick={() => {
               if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Timesheets & Labor.');
@@ -4490,36 +4432,36 @@ const TabRecipes = ({ appUser, addToast }) => {
           <p className="text-sm font-medium text-slate-500 mt-2">Try adjusting your search or category filter.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {filteredRecipes.map(r => (
-            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="group relative bg-[#1A2126] rounded-xl border border-[#2A353D] hover:border-[#D4A381]/50 overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-200 hover:shadow-[0_8px_24px_rgba(0,0,0,0.24)] hover:-translate-y-0.5">
+            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="recipe-card-v13 group relative bg-[#1A2126] rounded-lg border border-[#2A353D] hover:border-[#D4A381]/50 overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-200 hover:shadow-[0_8px_24px_rgba(0,0,0,0.24)]">
               
               {/* Card Header Pattern */}
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#C59373] to-[#8F6040] opacity-20 group-hover:opacity-100 transition-opacity"></div>
               
-              <div className="p-3.5 flex flex-col flex-grow">
-                <div className="flex justify-between items-start mb-2.5">
-                  <span className="text-[9px] font-black uppercase tracking-widest bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2.5 py-1 rounded-md shadow-sm">
+              <div className="p-2.5 flex flex-col flex-grow">
+                <div className="flex justify-between items-start mb-1.5">
+                  <span className="text-[8px] font-black uppercase tracking-widest bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded shadow-sm">
                     {r.category}
                   </span>
-                  <div className="w-7 h-7 rounded-full bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-slate-400 group-hover:text-[#D4A381] group-hover:bg-[#1A2126] transition-all">
-                    <ChevronRight size={14} />
+                  <div className="w-6 h-6 rounded-full bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-slate-400 group-hover:text-[#D4A381] group-hover:bg-[#1A2126] transition-all">
+                    <ChevronRight size={13} />
                   </div>
                 </div>
                 
-                <h3 className="text-base font-black text-white mb-1.5 leading-tight group-hover:text-[#D4A381] transition-colors line-clamp-2">
+                <h3 className="text-[15px] font-black text-white mb-1 leading-tight group-hover:text-[#D4A381] transition-colors line-clamp-2">
                   {r.title}
                 </h3>
                 
-                <div className="mt-auto pt-3">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 bg-[#12161A] p-2 rounded-lg border border-[#2A353D]">
+                <div className="mt-auto pt-2">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 bg-[#12161A] p-1.5 rounded-md border border-[#2A353D]">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Clock size={14} className="text-slate-500 shrink-0"/> 
+                      <Clock size={12} className="text-slate-500 shrink-0"/> 
                       <span className="truncate">{r.prepTime}</span>
                     </div>
                     <div className="w-px h-4 bg-[#2A353D] shrink-0 mx-2"></div>
                     <div className="flex items-center gap-2 min-w-0">
-                      <Scale size={14} className="text-slate-500 shrink-0"/> 
+                      <Scale size={12} className="text-slate-500 shrink-0"/> 
                       <span className="truncate">Yield: {r.yieldAmt}</span>
                     </div>
                   </div>
@@ -4779,6 +4721,11 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
+  const [uiDensity, setUiDensity] = useState(prefs.uiDensity || 'compact');
+  const [recipeDensity, setRecipeDensity] = useState(prefs.recipeDensity || 'tight');
+  const [messageView, setMessageView] = useState(prefs.messageView || 'ops');
+  const [motionMode, setMotionMode] = useState(prefs.motionMode || 'normal');
+  const [showMorningBrief, setShowMorningBrief] = useState(prefs.showMorningBrief ?? true);
   const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
   const [payPeriodStart, setPayPeriodStart] = useState(prefs.payPeriodStart || 'Monday');
   
@@ -4910,7 +4857,8 @@ const handleEnableNotifications = async () => {
         preferences: { 
           ...prefs, defaultTab, timeFormat, payPeriod, payPeriodStart,
           notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
-          notifLevel, keywords, muteOnDaysOff, dndEnabled, dndStart, dndEnd
+          notifLevel, keywords, muteOnDaysOff, dndEnabled, dndStart, dndEnd,
+          uiDensity, recipeDensity, messageView, motionMode, showMorningBrief
         }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
@@ -5085,7 +5033,43 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     <option value="24h">24-Hour (Military)</option>
                   </select>
                 </div>
+                <div>
+                  <label className={T.label}>Interface Density</label>
+                  <select value={uiDensity} onChange={e => setUiDensity(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="ultra">Ultra Compact</option>
+                    <option value="compact">Compact</option>
+                    <option value="comfortable">Comfortable</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Recipe Card Density</label>
+                  <select value={recipeDensity} onChange={e => setRecipeDensity(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="tight">Tight Cards</option>
+                    <option value="standard">Standard Cards</option>
+                    <option value="detail">Detail Heavy</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Message Board Style</label>
+                  <select value={messageView} onChange={e => setMessageView(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="ops">Professional Ops Feed</option>
+                    <option value="social">Social Feed</option>
+                    <option value="compact">Compact Log</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Animation Level</label>
+                  <select value={motionMode} onChange={e => setMotionMode(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="normal">Normal Cockpit Glow</option>
+                    <option value="reduced">Reduced Motion</option>
+                    <option value="quiet">Quiet Mode</option>
+                  </select>
+                </div>
               </div>
+              <label className="mt-3 flex items-center gap-2 p-2.5 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors">
+                <input type="checkbox" checked={showMorningBrief} onChange={e => setShowMorningBrief(e.target.checked)} className="w-4 h-4 accent-[#8F6040]" />
+                <span className="text-xs font-bold text-slate-300">Show Morning Brief / Ops summary first when available</span>
+              </label>
             </div>
             {appUser?.isAdmin && (
               <div className="pt-2">
@@ -7092,6 +7076,48 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     return !!last && (nowMs - last) < 15 * 60 * 1000 && !isOnlineNow(u);
   }).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
 
+  const pastDueWorkspaces = restaurants.filter(r => r.billingStatus === 'Past Due');
+  const readOnlyWorkspaces = restaurants.filter(r => r.isReadOnly);
+  const trialWorkspaces = restaurants.filter(r => r.billingStatus === 'Trial');
+  const adminUsers = allUsers.filter(u => u.isAdmin || u.isSuperAdmin);
+  const inactiveUsers = allUsers.filter(u => {
+    const last = getLastActiveMs(u);
+    return !last || (nowMs - last) > 30 * 86400000;
+  });
+  const moduleList = ['schedule','events','ops','messages','prep','recipes','inventory','sales','team','maintenance','timesheets'];
+  const featureAdoption = moduleList.map(feat => ({ feat, count: restaurants.filter(r => r.features?.[feat] !== false).length })).sort((a,b) => b.count - a.count);
+  const platformSnapshot = [
+    `86 Chaos Platform Snapshot`,
+    `Version: ${CURRENT_VERSION}`,
+    `Online users: ${onlineUsers.length}`,
+    `Active workspaces: ${restaurants.filter(r=>r.isActive).length}`,
+    `Paid workspaces: ${paidWorkspaces}`,
+    `Trials: ${trialWorkspaces.length}`,
+    `Past due: ${pastDueWorkspaces.length}`,
+    `Network users: ${allUsers.length}`,
+    `Admins: ${adminUsers.length}`,
+    `Crashes 24h: ${crashes24h}`,
+    `Push opt-in: ${pushOptInRate}%`,
+    `Generated: ${new Date().toLocaleString()}`
+  ].join('\n');
+
+  const handleCopyPlatformSnapshot = async () => {
+    try {
+      await navigator.clipboard.writeText(platformSnapshot);
+      addToast('Copied', 'Platform snapshot copied to clipboard.');
+    } catch (err) {
+      addToast('Snapshot', platformSnapshot);
+    }
+  };
+
+  const handleClearAllBanners = async () => {
+    if (!window.confirm('Clear system banners from every workspace?')) return;
+    try {
+      await Promise.all(restaurants.map(r => updateDoc(doc(db, 'restaurants', r.id), { systemBanner: null })));
+      addToast('Banners Cleared', 'All workspace banners were removed.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
   const SignalPip = ({ tone = 'emerald', label = 'LIVE', hot = false }) => {
     const colors = tone === 'red' ? 'text-red-400 bg-red-500' : tone === 'amber' ? 'text-amber-400 bg-amber-400' : tone === 'blue' ? 'text-blue-400 bg-blue-400' : tone === 'purple' ? 'text-fuchsia-400 bg-fuchsia-400' : 'text-emerald-400 bg-emerald-400';
     return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'slow'} ${colors.split(' ')[1]}`}></span>{label}</span>;
@@ -7147,6 +7173,35 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
         {[{id:'overview', label:'Metrics'}, {id:'live', label:'Live Ops'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
+      </div>
+
+      {/* ADMIN QUICK CONTROL SWITCHBOARD */}
+      <div className="cockpit-panel rounded-xl p-3 overflow-hidden relative">
+        <div className="absolute inset-0 cockpit-grid opacity-35 pointer-events-none"></div>
+        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <SignalPip tone="emerald" label="CONTROL TOWER" hot />
+              <SignalPip tone={pastDueWorkspaces.length ? 'amber' : 'emerald'} label={`${pastDueWorkspaces.length} PAST DUE`} hot={pastDueWorkspaces.length > 0} />
+              <SignalPip tone={readOnlyWorkspaces.length ? 'blue' : 'emerald'} label={`${readOnlyWorkspaces.length} READ ONLY`} />
+              <SignalPip tone="purple" label={`${adminUsers.length} ADMINS`} />
+            </div>
+            <div className="text-sm font-black text-white">Quick Control Switchboard</div>
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest truncate">Snapshot, banners, live radar, client controls, and support jump points.</div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full lg:w-auto">
+            <button type="button" onClick={handleCopyPlatformSnapshot} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] hover:border-[#D4A381]/50 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Copy Snapshot</button>
+            <button type="button" onClick={handleClearAllBanners} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-red-300 hover:border-red-500/50 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Clear Banners</button>
+            <button type="button" onClick={() => setSubTab('live')} className="bg-emerald-900/15 border border-emerald-900/50 text-emerald-300 hover:bg-emerald-900/30 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Live Radar</button>
+            <button type="button" onClick={() => setSubTab('tenants')} className="bg-purple-900/15 border border-purple-900/50 text-purple-300 hover:bg-purple-900/30 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Clients</button>
+          </div>
+        </div>
+        <div className="relative mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Trials</div><div className="text-xl font-black text-white">{trialWorkspaces.length}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Inactive Users</div><div className="text-xl font-black text-white">{inactiveUsers.length}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Modules Live</div><div className="text-xl font-black text-white">{featureAdoption.filter(f => f.count > 0).length}/{moduleList.length}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Version</div><div className="text-xl font-black text-white">{CURRENT_VERSION}</div></div>
+        </div>
       </div>
 
 <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
@@ -7215,6 +7270,34 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
                   <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
+                </div>
+
+                {/* WORKSPACE EXPERIENCE PREFERENCES */}
+                <div className="pt-4 border-t border-[#2A353D]">
+                  <label className={T.label}>Workspace Experience Preferences</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+                    <div><label className={T.label}>Default Landing Tab</label><select value={editingRest.systemSettings?.defaultLandingTab || 'published'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), defaultLandingTab: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="published">Time Clock & Shifts</option><option value="ops">Ops Command Center</option><option value="messages">Message Board</option><option value="events">Event Calendar</option><option value="prep">Prep & Tasks</option><option value="recipes">Recipe Book</option><option value="inventory">Inventory</option><option value="schedule">Schedule Builder</option></select></div>
+                    <div><label className={T.label}>UI Density</label><select value={editingRest.systemSettings?.uiDensity || 'compact'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), uiDensity: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="ultra">Ultra Compact</option><option value="compact">Compact</option><option value="comfortable">Comfortable</option></select></div>
+                    <div><label className={T.label}>Recipe Density</label><select value={editingRest.systemSettings?.recipeCardDensity || 'tight'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), recipeCardDensity: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="tight">Tight</option><option value="standard">Standard</option><option value="detail">Detail Heavy</option></select></div>
+                    <div><label className={T.label}>Message Retention Days</label><input type="number" min="1" max="365" value={editingRest.systemSettings?.messageRetentionDays || 30} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), messageRetentionDays: parseInt(e.target.value) || 30 }})} className={`${T.input} py-2 text-xs`} /></div>
+                    <div><label className={T.label}>Shift Claim Policy</label><select value={editingRest.systemSettings?.shiftClaimPolicy || 'managerReview'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), shiftClaimPolicy: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="managerReview">Manager Review</option><option value="autoApproveSameRole">Auto-Approve Same Role</option><option value="autoApproveAll">Auto-Approve All</option></select></div>
+                    <div><label className={T.label}>Cockpit Lights</label><select value={editingRest.systemSettings?.cockpitLights || 'full'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), cockpitLights: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="full">747 Full Glow</option><option value="reduced">Reduced Motion</option><option value="quiet">Quiet</option></select></div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    {[
+                      ['showOpsBriefOnLogin', 'Show Ops Brief on login'],
+                      ['requirePhotoForMaintenance', 'Require photo on maintenance closeout'],
+                      ['enableReadReceipts', 'Enable message read receipts'],
+                      ['compactMobileCards', 'Force compact mobile cards'],
+                      ['allowStaffRecipeSuggestions', 'Allow staff recipe suggestions'],
+                      ['managerPinRequiredForDelete', 'Require manager PIN for destructive actions']
+                    ].map(([key, label]) => (
+                      <label key={key} className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors cursor-pointer ${editingRest.systemSettings?.[key] ? 'bg-[#8F6040]/20 border-[#C59373]' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
+                        <input type="checkbox" checked={!!editingRest.systemSettings?.[key]} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), [key]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
+                        <span className={`text-[11px] font-bold ${editingRest.systemSettings?.[key] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 {/* QUICK APPLY TIER PRESETS */}
@@ -8209,7 +8292,7 @@ useEffect(() => {
   }
 
 return (
-    <div className={`ui-v12-compact cockpit-shell min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div className={`ui-v13-polished ui-v12-compact cockpit-shell ui-density-${liveAppUser?.preferences?.uiDensity || clientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || clientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || clientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST MODE BANNER */}
       {ghostTenant && (
@@ -8247,6 +8330,19 @@ return (
         .cockpit-panel { background: linear-gradient(180deg, rgba(26,33,38,.98), rgba(15,19,24,.98)); border: 1px solid #2A353D; box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 16px 50px rgba(0,0,0,.18); }
         .cockpit-grid { background-image: radial-gradient(circle at 1px 1px, rgba(212,163,129,.09) 1px, transparent 0); background-size: 18px 18px; }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .message-pro .message-card-pro { box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 8px 28px rgba(0,0,0,.12); }
+        .recipe-card-v13 { min-height: 0 !important; }
+        .recipe-card-v13:hover { transform: translateY(-1px); }
+        .ui-density-ultra main { padding: .6rem !important; }
+        .ui-density-ultra .p-5 { padding: .75rem !important; }
+        .ui-density-ultra .p-4 { padding: .65rem !important; }
+        .ui-density-ultra .gap-4 { gap: .55rem !important; }
+        .ui-density-comfortable main { padding: 1.25rem !important; }
+        .recipe-density-tight .recipe-card-v13 .p-2\.5 { padding: .55rem !important; }
+        .recipe-density-tight .recipe-card-v13 h3 { font-size: .9rem !important; line-height: 1.15rem !important; }
+        .motion-reduced .cockpit-light::after, .motion-quiet .cockpit-light::after { animation: none !important; opacity: .08 !important; }
+        .motion-quiet .cockpit-light { box-shadow: none !important; }
+
         @media (max-width: 640px) {
           .ui-v12-compact main { padding: .75rem !important; }
           .ui-v12-compact button:not(.no-compact) { min-height: 32px !important; padding-top: .42rem !important; padding-bottom: .42rem !important; }
@@ -8387,7 +8483,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.7.0 Cockpit UI</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.8.0 Admin/UI Polish</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
