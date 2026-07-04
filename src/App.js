@@ -5956,8 +5956,7 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 // ============================================================================
 // ADMINISTRATOR COMMAND CENTER (Formerly God Mode)
 // ============================================================================
-const TabGodMode = ({ appUser, addToast, setGhostTenant }) => {
-  const [subTab, setSubTab] = useState('overview');
+const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
   
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
@@ -6951,11 +6950,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                     <div className="text-[9px] text-slate-500 font-medium mt-1.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
-<button onClick={() => {
-  setGhostTenant({ id: r.id, name: r.name });
-  window.history.pushState({ tab: 'published' }, '', '?tab=published');
-  window.dispatchEvent(new PopStateEvent('popstate', { state: { tab: 'published' } }));
-}} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>                    <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors shadow-sm">Manage</button>
+<button onClick={() => { setGhostTenant({ id: r.id, name: r.name }); setActiveTab('published'); }} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button> className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>                    <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-white transition-colors shadow-sm">Manage</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
                 </div>
@@ -6986,11 +6981,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                     <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName} <span className="mx-1">|</span> <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span></div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-<button onClick={() => {
-  setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u });
-  window.history.pushState({ tab: 'published' }, '', '?tab=published');
-  window.dispatchEvent(new PopStateEvent('popstate', { state: { tab: 'published' } }));
-}} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">                      <Moon size={14} /> Possess
+<button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button> className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1">                      <Moon size={14} /> Possess
                     </button>
                     <button onClick={() => handleBackupEmployee(u)} className="p-1.5 bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-emerald-400 rounded-lg transition-colors shadow-sm" title="Download User Data JSON">
                       💾
@@ -7655,8 +7646,7 @@ return (
         {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
-        {activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} />}
-{activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} />}      </main>
+{activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}{activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} />}      </main>
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
