@@ -288,8 +288,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
-  const isTrueGod = (appUser?.email || '').toLowerCase() === 'geoffm1985@gmail.com' || appUser?.isSuperAdmin === true || (appUser?.name || '').includes('Geoff');
-  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
+const isTrueGod =
+  (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() ||
+  appUser?.isSuperAdmin === true;  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
   if (appUser?.isAdmin || isTrueGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
