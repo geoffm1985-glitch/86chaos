@@ -580,7 +580,9 @@ const LoginScreen = ({ setAppUser }) => {
 // SECTION 3: MASTER SCHEDULE HUB (Combined Schedule, TimeClock, Month, Requests)
 // ============================================================================
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
-  const [subTab, setSubTab] = useState('my-schedule');
+  const [subTab, setSubconst [subTab, setSubTab] = useState(() => {
+  return appUser?.isGhost && appUser?.role === 'System Administrator' ? 'full-schedule' : 'my-schedule';
+});Tab] = useState('my-schedule');
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
@@ -7644,8 +7646,7 @@ return (
         {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
-{activeTabState === 'godmode' && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}{activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog appUser={liveAppUser} />}      </main>
-      <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
+{(activeTabState === 'godmode' || (ghostTenant && activeTabState === 'published')) && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}      <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
             <div className="bg-[#12161A] p-1.5 rounded-full
