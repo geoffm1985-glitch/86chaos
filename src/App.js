@@ -21,17 +21,17 @@ const customMapIcon = new L.Icon({
 // --- Master Theme (Mapped to Image 6187_2.png) ---
 const T = {
   bg: "bg-[#12161A] text-slate-100",
-  card: "bg-[#1A2126] border border-[#2A353D] shadow-xl rounded-2xl",
+  card: "bg-[#1A2126] border border-[#2A353D] shadow-lg rounded-xl",
   border: "border-[#2A353D]",
   copper: "text-[#D4A381]",
   grad: "bg-gradient-to-r from-[#C59373] to-[#8F6040]",
-  btn: "bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 font-black uppercase tracking-wider rounded-xl shadow-lg hover:opacity-90 transition-all px-4 py-3 text-sm text-center",
-  btnAlt: "bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-4 py-2.5 text-sm",
-  input: "w-full p-3 bg-[#12161A] border border-[#2A353D] text-white rounded-xl outline-none focus:border-[#D4A381] transition-colors font-medium",
+  btn: "bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 font-black uppercase tracking-wider rounded-lg shadow-md hover:opacity-90 transition-all px-3 py-2 text-xs text-center",
+  btnAlt: "bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-lg hover:text-[#D4A381] transition-all px-3 py-2 text-xs",
+  input: "w-full p-2.5 bg-[#12161A] border border-[#2A353D] text-white rounded-lg outline-none focus:border-[#D4A381] transition-colors font-medium text-sm",
   label: "block text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1",
   muted: "text-slate-400",
-  th: "bg-[#12161A] border-b border-[#2A353D] text-[10px] font-black text-[#D4A381] uppercase tracking-widest p-3",
-  row: "hover:bg-[#12161A]/50 border-b border-[#2A353D] transition-colors p-3",
+  th: "bg-[#12161A] border-b border-[#2A353D] text-[10px] font-black text-[#D4A381] uppercase tracking-widest p-2.5",
+  row: "hover:bg-[#12161A]/50 border-b border-[#2A353D] transition-colors p-2.5",
 };
 
 // --- Firebase Initialization ---
@@ -90,7 +90,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '11.5.0';
+const CURRENT_VERSION = '11.9.1';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -277,7 +277,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if (isEnabled('ops') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.ops || perms.prep || perms.inventory || perms.sales || perms.team)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+  if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
@@ -286,7 +288,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
-  const isTrueGod = (appUser?.email || '').toLowerCase() === 'geoffm1985@gmail.com' || appUser?.isSuperAdmin === true || (appUser?.name || '').includes('Geoff');
+  const isTrueGod = (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin === true;
   if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
   if (appUser?.isAdmin || isTrueGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
@@ -1233,46 +1235,42 @@ return (
 
 // --- MESSAGE BOARD ---
 const TabMessages = ({ events, appUser, users, addToast }) => {
-  const [message, setMessage] = useState(''); 
+  const [message, setMessage] = useState('');
   const [replyTexts, setReplyTexts] = useState({});
   const [imageFile, setImageFile] = useState(null);
-const [isUploading, setIsUploading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Tracks which threads are expanded
   const [expandedReplies, setExpandedReplies] = useState({});
+  const messageRetentionDays = parseInt(appUser?.systemSettings?.messageRetentionDays || 30, 10);
+
   const toggleReplies = (id) => setExpandedReplies(prev => ({ ...prev, [id]: !prev[id] }));
-  
-  // --- 30-DAY AUTO-CLEANER ENGINE ---
+
+  // --- AUTO-CLEANER ENGINE ---
   useEffect(() => {
     const cleanOldMessages = async () => {
       const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - messageRetentionDays);
       const oldNotes = events.filter(e => e.type === 'note' && new Date(e.date) < thirtyDaysAgo);
-      
       for (const note of oldNotes) {
-        try {
-          await deleteDoc(doc(db, "events", note.id));
-        } catch(e) { console.warn("Silent cleaner failed to delete note", e); }
+        try { await deleteDoc(doc(db, "events", note.id)); }
+        catch(e) { console.warn("Silent cleaner failed to delete note", e); }
       }
     };
-    
     if (events.length > 0) cleanOldMessages();
-  }, [events]);
+  }, [events, messageRetentionDays]);
 
   const allNotes = events
     .filter(e => e.type === 'note')
     .filter(e => {
-       const term = searchTerm.toLowerCase();
-       return (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term);
+      const term = searchTerm.toLowerCase();
+      return (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term);
     })
     .sort((a,b) => new Date(b.date) - new Date(a.date));
-  
-  const handleBroadcast = async (e) => { 
-    e.preventDefault(); 
-    if(!message.trim() && !imageFile) return; 
+
+  const handleBroadcast = async (e) => {
+    e.preventDefault();
+    if(!message.trim() && !imageFile) return;
     setIsUploading(true);
 
     let photoUrl = null;
@@ -1291,22 +1289,22 @@ const [isUploading, setIsUploading] = useState(false);
     const isCritical = isImportant || message.trim().toLowerCase().includes('!critical');
     const finalMessage = message.trim().replace(/!critical/ig, '').trim();
 
-    await addDoc(collection(db, "events"), { 
-      date: new Date().toISOString(), 
-      title: finalMessage, 
-      type: 'note', 
-      author: appUser.name, 
-      isImportant: isCritical, 
-      restaurantId: appUser.restaurantId, 
+    await addDoc(collection(db, "events"), {
+      date: new Date().toISOString(),
+      title: finalMessage,
+      type: 'note',
+      author: appUser.name,
+      isImportant: isCritical,
+      restaurantId: appUser.restaurantId,
       replies: [],
-      imageUrl: photoUrl 
-    }); 
-    
+      imageUrl: photoUrl
+    });
+
     try {
       await secureFetch('/api/send-push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           restaurantId: appUser.restaurantId,
           type: 'message',
           title: isCritical ? '🚨 CRITICAL ALERT' : `New Message from ${appUser.name.split(' ')[0]}`,
@@ -1317,8 +1315,11 @@ const [isUploading, setIsUploading] = useState(false);
       });
     } catch (err) { console.error("Push failed:", err); }
 
-    setMessage(''); setImageFile(null); setIsUploading(false); setIsImportant(false);
-    addToast('Posted', 'Message sent.'); 
+    setMessage('');
+    setImageFile(null);
+    setIsUploading(false);
+    setIsImportant(false);
+    addToast('Posted', 'Message sent.');
   };
 
   const handleReplyChange = (id, text) => { setReplyTexts(prev => ({ ...prev, [id]: text })); };
@@ -1327,20 +1328,18 @@ const [isUploading, setIsUploading] = useState(false);
     e.preventDefault();
     const text = replyTexts[eventId];
     if (!text || !text.trim()) return;
-
     const targetEvent = events.find(ev => ev.id === eventId);
-    const currentReplies = targetEvent.replies || [];
+    const currentReplies = targetEvent?.replies || [];
     const newReply = { id: Date.now().toString(), author: appUser.name, text: text.trim(), timestamp: new Date().toISOString() };
-
     try {
-        await updateDoc(doc(db, "events", eventId), { replies: [...currentReplies, newReply] });
-        setReplyTexts(prev => ({ ...prev, [eventId]: '' }));
+      await updateDoc(doc(db, "events", eventId), { replies: [...currentReplies, newReply] });
+      setReplyTexts(prev => ({ ...prev, [eventId]: '' }));
     } catch (err) { addToast('Error', 'Could not post reply.'); }
   };
 
-  // Helper for "time ago" formatting (e.g., "2h", "5m")
   const getTimeAgo = (dateString) => {
     const mins = Math.floor((new Date() - new Date(dateString)) / 60000);
+    if (mins < 1) return 'now';
     if (mins < 60) return `${mins}m`;
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `${hours}h`;
@@ -1348,184 +1347,130 @@ const [isUploading, setIsUploading] = useState(false);
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      
-      {/* SLEEK SEARCH BAR */}
-      <div className="relative w-full">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
-        <input 
-           type="text" 
-           placeholder="Search announcements..." 
-           value={searchTerm} 
-           onChange={(e)=>setSearchTerm(e.target.value)} 
-           className="w-full pl-11 pr-4 py-3 bg-[#1A2126] border border-[#2A353D] text-white text-sm rounded-full outline-none focus:border-[#D4A381] focus:bg-[#12161A] transition-colors placeholder-slate-500"
-        />
-      </div>
-
-      {/* TIMELINE WRAPPER */}
-      <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl overflow-hidden shadow-xl">
-        
-        {/* TRUE SOCIAL COMPOSE BOX */}
-        <div className="p-4 border-b-4 border-[#12161A] bg-[#1A2126]">
-          <form onSubmit={handleBroadcast}>
-            <div className="flex gap-3">
-              <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-12 h-12 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
-              <div className="flex-1 min-w-0 pt-1">
-                <textarea 
-                  value={message} 
-                  onChange={e=>setMessage(e.target.value)} 
-                  className="w-full bg-transparent text-white text-lg outline-none resize-none min-h-[60px] placeholder-slate-500 leading-snug" 
-                  placeholder="What's happening in the kitchen?"
-                />
-                
-                {imageFile && (
-                  <div className="mb-3 text-xs text-blue-400 font-bold bg-blue-900/10 px-3 py-2 rounded-xl border border-blue-900/30 flex justify-between items-center w-max">
-                    <span className="truncate pr-4 flex items-center gap-2"><Camera size={14}/> {imageFile.name}</span>
-                    <button type="button" onClick={()=>setImageFile(null)} className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"><X size={12}/></button>
-                  </div>
-                )}
-                
-                <div className="flex justify-between items-center pt-2 border-t border-[#2A353D] mt-2">
-                  <div className="flex items-center gap-4">
-                    <label className="text-[#D4A381] hover:text-[#C59373] hover:bg-[#D4A381]/10 p-2 rounded-full cursor-pointer transition-colors" title="Attach Photo">
-                      <Camera size={20} />
-                      <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} />
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-4 h-4 rounded bg-[#12161A] border-[#2A353D] accent-red-500 cursor-pointer" />
-                      <span className={`text-[11px] font-black uppercase tracking-widest transition-colors ${isImportant ? 'text-red-500' : 'text-slate-500 group-hover:text-slate-300'}`}>High Priority</span>
-                    </label>
-                  </div>
-                  <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className={`bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-xs py-2 px-6 rounded-full transition-all disabled:opacity-50`}>
-                    {isUploading ? <Loader2 className="animate-spin" size={16}/> : 'Post'}
-                  </button>
-                </div>
-              </div>
+    <div className="max-w-4xl mx-auto space-y-2 message-pro pb-20">
+      <div className="cockpit-panel rounded-xl overflow-hidden">
+        <div className="p-2.5 sm:p-3 flex flex-col sm:flex-row sm:items-center gap-2 border-b border-[#2A353D] bg-[#12161A]/70">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="h-8 w-8 rounded-lg bg-[#0B0E11] border border-[#2A353D] flex items-center justify-center text-[#D4A381]"><MessageSquare size={16}/></div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-black text-white leading-none">Message Board</h2>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-1">Ops announcements, shift notes, and manager alerts</p>
             </div>
-          </form>
+          </div>
+          <div className="relative sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15}/>
+            <input type="text" placeholder="Search posts..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
+          </div>
+          <div className="hidden md:flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{allNotes.length} visible</div>
         </div>
 
-        {/* THE FLAT FEED */}
-        <div className="divide-y divide-[#2A353D]">
-          {allNotes.length === 0 && (
-            <div className="text-center py-16 bg-[#1A2126]">
-               <MessageSquare size={32} className="mx-auto text-slate-600 mb-3" />
-               <p className="text-sm font-bold text-slate-500">{searchTerm ? 'No announcements matched your search.' : 'The timeline is quiet.'}</p>
+        <form onSubmit={handleBroadcast} className="p-2.5 sm:p-3 bg-[#1A2126]">
+          <div className="flex gap-2.5">
+            <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
+            <div className="flex-1 min-w-0">
+              <textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm outline-none resize-none min-h-[38px] rounded-lg px-3 py-2 placeholder-slate-600 focus:border-[#D4A381] transition-colors" placeholder="Post a clear shift note, 86 item, handoff, or manager update..." />
+              {imageFile && (
+                <div className="mt-2 text-[10px] text-blue-300 font-bold bg-blue-900/10 px-2 py-1.5 rounded-lg border border-blue-900/30 flex justify-between items-center w-full sm:w-max max-w-full">
+                  <span className="truncate pr-3 flex items-center gap-1.5"><Camera size={12}/> {imageFile.name}</span>
+                  <button type="button" onClick={()=>setImageFile(null)} className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"><X size={12}/></button>
+                </div>
+              )}
+              <div className="flex justify-between items-center gap-2 mt-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <label className="h-8 w-8 rounded-lg bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] hover:bg-[#12161A] flex items-center justify-center cursor-pointer transition-colors" title="Attach Photo"><Camera size={15} /><input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} /></label>
+                  <label className={`flex items-center gap-2 cursor-pointer rounded-lg px-2.5 py-2 border transition-colors ${isImportant ? 'bg-red-900/20 border-red-500/50 text-red-300' : 'bg-[#0B0E11] border-[#2A353D] text-slate-400 hover:text-slate-200'}`}>
+                    <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-3.5 h-3.5 rounded bg-[#12161A] border-[#2A353D] accent-red-500 cursor-pointer" />
+                    <span className="text-[9px] font-black uppercase tracking-widest">Priority</span>
+                  </label>
+                </div>
+                <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className="bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-[10px] py-2 px-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  {isUploading ? <Loader2 className="animate-spin" size={14}/> : <><Send size={13}/> Post</>}
+                </button>
+              </div>
             </div>
-          )}
-          
-          {allNotes.map(n => {
-            const authorUser = users.find(u => u.name === n.author);
-            return (
-              <div key={n.id} className={`p-4 sm:p-5 transition-colors ${n.isImportant ? 'bg-red-900/5 hover:bg-red-900/10' : 'bg-[#1A2126] hover:bg-[#1A2126]/80'}`}>
-                
-                {n.isImportant && (
-                  <div className="flex items-center gap-2 text-red-500 mb-2 pl-14">
-                    <Bell size={12} className="animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Important Update</span>
-                  </div>
-                )}
+          </div>
+        </form>
+      </div>
 
-                <div className="flex gap-3 sm:gap-4">
-                  {/* Left Column: Avatar & Thread Line */}
-                  <div className="flex flex-col items-center">
-                    <img src={getAvatar(n.author, authorUser?.photoURL)} className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border border-[#2A353D] object-cover bg-[#12161A] flex-shrink-0 ${n.isImportant ? 'ring-2 ring-red-500/50 ring-offset-2 ring-offset-[#1A2126]' : ''}`} alt="pic"/>
-                    {n.replies && n.replies.length > 0 && (
-                       <div className="w-px h-full bg-[#2A353D] mt-2 mb-1 rounded-full"></div>
-                    )}
-                  </div>
+      <div className="space-y-2">
+        {allNotes.length === 0 && (
+          <div className="text-center py-12 bg-[#1A2126] border border-[#2A353D] rounded-xl">
+             <MessageSquare size={28} className="mx-auto text-slate-600 mb-2" />
+             <p className="text-sm font-bold text-slate-500">{searchTerm ? 'No posts matched your search.' : 'No active posts. Clean board, clean shift.'}</p>
+             <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mt-1">Messages auto-archive after {messageRetentionDays} days</p>
+          </div>
+        )}
 
-                  {/* Right Column: Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-1.5 flex-wrap leading-none">
-                         <span className={`font-bold text-[15px] ${n.isImportant ? 'text-red-400' : 'text-white'}`}>{n.author}</span>
-                         <span className="text-slate-500 text-sm">@{n.author.split(' ')[0].toLowerCase()}</span>
-                         <span className="text-slate-600 text-sm">·</span>
-                         <span className="text-slate-500 text-sm hover:underline cursor-pointer" title={new Date(n.date).toLocaleString()}>{getTimeAgo(n.date)}</span>
-                         {authorUser?.isAdmin && <span className="ml-1 bg-[#12161A] border border-[#2A353D] text-[#D4A381] text-[8px] px-1.5 py-0.5 rounded-sm uppercase font-black tracking-widest leading-none align-middle">Admin</span>}
+        {allNotes.map(n => {
+          const authorUser = users.find(u => u.name === n.author);
+          const replies = n.replies || [];
+          return (
+            <div key={n.id} className={`message-card-pro rounded-xl border overflow-hidden transition-colors ${n.isImportant ? 'border-red-500/40 bg-red-950/10' : 'border-[#2A353D] bg-[#1A2126] hover:bg-[#1A2126]/90'}`}>
+              <div className="flex">
+                <div className={`w-1.5 flex-shrink-0 ${n.isImportant ? 'bg-red-500' : 'bg-[#2A353D]'}`}></div>
+                <div className="flex-1 min-w-0 p-2.5 sm:p-3">
+                  <div className="flex items-start gap-2.5">
+                    <img src={getAvatar(n.author, authorUser?.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover bg-[#12161A] flex-shrink-0" alt="pic"/>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between gap-2 items-start">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap leading-none">
+                            <span className={`font-black text-sm ${n.isImportant ? 'text-red-300' : 'text-white'}`}>{n.author || 'Unknown'}</span>
+                            {authorUser?.isAdmin && <span className="bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Admin</span>}
+                            {n.isImportant && <span className="bg-red-500/10 border border-red-500/40 text-red-300 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1"><Bell size={10}/> Important</span>}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1" title={new Date(n.date).toLocaleString()}>{getTimeAgo(n.date)}</div>
+                        </div>
+                        {appUser?.isAdmin && <button onClick={() => { if(window.confirm('Delete this post?')) deleteDoc(doc(db, 'events', n.id)); }} className="text-slate-600 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-900/20"><Trash2 size={14}/></button>}
                       </div>
-                      
-                      {appUser?.isAdmin && (
-                        <button onClick={() => { if(window.confirm("Delete this post?")) deleteDoc(doc(db, "events", n.id)); }} className="text-slate-600 hover:text-red-500 transition-colors p-1 -mr-2">
-                          <Trash2 size={14}/>
+
+                      {n.title && <p className="font-medium text-sm leading-snug text-slate-200 break-words whitespace-pre-wrap mt-2">{n.title}</p>}
+                      {n.imageUrl && <div className="mt-2 rounded-lg overflow-hidden border border-[#2A353D] bg-[#0B0E11] max-w-xl"><img src={n.imageUrl} alt="Attached" className="w-full max-h-[260px] object-cover" /></div>}
+
+                      {replies.length > 0 && (
+                        <button type="button" onClick={() => toggleReplies(n.id)} className="mt-2 flex items-center gap-1.5 text-[10px] font-black text-slate-500 hover:text-[#D4A381] uppercase tracking-widest transition-colors">
+                          <MessageSquare size={13} /> {expandedReplies[n.id] ? 'Hide Thread' : `${replies.length} ${replies.length === 1 ? 'Reply' : 'Replies'}`}
                         </button>
                       )}
-                    </div>
-                    
-                    {/* Post Text */}
-                    {n.title && <p className="font-normal text-[15px] sm:text-base leading-relaxed text-slate-200 break-words whitespace-pre-wrap mt-1">{n.title}</p>}
-                
-                    {/* Post Image */}
-                    {n.imageUrl && (
-                      <div className="mt-3 rounded-2xl overflow-hidden border border-[#2A353D] bg-[#0B0E11]">
-                        <img src={n.imageUrl} alt="Attached" className="w-full max-h-[400px] object-cover" />
-                      </div>
-                    )}
-                
-{/* The Reply Thread (Directly beneath content) */}
-                    {(n.replies && n.replies.length > 0) && (
-                      <div className="mt-4">
-                        {/* The Toggle Button */}
-                        <button 
-                          type="button" 
-                          onClick={() => toggleReplies(n.id)}
-                          className="flex items-center gap-2 text-[11px] font-black text-slate-500 hover:text-[#D4A381] uppercase tracking-widest transition-colors mb-3"
-                        >
-                          <MessageSquare size={14} />
-                          {expandedReplies[n.id] ? 'Hide Replies' : `View ${n.replies.length} Replies`}
-                        </button>
 
-                        {/* The Hidden Thread */}
-                        {expandedReplies[n.id] && (
-                          <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-                            {n.replies.map((r, idx) => (
-                              <div key={r.id} className="flex gap-3">
-                                <img src={getAvatar(r.author, users.find(u => u.name === r.author)?.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0 mt-1" alt="pic"/>
-                                <div className="flex-1 bg-[#12161A] border border-[#2A353D] rounded-2xl rounded-tl-sm px-4 py-3">
-                                  <div className="flex items-center gap-1.5 leading-none mb-1">
-                                    <span className={`font-bold text-sm text-white`}>{r.author}</span>
-                                    <span className="text-slate-500 text-xs">· {getTimeAgo(r.timestamp)}</span>
-                                  </div>
-                                  <div className="text-slate-300 font-normal text-sm leading-relaxed">{r.text}</div>
-                                </div>
+                      {expandedReplies[n.id] && replies.length > 0 && (
+                        <div className="mt-2 space-y-2 border-l border-[#2A353D] pl-3 animate-[slideIn_0.2s_ease-out]">
+                          {replies.map((r) => (
+                            <div key={r.id} className="flex gap-2">
+                              <img src={getAvatar(r.author, users.find(u => u.name === r.author)?.photoURL)} className="w-6 h-6 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
+                              <div className="flex-1 bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2.5 py-2">
+                                <div className="flex items-center gap-1.5 leading-none mb-1"><span className="font-bold text-xs text-white">{r.author}</span><span className="text-slate-500 text-[10px]">· {getTimeAgo(r.timestamp)}</span></div>
+                                <div className="text-slate-300 font-medium text-xs leading-snug">{r.text}</div>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                
-                    {/* Reply Input Box */}
-                    {n.author !== 'System Alert' && (
-                      <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-3 mt-4 items-center">
-                        <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
-                        <div className="relative flex-1">
-                          <input 
-                            type="text" 
-                            placeholder="Reply to thread..." 
-                            value={replyTexts[n.id] || ''} 
-                            onChange={(e) => handleReplyChange(n.id, e.target.value)} 
-                            className="w-full bg-[#12161A] border border-[#2A353D] text-white text-sm font-normal rounded-full pl-4 pr-10 py-2 outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600"
-                          />
-                          <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="absolute right-1 top-1/2 -translate-y-1/2 text-[#D4A381] disabled:opacity-30 hover:bg-[#D4A381]/10 p-1.5 rounded-full transition-colors"><Send size={14}/></button>
+                            </div>
+                          ))}
                         </div>
-                      </form>
-                    )}
+                      )}
+
+                      {n.author !== 'System Alert' && (
+                        <form onSubmit={(e) => handleSendReply(e, n.id)} className="flex gap-2 mt-2 items-center">
+                          <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-6 h-6 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="pic"/>
+                          <div className="relative flex-1">
+                            <input type="text" placeholder="Reply..." value={replyTexts[n.id] || ''} onChange={(e) => handleReplyChange(n.id, e.target.value)} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-xs font-medium rounded-lg pl-3 pr-8 py-1.5 outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
+                            <button type="submit" disabled={!replyTexts[n.id]?.trim()} className="absolute right-1 top-1/2 -translate-y-1/2 text-[#D4A381] disabled:opacity-30 hover:bg-[#D4A381]/10 p-1 rounded-md transition-colors"><Send size={12}/></button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            )
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
     </div>
-  )
+  );
 };
 
 // --- SCHEDULE MAKER (Monthly View, Single Page Desktop, Scrolling Mobile) ---
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser }) => {
-  const [subTab, setSubTab] = useState('schedule'); 
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, initialSubTab = 'schedule', hideSubTabs = false }) => {
+  const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
   const [presetShift, setPresetShift] = useState('Custom'); 
@@ -2314,18 +2259,19 @@ const handleExportTimesheets = () => {
       </Modal>
 
 {/* TOP NAVIGATION TOGGLE */}
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
-        <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
-        <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
-        {appUser?.isAdmin && (
-          <button onClick={() => {
-            if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Timesheets & Labor.');
-            setSubTab('timesheets');
-          }} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 cursor-not-allowed border border-[#2A353D]' : ''}`}>
-            {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Timesheets (Elite)' : 'Timesheets & Labor'}
-          </button>
-        )}
-      </div>
+      {!hideSubTabs && (
+        <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
+          <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
+          {appUser?.isAdmin && (
+            <button onClick={() => {
+              if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Timesheets & Labor.');
+              setSubTab('timesheets');
+            }} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 cursor-not-allowed border border-[#2A353D]' : ''}`}>
+              {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Timesheets (Elite)' : 'Timesheets & Labor'}
+            </button>
+          )}
+        </div>
+      )}
 
       {subTab === 'schedule' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
@@ -4400,12 +4346,12 @@ const TabRecipes = ({ appUser, addToast }) => {
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-6xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
       
       {/* THE NEW SLEEK CONTROL PANEL */}
-      <div className="bg-[#1A2126] border border-[#2A353D] rounded-3xl shadow-xl overflow-hidden mb-6">
+      <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-lg overflow-hidden mb-4">
         {/* Search / Filter Area */}
-        <div className="p-4 sm:p-5 flex flex-col md:flex-row gap-4 border-b border-[#2A353D] bg-[#12161A]/50">
+        <div className="p-3 sm:p-4 flex flex-col md:flex-row gap-3 border-b border-[#2A353D] bg-[#12161A]/50">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
             <input 
@@ -4486,36 +4432,36 @@ const TabRecipes = ({ appUser, addToast }) => {
           <p className="text-sm font-medium text-slate-500 mt-2">Try adjusting your search or category filter.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {filteredRecipes.map(r => (
-            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="group relative bg-[#1A2126] rounded-2xl border border-[#2A353D] hover:border-[#D4A381]/50 overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.3)] hover:-translate-y-1">
+            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="recipe-card-v13 group relative bg-[#1A2126] rounded-lg border border-[#2A353D] hover:border-[#D4A381]/50 overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-200 hover:shadow-[0_8px_24px_rgba(0,0,0,0.24)]">
               
               {/* Card Header Pattern */}
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#C59373] to-[#8F6040] opacity-20 group-hover:opacity-100 transition-opacity"></div>
               
-              <div className="p-5 flex flex-col flex-grow">
-                <div className="flex justify-between items-start mb-4">
-                  <span className="text-[9px] font-black uppercase tracking-widest bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2.5 py-1 rounded-md shadow-sm">
+              <div className="p-2.5 flex flex-col flex-grow">
+                <div className="flex justify-between items-start mb-1.5">
+                  <span className="text-[8px] font-black uppercase tracking-widest bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded shadow-sm">
                     {r.category}
                   </span>
-                  <div className="w-8 h-8 rounded-full bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-slate-400 group-hover:text-[#D4A381] group-hover:bg-[#1A2126] transition-all">
-                    <ChevronRight size={14} />
+                  <div className="w-6 h-6 rounded-full bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-slate-400 group-hover:text-[#D4A381] group-hover:bg-[#1A2126] transition-all">
+                    <ChevronRight size={13} />
                   </div>
                 </div>
                 
-                <h3 className="text-xl font-black text-white mb-2 leading-tight group-hover:text-[#D4A381] transition-colors line-clamp-2">
+                <h3 className="text-[15px] font-black text-white mb-1 leading-tight group-hover:text-[#D4A381] transition-colors line-clamp-2">
                   {r.title}
                 </h3>
                 
-                <div className="mt-auto pt-5">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-400 bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+                <div className="mt-auto pt-2">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 bg-[#12161A] p-1.5 rounded-md border border-[#2A353D]">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Clock size={14} className="text-slate-500 shrink-0"/> 
+                      <Clock size={12} className="text-slate-500 shrink-0"/> 
                       <span className="truncate">{r.prepTime}</span>
                     </div>
                     <div className="w-px h-4 bg-[#2A353D] shrink-0 mx-2"></div>
                     <div className="flex items-center gap-2 min-w-0">
-                      <Scale size={14} className="text-slate-500 shrink-0"/> 
+                      <Scale size={12} className="text-slate-500 shrink-0"/> 
                       <span className="truncate">Yield: {r.yieldAmt}</span>
                     </div>
                   </div>
@@ -4775,6 +4721,11 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
   const [timeFormat, setTimeFormat] = useState(prefs.timeFormat || '12h');
+  const [uiDensity, setUiDensity] = useState(prefs.uiDensity || 'compact');
+  const [recipeDensity, setRecipeDensity] = useState(prefs.recipeDensity || 'tight');
+  const [messageView, setMessageView] = useState(prefs.messageView || 'ops');
+  const [motionMode, setMotionMode] = useState(prefs.motionMode || 'normal');
+  const [showMorningBrief, setShowMorningBrief] = useState(prefs.showMorningBrief ?? true);
   const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
   const [payPeriodStart, setPayPeriodStart] = useState(prefs.payPeriodStart || 'Monday');
   
@@ -4906,7 +4857,8 @@ const handleEnableNotifications = async () => {
         preferences: { 
           ...prefs, defaultTab, timeFormat, payPeriod, payPeriodStart,
           notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
-          notifLevel, keywords, muteOnDaysOff, dndEnabled, dndStart, dndEnd
+          notifLevel, keywords, muteOnDaysOff, dndEnabled, dndStart, dndEnd,
+          uiDensity, recipeDensity, messageView, motionMode, showMorningBrief
         }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
@@ -5063,10 +5015,15 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                   <select value={defaultTab} onChange={e => setDefaultTab(e.target.value)} className={`${T.input} py-2 text-sm`}>
                     <option value="published">My Schedule</option>
                     <option value="messages">Message Board</option>
+                    <option value="events">Event Calendar</option>
                     <option value="team">Team Roster</option>
+                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="ops">Ops Command Center</option> : null}
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
+                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
+                    {appUser?.isAdmin && <option value="inventory">Inventory & Orders</option>}
                     {appUser?.isAdmin && <option value="schedule">Master Schedule</option>}
                     {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
+                    {appUser?.isAdmin && <option value="maintenance">Maintenance Log</option>}
                   </select>
                 </div>
                 <div>
@@ -5076,7 +5033,43 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     <option value="24h">24-Hour (Military)</option>
                   </select>
                 </div>
+                <div>
+                  <label className={T.label}>Interface Density</label>
+                  <select value={uiDensity} onChange={e => setUiDensity(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="ultra">Ultra Compact</option>
+                    <option value="compact">Compact</option>
+                    <option value="comfortable">Comfortable</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Recipe Card Density</label>
+                  <select value={recipeDensity} onChange={e => setRecipeDensity(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="tight">Tight Cards</option>
+                    <option value="standard">Standard Cards</option>
+                    <option value="detail">Detail Heavy</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Message Board Style</label>
+                  <select value={messageView} onChange={e => setMessageView(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="ops">Professional Ops Feed</option>
+                    <option value="social">Social Feed</option>
+                    <option value="compact">Compact Log</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Animation Level</label>
+                  <select value={motionMode} onChange={e => setMotionMode(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="normal">Normal Cockpit Glow</option>
+                    <option value="reduced">Reduced Motion</option>
+                    <option value="quiet">Quiet Mode</option>
+                  </select>
+                </div>
               </div>
+              <label className="mt-3 flex items-center gap-2 p-2.5 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors">
+                <input type="checkbox" checked={showMorningBrief} onChange={e => setShowMorningBrief(e.target.checked)} className="w-4 h-4 accent-[#8F6040]" />
+                <span className="text-xs font-bold text-slate-300">Show Morning Brief / Ops summary first when available</span>
+              </label>
             </div>
             {appUser?.isAdmin && (
               <div className="pt-2">
@@ -5824,6 +5817,400 @@ const TabAuditLog = ({ appUser }) => {
 };
 
 // --- SALES & TRENDS TAB ---
+
+// ============================================================================
+// OPS COMMAND CENTER
+// A rescue-safe "kitchen brain" layer that ties existing modules together
+// without forcing a folder refactor yet. Uses existing Firestore collections.
+// ============================================================================
+const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast }) => {
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId);
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId);
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId);
+  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId);
+  const tasks = useLiveCollection('tasks', appUser?.restaurantId);
+  const recipes = useLiveCollection('recipes', appUser?.restaurantId);
+
+  const today = currentDate || getToday();
+  const todayDate = new Date(today + 'T12:00:00');
+  const yesterdayDate = new Date(todayDate);
+  yesterdayDate.setDate(todayDate.getDate() - 1);
+  const yesterday = formatDate(yesterdayDate);
+  const todayName = todayDate.toLocaleDateString('en-US', { weekday: 'long' });
+  const monthStr = getMonthStr(today);
+
+  const sameDay = (date) => date === today;
+  const openMaintenance = maintenanceLogs.filter(l => (l.status || 'Reported') !== 'Resolved');
+  const criticalMaintenance = openMaintenance.filter(l => l.urgency === 'Critical' || l.urgency === 'High');
+  const lowStockItems = inventoryItems
+    .filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0))
+    .sort((a, b) => ((Number(a.currentStock || 0) / Math.max(1, Number(a.parLevel || 1))) - (Number(b.currentStock || 0) / Math.max(1, Number(b.parLevel || 1)))));
+  const pendingOrderItems = inventoryItems.filter(i => Number(i.pendingQty || 0) > 0);
+  const todayWaste = wasteLogs.filter(w => w.date === today);
+  const todayEvents = events.filter(e => (e.date || '').startsWith(today) || e.date === today);
+  const importantEvents = todayEvents.filter(e => e.isImportant || (e.title || '').toLowerCase().includes('86'));
+  const todayShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const activePunches = timePunches.filter(p => p.date === today && ['clocked_in', 'on_break'].includes(p.status));
+  const yesterdaySales = sales.find(s => s.date === yesterday);
+  const todaySales = sales.find(s => s.date === today);
+  const monthSales = sales.filter(s => (s.date || '').startsWith(monthStr));
+
+  const parseShiftHours = (start, end) => {
+    if (!start || !end) return 0;
+    const [sh, sm] = String(start).split(':').map(Number);
+    let eh = 23; let em = 0;
+    if (end !== 'CLOSE') {
+      const parts = String(end).split(':').map(Number);
+      eh = parts[0]; em = parts[1] || 0;
+    }
+    const startM = (sh * 60) + (sm || 0);
+    let endM = (eh * 60) + (em || 0);
+    if (endM <= startM) endM += 24 * 60;
+    return Math.max(0, (endM - startM) / 60);
+  };
+
+  const punchHours = (p) => {
+    if (!p.clockInTime) return 0;
+    const end = p.clockOutTime ? new Date(p.clockOutTime) : new Date();
+    const rawMins = (end - new Date(p.clockInTime)) / 60000;
+    return Math.max(0, (rawMins - Number(p.breakMinutes || 0)) / 60);
+  };
+
+  const todayLaborCost = timePunches.filter(p => p.date === today).reduce((sum, p) => {
+    const emp = users.find(u => u.id === p.employeeId);
+    return sum + (punchHours(p) * Number(emp?.wage || 0));
+  }, 0);
+
+  const taskPeriodKey = (task, dateStr) => {
+    if ((task.frequency || 'daily') === 'daily') return dateStr;
+    if (task.frequency === 'weekly') {
+      const d = new Date(dateStr + 'T12:00:00');
+      const day = d.getDay();
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+      return formatDate(d);
+    }
+    if (task.frequency === 'monthly') return dateStr.substring(0, 7);
+    return dateStr;
+  };
+
+  const taskIsDueToday = (task) => {
+    if ((task.frequency || 'daily') === 'daily') return true;
+    if (task.frequency === 'weekly') return !task.targetDay || task.targetDay === todayName;
+    if (task.frequency === 'monthly') return String(task.targetDate || '1') === String(todayDate.getDate());
+    return true;
+  };
+
+  const dueTasks = tasks.filter(taskIsDueToday);
+  const doneTasks = dueTasks.filter(t => !!t.completions?.[taskPeriodKey(t, today)]);
+  const openTasks = dueTasks.filter(t => !t.completions?.[taskPeriodKey(t, today)]);
+  const taskPct = dueTasks.length ? Math.round((doneTasks.length / dueTasks.length) * 100) : 100;
+
+  const todayMs = new Date(today + 'T12:00:00').getTime();
+  const overduePm = pmSchedules.filter(pm => {
+    if (!pm.lastCompleted) return true;
+    const lastMs = new Date(pm.lastCompleted + 'T12:00:00').getTime();
+    const daysSince = Math.floor((todayMs - lastMs) / 86400000);
+    return (Number(pm.frequencyDays || 30) - daysSince) <= 0;
+  });
+
+  const avgMonthSales = monthSales.length ? monthSales.reduce((s, d) => s + Number(d.grossSales || 0), 0) / monthSales.length : 0;
+  const sameWeekdaySales = sales.filter(s => {
+    if (!s.date || s.date >= today) return false;
+    return new Date(s.date + 'T12:00:00').getDay() === todayDate.getDay();
+  }).slice(-8);
+  const forecastSales = sameWeekdaySales.length
+    ? sameWeekdaySales.reduce((sum, s) => sum + Number(s.grossSales || 0), 0) / sameWeekdaySales.length
+    : avgMonthSales;
+
+  const laborPct = todaySales?.grossSales ? Math.round((todayLaborCost / Math.max(1, Number(todaySales.grossSales))) * 1000) / 10 : null;
+  const wasteCost = todayWaste.reduce((sum, w) => sum + Number(w.cost || 0), 0);
+
+  const healthParts = [
+    Math.max(0, 100 - (lowStockItems.length * 4)),
+    Math.max(0, 100 - (openMaintenance.length * 8) - (criticalMaintenance.length * 10)),
+    taskPct,
+    Math.max(0, 100 - (todayWaste.length * 6)),
+    laborPct === null ? 90 : Math.max(0, 100 - Math.max(0, laborPct - 25) * 4)
+  ];
+  const healthScore = Math.round(healthParts.reduce((a,b)=>a+b,0) / healthParts.length);
+
+  const prepForecast = [
+    { label: 'Forecast Sales', value: forecastSales ? `$${Math.round(forecastSales).toLocaleString()}` : 'Needs sales data', note: sameWeekdaySales.length ? 'Based on same weekdays' : 'Based on month average' },
+    { label: 'Kitchen Coverage', value: `${todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length} scheduled`, note: `${todayShifts.length} total published shifts` },
+    { label: 'Prep Pressure', value: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High' : forecastSales > 0 ? 'Normal' : 'Unknown', note: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'Sales forecast is above normal' : 'No spike detected' },
+    { label: 'Low Stock', value: `${lowStockItems.length} items`, note: lowStockItems.slice(0, 3).map(i => i.name).join(', ') || 'No par issues found' }
+  ];
+
+  const scheduleWarnings = users.map(u => {
+    const weekShifts = shifts.filter(s => s.employeeId === u.id && s.isPublished && s.date >= today && s.date <= formatDate(new Date(todayDate.getTime() + 6 * 86400000)));
+    const hours = weekShifts.reduce((sum, s) => sum + parseShiftHours(s.startTime, s.endTime), 0);
+    const days = [...new Set(weekShifts.map(s => s.date))].length;
+    if (hours >= 38) return `${u.name} is projected near overtime (${hours.toFixed(1)} hrs).`;
+    if (days >= 6) return `${u.name} has ${days} scheduled days in the next week.`;
+    return null;
+  }).filter(Boolean).slice(0, 5);
+
+  const recommendations = [
+    lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.',
+    criticalMaintenance.length > 0 ? `Maintenance first: ${criticalMaintenance[0].equipment} needs attention.` : 'No high priority equipment fires showing.',
+    openTasks.length > 0 ? `Opening focus: ${openTasks.slice(0, 3).map(t => t.title).join(', ')}.` : 'Today\'s task list is buttoned up.',
+    overduePm.length > 0 ? `Preventative maintenance overdue: ${overduePm.slice(0, 2).map(pm => pm.title).join(', ')}.` : 'Preventative maintenance countdowns are quiet.',
+    scheduleWarnings.length > 0 ? scheduleWarnings[0] : 'No immediate schedule warnings detected.'
+  ];
+
+  const timeline = [
+    ...timePunches.filter(p => p.date === today).map(p => ({
+      at: p.clockOutTime || p.clockInTime,
+      type: p.clockOutTime ? 'Clock Out' : 'Clock In',
+      title: `${p.employeeName || users.find(u => u.id === p.employeeId)?.name || 'Staff'} ${p.clockOutTime ? 'clocked out' : 'clocked in'}`,
+      detail: p.status || ''
+    })),
+    ...todayWaste.map(w => ({ at: w.timestamp || today, type: 'Waste', title: `${w.itemName || 'Item'} wasted`, detail: `${w.qty || ''} ${w.reason || ''}` })),
+    ...maintenanceLogs.filter(l => (l.reportedAt || '').startsWith(today) || (l.lastUpdated || '').startsWith(today)).map(l => ({ at: l.lastUpdated || l.reportedAt, type: 'Maintenance', title: l.equipment, detail: l.issue })),
+    ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.type || 'Event', title: e.title || 'Event', detail: e.author || '' })),
+    ...todayShifts.slice(0, 12).map(s => ({ at: `${today}T${s.startTime || '00:00'}:00`, type: 'Scheduled', title: `${users.find(u => u.id === s.employeeId)?.name || 'Staff'} ${s.role || ''}`, detail: `${formatShortTime(s.startTime)} - ${formatShortTime(s.endTime)}` }))
+  ].filter(x => x.at).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0, 18);
+
+  const briefText = () => {
+    const lines = [
+      `Good morning, ${appUser?.name?.split(' ')[0] || 'team'}.`,
+      `Restaurant health score: ${healthScore}/100.`,
+      yesterdaySales ? `Yesterday sales: $${Number(yesterdaySales.grossSales || 0).toLocaleString()}.` : 'Yesterday sales are not entered yet.',
+      todaySales ? `Today sales entered: $${Number(todaySales.grossSales || 0).toLocaleString()}.` : 'Today sales are not entered yet.',
+      `Today: ${todayShifts.length} shifts, ${activePunches.length} currently clocked in.`,
+      `Open tasks: ${openTasks.length}. Low-stock items: ${lowStockItems.length}. Open maintenance: ${openMaintenance.length}.`,
+      `Top priority: ${recommendations.find(Boolean) || 'Keep service smooth.'}`
+    ];
+    return lines.join('\n');
+  };
+
+  const handlePostBrief = async () => {
+    try {
+      await addDoc(collection(db, 'events'), {
+        date: new Date().toISOString(),
+        title: briefText(),
+        type: 'note',
+        author: appUser?.name || 'Ops Command Center',
+        isImportant: false,
+        restaurantId: appUser.restaurantId,
+        replies: []
+      });
+      addToast('Morning Brief Posted', 'Saved to the Message Board for the team.');
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  const handleSeedKitchenOps = async () => {
+    if (!window.confirm('Add the default end-all kitchen tasks and PM schedules? Existing matching titles will be skipped.')) return;
+    const defaultTasks = [
+      { title: 'Opening line check completed', category: 'General', frequency: 'daily' },
+      { title: 'Cooler and freezer temps logged', category: 'General', frequency: 'daily' },
+      { title: '86 list reviewed with FOH', category: 'General', frequency: 'daily' },
+      { title: 'Fryer filter and oil quality checked', category: 'Cleaning', frequency: 'daily' },
+      { title: 'Expo station stocked before rush', category: 'General', frequency: 'daily' },
+      { title: 'Walk-in shelves wiped down', category: 'Cleaning', frequency: 'weekly', targetDay: 'Monday' },
+      { title: 'Deep clean fryer bay', category: 'Cleaning', frequency: 'weekly', targetDay: 'Tuesday' },
+      { title: 'Check first aid and burn kit', category: 'General', frequency: 'monthly', targetDate: '1' }
+    ];
+    const defaultPm = [
+      { title: 'Clean hood filters', equipment: 'Hood System', frequencyDays: 7 },
+      { title: 'Delime dish machine', equipment: 'Dish Machine', frequencyDays: 30 },
+      { title: 'Inspect cooler gaskets', equipment: 'Coolers', frequencyDays: 30 },
+      { title: 'Grease trap service check', equipment: 'Grease Trap', frequencyDays: 30 },
+      { title: 'Fire suppression visual check', equipment: 'Fire Suppression', frequencyDays: 90 }
+    ];
+    try {
+      const existingTaskTitles = new Set(tasks.map(t => (t.title || '').toLowerCase()));
+      const existingPmTitles = new Set(pmSchedules.map(p => (p.title || '').toLowerCase()));
+      const taskAdds = defaultTasks
+        .filter(t => !existingTaskTitles.has(t.title.toLowerCase()))
+        .map(t => addDoc(collection(db, 'tasks'), { ...t, completions: {}, restaurantId: appUser.restaurantId }));
+      const pmAdds = defaultPm
+        .filter(p => !existingPmTitles.has(p.title.toLowerCase()))
+        .map(p => addDoc(collection(db, 'pmSchedules'), { ...p, lastCompleted: getToday(), lastUpdatedBy: appUser.name, restaurantId: appUser.restaurantId }));
+      await Promise.all([...taskAdds, ...pmAdds]);
+      addToast('Kitchen Ops Seeded', `Added ${taskAdds.length + pmAdds.length} operating standards.`);
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  const kpiCards = [
+    { label: 'Health Score', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Strong shift posture' : healthScore >= 70 ? 'Watch the weak spots' : 'Needs manager attention' },
+    { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
+    { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
+    { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
+    { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} on clock` : 'Nobody clocked in' },
+    { label: 'Waste Today', value: `${todayWaste.length}`, detail: wasteCost ? `$${wasteCost.toFixed(2)} logged` : 'No cost logged' }
+  ];
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
+        <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#D4A381] mb-2">Morning Brief</div>
+            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">Kitchen Command Center</h1>
+            <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A live cockpit for prep, people, inventory, maintenance, labor, waste, and the little gremlins that usually wait until dinner rush.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button onClick={handlePostBrief} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Post Brief</button>
+            {(appUser?.isAdmin || appUser?.permissions?.prep || appUser?.permissions?.team) && <button onClick={handleSeedKitchenOps} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Plus size={16}/> Seed Standards</button>}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+        {kpiCards.map(card => (
+          <div key={card.label} className={`${T.card} p-3 text-center`}>
+            <div className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>{card.label}</div>
+            <div className="text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
+            <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={`${T.card} p-4 lg:col-span-2`}>
+          <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
+            <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Manager Readout</h2>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {recommendations.map((rec, idx) => (
+              <div key={idx} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Priority {idx + 1}</div>
+                <div className="text-sm font-bold text-slate-200 leading-snug">{rec}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Smart Prep Forecast</h2>
+          <div className="space-y-2">
+            {prepForecast.map(row => (
+              <div key={row.label} className="flex justify-between gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <div>
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{row.label}</div>
+                  <div className="text-xs text-slate-400 font-bold mt-1">{row.note}</div>
+                </div>
+                <div className="text-sm font-black text-[#D4A381] text-right whitespace-nowrap">{row.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Inventory Radar</div>
+          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+            {lowStockItems.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No par problems detected.</div>}
+            {lowStockItems.slice(0, 12).map(item => {
+              const par = Number(item.parLevel || 0);
+              const stock = Number(item.currentStock || 0);
+              const needed = Math.max(0, par - stock);
+              return (
+                <div key={item.id} className={`${T.row} flex justify-between items-center gap-3`}>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{item.name}</div>
+                    <div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Stock {stock} / Par {par}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-black text-orange-400">Order {needed}</div>
+                    <div className="text-[9px] text-slate-500 font-bold">${Number(item.price || 0).toFixed(2)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Equipment Radar</div>
+          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+            {openMaintenance.length === 0 && overduePm.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No equipment warnings right now.</div>}
+            {criticalMaintenance.concat(openMaintenance.filter(l => !criticalMaintenance.includes(l))).slice(0, 8).map(log => (
+              <div key={log.id} className={`${T.row}`}>
+                <div className="flex justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{log.equipment}</div>
+                    <div className="text-xs text-slate-400 font-medium mt-1 line-clamp-2">{log.issue}</div>
+                  </div>
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${log.urgency === 'Critical' ? 'text-red-500' : log.urgency === 'High' ? 'text-orange-400' : 'text-slate-500'}`}>{log.urgency || 'Standard'}</span>
+                </div>
+              </div>
+            ))}
+            {overduePm.slice(0, 4).map(pm => (
+              <div key={pm.id} className={`${T.row} bg-red-950/10`}>
+                <div className="text-sm font-bold text-red-300">PM Overdue: {pm.title}</div>
+                <div className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-1">{pm.equipment} • every {pm.frequencyDays} days</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Users size={14}/> Labor & Schedule Warnings</div>
+          <div className={`divide-y ${T.border}`}>
+            {scheduleWarnings.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No obvious schedule warnings in the next week.</div>}
+            {scheduleWarnings.map((w, idx) => <div key={idx} className={`${T.row} text-sm font-bold text-slate-200`}>{w}</div>)}
+            {todayShifts.slice(0, 8).map(s => (
+              <div key={s.id} className={`${T.row} flex justify-between items-center text-xs`}>
+                <span className="font-bold text-white">{users.find(u => u.id === s.employeeId)?.name || 'Staff'} <span className="text-slate-500">{s.role}</span></span>
+                <span className="font-mono text-[#D4A381]">{formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Clock size={14}/> Kitchen Timeline</div>
+          <div className={`divide-y ${T.border} max-h-[420px] overflow-y-auto custom-scrollbar`}>
+            {timeline.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No timeline activity for this day yet.</div>}
+            {timeline.map((item, idx) => (
+              <div key={`${item.type}-${idx}`} className={`${T.row} flex gap-3`}>
+                <div className="text-[10px] font-mono text-[#D4A381] w-16 flex-shrink-0">{new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                <div className="min-w-0">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{item.type}</div>
+                  <div className="text-sm font-bold text-white truncate">{item.title}</div>
+                  {item.detail && <div className="text-xs text-slate-400 truncate">{item.detail}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className={`${T.card} p-4`}>
+        <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
+          <h2 className="font-black text-white flex items-center gap-2"><BookOpen size={18} className={T.copper}/> Recipe & Menu Brain</h2>
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{recipes.length} recipes tracked</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Use Before It Hurts</div>
+            <div className="text-sm font-bold text-white">{lowStockItems.length ? 'Avoid specials using low-stock items.' : 'Inventory is flexible enough for specials.'}</div>
+          </div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Specials Signal</div>
+            <div className="text-sm font-bold text-white">{forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'Run fast, high-margin items today.' : 'Normal day: good test window for a new special.'}</div>
+          </div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">86 Watch</div>
+            <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) => {
   const getMonday = (dStr) => {
     const d = new Date(dStr + 'T12:00:00');
@@ -6395,7 +6782,7 @@ const handleDeleteGlobalUser = async (u) => {
          ownerEmail: "demo@86chaos.com",
          isActive: true,
          isReadOnly: false,
-         features: { schedule: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true },
+         features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true },
          labs: { laborProjection: true },
          planType: 'Enterprise',
          billingStatus: 'Paid',
@@ -6666,14 +7053,210 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
   const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
+  const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+  const nowMs = Date.now();
+  const getLastActiveMs = (u) => {
+    const parsed = new Date(u.lastActive || u.lastSeen || 0).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const isOnlineNow = (u) => {
+    const last = getLastActiveMs(u);
+    return !!last && (nowMs - last) < ONLINE_WINDOW_MS && u.onlineState !== 'offline';
+  };
+  const onlineUsers = allUsers.filter(isOnlineNow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const onlineRestaurantIds = [...new Set(onlineUsers.map(u => u.restaurantId).filter(Boolean))];
+  const onlineRestaurants = restaurants.filter(r => onlineRestaurantIds.includes(r.id));
+  const onlineByRestaurant = onlineRestaurantIds.map(id => ({
+    id,
+    rest: restaurants.find(r => r.id === id),
+    users: onlineUsers.filter(u => u.restaurantId === id)
+  })).sort((a,b) => b.users.length - a.users.length);
+  const recentlyActiveUsers = allUsers.filter(u => {
+    const last = getLastActiveMs(u);
+    return !!last && (nowMs - last) < 15 * 60 * 1000 && !isOnlineNow(u);
+  }).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+
+  const pastDueWorkspaces = restaurants.filter(r => r.billingStatus === 'Past Due');
+  const readOnlyWorkspaces = restaurants.filter(r => r.isReadOnly);
+  const trialWorkspaces = restaurants.filter(r => r.billingStatus === 'Trial');
+  const adminUsers = allUsers.filter(u => u.isAdmin || u.isSuperAdmin);
+  const inactiveUsers = allUsers.filter(u => {
+    const last = getLastActiveMs(u);
+    return !last || (nowMs - last) > 30 * 86400000;
+  });
+  const moduleList = ['schedule','events','ops','messages','prep','recipes','inventory','sales','team','maintenance','timesheets'];
+  const featureAdoption = moduleList.map(feat => ({ feat, count: restaurants.filter(r => r.features?.[feat] !== false).length })).sort((a,b) => b.count - a.count);
+  const usersWithoutRestaurant = allUsers.filter(u => !u.restaurantId);
+  const missingOwnerAccounts = restaurants.filter(r => r.ownerEmail && !allUsers.some(u => (u.email || '').toLowerCase() === (r.ownerEmail || '').toLowerCase()));
+  const duplicateEmailGroups = Object.entries(allUsers.reduce((acc, u) => {
+    const emailKey = (u.email || '').toLowerCase().trim();
+    if (emailKey) acc[emailKey] = [...(acc[emailKey] || []), u];
+    return acc;
+  }, {})).filter(([, group]) => group.length > 1);
+  const usersMissingPush = allUsers.filter(u => !u.fcmToken);
+  const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
+  const endpointList = ['deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
+  const envReport = typeof window !== 'undefined' ? {
+    host: window.location.host,
+    path: window.location.pathname,
+    online: navigator.onLine,
+    serviceWorker: 'serviceWorker' in navigator,
+    indexedDb: 'indexedDB' in window,
+    notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+    storageUser: !!(localStorage.getItem('86chaosUser') || sessionStorage.getItem('86chaosUser')),
+    userAgent: navigator.userAgent
+  } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
+  const platformSnapshot = [
+    `86 Chaos Platform Snapshot`,
+    `Version: ${CURRENT_VERSION}`,
+    `Online users: ${onlineUsers.length}`,
+    `Active workspaces: ${restaurants.filter(r=>r.isActive).length}`,
+    `Paid workspaces: ${paidWorkspaces}`,
+    `Trials: ${trialWorkspaces.length}`,
+    `Past due: ${pastDueWorkspaces.length}`,
+    `Network users: ${allUsers.length}`,
+    `Admins: ${adminUsers.length}`,
+    `Crashes 24h: ${crashes24h}`,
+    `Permission denied logs: ${permissionDeniedLogs.length}`,
+    `Push opt-in: ${pushOptInRate}%`,
+    `Users without restaurantId: ${usersWithoutRestaurant.length}`,
+    `Missing owner accounts: ${missingOwnerAccounts.length}`,
+    `Duplicate email groups: ${duplicateEmailGroups.length}`,
+    `Host: ${envReport.host}`,
+    `Browser online: ${envReport.online}`,
+    `Generated: ${new Date().toLocaleString()}`
+  ].join('\n');
+
+  const handleCopyPlatformSnapshot = async () => {
+    try {
+      await navigator.clipboard.writeText(platformSnapshot);
+      addToast('Copied', 'Platform snapshot copied to clipboard.');
+    } catch (err) {
+      addToast('Snapshot', platformSnapshot);
+    }
+  };
+
+  const handleCopyDiagnostics = async () => {
+    const diagnostics = [
+      platformSnapshot,
+      '',
+      'Client Runtime',
+      `Host: ${envReport.host}`,
+      `Path: ${envReport.path}`,
+      `Navigator online: ${envReport.online}`,
+      `Notifications: ${envReport.notifications}`,
+      `Service worker available: ${envReport.serviceWorker}`,
+      `IndexedDB available: ${envReport.indexedDb}`,
+      `Stored user cache: ${envReport.storageUser}`,
+      '',
+      'Data Integrity',
+      `Users without restaurantId: ${usersWithoutRestaurant.map(u => u.email || u.name || u.id).join(', ') || 'none'}`,
+      `Missing owner accounts: ${missingOwnerAccounts.map(r => (r.name || 'Unnamed') + ' <' + (r.ownerEmail || 'no email') + '>').join(', ') || 'none'}`,
+      `Duplicate email groups: ${duplicateEmailGroups.map(([email, group]) => email + ' (' + group.length + ')').join(', ') || 'none'}`,
+      `Permission denied logs: ${permissionDeniedLogs.length}`,
+      '',
+      `User agent: ${envReport.userAgent}`
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(diagnostics);
+      addToast('Copied', 'Support diagnostics copied to clipboard.');
+    } catch (err) {
+      addToast('Diagnostics', diagnostics.substring(0, 220));
+    }
+  };
+
+  const handleClearAllBanners = async () => {
+    if (!window.confirm('Clear system banners from every workspace?')) return;
+    try {
+      await Promise.all(restaurants.map(r => updateDoc(doc(db, 'restaurants', r.id), { systemBanner: null })));
+      addToast('Banners Cleared', 'All workspace banners were removed.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const SignalPip = ({ tone = 'emerald', label = 'LIVE', hot = false }) => {
+    const colors = tone === 'red' ? 'text-red-400 bg-red-500' : tone === 'amber' ? 'text-amber-400 bg-amber-400' : tone === 'blue' ? 'text-blue-400 bg-blue-400' : tone === 'purple' ? 'text-fuchsia-400 bg-fuchsia-400' : 'text-emerald-400 bg-emerald-400';
+    return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'slow'} ${colors.split(' ')[1]}`}></span>{label}</span>;
+  };
+
+  const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false }) => (
+    <div className="cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
+        <SignalPip tone={tone} label={hot ? 'HOT' : 'SYNC'} hot={hot} />
+      </div>
+      <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
+      <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
+    </div>
+  );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="max-w-6xl mx-auto space-y-5 pb-24 animate-[slideIn_0.2s_ease-out]">
+      {/* 747 COCKPIT COMMAND STRIP */}
+      <div className="cockpit-panel rounded-2xl p-4 overflow-hidden relative">
+        <div className="absolute inset-0 cockpit-grid opacity-60 pointer-events-none"></div>
+        <div className="relative flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <SignalPip tone="emerald" label="PLATFORM LIVE" hot />
+              <SignalPip tone={crashes24h > 0 ? 'amber' : 'emerald'} label={crashes24h > 0 ? 'WATCH' : 'CLEAN'} />
+              <SignalPip tone="blue" label="FIREBASE" />
+              <SignalPip tone="purple" label="GHOST READY" />
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">System Administrator Command Deck</h1>
+            <p className="text-xs text-slate-400 font-bold mt-1">Live platform telemetry, client control, user presence, safety locks, and support tools.</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-widest">
+            {['AUTH','DB','PUSH','RULES','API','GHOST','CACHE','BILLING','LOGS','BACKUP','OCR','LABS'].map((lamp, i) => (
+              <span key={lamp} className="bg-[#0B0E11] border border-[#2A353D] rounded-md px-2 py-1 text-slate-300 flex items-center gap-1.5">
+                <span className={`cockpit-light ${i % 5 === 0 ? 'bg-blue-400 text-blue-400' : i % 3 === 0 ? 'bg-amber-400 text-amber-400' : 'bg-emerald-400 text-emerald-400'}`}></span>{lamp}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="relative grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+          <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} active workspaces`} tone="emerald" hot={onlineUsers.length > 0} />
+          <CockpitMetric label="Users Today" value={dau} detail={`${stickyRate}% daily stickiness`} tone="blue" />
+          <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" />
+          <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Needs eyes' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 0} />
+          <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} />
+          <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} />
+        </div>
+      </div>
+
       {/* MASTER NAVIGATION */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
+      <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2 border-b border-[#2A353D] mb-6 pb-4">
+        {[{id:'overview', label:'Metrics'}, {id:'live', label:'Live Ops'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Grant Access'}].map((t) => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
+      </div>
+
+      {/* ADMIN QUICK CONTROL SWITCHBOARD */}
+      <div className="cockpit-panel rounded-xl p-3 overflow-hidden relative">
+        <div className="absolute inset-0 cockpit-grid opacity-35 pointer-events-none"></div>
+        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <SignalPip tone="emerald" label="CONTROL TOWER" hot />
+              <SignalPip tone={pastDueWorkspaces.length ? 'amber' : 'emerald'} label={`${pastDueWorkspaces.length} PAST DUE`} hot={pastDueWorkspaces.length > 0} />
+              <SignalPip tone={readOnlyWorkspaces.length ? 'blue' : 'emerald'} label={`${readOnlyWorkspaces.length} READ ONLY`} />
+              <SignalPip tone="purple" label={`${adminUsers.length} ADMINS`} />
+            </div>
+            <div className="text-sm font-black text-white">Quick Control Switchboard</div>
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest truncate">Snapshot, banners, live radar, client controls, and support jump points.</div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full lg:w-auto">
+            <button type="button" onClick={handleCopyPlatformSnapshot} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] hover:border-[#D4A381]/50 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Copy Snapshot</button>
+            <button type="button" onClick={handleClearAllBanners} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-red-300 hover:border-red-500/50 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Clear Banners</button>
+            <button type="button" onClick={() => setSubTab('live')} className="bg-emerald-900/15 border border-emerald-900/50 text-emerald-300 hover:bg-emerald-900/30 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Live Radar</button>
+            <button type="button" onClick={() => setSubTab('tenants')} className="bg-purple-900/15 border border-purple-900/50 text-purple-300 hover:bg-purple-900/30 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Clients</button>
+          </div>
+        </div>
+        <div className="relative mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Trials</div><div className="text-xl font-black text-white">{trialWorkspaces.length}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Inactive Users</div><div className="text-xl font-black text-white">{inactiveUsers.length}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Modules Live</div><div className="text-xl font-black text-white">{featureAdoption.filter(f => f.count > 0).length}/{moduleList.length}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Version</div><div className="text-xl font-black text-white">{CURRENT_VERSION}</div></div>
+        </div>
       </div>
 
 <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
@@ -6682,20 +7265,20 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 // --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
-            const baseFeatures = { schedule: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
+            const baseFeatures = { schedule: false, events: false, ops: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
             let newLabs = { laborProjection: false };
             let updatedFeatures = { ...baseFeatures };
             
             // 2. Merge only the allowed features as TRUE over the baseline
             if (tier === 'Starter') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true };
             } else if (tier === 'Pro') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
             } else if (tier === 'Elite') {
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
             } else if (tier === 'Enterprise') {
                 // Enterprise: Everything (Up to 5 Locations)
-                updatedFeatures = { ...baseFeatures, schedule: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
                 newLabs = { laborProjection: true };
             }
 
@@ -6744,6 +7327,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                   <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
                 </div>
 
+                {/* Super-admin access is intentionally NOT managed here.
+                    Use System Administrator > Grant Access so elevated permissions stay in one audited place. */}
+
                 {/* QUICK APPLY TIER PRESETS */}
                 <div className="pt-4 border-t border-[#2A353D]">
                   <label className={T.label}>Quick-Apply Tier Packages</label>
@@ -6764,7 +7350,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                 <div className="pt-4 border-t border-[#2A353D]">
                    <label className={T.label}>Manual Module Overrides</label>
                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                      {['schedule', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
+                      {['schedule', 'events', 'ops', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
                         <label key={feat} className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors cursor-pointer ${editingRest.features && editingRest.features[feat] ? 'bg-[#8F6040]/20 border-[#C59373]' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
                           <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : false} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
                           <span className={`text-[11px] font-bold capitalize ${editingRest.features && editingRest.features[feat] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{feat}</span>
@@ -6925,6 +7511,97 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
         </div>
       )}
 
+      {/* --- TAB: LIVE OPS / PRESENCE RADAR --- */}
+      {subTab === 'live' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 cockpit-panel rounded-2xl overflow-hidden">
+              <div className={`bg-[#12161A] p-3 border-b ${T.border} flex items-center justify-between gap-3`}>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Live Users Now</h3>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} active</span>
+              </div>
+              <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
+                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No one is currently heartbeating. Newly loaded clients will appear here within about a minute.</div>}
+                {onlineUsers.map(u => {
+                  const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
+                  return (
+                    <div key={u.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#12161A]/55 transition-colors">
+                      <div className="min-w-0 flex items-center gap-3">
+                        <img src={getAvatar(u.name, u.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/>
+                        <div className="min-w-0">
+                          <div className="text-sm font-black text-white truncate flex items-center gap-2">{u.name || 'Unnamed User'} <SignalPip tone="emerald" label="ONLINE" hot /></div>
+                          <div className="text-[10px] text-slate-400 font-bold truncate">{restName} • {u.role || 'No role'} • {u.activeTab ? `Tab: ${u.activeTab}` : 'Tab: unknown'}</div>
+                          <div className="text-[9px] text-slate-500 font-mono truncate">{u.email || 'No email'} • {u.activeDevice || 'Unknown device'}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, mode: 'user', impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center justify-center gap-1"><Moon size={14} /> Possess</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="cockpit-panel rounded-2xl overflow-hidden">
+              <div className={`bg-[#12161A] p-3 border-b ${T.border}`}>
+                <h3 className="font-black text-sm text-white">Active Workspaces</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by live heartbeat</p>
+              </div>
+              <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
+                {onlineByRestaurant.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No active workspaces.</div>}
+                {onlineByRestaurant.map(group => (
+                  <div key={group.id} className="p-3 hover:bg-[#12161A]/55 transition-colors">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-black text-white text-sm truncate">{group.rest?.name || group.id}</div>
+                      <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-black"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{group.users.length}</div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-bold mt-1 truncate">{group.users.map(u => (u.name || u.email || 'User').split(' ')[0]).join(', ')}</div>
+                    <button onClick={() => { setGhostTenant({ id: group.id, name: group.rest?.name || group.id, mode: 'workspace' }); setActiveTab('published'); }} className="mt-2 w-full px-2 py-1.5 bg-purple-900/20 border border-purple-500/40 text-purple-300 font-black text-[9px] uppercase tracking-widest rounded-lg hover:bg-purple-900/40">Possess Workspace</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="cockpit-panel rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-black text-white text-sm">Recent Activity Buffer</h3>
+                <SignalPip tone="amber" label={`${recentlyActiveUsers.length} warm`} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {recentlyActiveUsers.slice(0, 12).map(u => {
+                  const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown';
+                  return <div key={u.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{restName} • {timeAgo(u.lastActive)}</div></div>
+                })}
+                {recentlyActiveUsers.length === 0 && <div className="text-sm text-slate-500 font-bold">No recently active users outside the live window.</div>}
+              </div>
+            </div>
+
+            <div className="cockpit-panel rounded-2xl p-4">
+              <h3 className="font-black text-white text-sm mb-3">Control Tower Signals</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  ['Auth Gate', 'emerald', 'Firebase Auth ready'],
+                  ['Tenant Rules', 'emerald', 'Super admin override'],
+                  ['Ghost Layer', 'purple', 'Possess enabled'],
+                  ['Push Relay', pushOptInRate < 30 ? 'amber' : 'emerald', `${pushOptInRate}% opt-in`],
+                  ['Crash Intake', crashes24h ? 'amber' : 'emerald', `${crashes24h} today`],
+                  ['Backup Engine', 'blue', 'JSON export ready'],
+                  ['Billing Locks', staleTenants.length ? 'amber' : 'emerald', `${staleTenants.length} stale`],
+                  ['API Routes', 'blue', `${apiConnectedCount} integrations`],
+                  ['Online Radar', onlineUsers.length ? 'emerald' : 'amber', `${onlineUsers.length} live`]
+                ].map(([name, tone, detail]) => (
+                  <div key={name} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2.5 min-h-[70px]">
+                    <SignalPip tone={tone} label={name} hot={tone === 'amber'} />
+                    <div className="text-[10px] text-slate-400 font-bold mt-2 leading-tight">{detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- TAB: TENANTS --- */}
       {subTab === 'tenants' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
@@ -6986,7 +7663,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                       )}
                     </div>
 
-                    <div className="text-[9px] text-slate-500 font-medium mt-1.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{onlineUsers.filter(u => u.restaurantId === r.id).length} Online</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
 <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-[#D4A381] hover:border-[#D4A381]/50 transition-colors shadow-sm flex items-center gap-1"><Settings size={14} /> Manage</button>
@@ -7018,7 +7695,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                   <div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
-                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase">{restName} <span className="mx-1">|</span> <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span></div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">{restName}<span>|</span>{isOnlineNow(u) ? <span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span>Online Now</span> : <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span>}</div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
 <button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, mode: 'user', impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
@@ -7066,47 +7743,117 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
       {/* --- TAB: SUPPORT & CRASHES --- */}
       {subTab === 'support' && (
-        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-            <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Live Diagnostics / Bug Ledger</h3>
-            <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
-          </div>
-          <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-            {crashLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No bugs or crashes logged yet. System stable.</div>}
-            {crashLogs.map(log => (
-              <div key={log.id} className={`${T.row} flex flex-col gap-2`}>
-                <div className="flex justify-between items-start">
-                  <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
-                  <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span>
-                </div>
-{/* HARDWARE DIAGNOSTICS UI */}
-                        {(log.screenSize || log.userAgent) && (
-                          <div className="text-[9px] mt-1.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 bg-[#0B0E11] p-1.5 rounded-lg border border-[#2A353D]">
-                            {log.screenSize && <span className="font-black text-blue-400 whitespace-nowrap">🖥️ {log.screenSize}</span>}
-                            {log.userAgent && <span className="font-medium text-slate-500 truncate" title={log.userAgent}>📱 {log.userAgent}</span>}
-                          </div>
-                        )}
-
-                
-                {/* TELEMETRY BREADCRUMBS UI */}
-                {log.breadcrumbs && log.breadcrumbs.length > 0 && (
-                  <div className="bg-[#0B0E11] rounded-lg border border-[#2A353D] p-2 mt-1">
-                     <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">User Action Telemetry (Last 15 Clicks)</div>
-                     <div className="text-[10px] font-mono text-slate-400 space-y-0.5">
-                       {log.breadcrumbs.map((crumb, idx) => (
-                         <div key={idx} className="flex gap-2 hover:bg-[#12161A] px-1 rounded transition-colors">
-                           <span className="text-emerald-500/70">[{crumb.time}]</span>
-                           <span className="text-slate-500">{crumb.action}:</span>
-                           <span className="text-blue-300">"{crumb.target}"</span>
-                         </div>
-                       ))}
-                     </div>
-                  </div>
-                )}
-
-                {log.stack && <div className="text-[9px] text-slate-500 font-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-[#0B0E11] p-2 rounded border border-[#2A353D] opacity-70 hover:opacity-100 transition-opacity">{log.stack}</div>}
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="cockpit-panel rounded-2xl p-4 overflow-hidden relative">
+            <div className="absolute inset-0 cockpit-grid opacity-30 pointer-events-none"></div>
+            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Support Diagnostics Bay</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Runtime, auth, database integrity, API checks, crash ledger, and ghost-access clues.</p>
               </div>
-            ))}
+              <div className="flex gap-2">
+                <button onClick={handleCopyDiagnostics} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white border border-[#2A353D] px-2 py-1 rounded transition-colors">Copy Diagnostics</button>
+                <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
+              </div>
+            </div>
+
+            <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+              <CockpitMetric label="Permission Denied" value={permissionDeniedLogs.length} detail="Firestore rule hits" tone={permissionDeniedLogs.length ? 'red' : 'emerald'} hot={permissionDeniedLogs.length > 0} />
+              <CockpitMetric label="Missing Owners" value={missingOwnerAccounts.length} detail="Owner email no user doc" tone={missingOwnerAccounts.length ? 'amber' : 'emerald'} hot={missingOwnerAccounts.length > 0} />
+              <CockpitMetric label="No Restaurant ID" value={usersWithoutRestaurant.length} detail="Users orphaned from tenant" tone={usersWithoutRestaurant.length ? 'amber' : 'emerald'} hot={usersWithoutRestaurant.length > 0} />
+              <CockpitMetric label="Duplicate Emails" value={duplicateEmailGroups.length} detail="Auth/profile mismatch risk" tone={duplicateEmailGroups.length ? 'red' : 'emerald'} hot={duplicateEmailGroups.length > 0} />
+            </div>
+
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Runtime</div><SignalPip tone={envReport.online ? 'emerald' : 'red'} label={envReport.online ? 'ONLINE' : 'OFFLINE'} hot={!envReport.online}/></div>
+                <div className="space-y-1 text-[10px] font-mono text-slate-400 break-all">
+                  <div><span className="text-slate-600">Host:</span> {envReport.host}</div>
+                  <div><span className="text-slate-600">Version:</span> {CURRENT_VERSION}</div>
+                  <div><span className="text-slate-600">Notifications:</span> {envReport.notifications}</div>
+                  <div><span className="text-slate-600">IndexedDB:</span> {envReport.indexedDb ? 'available' : 'missing'}</div>
+                  <div><span className="text-slate-600">Service Worker:</span> {envReport.serviceWorker ? 'available' : 'missing'}</div>
+                  <div><span className="text-slate-600">Cached User:</span> {envReport.storageUser ? 'yes' : 'no'}</div>
+                </div>
+              </div>
+
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">API Route Checklist</div><SignalPip tone="blue" label="VERCEL"/></div>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {endpointList.map(ep => (
+                    <div key={ep} className="flex items-center justify-between text-[10px] font-bold bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5">
+                      <span className="text-slate-300">/api/{ep}</span>
+                      <span className="text-slate-500 uppercase tracking-widest">present in repo</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[9px] text-slate-600 font-bold mt-2 leading-snug">If a route returns HTML or 404, Vercel did not deploy that file or the filename does not match the fetch path.</p>
+              </div>
+
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Access Model</div><SignalPip tone="purple" label="RULES"/></div>
+                <div className="space-y-1.5 text-[10px] font-bold text-slate-400">
+                  <div className="flex justify-between gap-2"><span>Super admins</span><span className="text-white">{superAdmins.length}</span></div>
+                  <div className="flex justify-between gap-2"><span>Master email</span><span className="text-[#D4A381]">{MASTER_ADMIN_EMAIL}</span></div>
+                  <div className="flex justify-between gap-2"><span>Ghost needs rules</span><span className="text-emerald-400">isSuperAdmin()</span></div>
+                  <div className="flex justify-between gap-2"><span>Read-only clients</span><span className="text-blue-400">{readOnlyWorkspaces.length}</span></div>
+                  <div className="flex justify-between gap-2"><span>Past due lockouts</span><span className="text-red-400">{pastDueWorkspaces.length}</span></div>
+                </div>
+              </div>
+            </div>
+
+            {(missingOwnerAccounts.length > 0 || usersWithoutRestaurant.length > 0 || duplicateEmailGroups.length > 0) && (
+              <div className="relative z-10 mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {missingOwnerAccounts.length > 0 && <div className="bg-amber-900/10 border border-amber-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Missing Owner Accounts</div>{missingOwnerAccounts.slice(0,8).map(r => <div key={r.id} className="text-[10px] text-slate-400 font-bold break-all mb-1">{r.name}: {r.ownerEmail}</div>)}</div>}
+                {usersWithoutRestaurant.length > 0 && <div className="bg-amber-900/10 border border-amber-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Users Without Restaurant</div>{usersWithoutRestaurant.slice(0,8).map(u => <div key={u.id} className="text-[10px] text-slate-400 font-bold break-all mb-1">{u.name || 'Unnamed'}: {u.email || u.id}</div>)}</div>}
+                {duplicateEmailGroups.length > 0 && <div className="bg-red-900/10 border border-red-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-2">Duplicate Email Groups</div>{duplicateEmailGroups.slice(0,8).map(([email, group]) => <div key={email} className="text-[10px] text-slate-400 font-bold break-all mb-1">{email}: {group.length} profiles</div>)}</div>}
+              </div>
+            )}
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Bug Ledger</h3>
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{crashLogs.length} recent logs</div>
+            </div>
+            <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+              {crashLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No bugs or crashes logged yet. System stable.</div>}
+              {crashLogs.map(log => (
+                <div key={log.id} className={`${T.row} flex flex-col gap-2 ${(`${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied')) ? 'bg-red-950/20' : ''}`}>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
+                    <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span>
+                  </div>
+                  {(log.restaurantId || log.user) && (
+                    <div className="text-[9px] mt-1 flex flex-wrap gap-1.5">
+                      {log.restaurantId && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">restaurantId: {log.restaurantId}</span>}
+                      {log.user && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">user: {log.user}</span>}
+                    </div>
+                  )}
+                  {(log.screenSize || log.userAgent) && (
+                    <div className="text-[9px] mt-1.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 bg-[#0B0E11] p-1.5 rounded-lg border border-[#2A353D]">
+                      {log.screenSize && <span className="font-black text-blue-400 whitespace-nowrap">🖥️ {log.screenSize}</span>}
+                      {log.userAgent && <span className="font-medium text-slate-500 truncate" title={log.userAgent}>📱 {log.userAgent}</span>}
+                    </div>
+                  )}
+                  {log.breadcrumbs && log.breadcrumbs.length > 0 && (
+                    <div className="bg-[#0B0E11] rounded-lg border border-[#2A353D] p-2 mt-1">
+                       <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">User Action Telemetry (Last 15 Clicks)</div>
+                       <div className="text-[10px] font-mono text-slate-400 space-y-0.5">
+                         {log.breadcrumbs.map((crumb, idx) => (
+                           <div key={idx} className="flex gap-2 hover:bg-[#12161A] px-1 rounded transition-colors">
+                             <span className="text-emerald-500/70">[{crumb.time}]</span>
+                             <span className="text-slate-500">{crumb.action}:</span>
+                             <span className="text-blue-300">"{crumb.target}"</span>
+                           </div>
+                         ))}
+                       </div>
+                    </div>
+                  )}
+                  {log.stack && <div className="text-[9px] text-slate-500 font-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-[#0B0E11] p-2 rounded border border-[#2A353D] opacity-70 hover:opacity-100 transition-opacity">{log.stack}</div>}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -7389,9 +8136,21 @@ export default function App() {
 
 
 
+  const [activeTabState, setActiveTabState] = useState('published');
+  const [labelsToPrint, setLabelsToPrint] = useState(null);
+
   // --- GLOBAL WORKSPACE & HEALTH PING ---
   const [clientData, setClientData] = useState({});
   const clientFeatures = clientData?.features || {};
+
+  // Safety net: if System Admin disables a module while a user still has that tab open,
+  // send them back to the main Time Clock/Shifts screen instead of showing a blank page.
+  useEffect(() => {
+    const gatedTabs = ['ops', 'events', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'schedule'];
+    if (gatedTabs.includes(activeTabState) && clientFeatures?.[activeTabState] === false) {
+      setActiveTab('published');
+    }
+  }, [activeTabState, clientFeatures]);
 
 // THE FIX: Safely attach BOTH the System Settings and the Plan Tier to the live user
 if (liveAppUser && clientData) {
@@ -7422,29 +8181,56 @@ if (liveAppUser && clientData) {
       }
     });
 
-// 2. Health Ping (Only trigger if a real user is logging in, NOT Ghost Mode)
+// 2. Live Presence Heartbeat (Only real users, never Ghost Mode)
+    let heartbeatTimer = null;
+    let handleVisibility = null;
+    let handleBeforeUnload = null;
+
     if (!ghostTenant && appUser?.id) {
-      const today = new Date().toDateString();
-      const lastPing = localStorage.getItem(`ping_user_${appUser.id}`);
-      if (lastPing !== today) {
-        updateDoc(doc(db, 'restaurants', rId), { lastActive: new Date().toISOString() }).catch(()=>{});
-        updateDoc(doc(db, 'users', appUser.id), { lastActive: new Date().toISOString() }).catch(()=>{});
-        localStorage.setItem(`ping_user_${appUser.id}`, today);
+      let sessionId = sessionStorage.getItem('chaosSessionId');
+      if (!sessionId) {
+        sessionId = `${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem('chaosSessionId', sessionId);
       }
+
+      const sendHeartbeat = (state = 'online') => {
+        const stamp = new Date().toISOString();
+        const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
+        updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp }).catch(()=>{});
+        updateDoc(doc(db, 'users', appUser.id), {
+          lastActive: stamp,
+          lastSeen: stamp,
+          onlineState: state,
+          activeTab: activeTabState,
+          activeSessionId: sessionId,
+          activeDevice: device,
+          activeHost: window.location.hostname
+        }).catch(()=>{});
+      };
+
+      sendHeartbeat(document.hidden ? 'away' : 'online');
+      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 60000);
+      handleVisibility = () => sendHeartbeat(document.hidden ? 'away' : 'online');
+      handleBeforeUnload = () => sendHeartbeat('offline');
+      document.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('beforeunload', handleBeforeUnload);
     }
 
-    return () => unsub();
-  }, [rId, ghostTenant]);
+    return () => {
+      unsub();
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (handleVisibility) document.removeEventListener('visibilitychange', handleVisibility);
+      if (handleBeforeUnload) window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [rId, ghostTenant, appUser?.id, activeTabState]);
 
  
-  const [activeTabState, setActiveTabState] = useState('published');
-  const [labelsToPrint, setLabelsToPrint] = useState(null);
-
   useEffect(() => {
     const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
     window.addEventListener('popstate', handlePopState);
     const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab') || (appUser?.isAdmin ? 'schedule' : 'published');
+    const preferredTab = appUser?.preferences?.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published');
+    const tab = params.get('tab') || preferredTab;
     setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [appUser]);
@@ -7606,7 +8392,7 @@ useEffect(() => {
   }
 
 return (
-    <div className={`min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div className={`ui-v13-polished ui-v12-compact cockpit-shell ui-density-${liveAppUser?.preferences?.uiDensity || clientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || clientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || clientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST MODE BANNER */}
       {ghostTenant && (
@@ -7632,6 +8418,46 @@ return (
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        .cockpit-shell { --chaos-copper: #D4A381; --chaos-panel: #1A2126; --chaos-deck: #12161A; }
+        .ui-v12-compact button { touch-action: manipulation; }
+        .ui-v12-compact textarea { line-height: 1.35 !important; }
+        .cockpit-light { position: relative; display: inline-flex; width: .55rem; height: .55rem; border-radius: 999px; box-shadow: 0 0 10px currentColor; }
+        .cockpit-light::after { content: ''; position: absolute; inset: -4px; border-radius: 999px; background: currentColor; opacity: .16; animation: cockpitPing 1.65s infinite; }
+        .cockpit-light.slow::after { animation-duration: 2.8s; }
+        .cockpit-light.hot::after { animation-duration: .9s; }
+        @keyframes cockpitPing { 0% { transform: scale(.65); opacity: .42; } 70%,100% { transform: scale(2.25); opacity: 0; } }
+        @keyframes softGlow { 0%,100% { box-shadow: 0 0 0 rgba(212,163,129,0); } 50% { box-shadow: 0 0 18px rgba(212,163,129,.22); } }
+        .cockpit-panel { background: linear-gradient(180deg, rgba(26,33,38,.98), rgba(15,19,24,.98)); border: 1px solid #2A353D; box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 16px 50px rgba(0,0,0,.18); }
+        .cockpit-grid { background-image: radial-gradient(circle at 1px 1px, rgba(212,163,129,.09) 1px, transparent 0); background-size: 18px 18px; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .message-pro .message-card-pro { box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 8px 28px rgba(0,0,0,.12); }
+        .recipe-card-v13 { min-height: 0 !important; }
+        .recipe-card-v13:hover { transform: translateY(-1px); }
+        .ui-density-ultra main { padding: .6rem !important; }
+        .ui-density-ultra .p-5 { padding: .75rem !important; }
+        .ui-density-ultra .p-4 { padding: .65rem !important; }
+        .ui-density-ultra .gap-4 { gap: .55rem !important; }
+        .ui-density-comfortable main { padding: 1.25rem !important; }
+        .recipe-density-tight .recipe-card-v13 .p-2\.5 { padding: .55rem !important; }
+        .recipe-density-tight .recipe-card-v13 h3 { font-size: .9rem !important; line-height: 1.15rem !important; }
+        .motion-reduced .cockpit-light::after, .motion-quiet .cockpit-light::after { animation: none !important; opacity: .08 !important; }
+        .motion-quiet .cockpit-light { box-shadow: none !important; }
+
+        @media (max-width: 640px) {
+          .ui-v12-compact main { padding: .75rem !important; }
+          .ui-v12-compact button:not(.no-compact) { min-height: 32px !important; padding-top: .42rem !important; padding-bottom: .42rem !important; }
+          .ui-v12-compact textarea { min-height: 42px !important; font-size: 14px !important; }
+          .ui-v12-compact .rounded-3xl { border-radius: 1rem !important; }
+          .ui-v12-compact .rounded-2xl { border-radius: .85rem !important; }
+          .ui-v12-compact .p-6 { padding: 1rem !important; }
+          .ui-v12-compact .p-5 { padding: .85rem !important; }
+          .ui-v12-compact .p-4 { padding: .75rem !important; }
+          .ui-v12-compact .gap-5 { gap: .75rem !important; }
+          .ui-v12-compact .gap-4 { gap: .65rem !important; }
+          .ui-v12-compact .text-2xl { font-size: 1.25rem !important; line-height: 1.55rem !important; }
+          .ui-v12-compact .text-xl { font-size: 1.05rem !important; line-height: 1.4rem !important; }
+          .ui-v12-compact .text-lg { font-size: .98rem !important; line-height: 1.3rem !important; }
+        }
       `}</style>
 
       {/* UPDATE ALERT BANNER */}
@@ -7689,7 +8515,7 @@ return (
         </div>
       )}
       
-      {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
+      {['schedule', 'events', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {activeTabState === 'sales' ? (
             <div className="w-full text-center">
@@ -7730,7 +8556,9 @@ return (
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
         {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team) && <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />}
         {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
+        {activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isAdmin || liveAppUser?.role === 'Kitchen' || liveAppUser?.permissions?.ops || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.sales || liveAppUser?.permissions?.team) && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
         {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
@@ -7739,7 +8567,7 @@ return (
         {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
-        {activeTabState === 'godmode' && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
+        {activeTabState === 'godmode' && ((liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin === true) && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
         {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />}
       </main>
       
@@ -7755,7 +8583,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.5.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.8.0 Admin/UI Polish</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
