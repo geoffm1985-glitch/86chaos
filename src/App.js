@@ -90,7 +90,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '11.9.1';
+const CURRENT_VERSION = '12.0.0';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -5958,6 +5958,73 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     scheduleWarnings.length > 0 ? scheduleWarnings[0] : 'No immediate schedule warnings detected.'
   ];
 
+  const stockNeed = (item) => Math.max(0, Math.ceil(Number(item.parLevel || 0) - Number(item.currentStock || 0)));
+  const urgent86Items = lowStockItems.filter(i => Number(i.currentStock || 0) <= 0 || (Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) / Math.max(1, Number(i.parLevel || 1)) <= 0.25));
+  const suggestedPrepTasks = [
+    ...lowStockItems.slice(0, 4).map(i => `Prep/order recovery: ${i.name} is below par by ${stockNeed(i)}.`),
+    forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High forecast: add backup proteins, fries, sauces, and expo garnish before rush.' : null,
+    importantEvents.length > 0 ? `Event prep: review ${importantEvents.slice(0, 2).map(e => e.title).join(' / ')}.` : null,
+    criticalMaintenance.length > 0 ? `Equipment watch: ${criticalMaintenance[0].equipment} needs manager follow-up.` : null,
+    todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length < 2 ? 'Coverage risk: verify kitchen backup plan before peak service.' : null
+  ].filter(Boolean).slice(0, 8);
+
+  const handleBuildSmartOrder = async () => {
+    const items = lowStockItems.filter(i => stockNeed(i) > 0);
+    if (items.length === 0) return addToast('Smart Order', 'No below-par items found.');
+    if (!window.confirm(`Build pending order quantities for ${items.length} below-par items?`)) return;
+    try {
+      await Promise.all(items.map(i => updateDoc(doc(db, 'inventoryItems', i.id), {
+        pendingQty: Math.max(Number(i.pendingQty || 0), stockNeed(i)),
+        lastSmartOrderDate: getToday(),
+        lastSmartOrderBy: appUser?.name || 'Ops Command Center'
+      })));
+      await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Ops Command Center.`);
+      addToast('Smart Order Built', `${items.length} item(s) queued for ordering.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleCreateSmartPrepTasks = async () => {
+    if (suggestedPrepTasks.length === 0) return addToast('Smart Prep', 'No smart prep tasks needed right now.');
+    if (!window.confirm(`Create ${suggestedPrepTasks.length} smart prep task(s) for today?`)) return;
+    try {
+      const existingToday = new Set(tasks.filter(t => t.source === 'ops-smart-prep' && t.generatedForDate === today).map(t => t.title));
+      const adds = suggestedPrepTasks
+        .filter(title => !existingToday.has(title))
+        .map(title => addDoc(collection(db, 'tasks'), {
+          title,
+          category: 'Smart Prep',
+          frequency: 'daily',
+          generatedForDate: today,
+          generatedAt: new Date().toISOString(),
+          source: 'ops-smart-prep',
+          completions: {},
+          restaurantId: appUser.restaurantId
+        }));
+      await Promise.all(adds);
+      await logAudit(appUser, 'SMART_PREP_CREATED', 'tasks', `Created ${adds.length} smart prep tasks for ${today}.`);
+      addToast('Smart Prep Created', `${adds.length} task(s) added to Prep & Tasks.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handlePost86Alert = async () => {
+    if (urgent86Items.length === 0) return addToast('86 Radar', 'No urgent 86/low-stock items found.');
+    const alertLines = urgent86Items.slice(0, 10).map(i => `• ${i.name}: ${Number(i.currentStock || 0)} on hand / par ${Number(i.parLevel || 0)}`);
+    const text = `86 / Low Stock Watch:\n${alertLines.join('\n')}`;
+    try {
+      await addDoc(collection(db, 'events'), {
+        date: new Date().toISOString(), title: text, type: 'note', author: appUser?.name || 'Ops Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
+      });
+      addToast('86 Alert Posted', 'Important low-stock alert posted to Message Board.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleMarkOpsReviewed = async () => {
+    try {
+      await logAudit(appUser, 'OPS_REVIEWED', 'ops', `Reviewed Ops Command Center for ${today}. Health score ${healthScore}/100.`);
+      addToast('Ops Reviewed', 'Review logged to audit trail.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
   const timeline = [
     ...timePunches.filter(p => p.date === today).map(p => ({
       at: p.clockOutTime || p.clockInTime,
@@ -6055,8 +6122,12 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
             <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">Kitchen Command Center</h1>
             <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A live cockpit for prep, people, inventory, maintenance, labor, waste, and the little gremlins that usually wait until dinner rush.</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             <button onClick={handlePostBrief} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Post Brief</button>
+            <button onClick={handleCreateSmartPrepTasks} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ClipboardList size={16}/> Prep Plan</button>
+            <button onClick={handleBuildSmartOrder} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Package size={16}/> Smart Order</button>
+            <button onClick={handlePost86Alert} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Bell size={16}/> 86 Alert</button>
+            <button onClick={handleMarkOpsReviewed} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Check size={16}/> Reviewed</button>
             {(appUser?.isAdmin || appUser?.permissions?.prep || appUser?.permissions?.team) && <button onClick={handleSeedKitchenOps} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Plus size={16}/> Seed Standards</button>}
           </div>
         </div>
@@ -6070,6 +6141,17 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
             <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
           </div>
         ))}
+      </div>
+
+      <div className={`${T.card} p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
+        <div className="lg:col-span-2">
+          <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Smart Action Dock</h2>
+          <p className="text-xs text-slate-400 font-bold mt-1">These buttons turn the dashboard into actual work: pending orders, prep tasks, 86 alerts, and audit trail checkpoints.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Suggested Prep</div><div className="text-xl font-black text-white">{suggestedPrepTasks.length}</div></div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">86 Watch</div><div className={`text-xl font-black ${urgent86Items.length ? 'text-red-400' : 'text-emerald-400'}`}>{urgent86Items.length}</div></div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -7127,6 +7209,17 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     `Generated: ${new Date().toLocaleString()}`
   ].join('\n');
 
+  const adminRiskQueue = [
+    crashes24h > 0 ? { tone: crashes24h > 10 ? 'red' : 'amber', title: 'Fresh crash reports', detail: `${crashes24h} crash/bug log(s) in the last 24 hours.`, jump: 'support' } : null,
+    permissionDeniedLogs.length > 0 ? { tone: 'red', title: 'Permission denied errors', detail: `${permissionDeniedLogs.length} log(s) look like Firestore rule blocks.`, jump: 'support' } : null,
+    pastDueWorkspaces.length > 0 ? { tone: 'amber', title: 'Past due workspaces', detail: `${pastDueWorkspaces.length} workspace(s) are locked or billing-risk.`, jump: 'tenants' } : null,
+    missingOwnerAccounts.length > 0 ? { tone: 'amber', title: 'Missing owner accounts', detail: `${missingOwnerAccounts.length} restaurant owner email(s) do not match a user profile.`, jump: 'support' } : null,
+    usersWithoutRestaurant.length > 0 ? { tone: 'amber', title: 'Users missing restaurantId', detail: `${usersWithoutRestaurant.length} user profile(s) cannot route correctly.`, jump: 'support' } : null,
+    duplicateEmailGroups.length > 0 ? { tone: 'red', title: 'Duplicate user emails', detail: `${duplicateEmailGroups.length} duplicate email group(s) found.`, jump: 'support' } : null,
+    pushOptInRate < 30 && allUsers.length > 0 ? { tone: 'amber', title: 'Low push adoption', detail: `${pushOptInRate}% of users have notification tokens.`, jump: 'users' } : null
+  ].filter(Boolean);
+  const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
+
   const handleCopyPlatformSnapshot = async () => {
     try {
       await navigator.clipboard.writeText(platformSnapshot);
@@ -7175,7 +7268,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
   const SignalPip = ({ tone = 'emerald', label = 'LIVE', hot = false }) => {
     const colors = tone === 'red' ? 'text-red-400 bg-red-500' : tone === 'amber' ? 'text-amber-400 bg-amber-400' : tone === 'blue' ? 'text-blue-400 bg-blue-400' : tone === 'purple' ? 'text-fuchsia-400 bg-fuchsia-400' : 'text-emerald-400 bg-emerald-400';
-    return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'slow'} ${colors.split(' ')[1]}`}></span>{label}</span>;
+    return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'quiet'} ${colors.split(' ')[1]}`}></span>{label}</span>;
   };
 
   const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false }) => (
@@ -7206,18 +7299,25 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
             <p className="text-xs text-slate-400 font-bold mt-1">Live platform telemetry, client control, user presence, safety locks, and support tools.</p>
           </div>
           <div className="flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-widest">
-            {['AUTH','DB','PUSH','RULES','API','GHOST','CACHE','BILLING','LOGS','BACKUP','OCR','LABS'].map((lamp, i) => (
+            {[
+              ['AUTH', 'emerald'],
+              ['DB', 'emerald'],
+              ['RULES', permissionDeniedLogs.length ? 'amber' : 'emerald'],
+              ['API', apiConnectedCount ? 'blue' : 'emerald'],
+              ['GHOST', 'purple'],
+              ['CRASH', crashes24h ? 'amber' : 'emerald']
+            ].map(([lamp, tone]) => (
               <span key={lamp} className="bg-[#0B0E11] border border-[#2A353D] rounded-md px-2 py-1 text-slate-300 flex items-center gap-1.5">
-                <span className={`cockpit-light ${i % 5 === 0 ? 'bg-blue-400 text-blue-400' : i % 3 === 0 ? 'bg-amber-400 text-amber-400' : 'bg-emerald-400 text-emerald-400'}`}></span>{lamp}
+                <span className={`cockpit-light quiet ${tone === 'amber' ? 'bg-amber-400 text-amber-400' : tone === 'blue' ? 'bg-blue-400 text-blue-400' : tone === 'purple' ? 'bg-fuchsia-400 text-fuchsia-400' : 'bg-emerald-400 text-emerald-400'}`}></span>{lamp}
               </span>
             ))}
           </div>
         </div>
         <div className="relative grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-          <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} active workspaces`} tone="emerald" hot={onlineUsers.length > 0} />
-          <CockpitMetric label="Users Today" value={dau} detail={`${stickyRate}% daily stickiness`} tone="blue" />
+          <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} item(s) in action queue`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} />
+          <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} active workspaces`} tone="emerald" />
           <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" />
-          <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Needs eyes' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 0} />
+          <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Needs eyes' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} />
           <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} />
           <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} />
         </div>
@@ -7225,7 +7325,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
       {/* MASTER NAVIGATION */}
       <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'live', label:'Live Ops'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Grant Access'}].map((t) => (
+        {[{id:'overview', label:'Dashboard'}, {id:'live', label:'Live Users'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Users'}, {id:'admins', label:'Grant Access'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'forge', label:'Forge'}].map((t) => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
       </div>
@@ -7450,6 +7550,28 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
           {/* PRICING & MRR CONFIG */}
           {/* ... (Your pricing and stale account code remains exactly the same here) ... */}
 
+          <div className={`${T.card} p-4`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-black text-white text-sm flex items-center gap-2"><Shield size={18} className={T.copper}/> Administrator Action Queue</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Only the important warnings. Less disco ball, more control tower.</p>
+              </div>
+              <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${platformStatus === 'Clean' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : platformStatus === 'Monitoring' ? 'bg-amber-900/20 text-amber-400 border-amber-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>{platformStatus}</span>
+            </div>
+            {adminRiskQueue.length === 0 ? (
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4 text-sm font-bold text-emerald-400">No urgent admin issues detected.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                {adminRiskQueue.slice(0, 6).map((item, idx) => (
+                  <button key={idx} type="button" onClick={() => setSubTab(item.jump)} className={`text-left bg-[#12161A] border rounded-xl p-3 hover:bg-[#0B0E11] transition-colors ${item.tone === 'red' ? 'border-red-900/50' : item.tone === 'amber' ? 'border-amber-900/50' : 'border-[#2A353D]'}`}>
+                    <div className={`text-[10px] font-black uppercase tracking-widest mb-1 ${item.tone === 'red' ? 'text-red-400' : item.tone === 'amber' ? 'text-amber-400' : 'text-emerald-400'}`}>{item.title}</div>
+                    <div className="text-xs text-slate-300 font-bold leading-snug">{item.detail}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* --- GLOBAL INFRASTRUCTURE & HEALTH MATRIX --- */}
           <div className={`${T.card} overflow-hidden border-slate-700/50`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
@@ -7465,7 +7587,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Firebase Firestore DB</div>
                 </div>
                 <div className="flex items-center gap-2 bg-emerald-900/20 border border-emerald-900/50 px-3 py-1.5 rounded-lg">
-                  <span className="flex h-2.5 w-2.5 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span></span>
+                  <span className="cockpit-light quiet bg-emerald-400 text-emerald-400"></span>
                   <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Operational</span>
                 </div>
               </div>
@@ -8421,11 +8543,12 @@ return (
         .cockpit-shell { --chaos-copper: #D4A381; --chaos-panel: #1A2126; --chaos-deck: #12161A; }
         .ui-v12-compact button { touch-action: manipulation; }
         .ui-v12-compact textarea { line-height: 1.35 !important; }
-        .cockpit-light { position: relative; display: inline-flex; width: .55rem; height: .55rem; border-radius: 999px; box-shadow: 0 0 10px currentColor; }
-        .cockpit-light::after { content: ''; position: absolute; inset: -4px; border-radius: 999px; background: currentColor; opacity: .16; animation: cockpitPing 1.65s infinite; }
-        .cockpit-light.slow::after { animation-duration: 2.8s; }
-        .cockpit-light.hot::after { animation-duration: .9s; }
-        @keyframes cockpitPing { 0% { transform: scale(.65); opacity: .42; } 70%,100% { transform: scale(2.25); opacity: 0; } }
+        .cockpit-light { position: relative; display: inline-flex; width: .55rem; height: .55rem; border-radius: 999px; box-shadow: 0 0 6px currentColor; }
+        .cockpit-light::after { content: ''; position: absolute; inset: -4px; border-radius: 999px; background: currentColor; opacity: .08; animation: none; }
+        .cockpit-light.quiet::after { animation: none !important; opacity: .08; }
+        .cockpit-light.slow::after { animation: cockpitPing 5.5s infinite; opacity: .12; }
+        .cockpit-light.hot::after { animation: cockpitPing 1.8s infinite; opacity: .24; }
+        @keyframes cockpitPing { 0% { transform: scale(.75); opacity: .28; } 70%,100% { transform: scale(1.8); opacity: 0; } }
         @keyframes softGlow { 0%,100% { box-shadow: 0 0 0 rgba(212,163,129,0); } 50% { box-shadow: 0 0 18px rgba(212,163,129,.22); } }
         .cockpit-panel { background: linear-gradient(180deg, rgba(26,33,38,.98), rgba(15,19,24,.98)); border: 1px solid #2A353D; box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 16px 50px rgba(0,0,0,.18); }
         .cockpit-grid { background-image: radial-gradient(circle at 1px 1px, rgba(212,163,129,.09) 1px, transparent 0); background-size: 18px 18px; }
@@ -8583,7 +8706,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.9.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.0.0 Admin/UI Polish</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
