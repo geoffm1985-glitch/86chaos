@@ -90,7 +90,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '11.8.0';
+const CURRENT_VERSION = '11.9.1';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -288,9 +288,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
-const isTrueGod =
-  (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() ||
-  appUser?.isSuperAdmin === true;  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
+  const isTrueGod = (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin === true;
+  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
   if (appUser?.isAdmin || isTrueGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
@@ -7087,6 +7086,26 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   });
   const moduleList = ['schedule','events','ops','messages','prep','recipes','inventory','sales','team','maintenance','timesheets'];
   const featureAdoption = moduleList.map(feat => ({ feat, count: restaurants.filter(r => r.features?.[feat] !== false).length })).sort((a,b) => b.count - a.count);
+  const usersWithoutRestaurant = allUsers.filter(u => !u.restaurantId);
+  const missingOwnerAccounts = restaurants.filter(r => r.ownerEmail && !allUsers.some(u => (u.email || '').toLowerCase() === (r.ownerEmail || '').toLowerCase()));
+  const duplicateEmailGroups = Object.entries(allUsers.reduce((acc, u) => {
+    const emailKey = (u.email || '').toLowerCase().trim();
+    if (emailKey) acc[emailKey] = [...(acc[emailKey] || []), u];
+    return acc;
+  }, {})).filter(([, group]) => group.length > 1);
+  const usersMissingPush = allUsers.filter(u => !u.fcmToken);
+  const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
+  const endpointList = ['deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
+  const envReport = typeof window !== 'undefined' ? {
+    host: window.location.host,
+    path: window.location.pathname,
+    online: navigator.onLine,
+    serviceWorker: 'serviceWorker' in navigator,
+    indexedDb: 'indexedDB' in window,
+    notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+    storageUser: !!(localStorage.getItem('86chaosUser') || sessionStorage.getItem('86chaosUser')),
+    userAgent: navigator.userAgent
+  } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const platformSnapshot = [
     `86 Chaos Platform Snapshot`,
     `Version: ${CURRENT_VERSION}`,
@@ -7098,7 +7117,13 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     `Network users: ${allUsers.length}`,
     `Admins: ${adminUsers.length}`,
     `Crashes 24h: ${crashes24h}`,
+    `Permission denied logs: ${permissionDeniedLogs.length}`,
     `Push opt-in: ${pushOptInRate}%`,
+    `Users without restaurantId: ${usersWithoutRestaurant.length}`,
+    `Missing owner accounts: ${missingOwnerAccounts.length}`,
+    `Duplicate email groups: ${duplicateEmailGroups.length}`,
+    `Host: ${envReport.host}`,
+    `Browser online: ${envReport.online}`,
     `Generated: ${new Date().toLocaleString()}`
   ].join('\n');
 
@@ -7108,6 +7133,35 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       addToast('Copied', 'Platform snapshot copied to clipboard.');
     } catch (err) {
       addToast('Snapshot', platformSnapshot);
+    }
+  };
+
+  const handleCopyDiagnostics = async () => {
+    const diagnostics = [
+      platformSnapshot,
+      '',
+      'Client Runtime',
+      `Host: ${envReport.host}`,
+      `Path: ${envReport.path}`,
+      `Navigator online: ${envReport.online}`,
+      `Notifications: ${envReport.notifications}`,
+      `Service worker available: ${envReport.serviceWorker}`,
+      `IndexedDB available: ${envReport.indexedDb}`,
+      `Stored user cache: ${envReport.storageUser}`,
+      '',
+      'Data Integrity',
+      `Users without restaurantId: ${usersWithoutRestaurant.map(u => u.email || u.name || u.id).join(', ') || 'none'}`,
+      `Missing owner accounts: ${missingOwnerAccounts.map(r => (r.name || 'Unnamed') + ' <' + (r.ownerEmail || 'no email') + '>').join(', ') || 'none'}`,
+      `Duplicate email groups: ${duplicateEmailGroups.map(([email, group]) => email + ' (' + group.length + ')').join(', ') || 'none'}`,
+      `Permission denied logs: ${permissionDeniedLogs.length}`,
+      '',
+      `User agent: ${envReport.userAgent}`
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(diagnostics);
+      addToast('Copied', 'Support diagnostics copied to clipboard.');
+    } catch (err) {
+      addToast('Diagnostics', diagnostics.substring(0, 220));
     }
   };
 
@@ -7171,7 +7225,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
       {/* MASTER NAVIGATION */}
       <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'live', label:'Live Ops'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
+        {[{id:'overview', label:'Metrics'}, {id:'live', label:'Live Ops'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Grant Access'}].map((t) => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
       </div>
@@ -7273,33 +7327,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                   <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
                 </div>
 
-                {/* WORKSPACE EXPERIENCE PREFERENCES */}
-                <div className="pt-4 border-t border-[#2A353D]">
-                  <label className={T.label}>Workspace Experience Preferences</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-                    <div><label className={T.label}>Default Landing Tab</label><select value={editingRest.systemSettings?.defaultLandingTab || 'published'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), defaultLandingTab: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="published">Time Clock & Shifts</option><option value="ops">Ops Command Center</option><option value="messages">Message Board</option><option value="events">Event Calendar</option><option value="prep">Prep & Tasks</option><option value="recipes">Recipe Book</option><option value="inventory">Inventory</option><option value="schedule">Schedule Builder</option></select></div>
-                    <div><label className={T.label}>UI Density</label><select value={editingRest.systemSettings?.uiDensity || 'compact'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), uiDensity: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="ultra">Ultra Compact</option><option value="compact">Compact</option><option value="comfortable">Comfortable</option></select></div>
-                    <div><label className={T.label}>Recipe Density</label><select value={editingRest.systemSettings?.recipeCardDensity || 'tight'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), recipeCardDensity: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="tight">Tight</option><option value="standard">Standard</option><option value="detail">Detail Heavy</option></select></div>
-                    <div><label className={T.label}>Message Retention Days</label><input type="number" min="1" max="365" value={editingRest.systemSettings?.messageRetentionDays || 30} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), messageRetentionDays: parseInt(e.target.value) || 30 }})} className={`${T.input} py-2 text-xs`} /></div>
-                    <div><label className={T.label}>Shift Claim Policy</label><select value={editingRest.systemSettings?.shiftClaimPolicy || 'managerReview'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), shiftClaimPolicy: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="managerReview">Manager Review</option><option value="autoApproveSameRole">Auto-Approve Same Role</option><option value="autoApproveAll">Auto-Approve All</option></select></div>
-                    <div><label className={T.label}>Cockpit Lights</label><select value={editingRest.systemSettings?.cockpitLights || 'full'} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), cockpitLights: e.target.value }})} className={`${T.input} py-2 text-xs`}><option value="full">747 Full Glow</option><option value="reduced">Reduced Motion</option><option value="quiet">Quiet</option></select></div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                    {[
-                      ['showOpsBriefOnLogin', 'Show Ops Brief on login'],
-                      ['requirePhotoForMaintenance', 'Require photo on maintenance closeout'],
-                      ['enableReadReceipts', 'Enable message read receipts'],
-                      ['compactMobileCards', 'Force compact mobile cards'],
-                      ['allowStaffRecipeSuggestions', 'Allow staff recipe suggestions'],
-                      ['managerPinRequiredForDelete', 'Require manager PIN for destructive actions']
-                    ].map(([key, label]) => (
-                      <label key={key} className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors cursor-pointer ${editingRest.systemSettings?.[key] ? 'bg-[#8F6040]/20 border-[#C59373]' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
-                        <input type="checkbox" checked={!!editingRest.systemSettings?.[key]} onChange={e => setEditingRest({...editingRest, systemSettings: { ...(editingRest.systemSettings || {}), [key]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
-                        <span className={`text-[11px] font-bold ${editingRest.systemSettings?.[key] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                {/* Super-admin access is intentionally NOT managed here.
+                    Use System Administrator > Grant Access so elevated permissions stay in one audited place. */}
 
                 {/* QUICK APPLY TIER PRESETS */}
                 <div className="pt-4 border-t border-[#2A353D]">
@@ -7714,47 +7743,117 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
       {/* --- TAB: SUPPORT & CRASHES --- */}
       {subTab === 'support' && (
-        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-          <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-            <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Live Diagnostics / Bug Ledger</h3>
-            <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
-          </div>
-          <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-            {crashLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No bugs or crashes logged yet. System stable.</div>}
-            {crashLogs.map(log => (
-              <div key={log.id} className={`${T.row} flex flex-col gap-2`}>
-                <div className="flex justify-between items-start">
-                  <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
-                  <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span>
-                </div>
-{/* HARDWARE DIAGNOSTICS UI */}
-                        {(log.screenSize || log.userAgent) && (
-                          <div className="text-[9px] mt-1.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 bg-[#0B0E11] p-1.5 rounded-lg border border-[#2A353D]">
-                            {log.screenSize && <span className="font-black text-blue-400 whitespace-nowrap">🖥️ {log.screenSize}</span>}
-                            {log.userAgent && <span className="font-medium text-slate-500 truncate" title={log.userAgent}>📱 {log.userAgent}</span>}
-                          </div>
-                        )}
-
-                
-                {/* TELEMETRY BREADCRUMBS UI */}
-                {log.breadcrumbs && log.breadcrumbs.length > 0 && (
-                  <div className="bg-[#0B0E11] rounded-lg border border-[#2A353D] p-2 mt-1">
-                     <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">User Action Telemetry (Last 15 Clicks)</div>
-                     <div className="text-[10px] font-mono text-slate-400 space-y-0.5">
-                       {log.breadcrumbs.map((crumb, idx) => (
-                         <div key={idx} className="flex gap-2 hover:bg-[#12161A] px-1 rounded transition-colors">
-                           <span className="text-emerald-500/70">[{crumb.time}]</span>
-                           <span className="text-slate-500">{crumb.action}:</span>
-                           <span className="text-blue-300">"{crumb.target}"</span>
-                         </div>
-                       ))}
-                     </div>
-                  </div>
-                )}
-
-                {log.stack && <div className="text-[9px] text-slate-500 font-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-[#0B0E11] p-2 rounded border border-[#2A353D] opacity-70 hover:opacity-100 transition-opacity">{log.stack}</div>}
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="cockpit-panel rounded-2xl p-4 overflow-hidden relative">
+            <div className="absolute inset-0 cockpit-grid opacity-30 pointer-events-none"></div>
+            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Support Diagnostics Bay</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Runtime, auth, database integrity, API checks, crash ledger, and ghost-access clues.</p>
               </div>
-            ))}
+              <div className="flex gap-2">
+                <button onClick={handleCopyDiagnostics} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white border border-[#2A353D] px-2 py-1 rounded transition-colors">Copy Diagnostics</button>
+                <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
+              </div>
+            </div>
+
+            <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+              <CockpitMetric label="Permission Denied" value={permissionDeniedLogs.length} detail="Firestore rule hits" tone={permissionDeniedLogs.length ? 'red' : 'emerald'} hot={permissionDeniedLogs.length > 0} />
+              <CockpitMetric label="Missing Owners" value={missingOwnerAccounts.length} detail="Owner email no user doc" tone={missingOwnerAccounts.length ? 'amber' : 'emerald'} hot={missingOwnerAccounts.length > 0} />
+              <CockpitMetric label="No Restaurant ID" value={usersWithoutRestaurant.length} detail="Users orphaned from tenant" tone={usersWithoutRestaurant.length ? 'amber' : 'emerald'} hot={usersWithoutRestaurant.length > 0} />
+              <CockpitMetric label="Duplicate Emails" value={duplicateEmailGroups.length} detail="Auth/profile mismatch risk" tone={duplicateEmailGroups.length ? 'red' : 'emerald'} hot={duplicateEmailGroups.length > 0} />
+            </div>
+
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Runtime</div><SignalPip tone={envReport.online ? 'emerald' : 'red'} label={envReport.online ? 'ONLINE' : 'OFFLINE'} hot={!envReport.online}/></div>
+                <div className="space-y-1 text-[10px] font-mono text-slate-400 break-all">
+                  <div><span className="text-slate-600">Host:</span> {envReport.host}</div>
+                  <div><span className="text-slate-600">Version:</span> {CURRENT_VERSION}</div>
+                  <div><span className="text-slate-600">Notifications:</span> {envReport.notifications}</div>
+                  <div><span className="text-slate-600">IndexedDB:</span> {envReport.indexedDb ? 'available' : 'missing'}</div>
+                  <div><span className="text-slate-600">Service Worker:</span> {envReport.serviceWorker ? 'available' : 'missing'}</div>
+                  <div><span className="text-slate-600">Cached User:</span> {envReport.storageUser ? 'yes' : 'no'}</div>
+                </div>
+              </div>
+
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">API Route Checklist</div><SignalPip tone="blue" label="VERCEL"/></div>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {endpointList.map(ep => (
+                    <div key={ep} className="flex items-center justify-between text-[10px] font-bold bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5">
+                      <span className="text-slate-300">/api/{ep}</span>
+                      <span className="text-slate-500 uppercase tracking-widest">present in repo</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[9px] text-slate-600 font-bold mt-2 leading-snug">If a route returns HTML or 404, Vercel did not deploy that file or the filename does not match the fetch path.</p>
+              </div>
+
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Access Model</div><SignalPip tone="purple" label="RULES"/></div>
+                <div className="space-y-1.5 text-[10px] font-bold text-slate-400">
+                  <div className="flex justify-between gap-2"><span>Super admins</span><span className="text-white">{superAdmins.length}</span></div>
+                  <div className="flex justify-between gap-2"><span>Master email</span><span className="text-[#D4A381]">{MASTER_ADMIN_EMAIL}</span></div>
+                  <div className="flex justify-between gap-2"><span>Ghost needs rules</span><span className="text-emerald-400">isSuperAdmin()</span></div>
+                  <div className="flex justify-between gap-2"><span>Read-only clients</span><span className="text-blue-400">{readOnlyWorkspaces.length}</span></div>
+                  <div className="flex justify-between gap-2"><span>Past due lockouts</span><span className="text-red-400">{pastDueWorkspaces.length}</span></div>
+                </div>
+              </div>
+            </div>
+
+            {(missingOwnerAccounts.length > 0 || usersWithoutRestaurant.length > 0 || duplicateEmailGroups.length > 0) && (
+              <div className="relative z-10 mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {missingOwnerAccounts.length > 0 && <div className="bg-amber-900/10 border border-amber-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Missing Owner Accounts</div>{missingOwnerAccounts.slice(0,8).map(r => <div key={r.id} className="text-[10px] text-slate-400 font-bold break-all mb-1">{r.name}: {r.ownerEmail}</div>)}</div>}
+                {usersWithoutRestaurant.length > 0 && <div className="bg-amber-900/10 border border-amber-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Users Without Restaurant</div>{usersWithoutRestaurant.slice(0,8).map(u => <div key={u.id} className="text-[10px] text-slate-400 font-bold break-all mb-1">{u.name || 'Unnamed'}: {u.email || u.id}</div>)}</div>}
+                {duplicateEmailGroups.length > 0 && <div className="bg-red-900/10 border border-red-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-2">Duplicate Email Groups</div>{duplicateEmailGroups.slice(0,8).map(([email, group]) => <div key={email} className="text-[10px] text-slate-400 font-bold break-all mb-1">{email}: {group.length} profiles</div>)}</div>}
+              </div>
+            )}
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Bug Ledger</h3>
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{crashLogs.length} recent logs</div>
+            </div>
+            <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+              {crashLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No bugs or crashes logged yet. System stable.</div>}
+              {crashLogs.map(log => (
+                <div key={log.id} className={`${T.row} flex flex-col gap-2 ${(`${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied')) ? 'bg-red-950/20' : ''}`}>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
+                    <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span>
+                  </div>
+                  {(log.restaurantId || log.user) && (
+                    <div className="text-[9px] mt-1 flex flex-wrap gap-1.5">
+                      {log.restaurantId && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">restaurantId: {log.restaurantId}</span>}
+                      {log.user && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">user: {log.user}</span>}
+                    </div>
+                  )}
+                  {(log.screenSize || log.userAgent) && (
+                    <div className="text-[9px] mt-1.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 bg-[#0B0E11] p-1.5 rounded-lg border border-[#2A353D]">
+                      {log.screenSize && <span className="font-black text-blue-400 whitespace-nowrap">🖥️ {log.screenSize}</span>}
+                      {log.userAgent && <span className="font-medium text-slate-500 truncate" title={log.userAgent}>📱 {log.userAgent}</span>}
+                    </div>
+                  )}
+                  {log.breadcrumbs && log.breadcrumbs.length > 0 && (
+                    <div className="bg-[#0B0E11] rounded-lg border border-[#2A353D] p-2 mt-1">
+                       <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">User Action Telemetry (Last 15 Clicks)</div>
+                       <div className="text-[10px] font-mono text-slate-400 space-y-0.5">
+                         {log.breadcrumbs.map((crumb, idx) => (
+                           <div key={idx} className="flex gap-2 hover:bg-[#12161A] px-1 rounded transition-colors">
+                             <span className="text-emerald-500/70">[{crumb.time}]</span>
+                             <span className="text-slate-500">{crumb.action}:</span>
+                             <span className="text-blue-300">"{crumb.target}"</span>
+                           </div>
+                         ))}
+                       </div>
+                    </div>
+                  )}
+                  {log.stack && <div className="text-[9px] text-slate-500 font-mono mt-1 overflow-x-auto whitespace-pre-wrap bg-[#0B0E11] p-2 rounded border border-[#2A353D] opacity-70 hover:opacity-100 transition-opacity">{log.stack}</div>}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -8468,7 +8567,7 @@ return (
         {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
-        {activeTabState === 'godmode' && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
+        {activeTabState === 'godmode' && ((liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin === true) && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
         {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />}
       </main>
       
