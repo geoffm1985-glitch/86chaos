@@ -277,6 +277,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.inventory || perms.sales || perms.team) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
@@ -5824,6 +5825,400 @@ const TabAuditLog = ({ appUser }) => {
 };
 
 // --- SALES & TRENDS TAB ---
+
+// ============================================================================
+// OPS COMMAND CENTER
+// A rescue-safe "kitchen brain" layer that ties existing modules together
+// without forcing a folder refactor yet. Uses existing Firestore collections.
+// ============================================================================
+const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast }) => {
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId);
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId);
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId);
+  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId);
+  const tasks = useLiveCollection('tasks', appUser?.restaurantId);
+  const recipes = useLiveCollection('recipes', appUser?.restaurantId);
+
+  const today = currentDate || getToday();
+  const todayDate = new Date(today + 'T12:00:00');
+  const yesterdayDate = new Date(todayDate);
+  yesterdayDate.setDate(todayDate.getDate() - 1);
+  const yesterday = formatDate(yesterdayDate);
+  const todayName = todayDate.toLocaleDateString('en-US', { weekday: 'long' });
+  const monthStr = getMonthStr(today);
+
+  const sameDay = (date) => date === today;
+  const openMaintenance = maintenanceLogs.filter(l => (l.status || 'Reported') !== 'Resolved');
+  const criticalMaintenance = openMaintenance.filter(l => l.urgency === 'Critical' || l.urgency === 'High');
+  const lowStockItems = inventoryItems
+    .filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0))
+    .sort((a, b) => ((Number(a.currentStock || 0) / Math.max(1, Number(a.parLevel || 1))) - (Number(b.currentStock || 0) / Math.max(1, Number(b.parLevel || 1)))));
+  const pendingOrderItems = inventoryItems.filter(i => Number(i.pendingQty || 0) > 0);
+  const todayWaste = wasteLogs.filter(w => w.date === today);
+  const todayEvents = events.filter(e => (e.date || '').startsWith(today) || e.date === today);
+  const importantEvents = todayEvents.filter(e => e.isImportant || (e.title || '').toLowerCase().includes('86'));
+  const todayShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const activePunches = timePunches.filter(p => p.date === today && ['clocked_in', 'on_break'].includes(p.status));
+  const yesterdaySales = sales.find(s => s.date === yesterday);
+  const todaySales = sales.find(s => s.date === today);
+  const monthSales = sales.filter(s => (s.date || '').startsWith(monthStr));
+
+  const parseShiftHours = (start, end) => {
+    if (!start || !end) return 0;
+    const [sh, sm] = String(start).split(':').map(Number);
+    let eh = 23; let em = 0;
+    if (end !== 'CLOSE') {
+      const parts = String(end).split(':').map(Number);
+      eh = parts[0]; em = parts[1] || 0;
+    }
+    const startM = (sh * 60) + (sm || 0);
+    let endM = (eh * 60) + (em || 0);
+    if (endM <= startM) endM += 24 * 60;
+    return Math.max(0, (endM - startM) / 60);
+  };
+
+  const punchHours = (p) => {
+    if (!p.clockInTime) return 0;
+    const end = p.clockOutTime ? new Date(p.clockOutTime) : new Date();
+    const rawMins = (end - new Date(p.clockInTime)) / 60000;
+    return Math.max(0, (rawMins - Number(p.breakMinutes || 0)) / 60);
+  };
+
+  const todayLaborCost = timePunches.filter(p => p.date === today).reduce((sum, p) => {
+    const emp = users.find(u => u.id === p.employeeId);
+    return sum + (punchHours(p) * Number(emp?.wage || 0));
+  }, 0);
+
+  const taskPeriodKey = (task, dateStr) => {
+    if ((task.frequency || 'daily') === 'daily') return dateStr;
+    if (task.frequency === 'weekly') {
+      const d = new Date(dateStr + 'T12:00:00');
+      const day = d.getDay();
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+      return formatDate(d);
+    }
+    if (task.frequency === 'monthly') return dateStr.substring(0, 7);
+    return dateStr;
+  };
+
+  const taskIsDueToday = (task) => {
+    if ((task.frequency || 'daily') === 'daily') return true;
+    if (task.frequency === 'weekly') return !task.targetDay || task.targetDay === todayName;
+    if (task.frequency === 'monthly') return String(task.targetDate || '1') === String(todayDate.getDate());
+    return true;
+  };
+
+  const dueTasks = tasks.filter(taskIsDueToday);
+  const doneTasks = dueTasks.filter(t => !!t.completions?.[taskPeriodKey(t, today)]);
+  const openTasks = dueTasks.filter(t => !t.completions?.[taskPeriodKey(t, today)]);
+  const taskPct = dueTasks.length ? Math.round((doneTasks.length / dueTasks.length) * 100) : 100;
+
+  const todayMs = new Date(today + 'T12:00:00').getTime();
+  const overduePm = pmSchedules.filter(pm => {
+    if (!pm.lastCompleted) return true;
+    const lastMs = new Date(pm.lastCompleted + 'T12:00:00').getTime();
+    const daysSince = Math.floor((todayMs - lastMs) / 86400000);
+    return (Number(pm.frequencyDays || 30) - daysSince) <= 0;
+  });
+
+  const avgMonthSales = monthSales.length ? monthSales.reduce((s, d) => s + Number(d.grossSales || 0), 0) / monthSales.length : 0;
+  const sameWeekdaySales = sales.filter(s => {
+    if (!s.date || s.date >= today) return false;
+    return new Date(s.date + 'T12:00:00').getDay() === todayDate.getDay();
+  }).slice(-8);
+  const forecastSales = sameWeekdaySales.length
+    ? sameWeekdaySales.reduce((sum, s) => sum + Number(s.grossSales || 0), 0) / sameWeekdaySales.length
+    : avgMonthSales;
+
+  const laborPct = todaySales?.grossSales ? Math.round((todayLaborCost / Math.max(1, Number(todaySales.grossSales))) * 1000) / 10 : null;
+  const wasteCost = todayWaste.reduce((sum, w) => sum + Number(w.cost || 0), 0);
+
+  const healthParts = [
+    Math.max(0, 100 - (lowStockItems.length * 4)),
+    Math.max(0, 100 - (openMaintenance.length * 8) - (criticalMaintenance.length * 10)),
+    taskPct,
+    Math.max(0, 100 - (todayWaste.length * 6)),
+    laborPct === null ? 90 : Math.max(0, 100 - Math.max(0, laborPct - 25) * 4)
+  ];
+  const healthScore = Math.round(healthParts.reduce((a,b)=>a+b,0) / healthParts.length);
+
+  const prepForecast = [
+    { label: 'Forecast Sales', value: forecastSales ? `$${Math.round(forecastSales).toLocaleString()}` : 'Needs sales data', note: sameWeekdaySales.length ? 'Based on same weekdays' : 'Based on month average' },
+    { label: 'Kitchen Coverage', value: `${todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length} scheduled`, note: `${todayShifts.length} total published shifts` },
+    { label: 'Prep Pressure', value: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High' : forecastSales > 0 ? 'Normal' : 'Unknown', note: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'Sales forecast is above normal' : 'No spike detected' },
+    { label: 'Low Stock', value: `${lowStockItems.length} items`, note: lowStockItems.slice(0, 3).map(i => i.name).join(', ') || 'No par issues found' }
+  ];
+
+  const scheduleWarnings = users.map(u => {
+    const weekShifts = shifts.filter(s => s.employeeId === u.id && s.isPublished && s.date >= today && s.date <= formatDate(new Date(todayDate.getTime() + 6 * 86400000)));
+    const hours = weekShifts.reduce((sum, s) => sum + parseShiftHours(s.startTime, s.endTime), 0);
+    const days = [...new Set(weekShifts.map(s => s.date))].length;
+    if (hours >= 38) return `${u.name} is projected near overtime (${hours.toFixed(1)} hrs).`;
+    if (days >= 6) return `${u.name} has ${days} scheduled days in the next week.`;
+    return null;
+  }).filter(Boolean).slice(0, 5);
+
+  const recommendations = [
+    lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.',
+    criticalMaintenance.length > 0 ? `Maintenance first: ${criticalMaintenance[0].equipment} needs attention.` : 'No high priority equipment fires showing.',
+    openTasks.length > 0 ? `Opening focus: ${openTasks.slice(0, 3).map(t => t.title).join(', ')}.` : 'Today\'s task list is buttoned up.',
+    overduePm.length > 0 ? `Preventative maintenance overdue: ${overduePm.slice(0, 2).map(pm => pm.title).join(', ')}.` : 'Preventative maintenance countdowns are quiet.',
+    scheduleWarnings.length > 0 ? scheduleWarnings[0] : 'No immediate schedule warnings detected.'
+  ];
+
+  const timeline = [
+    ...timePunches.filter(p => p.date === today).map(p => ({
+      at: p.clockOutTime || p.clockInTime,
+      type: p.clockOutTime ? 'Clock Out' : 'Clock In',
+      title: `${p.employeeName || users.find(u => u.id === p.employeeId)?.name || 'Staff'} ${p.clockOutTime ? 'clocked out' : 'clocked in'}`,
+      detail: p.status || ''
+    })),
+    ...todayWaste.map(w => ({ at: w.timestamp || today, type: 'Waste', title: `${w.itemName || 'Item'} wasted`, detail: `${w.qty || ''} ${w.reason || ''}` })),
+    ...maintenanceLogs.filter(l => (l.reportedAt || '').startsWith(today) || (l.lastUpdated || '').startsWith(today)).map(l => ({ at: l.lastUpdated || l.reportedAt, type: 'Maintenance', title: l.equipment, detail: l.issue })),
+    ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.type || 'Event', title: e.title || 'Event', detail: e.author || '' })),
+    ...todayShifts.slice(0, 12).map(s => ({ at: `${today}T${s.startTime || '00:00'}:00`, type: 'Scheduled', title: `${users.find(u => u.id === s.employeeId)?.name || 'Staff'} ${s.role || ''}`, detail: `${formatShortTime(s.startTime)} - ${formatShortTime(s.endTime)}` }))
+  ].filter(x => x.at).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0, 18);
+
+  const briefText = () => {
+    const lines = [
+      `Good morning, ${appUser?.name?.split(' ')[0] || 'team'}.`,
+      `Restaurant health score: ${healthScore}/100.`,
+      yesterdaySales ? `Yesterday sales: $${Number(yesterdaySales.grossSales || 0).toLocaleString()}.` : 'Yesterday sales are not entered yet.',
+      todaySales ? `Today sales entered: $${Number(todaySales.grossSales || 0).toLocaleString()}.` : 'Today sales are not entered yet.',
+      `Today: ${todayShifts.length} shifts, ${activePunches.length} currently clocked in.`,
+      `Open tasks: ${openTasks.length}. Low-stock items: ${lowStockItems.length}. Open maintenance: ${openMaintenance.length}.`,
+      `Top priority: ${recommendations.find(Boolean) || 'Keep service smooth.'}`
+    ];
+    return lines.join('\n');
+  };
+
+  const handlePostBrief = async () => {
+    try {
+      await addDoc(collection(db, 'events'), {
+        date: new Date().toISOString(),
+        title: briefText(),
+        type: 'note',
+        author: appUser?.name || 'Ops Command Center',
+        isImportant: false,
+        restaurantId: appUser.restaurantId,
+        replies: []
+      });
+      addToast('Morning Brief Posted', 'Saved to the Message Board for the team.');
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  const handleSeedKitchenOps = async () => {
+    if (!window.confirm('Add the default end-all kitchen tasks and PM schedules? Existing matching titles will be skipped.')) return;
+    const defaultTasks = [
+      { title: 'Opening line check completed', category: 'General', frequency: 'daily' },
+      { title: 'Cooler and freezer temps logged', category: 'General', frequency: 'daily' },
+      { title: '86 list reviewed with FOH', category: 'General', frequency: 'daily' },
+      { title: 'Fryer filter and oil quality checked', category: 'Cleaning', frequency: 'daily' },
+      { title: 'Expo station stocked before rush', category: 'General', frequency: 'daily' },
+      { title: 'Walk-in shelves wiped down', category: 'Cleaning', frequency: 'weekly', targetDay: 'Monday' },
+      { title: 'Deep clean fryer bay', category: 'Cleaning', frequency: 'weekly', targetDay: 'Tuesday' },
+      { title: 'Check first aid and burn kit', category: 'General', frequency: 'monthly', targetDate: '1' }
+    ];
+    const defaultPm = [
+      { title: 'Clean hood filters', equipment: 'Hood System', frequencyDays: 7 },
+      { title: 'Delime dish machine', equipment: 'Dish Machine', frequencyDays: 30 },
+      { title: 'Inspect cooler gaskets', equipment: 'Coolers', frequencyDays: 30 },
+      { title: 'Grease trap service check', equipment: 'Grease Trap', frequencyDays: 30 },
+      { title: 'Fire suppression visual check', equipment: 'Fire Suppression', frequencyDays: 90 }
+    ];
+    try {
+      const existingTaskTitles = new Set(tasks.map(t => (t.title || '').toLowerCase()));
+      const existingPmTitles = new Set(pmSchedules.map(p => (p.title || '').toLowerCase()));
+      const taskAdds = defaultTasks
+        .filter(t => !existingTaskTitles.has(t.title.toLowerCase()))
+        .map(t => addDoc(collection(db, 'tasks'), { ...t, completions: {}, restaurantId: appUser.restaurantId }));
+      const pmAdds = defaultPm
+        .filter(p => !existingPmTitles.has(p.title.toLowerCase()))
+        .map(p => addDoc(collection(db, 'pmSchedules'), { ...p, lastCompleted: getToday(), lastUpdatedBy: appUser.name, restaurantId: appUser.restaurantId }));
+      await Promise.all([...taskAdds, ...pmAdds]);
+      addToast('Kitchen Ops Seeded', `Added ${taskAdds.length + pmAdds.length} operating standards.`);
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  const kpiCards = [
+    { label: 'Health Score', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Strong shift posture' : healthScore >= 70 ? 'Watch the weak spots' : 'Needs manager attention' },
+    { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
+    { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
+    { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
+    { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} on clock` : 'Nobody clocked in' },
+    { label: 'Waste Today', value: `${todayWaste.length}`, detail: wasteCost ? `$${wasteCost.toFixed(2)} logged` : 'No cost logged' }
+  ];
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
+        <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#D4A381] mb-2">Morning Brief</div>
+            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">Kitchen Command Center</h1>
+            <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A live cockpit for prep, people, inventory, maintenance, labor, waste, and the little gremlins that usually wait until dinner rush.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button onClick={handlePostBrief} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Post Brief</button>
+            {(appUser?.isAdmin || appUser?.permissions?.prep || appUser?.permissions?.team) && <button onClick={handleSeedKitchenOps} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Plus size={16}/> Seed Standards</button>}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+        {kpiCards.map(card => (
+          <div key={card.label} className={`${T.card} p-3 text-center`}>
+            <div className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>{card.label}</div>
+            <div className="text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
+            <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={`${T.card} p-4 lg:col-span-2`}>
+          <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
+            <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Manager Readout</h2>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {recommendations.map((rec, idx) => (
+              <div key={idx} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Priority {idx + 1}</div>
+                <div className="text-sm font-bold text-slate-200 leading-snug">{rec}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Smart Prep Forecast</h2>
+          <div className="space-y-2">
+            {prepForecast.map(row => (
+              <div key={row.label} className="flex justify-between gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <div>
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{row.label}</div>
+                  <div className="text-xs text-slate-400 font-bold mt-1">{row.note}</div>
+                </div>
+                <div className="text-sm font-black text-[#D4A381] text-right whitespace-nowrap">{row.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Inventory Radar</div>
+          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+            {lowStockItems.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No par problems detected.</div>}
+            {lowStockItems.slice(0, 12).map(item => {
+              const par = Number(item.parLevel || 0);
+              const stock = Number(item.currentStock || 0);
+              const needed = Math.max(0, par - stock);
+              return (
+                <div key={item.id} className={`${T.row} flex justify-between items-center gap-3`}>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{item.name}</div>
+                    <div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Stock {stock} / Par {par}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-black text-orange-400">Order {needed}</div>
+                    <div className="text-[9px] text-slate-500 font-bold">${Number(item.price || 0).toFixed(2)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Equipment Radar</div>
+          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+            {openMaintenance.length === 0 && overduePm.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No equipment warnings right now.</div>}
+            {criticalMaintenance.concat(openMaintenance.filter(l => !criticalMaintenance.includes(l))).slice(0, 8).map(log => (
+              <div key={log.id} className={`${T.row}`}>
+                <div className="flex justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{log.equipment}</div>
+                    <div className="text-xs text-slate-400 font-medium mt-1 line-clamp-2">{log.issue}</div>
+                  </div>
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${log.urgency === 'Critical' ? 'text-red-500' : log.urgency === 'High' ? 'text-orange-400' : 'text-slate-500'}`}>{log.urgency || 'Standard'}</span>
+                </div>
+              </div>
+            ))}
+            {overduePm.slice(0, 4).map(pm => (
+              <div key={pm.id} className={`${T.row} bg-red-950/10`}>
+                <div className="text-sm font-bold text-red-300">PM Overdue: {pm.title}</div>
+                <div className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-1">{pm.equipment} • every {pm.frequencyDays} days</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Users size={14}/> Labor & Schedule Warnings</div>
+          <div className={`divide-y ${T.border}`}>
+            {scheduleWarnings.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No obvious schedule warnings in the next week.</div>}
+            {scheduleWarnings.map((w, idx) => <div key={idx} className={`${T.row} text-sm font-bold text-slate-200`}>{w}</div>)}
+            {todayShifts.slice(0, 8).map(s => (
+              <div key={s.id} className={`${T.row} flex justify-between items-center text-xs`}>
+                <span className="font-bold text-white">{users.find(u => u.id === s.employeeId)?.name || 'Staff'} <span className="text-slate-500">{s.role}</span></span>
+                <span className="font-mono text-[#D4A381]">{formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Clock size={14}/> Kitchen Timeline</div>
+          <div className={`divide-y ${T.border} max-h-[420px] overflow-y-auto custom-scrollbar`}>
+            {timeline.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No timeline activity for this day yet.</div>}
+            {timeline.map((item, idx) => (
+              <div key={`${item.type}-${idx}`} className={`${T.row} flex gap-3`}>
+                <div className="text-[10px] font-mono text-[#D4A381] w-16 flex-shrink-0">{new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                <div className="min-w-0">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{item.type}</div>
+                  <div className="text-sm font-bold text-white truncate">{item.title}</div>
+                  {item.detail && <div className="text-xs text-slate-400 truncate">{item.detail}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className={`${T.card} p-4`}>
+        <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
+          <h2 className="font-black text-white flex items-center gap-2"><BookOpen size={18} className={T.copper}/> Recipe & Menu Brain</h2>
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{recipes.length} recipes tracked</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Use Before It Hurts</div>
+            <div className="text-sm font-bold text-white">{lowStockItems.length ? 'Avoid specials using low-stock items.' : 'Inventory is flexible enough for specials.'}</div>
+          </div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Specials Signal</div>
+            <div className="text-sm font-bold text-white">{forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'Run fast, high-margin items today.' : 'Normal day: good test window for a new special.'}</div>
+          </div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">86 Watch</div>
+            <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) => {
   const getMonday = (dStr) => {
     const d = new Date(dStr + 'T12:00:00');
@@ -7731,6 +8126,7 @@ return (
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
         {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
+        {activeTabState === 'ops' && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
         {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
