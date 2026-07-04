@@ -588,6 +588,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
+  const [subTab, setSubTab] = useState('my-schedule');
 
   useEffect(() => {
     if (!appUser?.id) return;
@@ -736,6 +737,32 @@ const handleClockIn = async () => {
     if (!window.confirm("Remove this shift from the Trade Board?")) return;
     await deleteDoc(doc(db, "shiftSwaps", swapId));
     addToast('Revoked', 'Shift removed from Trade Board.');
+  };
+
+  const handleClaimShift = async (swap) => {
+    if (!swap?.shiftId) return addToast('Error', 'This trade-board listing is missing its linked shift ID.');
+    if (!window.confirm(`Claim this ${swap.role} shift on ${formatDisplayDate(swap.date)}?`)) return;
+
+    try {
+      await updateDoc(doc(db, "shifts", swap.shiftId), {
+        employeeId: appUser.id,
+        role: swap.role,
+        updatedAt: new Date().toISOString(),
+        claimedFromTradeBoard: true
+      });
+
+      await updateDoc(doc(db, "shiftSwaps", swap.id), {
+        status: 'claimed',
+        claimedBy: appUser.id,
+        claimedByName: appUser.name,
+        claimedAt: new Date().toISOString()
+      });
+
+      addToast('Shift Claimed', 'The shift has been added to your schedule.');
+      setSubTab('my-schedule');
+    } catch (e) {
+      addToast('Error', e.message || 'Could not claim shift.');
+    }
   };
 
 const handleOfferSwap = async (shift) => {
@@ -6949,7 +6976,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                     <div className="text-[9px] text-slate-500 font-medium mt-1.5">ID: {r.id} <span className="mx-1">•</span> <span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span> <span className="mx-1">•</span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
-<button onClick={() => { setGhostTenant({ id: r.id, name: r.name }); setActiveTab('published'); }} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>                    <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
+<button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-[#D4A381] hover:border-[#D4A381]/50 transition-colors shadow-sm flex items-center gap-1"><Settings size={14} /> Manage</button>
+                    <button onClick={() => { setGhostTenant({ id: r.id, name: r.name }); setActiveTab('published'); }} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
+                    <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
                   </div>
                 </div>
               )})}
@@ -7225,9 +7254,16 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
 export default function App() {
   const [appUser, setAppUser] = useState(() => { 
-    const savedLocal = localStorage.getItem('86chaosUser'); 
-    const savedSession = sessionStorage.getItem('86chaosUser');
-    return savedLocal ? JSON.parse(savedLocal) : (savedSession ? JSON.parse(savedSession) : null); 
+    try {
+      const savedLocal = localStorage.getItem('86chaosUser'); 
+      const savedSession = sessionStorage.getItem('86chaosUser');
+      return savedLocal ? JSON.parse(savedLocal) : (savedSession ? JSON.parse(savedSession) : null);
+    } catch (err) {
+      console.warn('Stored session was corrupted. Clearing local session cache.', err);
+      localStorage.removeItem('86chaosUser');
+      sessionStorage.removeItem('86chaosUser');
+      return null;
+    }
   });
   // --- GHOST MODE & ROUTING STATE ---
   const [ghostTenant, setGhostTenant] = useState(null);
@@ -7285,7 +7321,7 @@ export default function App() {
   if (ghostTenant && liveAppUser) {
     if (ghostTenant.impersonate) {
        // IMPERSONATION MODE: Inherit exact permissions of target user
-       liveAppUser = { ...ghostTenant.impersonate, isGhost: true };
+       liveAppUser = { ...ghostTenant.impersonate, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isGhost: true };
     } else {
        // STANDARD GHOST MODE: Enter as a super admin
        liveAppUser = { ...liveAppUser, restaurantId: ghostTenant.id, restaurantName: ghostTenant.name, isAdmin: true, role: 'System Administrator', isGhost: true };
@@ -7646,7 +7682,7 @@ return (
         {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
-        {(activeTabState === 'godmode' || (ghostTenant && activeTabState === 'published')) && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
+        {activeTabState === 'godmode' && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
         {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />}
       </main>
       
