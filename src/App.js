@@ -6115,7 +6115,7 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
   };
 
 
-  // --- MISSING CLIENT MANAGEMENT FUNCTIONS ---
+// --- MISSING CLIENT MANAGEMENT FUNCTIONS ---
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
     try {
@@ -6157,16 +6157,6 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
       addToast('Exported', 'User list downloaded.');
     } catch (err) { 
       addToast('Error', 'Export failed.'); 
-    }
-  };
-
-  const handleDeleteTenant = async (id, name) => {
-    if (!window.confirm(`Delete workspace record for ${name}? NOTE: This leaves orphaned data. Use the Nuke tool inside the Manage menu instead for a clean wipe.`)) return;
-    try {
-      await deleteDoc(doc(db, "restaurants", id));
-      addToast('Deleted', 'Workspace record removed.');
-    } catch (err) { 
-      addToast('Error', err.message); 
     }
   };
 
