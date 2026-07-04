@@ -120,7 +120,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '12.2.1-client-timestamps';
+const CURRENT_VERSION = '12.3.0-full-ux-suite';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -322,6 +322,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
+  tabs.push({ id: 'today', label: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
   if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
@@ -1090,6 +1091,15 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
   const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false };
+  const PERMISSION_PRESETS = {
+    'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false },
+    'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false },
+    'Bar Manager': { schedule: false, events: true, ops: true, inventory: true, prep: false, sales: false, team: false },
+    'Schedule Manager': { schedule: true, events: true, ops: false, inventory: false, prep: false, sales: false, team: false },
+    'Operations Manager': { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true },
+    'Cook': { schedule: false, events: false, ops: false, inventory: false, prep: true, sales: false, team: false },
+    'Server/Bartender': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false }
+  };
   const [perms, setPerms] = useState(DEFAULT_PERMISSIONS);
   const [editingUserId, setEditingUserId] = useState(null);
 
@@ -1230,6 +1240,12 @@ return (
           
           {!isAdmin && (
             <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Permission Presets: choose a plain-English job preset, then fine tune individual switches below.</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {Object.keys(PERMISSION_PRESETS).map(preset => (
+                  <button key={preset} type="button" onClick={() => setPerms({ ...DEFAULT_PERMISSIONS, ...PERMISSION_PRESETS[preset] })} className="px-2.5 py-1.5 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381] hover:border-[#D4A381]/40 transition-colors">{preset}</button>
+                ))}
+              </div>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Ops Command Center is only visible when Ops permission or Store Manager is enabled.</p>
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => (
@@ -1290,6 +1306,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   const [imageFile, setImageFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
+  const [messageCategory, setMessageCategory] = useState('Shift Note');
+  const [categoryFilter, setCategoryFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedReplies, setExpandedReplies] = useState({});
   const messageRetentionDays = parseInt(appUser?.systemSettings?.messageRetentionDays || 30, 10);
@@ -1314,9 +1332,19 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
     .filter(e => e.type === 'note')
     .filter(e => {
       const term = searchTerm.toLowerCase();
-      return (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term);
+      const matchesText = (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term) || (e.messageCategory || '').toLowerCase().includes(term);
+      const matchesCat = categoryFilter === 'All' || (e.messageCategory || (e.isImportant ? 'Important' : 'Shift Note')) === categoryFilter;
+      return matchesText && matchesCat;
     })
-    .sort((a,b) => new Date(b.date) - new Date(a.date));
+    .sort((a,b) => (b.isImportant === a.isImportant ? 0 : b.isImportant ? 1 : -1) || new Date(b.date) - new Date(a.date));
+
+  useEffect(() => {
+    if (!appUser?.id || !events.length) return;
+    const unseen = events.filter(e => e.type === 'note' && e.isImportant && !(e.readBy || []).some(r => r.userId === appUser.id)).slice(0, 5);
+    unseen.forEach(e => {
+      updateDoc(doc(db, 'events', e.id), { readBy: [...(e.readBy || []), { userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] }).catch(()=>{});
+    });
+  }, [events, appUser?.id]);
 
   const handleBroadcast = async (e) => {
     e.preventDefault();
@@ -1347,7 +1375,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
       isImportant: isCritical,
       restaurantId: appUser.restaurantId,
       replies: [],
-      imageUrl: photoUrl
+      imageUrl: photoUrl,
+      messageCategory,
+      readBy: isCritical ? [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] : []
     });
 
     try {
@@ -1369,6 +1399,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
     setImageFile(null);
     setIsUploading(false);
     setIsImportant(false);
+    setMessageCategory('Shift Note');
     addToast('Posted', 'Message sent.');
   };
 
@@ -1411,6 +1442,11 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15}/>
             <input type="text" placeholder="Search posts..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
           </div>
+          <div className="flex flex-wrap gap-1 sm:max-w-md">
+            {['All','Shift Note','86 Alert','Maintenance','Announcement','General'].map(cat => (
+              <button key={cat} onClick={() => setCategoryFilter(cat)} className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-widest ${categoryFilter === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D]'}`}>{cat}</button>
+            ))}
+          </div>
           <div className="hidden md:flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{allNotes.length} visible</div>
         </div>
 
@@ -1419,6 +1455,11 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
             <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
             <div className="flex-1 min-w-0">
               <textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm outline-none resize-none min-h-[38px] rounded-lg px-3 py-2 placeholder-slate-600 focus:border-[#D4A381] transition-colors" placeholder="Post a clear shift note, 86 item, handoff, or manager update..." />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {['Shift Note','86 Alert','Maintenance','Announcement','General'].map(cat => (
+                  <button type="button" key={cat} onClick={() => setMessageCategory(cat)} className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-widest transition-colors ${messageCategory === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D] hover:text-slate-200'}`}>{cat}</button>
+                ))}
+              </div>
               {imageFile && (
                 <div className="mt-2 text-[10px] text-blue-300 font-bold bg-blue-900/10 px-2 py-1.5 rounded-lg border border-blue-900/30 flex justify-between items-center w-full sm:w-max max-w-full">
                   <span className="truncate pr-3 flex items-center gap-1.5"><Camera size={12}/> {imageFile.name}</span>
@@ -1454,6 +1495,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
         {allNotes.map(n => {
           const authorUser = users.find(u => u.name === n.author);
           const replies = n.replies || [];
+          const readBy = n.readBy || [];
+          const unreadNames = n.isImportant ? users.filter(u => u.isActive !== false && !readBy.some(r => r.userId === u.id)).slice(0, 4).map(u => u.name?.split(' ')[0] || u.email).join(', ') : '';
           return (
             <div key={n.id} className={`message-card-pro rounded-xl border overflow-hidden transition-colors ${n.isImportant ? 'border-red-500/40 bg-red-950/10' : 'border-[#2A353D] bg-[#1A2126] hover:bg-[#1A2126]/90'}`}>
               <div className="flex">
@@ -1467,7 +1510,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
                           <div className="flex items-center gap-1.5 flex-wrap leading-none">
                             <span className={`font-black text-sm ${n.isImportant ? 'text-red-300' : 'text-white'}`}>{n.author || 'Unknown'}</span>
                             {authorUser?.isAdmin && <span className="bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Admin</span>}
+                            {n.messageCategory && <span className="bg-[#0B0E11] border border-[#2A353D] text-slate-400 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">{n.messageCategory}</span>}
                             {n.isImportant && <span className="bg-red-500/10 border border-red-500/40 text-red-300 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1"><Bell size={10}/> Important</span>}
+                            {n.isImportant && <span className="bg-emerald-900/10 border border-emerald-900/40 text-emerald-300 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest" title={unreadNames ? `Not seen: ${unreadNames}` : 'Everyone active has seen this'}>Seen {readBy.length}/{users.filter(u => u.isActive !== false).length}</span>}
                           </div>
                           <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1" title={new Date(n.date).toLocaleString()}>{getTimeAgo(n.date)}</div>
                         </div>
@@ -8435,6 +8480,279 @@ another@email.com"></textarea>
 };
 
 
+// ============================================================================
+// USER-FRIENDLY OPERATIONS SUITE: Today, Search, Quick Actions, TV Mode
+// ============================================================================
+const SmartEmptyState = ({ icon = <Star size={24}/>, title, desc, actionLabel, onAction }) => (
+  <div className="rounded-2xl border border-dashed border-[#2A353D] bg-[#12161A]/60 p-5 text-center">
+    <div className="mx-auto mb-2 w-10 h-10 rounded-xl bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] flex items-center justify-center">{icon}</div>
+    <h3 className="text-sm font-black text-white">{title}</h3>
+    {desc && <p className="text-xs text-slate-500 font-bold mt-1 leading-snug">{desc}</p>}
+    {actionLabel && onAction && <button onClick={onAction} className="mt-3 px-3 py-2 rounded-lg bg-[#D4A381] text-slate-900 text-[10px] font-black uppercase tracking-widest">{actionLabel}</button>}
+  </div>
+);
+
+const MiniProblemCard = ({ tone='amber', title, detail, action, onClick }) => {
+  const tones = {
+    red: 'border-red-500/40 bg-red-950/10 text-red-300',
+    amber: 'border-amber-500/40 bg-amber-950/10 text-amber-300',
+    blue: 'border-blue-500/40 bg-blue-950/10 text-blue-300',
+    emerald: 'border-emerald-500/40 bg-emerald-950/10 text-emerald-300'
+  };
+  return <div className={`rounded-xl border p-3 ${tones[tone] || tones.amber}`}>
+    <div className="text-[10px] font-black uppercase tracking-widest">{title}</div>
+    <div className="text-xs text-slate-300 font-bold mt-1 leading-snug">{detail}</div>
+    {action && <button onClick={onClick} className="mt-2 text-[9px] font-black uppercase tracking-widest underline underline-offset-4">{action}</button>}
+  </div>;
+};
+
+const getHomeProfile = (user) => {
+  const role = (user?.role || '').toLowerCase();
+  if (user?.isSuperAdmin || user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) return 'system';
+  if (user?.isAdmin || user?.permissions?.ops || user?.permissions?.sales || user?.permissions?.team || user?.permissions?.schedule) return 'manager';
+  if (role.includes('cook') || role.includes('chef') || role.includes('kitchen') || role.includes('prep') || user?.permissions?.prep) return 'kitchen';
+  if (role.includes('bartender') || role.includes('bar')) return 'bar';
+  if (role.includes('server') || role.includes('host')) return 'service';
+  return 'staff';
+};
+
+const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, clientData, setActiveTab, addToast, registerUndo }) => {
+  const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
+  const today = getToday();
+  const profile = getHomeProfile(appUser);
+  const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const myShift = todaysShifts.find(s => s.employeeId === appUser.id);
+  const activePunches = timePunches.filter(p => ['clocked_in','on_break'].includes(p.status));
+  const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
+  const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
+  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) <= Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
+  const urgentMaintenance = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5);
+  const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
+  const pendingRequests = timeOffRequests.filter(r => r.status === 'pending').slice(0, 5);
+  const openSwaps = shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5);
+  const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
+  const setupItems = [
+    { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings' },
+    { label: 'Add team members', done: users.length > 1, tab: 'team' },
+    { label: 'Build this week schedule', done: shifts.some(s => s.date >= today), tab: 'schedule' },
+    { label: 'Add recipes', done: recipes.length > 0, tab: 'recipes' },
+    { label: 'Add inventory items', done: inventoryItems.length > 0, tab: 'inventory' },
+    { label: 'Post first announcement', done: events.some(e => e.type === 'note'), tab: 'messages' },
+    { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance' }
+  ];
+  const setupDone = setupItems.filter(i => i.done).length;
+  const problems = [
+    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory' } : null,
+    urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
+    pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
+    openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
+    !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
+  ].filter(Boolean);
+
+  const quickCreate = async (kind) => {
+    try {
+      let refDoc = null;
+      if (kind === '86') {
+        const item = prompt('What item is 86\'d or low?');
+        if (!item) return;
+        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] });
+        addToast('86 Alert Posted', item);
+      }
+      if (kind === 'prep') {
+        const item = prompt('Prep task to add for today?');
+        if (!item) return;
+        refDoc = await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: item, station: 'General', isCompleted: false, qty: 1, createdAt: new Date().toISOString(), createdBy: appUser.name });
+        addToast('Prep Added', item);
+      }
+      if (kind === 'maintenance') {
+        const issue = prompt('Maintenance issue?');
+        if (!issue) return;
+        refDoc = await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'General', issue, urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: appUser.name });
+        addToast('Maintenance Added', issue);
+      }
+      if (kind === 'message') {
+        const msg = prompt('Message to post?');
+        if (!msg) return;
+        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: msg, messageCategory: 'Shift Note', author: appUser.name, isImportant: false, date: new Date().toISOString(), replies: [] });
+        addToast('Message Posted', msg.slice(0, 60));
+      }
+      if (refDoc) registerUndo?.({ label: `Undo ${kind}`, action: async () => { await deleteDoc(refDoc); addToast('Undone', 'The last quick action was removed.'); } });
+    } catch (err) { addToast('Could not save', err.message || 'Permission or connection issue.'); }
+  };
+
+  const seedDemoData = async () => {
+    if (!appUser?.isAdmin && !appUser?.isSuperAdmin) return addToast('Manager Only', 'Ask a manager to seed demo data.');
+    if (!window.confirm('Add a complete demo set to this workspace? This adds sample recipes, prep, inventory, messages, events, and maintenance.')) return;
+    const stamp = new Date().toISOString();
+    await Promise.all([
+      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: 'DEMO: Tonight has live music and heavy dinner volume expected.', messageCategory: 'Announcement', author: '86 Demo', isImportant: true, date: stamp, replies: [], readBy: [] }),
+      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'special_event', title: 'DEMO: Patio Rush / Live Music', date: today, time: '19:00', notes: 'Expect extra bar and fryer volume.', addedBy: '86 Demo' }),
+      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Portion burger patties', station: 'Grill', qty: 24, isCompleted: false }),
+      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Backup ranch and blue cheese', station: 'Cold', qty: 2, isCompleted: false }),
+      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Chicken Breast', category: 'Protein', parLevel: 3, currentStock: 1, pendingQty: 0, price: 84, packSize: '40 lb case', yieldQty: 1, isStarred: true }),
+      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Fries', category: 'Frozen', parLevel: 5, currentStock: 2, pendingQty: 0, price: 33, packSize: 'Case', yieldQty: 1, isStarred: true }),
+      addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'DEMO Fryer #2', issue: 'Filter due before dinner rush', urgency: 'High', status: 'Reported', reportedAt: stamp, reportedBy: '86 Demo' }),
+      addDoc(collection(db, 'recipes'), { restaurantId: appUser.restaurantId, title: 'DEMO House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 gallon', ingredients: 'Mayo\nButtermilk\nRanch seasoning', instructions: 'Whisk. Label. Chill.', authorName: '86 Demo', lastUpdated: stamp })
+    ]);
+    addToast('Demo Mode Seeded', 'Sample operating data was added to this workspace.');
+  };
+
+  const applyNotificationPreset = async () => {
+    const presets = {
+      manager: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: true, notifLevel: 'all', muteOnDaysOff: false },
+      kitchen: { notifSchedule: true, notifMessages: true, notifTrades: false, notifReminders: true, notifLevel: 'mentions', keywords: '86,prep,critical,walk-in,fryer,line' },
+      bar: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'mentions', keywords: 'bar,bartender,beer,86,critical' },
+      service: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'critical' },
+      staff: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'critical' }
+    };
+    await updateDoc(doc(db, 'users', appUser.id), { preferences: { ...(appUser.preferences || {}), ...(presets[profile] || presets.staff) } });
+    addToast('Notification Preset Applied', 'Your alerts now match your role.');
+  };
+
+  const heroTitle = profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief';
+  const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
+
+  return <div className="max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
+      <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
+      <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{formatDisplayFullDate(today)}</div>
+          <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{heroTitle}</h1>
+          <p className="text-sm text-slate-300 font-bold mt-2 max-w-2xl leading-snug">{topPriority}</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 min-w-[230px]">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">On Schedule</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Clocked In</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{problems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Needs Eyes</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <button onClick={() => quickCreate('86')} className="bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
+      <button onClick={() => quickCreate('prep')} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
+      <button onClick={() => quickCreate('message')} className="bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
+      <button onClick={() => quickCreate('maintenance')} className="bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>
+    </div>
+
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="lg:col-span-2 space-y-3">
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
+          {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
+            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="The equipment gods are quiet, the schedule has a pulse, and nothing is screaming for help." />}
+          </div>}
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
+          {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={() => setActiveTab('inventory')} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
+          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Ops" detail="Open full command center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
+          {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">Important Messages</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open Board</button></div>
+          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div></div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/7</span></button>
+          {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
+        </div>
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white text-lg mb-3">Recently Used</h2>
+          <div className="flex flex-wrap gap-2">{recentTabs.length ? recentTabs.map(t => <button key={t} onClick={() => setActiveTab(t)} className="px-3 py-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[10px] text-slate-300 font-black uppercase tracking-widest">{t}</button>) : <p className="text-xs text-slate-500 font-bold">Tabs you use will appear here.</p>}</div>
+        </div>
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, prefs: !e.prefs}))}><h2 className="font-black text-white text-lg">My Preferences</h2><Settings size={16}/></button>
+          {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Apply {profile} Notification Preset</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">Open Full Settings</button></div>}
+        </div>
+      </div>
+    </div>
+  </div>;
+};
+
+const GlobalSearchModal = ({ isOpen, onClose, queryText, setQueryText, users, events, shifts, recipes, inventoryItems, maintenanceLogs, setActiveTab }) => {
+  if (!isOpen) return null;
+  const q = queryText.trim().toLowerCase();
+  const results = q ? [
+    ...users.filter(u => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'User', title: x.name, detail: x.email || x.role, tab: 'team' })),
+    ...recipes.filter(r => `${r.title} ${r.ingredients}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Recipe', title: x.title, detail: x.category, tab: 'recipes' })),
+    ...inventoryItems.filter(i => `${i.name} ${i.category}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Inventory', title: x.name, detail: `Stock ${x.currentStock || 0} / Par ${x.parLevel || 0}`, tab: 'inventory' })),
+    ...events.filter(e => `${e.title} ${e.author} ${e.notes}`.toLowerCase().includes(q)).slice(0, 6).map(x => ({ kind: x.type === 'special_event' ? 'Event' : 'Message', title: x.title, detail: x.date || x.author, tab: x.type === 'special_event' ? 'events' : 'messages' })),
+    ...maintenanceLogs.filter(m => `${m.equipment} ${m.issue}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Maintenance', title: x.equipment, detail: x.issue, tab: 'maintenance' })),
+    ...shifts.filter(s => `${s.role} ${s.date}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Shift', title: `${x.role} ${x.date}`, detail: `${formatShortTime(x.startTime)}-${formatShortTime(x.endTime)}`, tab: 'schedule' }))
+  ].slice(0, 18) : [];
+  return <div className="fixed inset-0 z-[100000] bg-[#0B0E11]/90 backdrop-blur-md p-4 flex items-start justify-center pt-10">
+    <div className="w-full max-w-2xl cockpit-panel rounded-2xl overflow-hidden">
+      <div className="p-3 border-b border-[#2A353D] flex items-center gap-2"><Search size={18} className="text-[#D4A381]"/><input autoFocus value={queryText} onChange={e=>setQueryText(e.target.value)} placeholder="Search people, recipes, messages, inventory, events..." className="flex-1 bg-transparent outline-none text-white font-bold"/><button onClick={onClose} className="p-2 rounded-lg hover:bg-[#12161A]"><X size={18}/></button></div>
+      <div className="max-h-[70vh] overflow-y-auto custom-scrollbar p-2 space-y-1">{q && results.length === 0 && <SmartEmptyState title="Nothing found" desc="Try a recipe name, employee, inventory item, or event." />}{results.map((r, idx) => <button key={idx} onClick={() => { setActiveTab(r.tab); onClose(); }} className="w-full text-left p-3 rounded-xl border border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/40"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{r.kind}</div><div className="font-black text-white text-sm mt-1">{r.title}</div><div className="text-xs text-slate-500 font-bold mt-0.5 truncate">{r.detail}</div></button>)}</div>
+    </div>
+  </div>;
+};
+
+const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }) => {
+  const [open, setOpen] = useState(false);
+  const profile = getHomeProfile(appUser);
+  const actions = [
+    { label: 'Today', tab: 'today' },
+    { label: 'Search', fn: openSearch },
+    { label: 'Kitchen TV', fn: openTV },
+    profile === 'kitchen' ? { label: 'Recipes', tab: 'recipes' } : null,
+    profile === 'kitchen' ? { label: 'Prep', tab: 'prep' } : null,
+    ['manager','system'].includes(profile) ? { label: 'Ops', tab: 'ops' } : null,
+    ['manager','system'].includes(profile) ? { label: 'Schedule', tab: 'schedule' } : null,
+    { label: 'Message Board', tab: 'messages' },
+    { label: 'My Shift', tab: 'published' }
+  ].filter(Boolean);
+  return <div className="fixed bottom-5 right-4 z-50 flex flex-col items-end gap-2">
+    {open && <div className="cockpit-panel rounded-2xl p-2 w-52 space-y-1 shadow-2xl">{actions.map(a => <button key={a.label} onClick={() => { setOpen(false); a.fn ? a.fn() : setActiveTab(a.tab); }} className="w-full text-left px-3 py-2 rounded-xl bg-[#0B0E11] hover:bg-[#12161A] border border-[#2A353D] text-xs font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381]">{a.label}</button>)}</div>}
+    <button onClick={() => setOpen(!open)} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/50 text-[#D4A381] shadow-2xl flex items-center justify-center"><Menu size={24}/></button>
+  </div>;
+};
+
+const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenanceLogs, inventoryItems }) => {
+  if (!isOpen) return null;
+  const today = getToday();
+  const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+  const prep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 10);
+  const alerts = events.filter(e => e.type === 'note' && e.isImportant).slice(0, 5);
+  const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today);
+  const maint = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status)).slice(0, 5);
+  const low = inventoryItems.filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) <= Number(i.parLevel||0)).slice(0, 6);
+  return <div className="fixed inset-0 z-[100000] bg-[#0B0E11] text-white p-5 sm:p-8 overflow-y-auto">
+    <div className="flex justify-between items-start mb-6"><div><div className="text-[#D4A381] text-sm font-black uppercase tracking-widest">86 Chaos Kitchen TV</div><h1 className="text-4xl sm:text-6xl font-black">{formatDisplayFullDate(today)}</h1></div><button onClick={onClose} className="bg-white text-slate-900 rounded-xl px-4 py-2 font-black uppercase text-xs">Exit</button></div>
+    <div className="grid md:grid-cols-3 gap-4">
+      <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">Prep Now</h2>{prep.length ? prep.map(p => <div key={p.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{p.text}</div>) : <p className="text-slate-500 text-xl">Prep is clear.</p>}</div>
+      <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">86 / Alerts</h2>{alerts.length ? alerts.map(a => <div key={a.id} className="text-xl font-bold border-b border-red-500/30 py-2 text-red-300">{a.title}</div>) : <p className="text-slate-500 text-xl">No active alerts.</p>}{low.map(i => <div key={i.id} className="text-xl font-bold border-b border-red-500/30 py-2 text-red-300">Low: {i.name}</div>)}</div>
+      <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">Today</h2>{todayEvents.map(e => <div key={e.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{e.time || ''} {e.title}</div>)}{todaysShifts.slice(0,8).map(s => <div key={s.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{formatShortTime(s.startTime)} {s.role}</div>)}{maint.map(m => <div key={m.id} className="text-xl font-bold border-b border-amber-500/30 py-2 text-amber-300">Fix: {m.equipment}</div>)}</div>
+    </div>
+  </div>;
+};
+
+const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
+  <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
+    <p>New user-friendly shell: Today Command Center, role-based homes, global search, kitchen TV mode, quick actions, setup checklist, demo seeding, read receipts for important posts, message categories, permission presets, and stronger empty states.</p>
+    <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
+      {['Today tab','Role homes','Quick actions','Global search','Kitchen TV','Demo mode','Setup checklist','Read receipts','Message types','Permission presets','Undo bar','Human errors'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+    </div>
+    <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
+  </div>
+</Modal> : null;
+
+const UndoBar = ({ undoItem, clearUndo }) => {
+  if (!undoItem) return null;
+  return <div className="fixed bottom-24 left-4 right-4 max-w-md mx-auto z-[99999] cockpit-panel rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xl">
+    <div><div className="text-xs font-black text-white uppercase tracking-widest">Action saved</div><div className="text-[10px] text-slate-500 font-bold">You can reverse this for a short time.</div></div>
+    <button onClick={async () => { await undoItem.action(); clearUndo(); }} className="px-3 py-2 bg-[#D4A381] text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest">{undoItem.label || 'Undo'}</button>
+  </div>;
+};
+
+
 
 export default function App() {
   const [appUser, setAppUser] = useState(() => { 
@@ -8499,6 +8817,11 @@ export default function App() {
   const sales = useLiveCollection('sales', rId);
   const timeOffRequests = useLiveCollection('timeOffRequests', rId);
   const timePunches = useLiveCollection('timePunches', rId);
+  const inventoryItems = useLiveCollection('inventoryItems', rId);
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId);
+  const prepItems = useLiveCollection('prepItems', rId);
+  const tasks = useLiveCollection('tasks', rId);
+  const recipes = useLiveCollection('recipes', rId);
   
 // --- LIVE APP USER LOGIC ---
   const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true };
@@ -8653,13 +8976,22 @@ if (liveAppUser && clientData) {
     const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
     window.addEventListener('popstate', handlePopState);
     const params = new URLSearchParams(window.location.search);
-    const preferredTab = appUser?.preferences?.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published');
+    const preferredTab = appUser?.preferences?.defaultTab || 'today';
     const tab = params.get('tab') || preferredTab;
     setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [appUser]);
 
-  const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
+  const setActiveTab = (tab) => {
+    if (liveAppUser?.id) {
+      try {
+        const key = `recentTabs_${liveAppUser.id}`;
+        const current = JSON.parse(localStorage.getItem(key) || '[]').filter(t => t !== tab);
+        localStorage.setItem(key, JSON.stringify([tab, ...current].slice(0, 6)));
+      } catch(e) {}
+    }
+    window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab);
+  };
 
 useEffect(() => {
     const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
@@ -8709,6 +9041,12 @@ useEffect(() => {
   const [toasts, setToasts] = useState([]);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [isKitchenTVOpen, setIsKitchenTVOpen] = useState(false);
+  const [undoItem, setUndoItem] = useState(null);
+  const [showChangeLog, setShowChangeLog] = useState(() => localStorage.getItem(`seen_${CURRENT_VERSION}`) !== 'true');
+  const registerUndo = (item) => { setUndoItem(item); setTimeout(() => setUndoItem(prev => prev === item ? null : prev), 12000); };
 
 
 // --- NOTIFICATION DOT LOGIC (WITH READ RECEIPTS) ---
@@ -8791,6 +9129,14 @@ useEffect(() => {
     });
     return () => unsub();
   }, [addToast, messaging]);
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setIsGlobalSearchOpen(true); }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
 
   const prevDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setCurrentDate(formatDate(d)); };
   const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
@@ -8929,7 +9275,12 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} addToast={addToast} />    
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} addToast={addToast} />
+      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={users} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
+      <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
+      <ChangeLogModal isOpen={showChangeLog} onClose={() => { localStorage.setItem(`seen_${CURRENT_VERSION}`, 'true'); setShowChangeLog(false); }} />
+      <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
+      <QuickActionDock appUser={liveAppUser} setActiveTab={setActiveTab} openSearch={() => setIsGlobalSearchOpen(true)} openTV={() => setIsKitchenTVOpen(true)} addToast={addToast} />    
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
@@ -8980,6 +9331,7 @@ return (
       </Modal>
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+        {activeTabState === 'today' && <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} clientData={clientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />}
         {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team) && <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />}
         {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
@@ -9008,7 +9360,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.8.0 Admin/UI Polish</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.3.0 Full UX Suite</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
