@@ -69,20 +69,50 @@ enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:"
 
 const auth = getAuth(app);
 
-// --- SECURE API KEYCHAIN ---
-// This automatically grabs the user's secure Firebase token and attaches it to backend Vercel requests
+// --- OPTIONAL APP CHECK + SECURE API KEYCHAIN ---
+// Put your Firebase App Check reCAPTCHA Enterprise site key here after enabling App Check in Firebase.
+// Example: const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '6Lc...';
+const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '';
+let appCheckInstance = null;
+
+if (typeof window !== "undefined" && APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY && !window.__chaosAppCheckBooted) {
+  window.__chaosAppCheckBooted = true;
+  import('firebase/app-check')
+    .then(({ initializeAppCheck, ReCaptchaEnterpriseProvider }) => {
+      appCheckInstance = initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY),
+        isTokenAutoRefreshEnabled: true
+      });
+      window.__chaosAppCheckReady = true;
+    })
+    .catch((err) => console.warn('App Check not initialized:', err?.message || err));
+}
+
+const getAppCheckHeader = async () => {
+  if (!appCheckInstance) return {};
+  try {
+    const { getToken: getAppCheckToken } = await import('firebase/app-check');
+    const result = await getAppCheckToken(appCheckInstance, false);
+    return result?.token ? { 'X-Firebase-AppCheck': result.token } : {};
+  } catch (err) {
+    console.warn('App Check token unavailable:', err?.message || err);
+    return {};
+  }
+};
+
+// This attaches the real Firebase Auth token to Vercel API requests.
+// Do not trust client-sent role/email/restaurantId in API routes; verify this token server-side.
 const secureFetch = async (url, options = {}) => {
   if (!auth.currentUser) throw new Error("Unauthorized: No active user session.");
-  
-  // FORCE REFRESH the token so you never get a 403 Forbidden error again
-  const token = await auth.currentUser.getIdToken(true); 
-  
+  const { forceTokenRefresh = false, headers: optionHeaders = {}, ...fetchOptions } = options;
+  const token = await auth.currentUser.getIdToken(forceTokenRefresh);
+  const appCheckHeader = await getAppCheckHeader();
   const headers = {
-    ...options.headers,
+    ...optionHeaders,
+    ...appCheckHeader,
     'Authorization': `Bearer ${token}`
   };
-  
-  return fetch(url, { ...options, headers });
+  return fetch(url, { ...fetchOptions, headers });
 };
 
 // --- Master Configuration ---
@@ -90,7 +120,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '11.9.1';
+const CURRENT_VERSION = '12.3.0-full-ux-suite';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -120,6 +150,22 @@ const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getD
 const formatShortTime = (t) => { if (!t) return ''; if(t === 'CLOSE') return 'CL'; try { let [h, m] = t.split(':'); h = parseInt(h, 10); return `${h % 12 || 12}${m === '00' ? '' : ':' + m}${h >= 12 ? 'p' : 'a'}`; } catch(e){ return t; } };
 const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
+
+const sanitizeCachedUser = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('86chaosUser');
+    if (!raw) return;
+    const cached = JSON.parse(raw);
+    if (cached && Object.prototype.hasOwnProperty.call(cached, 'password')) {
+      delete cached.password;
+      localStorage.setItem('86chaosUser', JSON.stringify(cached));
+    }
+  } catch (err) {
+    localStorage.removeItem('86chaosUser');
+  }
+};
+sanitizeCachedUser();
 const getExpDate = (d) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + 6); return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(-2)}`; };
 
 // --- Global Crash Reporter & Telemetry Engine ---
@@ -276,8 +322,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
+  tabs.push({ id: 'today', label: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if (isEnabled('ops') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.ops || perms.prep || perms.inventory || perms.sales || perms.team)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
+  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
@@ -445,15 +492,17 @@ const LoginScreen = ({ setAppUser }) => {
       // 1. Update the secure Firebase Auth password
       await updatePassword(auth.currentUser, newPass);
       
-      // 2. Flip the database flag so they are never asked again, and track the new text password
+      // 2. Flip the database flag so they are never asked again.
+      // Passwords belong ONLY in Firebase Auth, never in Firestore.
       await updateDoc(doc(db, "users", pendingUser.id), { 
         forcePasswordChange: false,
-        password: newPass 
+        passwordPurgedAt: new Date().toISOString()
       });
       
-      // 3. Unlock the system
+      // 3. Unlock the system without caching the password in app state.
       localStorage.setItem('chaosRememberMe', rememberMe);
-      setAppUser({ ...pendingUser, forcePasswordChange: false, password: newPass });
+      const { password, ...safePendingUser } = pendingUser;
+      setAppUser({ ...safePendingUser, forcePasswordChange: false });
       
     } catch (error) {
       setLoginError(error.message);
@@ -1041,7 +1090,17 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
+  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false };
+  const PERMISSION_PRESETS = {
+    'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false },
+    'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false },
+    'Bar Manager': { schedule: false, events: true, ops: true, inventory: true, prep: false, sales: false, team: false },
+    'Schedule Manager': { schedule: true, events: true, ops: false, inventory: false, prep: false, sales: false, team: false },
+    'Operations Manager': { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true },
+    'Cook': { schedule: false, events: false, ops: false, inventory: false, prep: true, sales: false, team: false },
+    'Server/Bartender': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false }
+  };
+  const [perms, setPerms] = useState(DEFAULT_PERMISSIONS);
   const [editingUserId, setEditingUserId] = useState(null);
 
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
@@ -1051,11 +1110,11 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
+    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
   };
 
   const handleEditClick = (u) => {
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
+    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1084,8 +1143,9 @@ const TabTeam = ({ users, appUser, addToast }) => {
 
       await setDoc(doc(db, "users", newAuthUid), { 
         name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        password: tPass, role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
-        forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
+        role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
+        forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId,
+        passwordStored: false, passwordPurgedAt: new Date().toISOString()
       }); 
       
       const welcomeMsg = `Welcome to 86chaos!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
@@ -1180,12 +1240,18 @@ return (
           
           {!isAdmin && (
             <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions:</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Permission Presets: choose a plain-English job preset, then fine tune individual switches below.</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {Object.keys(PERMISSION_PRESETS).map(preset => (
+                  <button key={preset} type="button" onClick={() => setPerms({ ...DEFAULT_PERMISSIONS, ...PERMISSION_PRESETS[preset] })} className="px-2.5 py-1.5 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381] hover:border-[#D4A381]/40 transition-colors">{preset}</button>
+                ))}
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Ops Command Center is only visible when Ops permission or Store Manager is enabled.</p>
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => (
                   <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
                     <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
-                    {k.replace('team', 'team mgmt').replace('prep', 'recipe/prep')}
+                    {{ schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Daily Ledger', team: 'Team Management' }[k] || k}
                   </label>
                 ))}
               </div>
@@ -1240,6 +1306,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   const [imageFile, setImageFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isImportant, setIsImportant] = useState(false);
+  const [messageCategory, setMessageCategory] = useState('Shift Note');
+  const [categoryFilter, setCategoryFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedReplies, setExpandedReplies] = useState({});
   const messageRetentionDays = parseInt(appUser?.systemSettings?.messageRetentionDays || 30, 10);
@@ -1264,9 +1332,19 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
     .filter(e => e.type === 'note')
     .filter(e => {
       const term = searchTerm.toLowerCase();
-      return (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term);
+      const matchesText = (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term) || (e.messageCategory || '').toLowerCase().includes(term);
+      const matchesCat = categoryFilter === 'All' || (e.messageCategory || (e.isImportant ? 'Important' : 'Shift Note')) === categoryFilter;
+      return matchesText && matchesCat;
     })
-    .sort((a,b) => new Date(b.date) - new Date(a.date));
+    .sort((a,b) => (b.isImportant === a.isImportant ? 0 : b.isImportant ? 1 : -1) || new Date(b.date) - new Date(a.date));
+
+  useEffect(() => {
+    if (!appUser?.id || !events.length) return;
+    const unseen = events.filter(e => e.type === 'note' && e.isImportant && !(e.readBy || []).some(r => r.userId === appUser.id)).slice(0, 5);
+    unseen.forEach(e => {
+      updateDoc(doc(db, 'events', e.id), { readBy: [...(e.readBy || []), { userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] }).catch(()=>{});
+    });
+  }, [events, appUser?.id]);
 
   const handleBroadcast = async (e) => {
     e.preventDefault();
@@ -1297,7 +1375,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
       isImportant: isCritical,
       restaurantId: appUser.restaurantId,
       replies: [],
-      imageUrl: photoUrl
+      imageUrl: photoUrl,
+      messageCategory,
+      readBy: isCritical ? [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] : []
     });
 
     try {
@@ -1319,6 +1399,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
     setImageFile(null);
     setIsUploading(false);
     setIsImportant(false);
+    setMessageCategory('Shift Note');
     addToast('Posted', 'Message sent.');
   };
 
@@ -1361,6 +1442,11 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15}/>
             <input type="text" placeholder="Search posts..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
           </div>
+          <div className="flex flex-wrap gap-1 sm:max-w-md">
+            {['All','Shift Note','86 Alert','Maintenance','Announcement','General'].map(cat => (
+              <button key={cat} onClick={() => setCategoryFilter(cat)} className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-widest ${categoryFilter === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D]'}`}>{cat}</button>
+            ))}
+          </div>
           <div className="hidden md:flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{allNotes.length} visible</div>
         </div>
 
@@ -1369,6 +1455,11 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
             <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
             <div className="flex-1 min-w-0">
               <textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm outline-none resize-none min-h-[38px] rounded-lg px-3 py-2 placeholder-slate-600 focus:border-[#D4A381] transition-colors" placeholder="Post a clear shift note, 86 item, handoff, or manager update..." />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {['Shift Note','86 Alert','Maintenance','Announcement','General'].map(cat => (
+                  <button type="button" key={cat} onClick={() => setMessageCategory(cat)} className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-widest transition-colors ${messageCategory === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D] hover:text-slate-200'}`}>{cat}</button>
+                ))}
+              </div>
               {imageFile && (
                 <div className="mt-2 text-[10px] text-blue-300 font-bold bg-blue-900/10 px-2 py-1.5 rounded-lg border border-blue-900/30 flex justify-between items-center w-full sm:w-max max-w-full">
                   <span className="truncate pr-3 flex items-center gap-1.5"><Camera size={12}/> {imageFile.name}</span>
@@ -1404,6 +1495,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
         {allNotes.map(n => {
           const authorUser = users.find(u => u.name === n.author);
           const replies = n.replies || [];
+          const readBy = n.readBy || [];
+          const unreadNames = n.isImportant ? users.filter(u => u.isActive !== false && !readBy.some(r => r.userId === u.id)).slice(0, 4).map(u => u.name?.split(' ')[0] || u.email).join(', ') : '';
           return (
             <div key={n.id} className={`message-card-pro rounded-xl border overflow-hidden transition-colors ${n.isImportant ? 'border-red-500/40 bg-red-950/10' : 'border-[#2A353D] bg-[#1A2126] hover:bg-[#1A2126]/90'}`}>
               <div className="flex">
@@ -1417,7 +1510,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
                           <div className="flex items-center gap-1.5 flex-wrap leading-none">
                             <span className={`font-black text-sm ${n.isImportant ? 'text-red-300' : 'text-white'}`}>{n.author || 'Unknown'}</span>
                             {authorUser?.isAdmin && <span className="bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Admin</span>}
+                            {n.messageCategory && <span className="bg-[#0B0E11] border border-[#2A353D] text-slate-400 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">{n.messageCategory}</span>}
                             {n.isImportant && <span className="bg-red-500/10 border border-red-500/40 text-red-300 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1"><Bell size={10}/> Important</span>}
+                            {n.isImportant && <span className="bg-emerald-900/10 border border-emerald-900/40 text-emerald-300 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest" title={unreadNames ? `Not seen: ${unreadNames}` : 'Everyone active has seen this'}>Seen {readBy.length}/{users.filter(u => u.isActive !== false).length}</span>}
                           </div>
                           <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1" title={new Date(n.date).toLocaleString()}>{getTimeAgo(n.date)}</div>
                         </div>
@@ -5017,7 +5112,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     <option value="messages">Message Board</option>
                     <option value="events">Event Calendar</option>
                     <option value="team">Team Roster</option>
-                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="ops">Ops Command Center</option> : null}
+                    {appUser?.isAdmin || appUser?.permissions?.ops ? <option value="ops">Ops Command Center</option> : null}
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
                     {appUser?.isAdmin && <option value="inventory">Inventory & Orders</option>}
@@ -5958,6 +6053,73 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     scheduleWarnings.length > 0 ? scheduleWarnings[0] : 'No immediate schedule warnings detected.'
   ];
 
+  const stockNeed = (item) => Math.max(0, Math.ceil(Number(item.parLevel || 0) - Number(item.currentStock || 0)));
+  const urgent86Items = lowStockItems.filter(i => Number(i.currentStock || 0) <= 0 || (Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) / Math.max(1, Number(i.parLevel || 1)) <= 0.25));
+  const suggestedPrepTasks = [
+    ...lowStockItems.slice(0, 4).map(i => `Prep/order recovery: ${i.name} is below par by ${stockNeed(i)}.`),
+    forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High forecast: add backup proteins, fries, sauces, and expo garnish before rush.' : null,
+    importantEvents.length > 0 ? `Event prep: review ${importantEvents.slice(0, 2).map(e => e.title).join(' / ')}.` : null,
+    criticalMaintenance.length > 0 ? `Equipment watch: ${criticalMaintenance[0].equipment} needs manager follow-up.` : null,
+    todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length < 2 ? 'Coverage risk: verify kitchen backup plan before peak service.' : null
+  ].filter(Boolean).slice(0, 8);
+
+  const handleBuildSmartOrder = async () => {
+    const items = lowStockItems.filter(i => stockNeed(i) > 0);
+    if (items.length === 0) return addToast('Smart Order', 'No below-par items found.');
+    if (!window.confirm(`Build pending order quantities for ${items.length} below-par items?`)) return;
+    try {
+      await Promise.all(items.map(i => updateDoc(doc(db, 'inventoryItems', i.id), {
+        pendingQty: Math.max(Number(i.pendingQty || 0), stockNeed(i)),
+        lastSmartOrderDate: getToday(),
+        lastSmartOrderBy: appUser?.name || 'Ops Command Center'
+      })));
+      await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Ops Command Center.`);
+      addToast('Smart Order Built', `${items.length} item(s) queued for ordering.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleCreateSmartPrepTasks = async () => {
+    if (suggestedPrepTasks.length === 0) return addToast('Smart Prep', 'No smart prep tasks needed right now.');
+    if (!window.confirm(`Create ${suggestedPrepTasks.length} smart prep task(s) for today?`)) return;
+    try {
+      const existingToday = new Set(tasks.filter(t => t.source === 'ops-smart-prep' && t.generatedForDate === today).map(t => t.title));
+      const adds = suggestedPrepTasks
+        .filter(title => !existingToday.has(title))
+        .map(title => addDoc(collection(db, 'tasks'), {
+          title,
+          category: 'Smart Prep',
+          frequency: 'daily',
+          generatedForDate: today,
+          generatedAt: new Date().toISOString(),
+          source: 'ops-smart-prep',
+          completions: {},
+          restaurantId: appUser.restaurantId
+        }));
+      await Promise.all(adds);
+      await logAudit(appUser, 'SMART_PREP_CREATED', 'tasks', `Created ${adds.length} smart prep tasks for ${today}.`);
+      addToast('Smart Prep Created', `${adds.length} task(s) added to Prep & Tasks.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handlePost86Alert = async () => {
+    if (urgent86Items.length === 0) return addToast('86 Radar', 'No urgent 86/low-stock items found.');
+    const alertLines = urgent86Items.slice(0, 10).map(i => `• ${i.name}: ${Number(i.currentStock || 0)} on hand / par ${Number(i.parLevel || 0)}`);
+    const text = `86 / Low Stock Watch:\n${alertLines.join('\n')}`;
+    try {
+      await addDoc(collection(db, 'events'), {
+        date: new Date().toISOString(), title: text, type: 'note', author: appUser?.name || 'Ops Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
+      });
+      addToast('86 Alert Posted', 'Important low-stock alert posted to Message Board.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleMarkOpsReviewed = async () => {
+    try {
+      await logAudit(appUser, 'OPS_REVIEWED', 'ops', `Reviewed Ops Command Center for ${today}. Health score ${healthScore}/100.`);
+      addToast('Ops Reviewed', 'Review logged to audit trail.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
   const timeline = [
     ...timePunches.filter(p => p.date === today).map(p => ({
       at: p.clockOutTime || p.clockInTime,
@@ -6055,8 +6217,12 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
             <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">Kitchen Command Center</h1>
             <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A live cockpit for prep, people, inventory, maintenance, labor, waste, and the little gremlins that usually wait until dinner rush.</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             <button onClick={handlePostBrief} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Post Brief</button>
+            <button onClick={handleCreateSmartPrepTasks} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ClipboardList size={16}/> Prep Plan</button>
+            <button onClick={handleBuildSmartOrder} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Package size={16}/> Smart Order</button>
+            <button onClick={handlePost86Alert} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Bell size={16}/> 86 Alert</button>
+            <button onClick={handleMarkOpsReviewed} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Check size={16}/> Reviewed</button>
             {(appUser?.isAdmin || appUser?.permissions?.prep || appUser?.permissions?.team) && <button onClick={handleSeedKitchenOps} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Plus size={16}/> Seed Standards</button>}
           </div>
         </div>
@@ -6070,6 +6236,17 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
             <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
           </div>
         ))}
+      </div>
+
+      <div className={`${T.card} p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
+        <div className="lg:col-span-2">
+          <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Smart Action Dock</h2>
+          <p className="text-xs text-slate-400 font-bold mt-1">These buttons turn the dashboard into actual work: pending orders, prep tasks, 86 alerts, and audit trail checkpoints.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Suggested Prep</div><div className="text-xl font-black text-white">{suggestedPrepTasks.length}</div></div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">86 Watch</div><div className={`text-xl font-black ${urgent86Items.length ? 'text-red-400' : 'text-emerald-400'}`}>{urgent86Items.length}</div></div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -6399,6 +6576,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
 const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
+  const [bulkDeleteEmails, setBulkDeleteEmails] = useState('');
+  const [isBulkDeletingUsers, setIsBulkDeletingUsers] = useState(false);
 
 // Pricing & MRR States
   const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
@@ -6497,6 +6676,35 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
       addToast('Error', err.message);
     }
   };                 
+
+  const handleStampMissingClientCreatedAt = async () => {
+    const missing = restaurants.filter(r => !getClientCreatedAt(r));
+    if (missing.length === 0) {
+      addToast('All Set', 'Every client already has a created date and time stamp.');
+      return;
+    }
+    if (!window.confirm(`Add a created timestamp to ${missing.length} client(s) missing one?
+
+Old clients cannot reveal their original creation time, so they will be marked as backfilled today.`)) return;
+
+    const stamp = new Date().toISOString();
+    let count = 0;
+    try {
+      for (const r of missing) {
+        await updateDoc(doc(db, "restaurants", r.id), {
+          createdAt: stamp,
+          createdAtEstimated: true,
+          createdAtBackfilledAt: stamp,
+          createdAtSource: 'admin_backfill'
+        });
+        count++;
+      }
+      addToast('Stamped', `Added created timestamps to ${count} client record(s).`);
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
   const handleDeployTenant = async (e) => {
     e.preventDefault(); 
     if (!rName.trim() || !oEmail.trim() || !oName.trim() || !rAddress.trim()) return;
@@ -6528,6 +6736,32 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to deploy tenant.');
+
+      // Stamp new client records with an exact creation date/time.
+      // If the backend route already did it, this safely leaves the same value in place.
+      try {
+        const deployedAt = data.createdAt || new Date().toISOString();
+        const returnedRestId = data.restaurantId || data.tenantId || data.restId || data.id;
+        const deployStamp = {
+          createdAt: deployedAt,
+          createdAtSource: data.createdAt ? 'api_deploy_tenant' : 'app_deploy_confirmed',
+          createdByEmail: appUser?.email || MASTER_ADMIN_EMAIL,
+          createdByName: appUser?.name || 'System Administrator'
+        };
+
+        if (returnedRestId) {
+          await setDoc(doc(db, "restaurants", returnedRestId), deployStamp, { merge: true });
+        } else {
+          const restSnap = await getDocs(query(collection(db, "restaurants"), where("ownerEmail", "==", oEmail.toLowerCase().trim())));
+          const targetDoc = restSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .find(r => (r.name || '').trim().toLowerCase() === rName.trim().toLowerCase() || !getClientCreatedAt(r));
+          if (targetDoc?.id) await setDoc(doc(db, "restaurants", targetDoc.id), deployStamp, { merge: true });
+        }
+      } catch (stampErr) {
+        console.warn('Client timestamp stamp failed:', stampErr);
+      }
+
 
       const welcomeMsg = `Welcome to 86chaos!\n\nYour restaurant OS is live. Access it here: https://app.86chaos.com\n\nUsername: ${oEmail.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in to set a permanent password.`;
       window.location.href = `mailto:${oEmail.toLowerCase().trim()}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${rName.trim()}`)}&body=${encodeURIComponent(welcomeMsg)}`;
@@ -6716,6 +6950,108 @@ const handleDeleteGlobalUser = async (u) => {
     }
   };
 
+
+  const parseBulkEmailList = (raw) => [...new Set((raw || '')
+    .split(/[\s,;]+/)
+    .map(v => v.toLowerCase().trim())
+    .filter(v => v && v.includes('@'))
+  )];
+
+  const handleBulkDeleteUsersByEmail = async (e) => {
+    e.preventDefault();
+    const emails = parseBulkEmailList(bulkDeleteEmails);
+    if (emails.length === 0) return addToast('Nothing to Delete', 'Paste one or more email addresses first.');
+
+    const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
+    const targets = allUsers.filter(u => emails.includes((u.email || '').toLowerCase().trim()) && !protectedEmails.has((u.email || '').toLowerCase().trim()));
+    const skippedProtected = emails.filter(email => protectedEmails.has(email));
+
+    if (targets.length === 0) {
+      return addToast('No Matches', skippedProtected.length ? 'Only protected admin emails were entered.' : 'No user profiles matched those emails.');
+    }
+
+    const duplicateSummary = Object.entries(targets.reduce((acc, u) => {
+      const key = (u.email || '').toLowerCase().trim();
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {})).map(([email, count]) => `${email} (${count})`).join(', ');
+
+    const confirmText = prompt(`This will delete ${targets.length} user profile(s) matching:
+${duplicateSummary}
+
+Type DELETE USERS to continue.`);
+    if (confirmText !== 'DELETE USERS') return addToast('Aborted', 'Bulk deletion canceled.');
+
+    setIsBulkDeletingUsers(true);
+    let authDeleted = 0;
+    let profileDeleted = 0;
+    const errors = [];
+
+    try {
+      // Preferred path: one secure backend call deletes Firebase Auth users and Firestore profiles.
+      try {
+        const response = await secureFetch('/api/delete-users-bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emails })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+          authDeleted = result.authDeleted ?? result.deletedAuthCount ?? targets.length;
+          profileDeleted = result.profileDeleted ?? result.deletedProfileCount ?? targets.length;
+          addToast('Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
+          setBulkDeleteEmails('');
+          await addDoc(collection(db, 'auditLogs'), {
+            userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
+            details: `Bulk deleted users by email: ${emails.join(', ')}`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', isGhost: appUser?.isGhost || false
+          }).catch(()=>{});
+          return;
+        }
+        throw new Error(result.error || 'Bulk delete API unavailable.');
+      } catch (bulkApiErr) {
+        console.warn('Bulk delete API unavailable, falling back to individual user deletion:', bulkApiErr);
+      }
+
+      // Fallback path: try the existing single delete-user endpoint for each UID, then delete the profile doc.
+      for (const u of targets) {
+        try {
+          try {
+            const response = await secureFetch('/api/delete-user', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targetUid: u.id })
+            });
+            if (response.ok) authDeleted++;
+          } catch (authErr) {
+            errors.push(`Auth delete failed for ${u.email}: ${authErr.message}`);
+          }
+          await deleteDoc(doc(db, 'users', u.id));
+          profileDeleted++;
+        } catch (profileErr) {
+          errors.push(`Profile delete failed for ${u.email}: ${profileErr.message}`);
+        }
+      }
+
+      await addDoc(collection(db, 'auditLogs'), {
+        userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
+        details: `Bulk deleted ${profileDeleted} profile(s) by email. Auth deleted: ${authDeleted}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
+        timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', isGhost: appUser?.isGhost || false
+      }).catch(()=>{});
+
+      addToast(errors.length ? 'Partial Delete' : 'Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
+      if (!errors.length) setBulkDeleteEmails('');
+    } finally {
+      setIsBulkDeletingUsers(false);
+    }
+  };
+
+  const loadDuplicateEmailsIntoBulkDelete = () => {
+    if (duplicateEmailGroups.length === 0) return addToast('Clean', 'No duplicate email groups found.');
+    setSubTab('users');
+    setBulkDeleteEmails(duplicateEmailGroups.map(([email]) => email).join('\n'));
+    addToast('Loaded', 'Duplicate email groups loaded into the bulk delete box. Review before deleting.');
+  };
+
   // --- OBLITERATION ENGINE ---
   const handleNukeData = async (e) => {
     e.preventDefault();
@@ -6819,7 +7155,7 @@ const handleDeleteGlobalUser = async (u) => {
       const userIds = [];
       const userPromises = dummyUsers.map(async (u) => {
          const uRef = await addDoc(collection(db, "users"), {
-           ...u, email: u.name.split(' ')[0].toLowerCase() + '@demo.com', restaurantId: rId, isActive: true, password: 'password123'
+           ...u, email: u.name.split(' ')[0].toLowerCase() + '@demo.com', restaurantId: rId, isActive: true, passwordStored: false
          });
          userIds.push({ ...u, id: uRef.id });
       });
@@ -7031,7 +7367,40 @@ const handleDeleteGlobalUser = async (u) => {
     addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'suspended' : 'restored'}.`);
   };
 
-const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Access given. The user MUST log out and log back in to see the new tab.'); };  const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
+const handleGrantAccess = async (e) => {
+  e.preventDefault();
+  const targetEmail = adminEmail.toLowerCase().trim();
+  if (!targetEmail) return;
+  try {
+    const response = await secureFetch('/api/admin-access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'grant', email: targetEmail })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Grant access failed.');
+    setAdminEmail('');
+    addToast('Granted', 'Custom-claim access granted. The user must log out and back in.');
+  } catch (err) {
+    addToast('Access Error', err.message || 'Could not grant access. Check /api/admin-access and Vercel env vars.');
+  }
+};
+
+const handleRevokeAccess = async (user) => {
+  if (!window.confirm(`Revoke Admin from ${user.name}?`)) return;
+  try {
+    const response = await secureFetch('/api/admin-access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'revoke', email: user.email })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Revoke access failed.');
+    addToast('Revoked', 'Custom-claim access removed. The user must log out and back in.');
+  } catch (err) {
+    addToast('Access Error', err.message || 'Could not revoke access.');
+  }
+};
 
 // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => {
@@ -7039,6 +7408,28 @@ const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await 
     return acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Elite' ? 149 : r.planType === 'Pro' ? 99 : r.planType === 'Starter' ? 49 : 0);
   }, 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
+
+  const parseClientDate = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (typeof value === 'object' && value.seconds) return new Date(value.seconds * 1000);
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const getClientCreatedAt = (client) => client?.createdAt || client?.createdOn || client?.created || client?.deployedAt || null;
+
+  const formatClientCreatedTimestamp = (value) => {
+    const d = parseClientDate(value);
+    if (!d) return 'Not stamped yet';
+    return d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatClientCreatedDate = (value) => {
+    const d = parseClientDate(value);
+    if (!d) return 'Unknown';
+    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+  };
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
   // --- NEW SAAS HEALTH METRICS ---
@@ -7095,7 +7486,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -7126,6 +7517,17 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     `Browser online: ${envReport.online}`,
     `Generated: ${new Date().toLocaleString()}`
   ].join('\n');
+
+  const adminRiskQueue = [
+    crashes24h > 0 ? { tone: crashes24h > 10 ? 'red' : 'amber', title: 'Fresh crash reports', detail: `${crashes24h} crash/bug log(s) in the last 24 hours.`, jump: 'support' } : null,
+    permissionDeniedLogs.length > 0 ? { tone: 'red', title: 'Permission denied errors', detail: `${permissionDeniedLogs.length} log(s) look like Firestore rule blocks.`, jump: 'support' } : null,
+    pastDueWorkspaces.length > 0 ? { tone: 'amber', title: 'Past due workspaces', detail: `${pastDueWorkspaces.length} workspace(s) are locked or billing-risk.`, jump: 'tenants' } : null,
+    missingOwnerAccounts.length > 0 ? { tone: 'amber', title: 'Missing owner accounts', detail: `${missingOwnerAccounts.length} restaurant owner email(s) do not match a user profile.`, jump: 'support' } : null,
+    usersWithoutRestaurant.length > 0 ? { tone: 'amber', title: 'Users missing restaurantId', detail: `${usersWithoutRestaurant.length} user profile(s) cannot route correctly.`, jump: 'support' } : null,
+    duplicateEmailGroups.length > 0 ? { tone: 'red', title: 'Duplicate user emails', detail: `${duplicateEmailGroups.length} duplicate email group(s) found.`, jump: 'support' } : null,
+    pushOptInRate < 30 && allUsers.length > 0 ? { tone: 'amber', title: 'Low push adoption', detail: `${pushOptInRate}% of users have notification tokens.`, jump: 'users' } : null
+  ].filter(Boolean);
+  const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
 
   const handleCopyPlatformSnapshot = async () => {
     try {
@@ -7175,7 +7577,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
   const SignalPip = ({ tone = 'emerald', label = 'LIVE', hot = false }) => {
     const colors = tone === 'red' ? 'text-red-400 bg-red-500' : tone === 'amber' ? 'text-amber-400 bg-amber-400' : tone === 'blue' ? 'text-blue-400 bg-blue-400' : tone === 'purple' ? 'text-fuchsia-400 bg-fuchsia-400' : 'text-emerald-400 bg-emerald-400';
-    return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'slow'} ${colors.split(' ')[1]}`}></span>{label}</span>;
+    return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'quiet'} ${colors.split(' ')[1]}`}></span>{label}</span>;
   };
 
   const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false }) => (
@@ -7206,18 +7608,25 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
             <p className="text-xs text-slate-400 font-bold mt-1">Live platform telemetry, client control, user presence, safety locks, and support tools.</p>
           </div>
           <div className="flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-widest">
-            {['AUTH','DB','PUSH','RULES','API','GHOST','CACHE','BILLING','LOGS','BACKUP','OCR','LABS'].map((lamp, i) => (
+            {[
+              ['AUTH', 'emerald'],
+              ['DB', 'emerald'],
+              ['RULES', permissionDeniedLogs.length ? 'amber' : 'emerald'],
+              ['API', apiConnectedCount ? 'blue' : 'emerald'],
+              ['GHOST', 'purple'],
+              ['CRASH', crashes24h ? 'amber' : 'emerald']
+            ].map(([lamp, tone]) => (
               <span key={lamp} className="bg-[#0B0E11] border border-[#2A353D] rounded-md px-2 py-1 text-slate-300 flex items-center gap-1.5">
-                <span className={`cockpit-light ${i % 5 === 0 ? 'bg-blue-400 text-blue-400' : i % 3 === 0 ? 'bg-amber-400 text-amber-400' : 'bg-emerald-400 text-emerald-400'}`}></span>{lamp}
+                <span className={`cockpit-light quiet ${tone === 'amber' ? 'bg-amber-400 text-amber-400' : tone === 'blue' ? 'bg-blue-400 text-blue-400' : tone === 'purple' ? 'bg-fuchsia-400 text-fuchsia-400' : 'bg-emerald-400 text-emerald-400'}`}></span>{lamp}
               </span>
             ))}
           </div>
         </div>
         <div className="relative grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-          <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} active workspaces`} tone="emerald" hot={onlineUsers.length > 0} />
-          <CockpitMetric label="Users Today" value={dau} detail={`${stickyRate}% daily stickiness`} tone="blue" />
+          <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} item(s) in action queue`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} />
+          <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} active workspaces`} tone="emerald" />
           <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" />
-          <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Needs eyes' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 0} />
+          <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Needs eyes' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} />
           <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} />
           <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} />
         </div>
@@ -7225,7 +7634,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
       {/* MASTER NAVIGATION */}
       <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'live', label:'Live Ops'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Grant Access'}].map((t) => (
+        {[{id:'overview', label:'Dashboard'}, {id:'live', label:'Live Users'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Users'}, {id:'admins', label:'Grant Access'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'forge', label:'Forge'}].map((t) => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
       </div>
@@ -7296,14 +7705,19 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
 <form onSubmit={handleUpdateTenant} className="space-y-4">
                 {/* ACTIVE SEATS DASHBOARD */}
-                <div className="flex justify-between items-center bg-[#12161A] p-4 rounded-xl border border-[#2A353D] mb-2 shadow-inner">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#12161A] p-4 rounded-xl border border-[#2A353D] mb-2 shadow-inner">
                   <div>
                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Active User Seats</div>
                     <div className="text-2xl font-black text-[#D4A381]">{userCounts[editingRest.id] || 0} <span className="text-xs text-slate-400 font-bold">Staff Members</span></div>
                   </div>
-                  <div className="text-right">
+                  <div>
+                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Created</div>
+                     <div className="text-xs font-black text-[#D4A381]">{formatClientCreatedTimestamp(getClientCreatedAt(editingRest))}</div>
+                     {editingRest.createdAtEstimated && <div className="text-[8px] font-black uppercase tracking-widest text-amber-400 mt-1">Backfilled</div>}
+                  </div>
+                  <div className="sm:text-right">
                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Workspace ID</div>
-                     <div className="text-xs font-mono font-bold text-slate-300">{editingRest.id}</div>
+                     <div className="text-xs font-mono font-bold text-slate-300 break-all">{editingRest.id}</div>
                   </div>
                 </div>
 
@@ -7450,6 +7864,28 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
           {/* PRICING & MRR CONFIG */}
           {/* ... (Your pricing and stale account code remains exactly the same here) ... */}
 
+          <div className={`${T.card} p-4`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-black text-white text-sm flex items-center gap-2"><Shield size={18} className={T.copper}/> Administrator Action Queue</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Only the important warnings. Less disco ball, more control tower.</p>
+              </div>
+              <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${platformStatus === 'Clean' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : platformStatus === 'Monitoring' ? 'bg-amber-900/20 text-amber-400 border-amber-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>{platformStatus}</span>
+            </div>
+            {adminRiskQueue.length === 0 ? (
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4 text-sm font-bold text-emerald-400">No urgent admin issues detected.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                {adminRiskQueue.slice(0, 6).map((item, idx) => (
+                  <button key={idx} type="button" onClick={() => setSubTab(item.jump)} className={`text-left bg-[#12161A] border rounded-xl p-3 hover:bg-[#0B0E11] transition-colors ${item.tone === 'red' ? 'border-red-900/50' : item.tone === 'amber' ? 'border-amber-900/50' : 'border-[#2A353D]'}`}>
+                    <div className={`text-[10px] font-black uppercase tracking-widest mb-1 ${item.tone === 'red' ? 'text-red-400' : item.tone === 'amber' ? 'text-amber-400' : 'text-emerald-400'}`}>{item.title}</div>
+                    <div className="text-xs text-slate-300 font-bold leading-snug">{item.detail}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* --- GLOBAL INFRASTRUCTURE & HEALTH MATRIX --- */}
           <div className={`${T.card} overflow-hidden border-slate-700/50`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
@@ -7465,7 +7901,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Firebase Firestore DB</div>
                 </div>
                 <div className="flex items-center gap-2 bg-emerald-900/20 border border-emerald-900/50 px-3 py-1.5 rounded-lg">
-                  <span className="flex h-2.5 w-2.5 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span></span>
+                  <span className="cockpit-light quiet bg-emerald-400 text-emerald-400"></span>
                   <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Operational</span>
                 </div>
               </div>
@@ -7618,11 +8054,23 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
           </form>
 
           <div className={`${T.card} overflow-hidden`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white">Client Roster</h3><span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurants.length} Total</span></div>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col sm:flex-row justify-between sm:items-center gap-3`}>
+              <div>
+                <h3 className="font-black text-sm text-white">Client Roster</h3>
+                <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Created date/time is stamped on every new client.</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurants.length} Total</span>
+                <button type="button" onClick={handleStampMissingClientCreatedAt} className="bg-[#1A2126] text-[#D4A381] px-2.5 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D] hover:border-[#D4A381]/60 transition-colors">Stamp Missing</button>
+              </div>
+            </div>
 <div className={`divide-y ${T.border}`}>
 {restaurants.map(r => {
                 // Subscription Math Engine
-                const createdDate = new Date(r.createdAt || Date.now());
+                const createdRaw = getClientCreatedAt(r);
+                const createdDate = parseClientDate(createdRaw) || new Date();
+                const createdTimestamp = formatClientCreatedTimestamp(createdRaw);
+                const isBackfilledCreatedAt = r.createdAtEstimated || (!createdRaw && r.createdAtBackfilledAt);
                 const trialDurationDays = r.trialDays !== undefined ? parseInt(r.trialDays) : 14;
                 const trialEndDate = new Date(createdDate.getTime() + trialDurationDays * 24 * 60 * 60 * 1000);
                 const isTrialActive = r.billingStatus === 'Trial';
@@ -7646,8 +8094,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                     {/* BILLING & SUBSCRIPTION HUD */}
                     <div className="flex flex-wrap items-center gap-3 mt-2 mb-1 bg-[#0B0E11] border border-[#2A353D] p-2.5 rounded-lg w-full xl:w-max">
                       <div className="flex flex-col">
-                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Service Started</span>
-                        <span className="text-[10px] font-bold text-slate-300">{createdDate.toLocaleDateString()}</span>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Created</span>
+                        <span className="text-[10px] font-bold text-slate-300" title={createdTimestamp}>{createdTimestamp}</span>
+                        {isBackfilledCreatedAt && <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 mt-0.5">Backfilled</span>}
                       </div>
                       <div className="h-6 w-px bg-[#2A353D]"></div>
         {isTrialActive ? (
@@ -7684,6 +8133,26 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
             <Search className={T.copper} size={20}/>
             <input type="text" placeholder="Search any user by name, email, role, or ID..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
           </div>
+
+          <form onSubmit={handleBulkDeleteUsersByEmail} className={`${T.card} p-4 border-red-900/40 bg-red-950/10`}>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-black text-sm text-red-300 flex items-center gap-2"><Trash2 size={16}/> Bulk Delete Users by Email</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Paste one or many emails. This is for duplicate/bad accounts. Geoff/current admin emails are protected.</p>
+              </div>
+              {duplicateEmailGroups.length > 0 && <button type="button" onClick={loadDuplicateEmailsIntoBulkDelete} className="text-[9px] font-black uppercase tracking-widest text-red-300 border border-red-900/50 px-2 py-1.5 rounded-lg hover:bg-red-900/20">Load Duplicate Emails</button>}
+            </div>
+            <textarea value={bulkDeleteEmails} onChange={e=>setBulkDeleteEmails(e.target.value)} rows="3" className={`${T.input} font-mono text-xs`} placeholder="bad@email.com
+duplicate@email.com
+another@email.com"></textarea>
+            <div className="flex flex-col sm:flex-row gap-2 mt-3">
+              <button type="submit" disabled={isBulkDeletingUsers} className="flex-1 bg-red-900/30 text-red-200 border border-red-700/60 hover:bg-red-900/50 font-black uppercase tracking-widest py-2.5 rounded-lg text-xs disabled:opacity-50 flex items-center justify-center gap-2">
+                {isBulkDeletingUsers ? <Loader2 className="animate-spin" size={14}/> : <Trash2 size={14}/>} Delete Matching Users
+              </button>
+              <button type="button" onClick={() => setBulkDeleteEmails('')} className={`${T.btnAlt} sm:w-32`}>Clear</button>
+            </div>
+          </form>
+
           <div className={`divide-y ${T.border} ${T.card} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
             {allUsers.filter(u => {
               const restName = restaurants.find(r => r.id === u.restaurantId)?.name || '';
@@ -7806,7 +8275,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
               <div className="relative z-10 mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {missingOwnerAccounts.length > 0 && <div className="bg-amber-900/10 border border-amber-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Missing Owner Accounts</div>{missingOwnerAccounts.slice(0,8).map(r => <div key={r.id} className="text-[10px] text-slate-400 font-bold break-all mb-1">{r.name}: {r.ownerEmail}</div>)}</div>}
                 {usersWithoutRestaurant.length > 0 && <div className="bg-amber-900/10 border border-amber-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Users Without Restaurant</div>{usersWithoutRestaurant.slice(0,8).map(u => <div key={u.id} className="text-[10px] text-slate-400 font-bold break-all mb-1">{u.name || 'Unnamed'}: {u.email || u.id}</div>)}</div>}
-                {duplicateEmailGroups.length > 0 && <div className="bg-red-900/10 border border-red-900/50 rounded-xl p-3"><div className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-2">Duplicate Email Groups</div>{duplicateEmailGroups.slice(0,8).map(([email, group]) => <div key={email} className="text-[10px] text-slate-400 font-bold break-all mb-1">{email}: {group.length} profiles</div>)}</div>}
+                {duplicateEmailGroups.length > 0 && <div className="bg-red-900/10 border border-red-900/50 rounded-xl p-3"><div className="flex items-center justify-between gap-2 mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-red-400">Duplicate Email Groups</div><button onClick={loadDuplicateEmailsIntoBulkDelete} className="text-[8px] font-black uppercase tracking-widest text-red-300 border border-red-900/50 px-2 py-1 rounded hover:bg-red-900/30">Open Cleanup</button></div>{duplicateEmailGroups.slice(0,8).map(([email, group]) => <div key={email} className="text-[10px] text-slate-400 font-bold break-all mb-1">{email}: {group.length} profiles</div>)}</div>}
               </div>
             )}
           </div>
@@ -8011,6 +8480,279 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 };
 
 
+// ============================================================================
+// USER-FRIENDLY OPERATIONS SUITE: Today, Search, Quick Actions, TV Mode
+// ============================================================================
+const SmartEmptyState = ({ icon = <Star size={24}/>, title, desc, actionLabel, onAction }) => (
+  <div className="rounded-2xl border border-dashed border-[#2A353D] bg-[#12161A]/60 p-5 text-center">
+    <div className="mx-auto mb-2 w-10 h-10 rounded-xl bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] flex items-center justify-center">{icon}</div>
+    <h3 className="text-sm font-black text-white">{title}</h3>
+    {desc && <p className="text-xs text-slate-500 font-bold mt-1 leading-snug">{desc}</p>}
+    {actionLabel && onAction && <button onClick={onAction} className="mt-3 px-3 py-2 rounded-lg bg-[#D4A381] text-slate-900 text-[10px] font-black uppercase tracking-widest">{actionLabel}</button>}
+  </div>
+);
+
+const MiniProblemCard = ({ tone='amber', title, detail, action, onClick }) => {
+  const tones = {
+    red: 'border-red-500/40 bg-red-950/10 text-red-300',
+    amber: 'border-amber-500/40 bg-amber-950/10 text-amber-300',
+    blue: 'border-blue-500/40 bg-blue-950/10 text-blue-300',
+    emerald: 'border-emerald-500/40 bg-emerald-950/10 text-emerald-300'
+  };
+  return <div className={`rounded-xl border p-3 ${tones[tone] || tones.amber}`}>
+    <div className="text-[10px] font-black uppercase tracking-widest">{title}</div>
+    <div className="text-xs text-slate-300 font-bold mt-1 leading-snug">{detail}</div>
+    {action && <button onClick={onClick} className="mt-2 text-[9px] font-black uppercase tracking-widest underline underline-offset-4">{action}</button>}
+  </div>;
+};
+
+const getHomeProfile = (user) => {
+  const role = (user?.role || '').toLowerCase();
+  if (user?.isSuperAdmin || user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) return 'system';
+  if (user?.isAdmin || user?.permissions?.ops || user?.permissions?.sales || user?.permissions?.team || user?.permissions?.schedule) return 'manager';
+  if (role.includes('cook') || role.includes('chef') || role.includes('kitchen') || role.includes('prep') || user?.permissions?.prep) return 'kitchen';
+  if (role.includes('bartender') || role.includes('bar')) return 'bar';
+  if (role.includes('server') || role.includes('host')) return 'service';
+  return 'staff';
+};
+
+const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, clientData, setActiveTab, addToast, registerUndo }) => {
+  const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
+  const today = getToday();
+  const profile = getHomeProfile(appUser);
+  const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const myShift = todaysShifts.find(s => s.employeeId === appUser.id);
+  const activePunches = timePunches.filter(p => ['clocked_in','on_break'].includes(p.status));
+  const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
+  const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
+  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) <= Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
+  const urgentMaintenance = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5);
+  const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
+  const pendingRequests = timeOffRequests.filter(r => r.status === 'pending').slice(0, 5);
+  const openSwaps = shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5);
+  const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
+  const setupItems = [
+    { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings' },
+    { label: 'Add team members', done: users.length > 1, tab: 'team' },
+    { label: 'Build this week schedule', done: shifts.some(s => s.date >= today), tab: 'schedule' },
+    { label: 'Add recipes', done: recipes.length > 0, tab: 'recipes' },
+    { label: 'Add inventory items', done: inventoryItems.length > 0, tab: 'inventory' },
+    { label: 'Post first announcement', done: events.some(e => e.type === 'note'), tab: 'messages' },
+    { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance' }
+  ];
+  const setupDone = setupItems.filter(i => i.done).length;
+  const problems = [
+    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory' } : null,
+    urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
+    pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
+    openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
+    !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
+  ].filter(Boolean);
+
+  const quickCreate = async (kind) => {
+    try {
+      let refDoc = null;
+      if (kind === '86') {
+        const item = prompt('What item is 86\'d or low?');
+        if (!item) return;
+        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] });
+        addToast('86 Alert Posted', item);
+      }
+      if (kind === 'prep') {
+        const item = prompt('Prep task to add for today?');
+        if (!item) return;
+        refDoc = await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: item, station: 'General', isCompleted: false, qty: 1, createdAt: new Date().toISOString(), createdBy: appUser.name });
+        addToast('Prep Added', item);
+      }
+      if (kind === 'maintenance') {
+        const issue = prompt('Maintenance issue?');
+        if (!issue) return;
+        refDoc = await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'General', issue, urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: appUser.name });
+        addToast('Maintenance Added', issue);
+      }
+      if (kind === 'message') {
+        const msg = prompt('Message to post?');
+        if (!msg) return;
+        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: msg, messageCategory: 'Shift Note', author: appUser.name, isImportant: false, date: new Date().toISOString(), replies: [] });
+        addToast('Message Posted', msg.slice(0, 60));
+      }
+      if (refDoc) registerUndo?.({ label: `Undo ${kind}`, action: async () => { await deleteDoc(refDoc); addToast('Undone', 'The last quick action was removed.'); } });
+    } catch (err) { addToast('Could not save', err.message || 'Permission or connection issue.'); }
+  };
+
+  const seedDemoData = async () => {
+    if (!appUser?.isAdmin && !appUser?.isSuperAdmin) return addToast('Manager Only', 'Ask a manager to seed demo data.');
+    if (!window.confirm('Add a complete demo set to this workspace? This adds sample recipes, prep, inventory, messages, events, and maintenance.')) return;
+    const stamp = new Date().toISOString();
+    await Promise.all([
+      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: 'DEMO: Tonight has live music and heavy dinner volume expected.', messageCategory: 'Announcement', author: '86 Demo', isImportant: true, date: stamp, replies: [], readBy: [] }),
+      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'special_event', title: 'DEMO: Patio Rush / Live Music', date: today, time: '19:00', notes: 'Expect extra bar and fryer volume.', addedBy: '86 Demo' }),
+      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Portion burger patties', station: 'Grill', qty: 24, isCompleted: false }),
+      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Backup ranch and blue cheese', station: 'Cold', qty: 2, isCompleted: false }),
+      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Chicken Breast', category: 'Protein', parLevel: 3, currentStock: 1, pendingQty: 0, price: 84, packSize: '40 lb case', yieldQty: 1, isStarred: true }),
+      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Fries', category: 'Frozen', parLevel: 5, currentStock: 2, pendingQty: 0, price: 33, packSize: 'Case', yieldQty: 1, isStarred: true }),
+      addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'DEMO Fryer #2', issue: 'Filter due before dinner rush', urgency: 'High', status: 'Reported', reportedAt: stamp, reportedBy: '86 Demo' }),
+      addDoc(collection(db, 'recipes'), { restaurantId: appUser.restaurantId, title: 'DEMO House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 gallon', ingredients: 'Mayo\nButtermilk\nRanch seasoning', instructions: 'Whisk. Label. Chill.', authorName: '86 Demo', lastUpdated: stamp })
+    ]);
+    addToast('Demo Mode Seeded', 'Sample operating data was added to this workspace.');
+  };
+
+  const applyNotificationPreset = async () => {
+    const presets = {
+      manager: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: true, notifLevel: 'all', muteOnDaysOff: false },
+      kitchen: { notifSchedule: true, notifMessages: true, notifTrades: false, notifReminders: true, notifLevel: 'mentions', keywords: '86,prep,critical,walk-in,fryer,line' },
+      bar: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'mentions', keywords: 'bar,bartender,beer,86,critical' },
+      service: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'critical' },
+      staff: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'critical' }
+    };
+    await updateDoc(doc(db, 'users', appUser.id), { preferences: { ...(appUser.preferences || {}), ...(presets[profile] || presets.staff) } });
+    addToast('Notification Preset Applied', 'Your alerts now match your role.');
+  };
+
+  const heroTitle = profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief';
+  const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
+
+  return <div className="max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
+      <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
+      <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{formatDisplayFullDate(today)}</div>
+          <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{heroTitle}</h1>
+          <p className="text-sm text-slate-300 font-bold mt-2 max-w-2xl leading-snug">{topPriority}</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 min-w-[230px]">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">On Schedule</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Clocked In</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{problems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Needs Eyes</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <button onClick={() => quickCreate('86')} className="bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
+      <button onClick={() => quickCreate('prep')} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
+      <button onClick={() => quickCreate('message')} className="bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
+      <button onClick={() => quickCreate('maintenance')} className="bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>
+    </div>
+
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="lg:col-span-2 space-y-3">
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
+          {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
+            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="The equipment gods are quiet, the schedule has a pulse, and nothing is screaming for help." />}
+          </div>}
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
+          {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={() => setActiveTab('inventory')} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
+          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Ops" detail="Open full command center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
+          {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">Important Messages</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open Board</button></div>
+          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div></div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/7</span></button>
+          {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
+        </div>
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white text-lg mb-3">Recently Used</h2>
+          <div className="flex flex-wrap gap-2">{recentTabs.length ? recentTabs.map(t => <button key={t} onClick={() => setActiveTab(t)} className="px-3 py-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[10px] text-slate-300 font-black uppercase tracking-widest">{t}</button>) : <p className="text-xs text-slate-500 font-bold">Tabs you use will appear here.</p>}</div>
+        </div>
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, prefs: !e.prefs}))}><h2 className="font-black text-white text-lg">My Preferences</h2><Settings size={16}/></button>
+          {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Apply {profile} Notification Preset</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">Open Full Settings</button></div>}
+        </div>
+      </div>
+    </div>
+  </div>;
+};
+
+const GlobalSearchModal = ({ isOpen, onClose, queryText, setQueryText, users, events, shifts, recipes, inventoryItems, maintenanceLogs, setActiveTab }) => {
+  if (!isOpen) return null;
+  const q = queryText.trim().toLowerCase();
+  const results = q ? [
+    ...users.filter(u => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'User', title: x.name, detail: x.email || x.role, tab: 'team' })),
+    ...recipes.filter(r => `${r.title} ${r.ingredients}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Recipe', title: x.title, detail: x.category, tab: 'recipes' })),
+    ...inventoryItems.filter(i => `${i.name} ${i.category}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Inventory', title: x.name, detail: `Stock ${x.currentStock || 0} / Par ${x.parLevel || 0}`, tab: 'inventory' })),
+    ...events.filter(e => `${e.title} ${e.author} ${e.notes}`.toLowerCase().includes(q)).slice(0, 6).map(x => ({ kind: x.type === 'special_event' ? 'Event' : 'Message', title: x.title, detail: x.date || x.author, tab: x.type === 'special_event' ? 'events' : 'messages' })),
+    ...maintenanceLogs.filter(m => `${m.equipment} ${m.issue}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Maintenance', title: x.equipment, detail: x.issue, tab: 'maintenance' })),
+    ...shifts.filter(s => `${s.role} ${s.date}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Shift', title: `${x.role} ${x.date}`, detail: `${formatShortTime(x.startTime)}-${formatShortTime(x.endTime)}`, tab: 'schedule' }))
+  ].slice(0, 18) : [];
+  return <div className="fixed inset-0 z-[100000] bg-[#0B0E11]/90 backdrop-blur-md p-4 flex items-start justify-center pt-10">
+    <div className="w-full max-w-2xl cockpit-panel rounded-2xl overflow-hidden">
+      <div className="p-3 border-b border-[#2A353D] flex items-center gap-2"><Search size={18} className="text-[#D4A381]"/><input autoFocus value={queryText} onChange={e=>setQueryText(e.target.value)} placeholder="Search people, recipes, messages, inventory, events..." className="flex-1 bg-transparent outline-none text-white font-bold"/><button onClick={onClose} className="p-2 rounded-lg hover:bg-[#12161A]"><X size={18}/></button></div>
+      <div className="max-h-[70vh] overflow-y-auto custom-scrollbar p-2 space-y-1">{q && results.length === 0 && <SmartEmptyState title="Nothing found" desc="Try a recipe name, employee, inventory item, or event." />}{results.map((r, idx) => <button key={idx} onClick={() => { setActiveTab(r.tab); onClose(); }} className="w-full text-left p-3 rounded-xl border border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/40"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{r.kind}</div><div className="font-black text-white text-sm mt-1">{r.title}</div><div className="text-xs text-slate-500 font-bold mt-0.5 truncate">{r.detail}</div></button>)}</div>
+    </div>
+  </div>;
+};
+
+const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }) => {
+  const [open, setOpen] = useState(false);
+  const profile = getHomeProfile(appUser);
+  const actions = [
+    { label: 'Today', tab: 'today' },
+    { label: 'Search', fn: openSearch },
+    { label: 'Kitchen TV', fn: openTV },
+    profile === 'kitchen' ? { label: 'Recipes', tab: 'recipes' } : null,
+    profile === 'kitchen' ? { label: 'Prep', tab: 'prep' } : null,
+    ['manager','system'].includes(profile) ? { label: 'Ops', tab: 'ops' } : null,
+    ['manager','system'].includes(profile) ? { label: 'Schedule', tab: 'schedule' } : null,
+    { label: 'Message Board', tab: 'messages' },
+    { label: 'My Shift', tab: 'published' }
+  ].filter(Boolean);
+  return <div className="fixed bottom-5 right-4 z-50 flex flex-col items-end gap-2">
+    {open && <div className="cockpit-panel rounded-2xl p-2 w-52 space-y-1 shadow-2xl">{actions.map(a => <button key={a.label} onClick={() => { setOpen(false); a.fn ? a.fn() : setActiveTab(a.tab); }} className="w-full text-left px-3 py-2 rounded-xl bg-[#0B0E11] hover:bg-[#12161A] border border-[#2A353D] text-xs font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381]">{a.label}</button>)}</div>}
+    <button onClick={() => setOpen(!open)} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/50 text-[#D4A381] shadow-2xl flex items-center justify-center"><Menu size={24}/></button>
+  </div>;
+};
+
+const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenanceLogs, inventoryItems }) => {
+  if (!isOpen) return null;
+  const today = getToday();
+  const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+  const prep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 10);
+  const alerts = events.filter(e => e.type === 'note' && e.isImportant).slice(0, 5);
+  const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today);
+  const maint = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status)).slice(0, 5);
+  const low = inventoryItems.filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) <= Number(i.parLevel||0)).slice(0, 6);
+  return <div className="fixed inset-0 z-[100000] bg-[#0B0E11] text-white p-5 sm:p-8 overflow-y-auto">
+    <div className="flex justify-between items-start mb-6"><div><div className="text-[#D4A381] text-sm font-black uppercase tracking-widest">86 Chaos Kitchen TV</div><h1 className="text-4xl sm:text-6xl font-black">{formatDisplayFullDate(today)}</h1></div><button onClick={onClose} className="bg-white text-slate-900 rounded-xl px-4 py-2 font-black uppercase text-xs">Exit</button></div>
+    <div className="grid md:grid-cols-3 gap-4">
+      <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">Prep Now</h2>{prep.length ? prep.map(p => <div key={p.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{p.text}</div>) : <p className="text-slate-500 text-xl">Prep is clear.</p>}</div>
+      <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">86 / Alerts</h2>{alerts.length ? alerts.map(a => <div key={a.id} className="text-xl font-bold border-b border-red-500/30 py-2 text-red-300">{a.title}</div>) : <p className="text-slate-500 text-xl">No active alerts.</p>}{low.map(i => <div key={i.id} className="text-xl font-bold border-b border-red-500/30 py-2 text-red-300">Low: {i.name}</div>)}</div>
+      <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">Today</h2>{todayEvents.map(e => <div key={e.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{e.time || ''} {e.title}</div>)}{todaysShifts.slice(0,8).map(s => <div key={s.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{formatShortTime(s.startTime)} {s.role}</div>)}{maint.map(m => <div key={m.id} className="text-xl font-bold border-b border-amber-500/30 py-2 text-amber-300">Fix: {m.equipment}</div>)}</div>
+    </div>
+  </div>;
+};
+
+const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
+  <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
+    <p>New user-friendly shell: Today Command Center, role-based homes, global search, kitchen TV mode, quick actions, setup checklist, demo seeding, read receipts for important posts, message categories, permission presets, and stronger empty states.</p>
+    <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
+      {['Today tab','Role homes','Quick actions','Global search','Kitchen TV','Demo mode','Setup checklist','Read receipts','Message types','Permission presets','Undo bar','Human errors'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+    </div>
+    <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
+  </div>
+</Modal> : null;
+
+const UndoBar = ({ undoItem, clearUndo }) => {
+  if (!undoItem) return null;
+  return <div className="fixed bottom-24 left-4 right-4 max-w-md mx-auto z-[99999] cockpit-panel rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xl">
+    <div><div className="text-xs font-black text-white uppercase tracking-widest">Action saved</div><div className="text-[10px] text-slate-500 font-bold">You can reverse this for a short time.</div></div>
+    <button onClick={async () => { await undoItem.action(); clearUndo(); }} className="px-3 py-2 bg-[#D4A381] text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest">{undoItem.label || 'Undo'}</button>
+  </div>;
+};
+
+
 
 export default function App() {
   const [appUser, setAppUser] = useState(() => { 
@@ -8075,9 +8817,14 @@ export default function App() {
   const sales = useLiveCollection('sales', rId);
   const timeOffRequests = useLiveCollection('timeOffRequests', rId);
   const timePunches = useLiveCollection('timePunches', rId);
+  const inventoryItems = useLiveCollection('inventoryItems', rId);
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId);
+  const prepItems = useLiveCollection('prepItems', rId);
+  const tasks = useLiveCollection('tasks', rId);
+  const recipes = useLiveCollection('recipes', rId);
   
 // --- LIVE APP USER LOGIC ---
-  const fullGhostPermissions = { schedule: true, inventory: true, prep: true, sales: true, team: true };
+  const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true };
   const realAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
   let liveAppUser = realAppUser;
 
@@ -8229,13 +8976,22 @@ if (liveAppUser && clientData) {
     const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
     window.addEventListener('popstate', handlePopState);
     const params = new URLSearchParams(window.location.search);
-    const preferredTab = appUser?.preferences?.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published');
+    const preferredTab = appUser?.preferences?.defaultTab || 'today';
     const tab = params.get('tab') || preferredTab;
     setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [appUser]);
 
-  const setActiveTab = (tab) => { window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab); };
+  const setActiveTab = (tab) => {
+    if (liveAppUser?.id) {
+      try {
+        const key = `recentTabs_${liveAppUser.id}`;
+        const current = JSON.parse(localStorage.getItem(key) || '[]').filter(t => t !== tab);
+        localStorage.setItem(key, JSON.stringify([tab, ...current].slice(0, 6)));
+      } catch(e) {}
+    }
+    window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab);
+  };
 
 useEffect(() => {
     const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
@@ -8285,6 +9041,12 @@ useEffect(() => {
   const [toasts, setToasts] = useState([]);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [isKitchenTVOpen, setIsKitchenTVOpen] = useState(false);
+  const [undoItem, setUndoItem] = useState(null);
+  const [showChangeLog, setShowChangeLog] = useState(() => localStorage.getItem(`seen_${CURRENT_VERSION}`) !== 'true');
+  const registerUndo = (item) => { setUndoItem(item); setTimeout(() => setUndoItem(prev => prev === item ? null : prev), 12000); };
 
 
 // --- NOTIFICATION DOT LOGIC (WITH READ RECEIPTS) ---
@@ -8368,6 +9130,14 @@ useEffect(() => {
     return () => unsub();
   }, [addToast, messaging]);
 
+  useEffect(() => {
+    const handleKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setIsGlobalSearchOpen(true); }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
   const prevDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setCurrentDate(formatDate(d)); };
   const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
@@ -8421,11 +9191,12 @@ return (
         .cockpit-shell { --chaos-copper: #D4A381; --chaos-panel: #1A2126; --chaos-deck: #12161A; }
         .ui-v12-compact button { touch-action: manipulation; }
         .ui-v12-compact textarea { line-height: 1.35 !important; }
-        .cockpit-light { position: relative; display: inline-flex; width: .55rem; height: .55rem; border-radius: 999px; box-shadow: 0 0 10px currentColor; }
-        .cockpit-light::after { content: ''; position: absolute; inset: -4px; border-radius: 999px; background: currentColor; opacity: .16; animation: cockpitPing 1.65s infinite; }
-        .cockpit-light.slow::after { animation-duration: 2.8s; }
-        .cockpit-light.hot::after { animation-duration: .9s; }
-        @keyframes cockpitPing { 0% { transform: scale(.65); opacity: .42; } 70%,100% { transform: scale(2.25); opacity: 0; } }
+        .cockpit-light { position: relative; display: inline-flex; width: .55rem; height: .55rem; border-radius: 999px; box-shadow: 0 0 6px currentColor; }
+        .cockpit-light::after { content: ''; position: absolute; inset: -4px; border-radius: 999px; background: currentColor; opacity: .08; animation: none; }
+        .cockpit-light.quiet::after { animation: none !important; opacity: .08; }
+        .cockpit-light.slow::after { animation: cockpitPing 5.5s infinite; opacity: .12; }
+        .cockpit-light.hot::after { animation: cockpitPing 1.8s infinite; opacity: .24; }
+        @keyframes cockpitPing { 0% { transform: scale(.75); opacity: .28; } 70%,100% { transform: scale(1.8); opacity: 0; } }
         @keyframes softGlow { 0%,100% { box-shadow: 0 0 0 rgba(212,163,129,0); } 50% { box-shadow: 0 0 18px rgba(212,163,129,.22); } }
         .cockpit-panel { background: linear-gradient(180deg, rgba(26,33,38,.98), rgba(15,19,24,.98)); border: 1px solid #2A353D; box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 16px 50px rgba(0,0,0,.18); }
         .cockpit-grid { background-image: radial-gradient(circle at 1px 1px, rgba(212,163,129,.09) 1px, transparent 0); background-size: 18px 18px; }
@@ -8504,7 +9275,12 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} addToast={addToast} />    
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} addToast={addToast} />
+      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={users} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
+      <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
+      <ChangeLogModal isOpen={showChangeLog} onClose={() => { localStorage.setItem(`seen_${CURRENT_VERSION}`, 'true'); setShowChangeLog(false); }} />
+      <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
+      <QuickActionDock appUser={liveAppUser} setActiveTab={setActiveTab} openSearch={() => setIsGlobalSearchOpen(true)} openTV={() => setIsKitchenTVOpen(true)} addToast={addToast} />    
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
@@ -8555,10 +9331,11 @@ return (
       </Modal>
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+        {activeTabState === 'today' && <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} clientData={clientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />}
         {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team) && <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />}
         {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
-        {activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isAdmin || liveAppUser?.role === 'Kitchen' || liveAppUser?.permissions?.ops || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.sales || liveAppUser?.permissions?.team) && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
+        {activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops) && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
         {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
@@ -8583,7 +9360,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.9.1</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.3.0 Full UX Suite</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
