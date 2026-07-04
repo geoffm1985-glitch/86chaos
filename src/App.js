@@ -120,7 +120,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '12.3.0';
+const CURRENT_VERSION = '12.4.1';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -288,34 +288,9 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, clientFeatures = {}, addToast }) => {
-  const [isBugModalOpen, setIsBugModalOpen] = useState(false);
-  const [bugText, setBugText] = useState('');
-  const [isSubmittingBug, setIsSubmittingBug] = useState(false);
+  const [menuSearch, setMenuSearch] = useState('');
 
-  const handleBugSubmit = async (e) => {
-    e.preventDefault();
-    if (!bugText.trim()) return;
-    setIsSubmittingBug(true);
-    try {
-      await addDoc(collection(db, "crashReports"), {
-        type: 'user_reported_bug',
-        message: `USER REPORT: ${bugText.trim()}`,
-        user: appUser?.name || 'Unknown',
-        restaurantId: appUser?.restaurantId || 'Unknown',
-        userAgent: navigator.userAgent,
-        screenSize: `${window.innerWidth}x${window.innerHeight}`,
-        time: new Date().toISOString()
-      });
-      setBugText('');
-      setIsBugModalOpen(false);
-      if (addToast) addToast('Report Sent', 'Bug sent directly to the dev team. Thanks!');
-    } catch (err) {
-      if (addToast) addToast('Error', 'Failed to send bug report.');
-    }
-    setIsSubmittingBug(false);
-  };
-
-  if (!isOpen && !isBugModalOpen) return null;
+  if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
   const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
@@ -324,6 +299,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   tabs.push({ id: 'today', label: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if (isEnabled('labor') && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'labor', label: 'Labor & Timesheets', icon: <Scale size={18}/> });
   if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
@@ -338,7 +314,21 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const isTrueGod = (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin === true;
   if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
   if (appUser?.isAdmin || isTrueGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+  tabs.push({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/> });
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
+
+  const menuActions = [
+    { id: 'help-add-staff', label: 'How to add staff', tab: 'help', keywords: 'employee team roster invite user password' },
+    { id: 'help-fix-punch', label: 'Fix a missed punch', tab: 'help', keywords: 'time clock timesheet labor punch clock out forgot' },
+    { id: 'help-schedule-template', label: 'Create schedule templates', tab: 'help', keywords: 'copy week schedule template coverage smart fill' },
+    { id: 'help-permissions', label: 'Update permissions', tab: 'help', keywords: 'tab access manage user permissions ops labor inventory' },
+    { id: 'go-labor-punch', label: 'Add/Edit Time Punch', tab: 'labor', keywords: 'timesheet labor clock in out edit punch payroll' },
+    { id: 'go-schedule-template', label: 'Schedule Templates', tab: 'schedule', keywords: 'builder copy previous week template smart fill coverage' },
+    { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' }
+  ];
+  const q = menuSearch.trim().toLowerCase();
+  const visibleTabs = q ? tabs.filter(t => `${t.label} ${t.id}`.toLowerCase().includes(q)) : tabs;
+  const visibleActions = q ? menuActions.filter(a => `${a.label} ${a.keywords}`.toLowerCase().includes(q)).slice(0, 8) : [];
 
   return (
     <>
@@ -357,8 +347,15 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                </div>
                <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
             </div>
+            <div className="p-3 border-b border-[#2A353D]">
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
+              </div>
+            </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
-               {tabs.map(tab => (
+               {visibleTabs.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">No menu results. Try “schedule”, “punch”, “recipe”, or “help”.</div>}
+               {visibleTabs.map(tab => (
                  <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
                    <div className="flex items-center gap-3">
                      <div className="relative">
@@ -369,36 +366,16 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    </div>
                  </button>
                ))}
+               {visibleActions.length > 0 && <div className="pt-3 mt-2 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-1">Suggested actions</div>{visibleActions.map(a => (
+                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full text-left px-3 py-2 rounded-xl font-bold text-xs text-slate-300 hover:bg-[#12161A] hover:text-[#D4A381] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
+               ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
-             <button 
-                onClick={() => { setIsBugModalOpen(true); onClose(); }} 
-                className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
-             >
-                <Bug size={16} /> Report a Bug / Error
-             </button>
-             <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
+             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
             </div>
           </div>
         </div>
       )}
-
-      <Modal isOpen={isBugModalOpen} onClose={() => setIsBugModalOpen(false)} title="Report a Bug">
-        <form onSubmit={handleBugSubmit} className="space-y-4">
-          <p className="text-xs text-slate-300 font-bold">Describe the issue you're facing. This goes directly to the development team.</p>
-          <textarea 
-            value={bugText} 
-            onChange={e => setBugText(e.target.value)} 
-            className={T.input} 
-            rows="4" 
-            placeholder="What went wrong? What did you click before it happened?" 
-            required 
-          ></textarea>
-          <button type="submit" disabled={isSubmittingBug} className={`w-full ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}>
-            {isSubmittingBug ? <Loader2 className="animate-spin" size={18} /> : <><Send size={18} /> Send Report</>}
-          </button>
-        </form>
-      </Modal>
     </>
   );
 };
@@ -1090,15 +1067,15 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false };
+  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false };
   const PERMISSION_PRESETS = {
-    'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false },
-    'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false },
-    'Bar Manager': { schedule: false, events: true, ops: true, inventory: true, prep: false, sales: false, team: false },
-    'Schedule Manager': { schedule: true, events: true, ops: false, inventory: false, prep: false, sales: false, team: false },
-    'Operations Manager': { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true },
-    'Cook': { schedule: false, events: false, ops: false, inventory: false, prep: true, sales: false, team: false },
-    'Server/Bartender': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false }
+    'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false },
+    'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false, labor: false },
+    'Bar Manager': { schedule: false, events: true, ops: true, inventory: true, prep: false, sales: false, team: false, labor: false },
+    'Schedule Manager': { schedule: true, events: true, ops: false, inventory: false, prep: false, sales: false, team: false, labor: true },
+    'Operations Manager': { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true },
+    'Cook': { schedule: false, events: false, ops: false, inventory: false, prep: true, sales: false, team: false, labor: false },
+    'Server/Bartender': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false }
   };
   const [perms, setPerms] = useState(DEFAULT_PERMISSIONS);
   const [editingUserId, setEditingUserId] = useState(null);
@@ -1246,12 +1223,12 @@ return (
                   <button key={preset} type="button" onClick={() => setPerms({ ...DEFAULT_PERMISSIONS, ...PERMISSION_PRESETS[preset] })} className="px-2.5 py-1.5 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381] hover:border-[#D4A381]/40 transition-colors">{preset}</button>
                 ))}
               </div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Ops Command Center is only visible when Ops permission or Store Manager is enabled.</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Ops Command Center is only visible with Ops permission or Store Manager. Labor is only visible to Store Managers, Schedule/Sales managers, or users with Labor permission.</p>
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => (
                   <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
                     <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
-                    {{ schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Daily Ledger', team: 'Team Management' }[k] || k}
+                    {{ schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Daily Ledger', team: 'Team Management', labor: 'Labor / Timesheets' }[k] || k}
                   </label>
                 ))}
               </div>
@@ -2357,14 +2334,7 @@ const handleExportTimesheets = () => {
       {!hideSubTabs && (
         <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
           <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
-          {appUser?.isAdmin && (
-            <button onClick={() => {
-              if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to unlock Timesheets & Labor.');
-              setSubTab('timesheets');
-            }} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 cursor-not-allowed border border-[#2A353D]' : ''}`}>
-              {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Timesheets (Elite)' : 'Timesheets & Labor'}
-            </button>
-          )}
+          <span className="text-[10px] font-bold text-slate-500 self-center">Labor and punch editing moved to the Labor tab.</span>
         </div>
       )}
 
@@ -7118,7 +7088,7 @@ Type DELETE USERS to continue.`);
          ownerEmail: "demo@86chaos.com",
          isActive: true,
          isReadOnly: false,
-         features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true },
+         features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true, labor: true },
          labs: { laborProjection: true },
          planType: 'Enterprise',
          billingStatus: 'Paid',
@@ -7183,6 +7153,17 @@ Type DELETE USERS to continue.`);
         shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[19].id, role: 'Dishwasher', date, startTime: '16:00', endTime: '23:30', isPublished: true }));
       });
       await Promise.all(shiftPromises);
+      await addDoc(collection(db, "scheduleTemplates"), { restaurantId: rId, name: 'Normal Week', description: 'Demo reusable weekly staffing template.', rows: [
+        { dayIndex: 1, role: 'Prep Cook', startTime: '07:00', endTime: '14:00', count: 1 },
+        { dayIndex: 5, role: 'Line Cook', startTime: '16:00', endTime: '23:00', count: 2 },
+        { dayIndex: 5, role: 'Server', startTime: '16:00', endTime: '23:00', count: 3 },
+        { dayIndex: 5, role: 'Bartender', startTime: '16:30', endTime: '23:30', count: 1 }
+      ], createdAt: new Date().toISOString(), createdBy: appUser.id || 'demo' });
+      await Promise.all([
+        addDoc(collection(db, "scheduleCoverageTargets"), { restaurantId: rId, dayIndex: 5, role: 'Line Cook', startTime: '16:00', endTime: '23:00', count: 2, createdAt: new Date().toISOString() }),
+        addDoc(collection(db, "scheduleCoverageTargets"), { restaurantId: rId, dayIndex: 5, role: 'Server', startTime: '16:00', endTime: '23:00', count: 3, createdAt: new Date().toISOString() }),
+        addDoc(collection(db, "scheduleCoverageTargets"), { restaurantId: rId, dayIndex: 6, role: 'Bartender', startTime: '16:30', endTime: '23:30', count: 2, createdAt: new Date().toISOString() })
+      ]);
 
       // Add a Shift Trade
       const targetShift = await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', isPublished: true });
@@ -7475,7 +7456,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     const last = getLastActiveMs(u);
     return !last || (nowMs - last) > 30 * 86400000;
   });
-  const moduleList = ['schedule','events','ops','messages','prep','recipes','inventory','sales','team','maintenance','timesheets'];
+  const moduleList = ['schedule','events','ops','messages','prep','recipes','inventory','sales','team','maintenance','labor','timesheets'];
   const featureAdoption = moduleList.map(feat => ({ feat, count: restaurants.filter(r => r.features?.[feat] !== false).length })).sort((a,b) => b.count - a.count);
   const usersWithoutRestaurant = allUsers.filter(u => !u.restaurantId);
   const missingOwnerAccounts = restaurants.filter(r => r.ownerEmail && !allUsers.some(u => (u.email || '').toLowerCase() === (r.ownerEmail || '').toLowerCase()));
@@ -7674,7 +7655,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 // --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
-            const baseFeatures = { schedule: false, events: false, ops: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, timesheets: false };
+            const baseFeatures = { schedule: false, events: false, ops: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, labor: false, timesheets: false };
             let newLabs = { laborProjection: false };
             let updatedFeatures = { ...baseFeatures };
             
@@ -7684,10 +7665,10 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
             } else if (tier === 'Pro') {
                 updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
             } else if (tier === 'Elite') {
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true, timesheets: true };
             } else if (tier === 'Enterprise') {
                 // Enterprise: Everything (Up to 5 Locations)
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true, timesheets: true };
                 newLabs = { laborProjection: true };
             }
 
@@ -7764,7 +7745,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                 <div className="pt-4 border-t border-[#2A353D]">
                    <label className={T.label}>Manual Module Overrides</label>
                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                      {['schedule', 'events', 'ops', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'timesheets'].map(feat => (
+                      {['schedule', 'events', 'ops', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'labor', 'timesheets'].map(feat => (
                         <label key={feat} className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors cursor-pointer ${editingRest.features && editingRest.features[feat] ? 'bg-[#8F6040]/20 border-[#C59373]' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
                           <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : false} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
                           <span className={`text-[11px] font-bold capitalize ${editingRest.features && editingRest.features[feat] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{feat}</span>
@@ -8509,11 +8490,580 @@ const MiniProblemCard = ({ tone='amber', title, detail, action, onClick }) => {
 const getHomeProfile = (user) => {
   const role = (user?.role || '').toLowerCase();
   if (user?.isSuperAdmin || user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) return 'system';
-  if (user?.isAdmin || user?.permissions?.ops || user?.permissions?.sales || user?.permissions?.team || user?.permissions?.schedule) return 'manager';
+  if (user?.isAdmin || user?.permissions?.ops || user?.permissions?.sales || user?.permissions?.team || user?.permissions?.schedule || user?.permissions?.labor) return 'manager';
   if (role.includes('cook') || role.includes('chef') || role.includes('kitchen') || role.includes('prep') || user?.permissions?.prep) return 'kitchen';
   if (role.includes('bartender') || role.includes('bar')) return 'bar';
   if (role.includes('server') || role.includes('host')) return 'service';
   return 'staff';
+};
+
+
+// ============================================================================
+// SHARED LABOR MATH
+// ============================================================================
+const calculatePunchHours = (inTime, outTime, breakMins = 0) => {
+  if (!inTime || !outTime) return 0;
+  const start = new Date(inTime);
+  const end = new Date(outTime);
+  const diff = (end - start) / 36e5;
+  return Math.max(0, diff - ((parseFloat(breakMins) || 0) / 60));
+};
+
+// ============================================================================
+// LABOR CENTER, SCHEDULE COPILOT & HELP CENTER - v12.4
+// These are restaurant-scoped features. Every saved record includes restaurantId.
+// ============================================================================
+const ROLE_KEYWORDS = {
+  Manager: ['manager','gm','owner','lead','supervisor'],
+  Kitchen: ['cook','chef','kitchen','prep','dish'],
+  Bar: ['bar','bartender'],
+  Service: ['server','host','wait','expo','runner'],
+};
+
+const getWeekStart = (dateStr) => {
+  const d = new Date((dateStr || getToday()) + 'T12:00:00');
+  d.setDate(d.getDate() - d.getDay());
+  return formatDate(d);
+};
+
+const getWeekDates = (dateStr) => {
+  const start = new Date(getWeekStart(dateStr) + 'T12:00:00');
+  return Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return formatDate(d);
+  });
+};
+
+const roleMatches = (userRole = '', targetRole = '') => {
+  if (!targetRole) return true;
+  const u = String(userRole).toLowerCase();
+  const t = String(targetRole).toLowerCase();
+  if (u.includes(t) || t.includes(u)) return true;
+  const bucket = Object.entries(ROLE_KEYWORDS).find(([label, words]) => label.toLowerCase() === t || words.some(w => t.includes(w)));
+  return bucket ? bucket[1].some(w => u.includes(w)) : false;
+};
+
+const toLocalTimeInput = (iso) => {
+  if (!iso) return '';
+  try { return new Date(iso).toTimeString().slice(0,5); } catch(e) { return ''; }
+};
+
+const makeLocalIso = (date, time) => {
+  if (!date || !time) return '';
+  return new Date(`${date}T${time}:00`).toISOString();
+};
+
+const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser }) => {
+  const [subTab, setSubTab] = useState('fixer');
+  const [rangeStart, setRangeStart] = useState(getWeekStart(currentDate));
+  const [rangeEnd, setRangeEnd] = useState(getWeekDates(currentDate)[6]);
+  const [employeeFilter, setEmployeeFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [editingPunch, setEditingPunch] = useState(null);
+  const [form, setForm] = useState({ employeeId: '', date: getToday(), clockIn: '09:00', clockOut: '17:00', breakMinutes: '0', cashTips: '0', creditTips: '0', reason: 'Forgot to clock out', note: '' });
+
+  const activeUsers = users.filter(u => u.isActive !== false).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const visiblePunches = timePunches
+    .filter(p => (p.date || '') >= rangeStart && (p.date || '') <= rangeEnd)
+    .filter(p => employeeFilter ? p.employeeId === employeeFilter : true)
+    .filter(p => statusFilter === 'all' ? true : statusFilter === 'open' ? ['clocked_in','on_break'].includes(p.status) : statusFilter === 'exception' ? Boolean(getPunchIssue(p)) : p.status === statusFilter)
+    .sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
+
+  function getPunchIssue(p) {
+    if (!p) return '';
+    if (['clocked_in','on_break'].includes(p.status)) return 'Still on clock';
+    if (!p.clockInTime) return 'Missing clock-in';
+    if (!p.clockOutTime && p.status !== 'clocked_in') return 'Missing clock-out';
+    const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
+    if (hours > 12) return 'Long shift, review break/punch';
+    if (hours < 0) return 'Clock-out before clock-in';
+    if (p.isUnscheduled && !p.isApproved) return 'Unscheduled punch needs approval';
+    return '';
+  }
+
+  const exceptionPunches = timePunches.filter(p => getPunchIssue(p)).sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
+  const rangeSales = sales.filter(s => (s.date || '') >= rangeStart && (s.date || '') <= rangeEnd).reduce((sum, s) => sum + (parseFloat(s.amount || s.totalSales || s.sales || 0) || 0), 0);
+  const payrollRows = visiblePunches.map(p => {
+    const emp = users.find(u => u.id === p.employeeId) || {};
+    const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
+    return { punch: p, emp, hours, pay: hours * (parseFloat(emp.wage || 0) || 0), tips: (parseFloat(p.cashTips || 0) || 0) + (parseFloat(p.creditTips || 0) || 0), issue: getPunchIssue(p) };
+  });
+  const totalHours = payrollRows.reduce((s,r) => s + Math.max(0, r.hours), 0);
+  const totalLabor = payrollRows.reduce((s,r) => s + Math.max(0, r.pay), 0);
+  const totalTips = payrollRows.reduce((s,r) => s + r.tips, 0);
+  const laborPct = rangeSales > 0 ? (totalLabor / rangeSales) * 100 : 0;
+
+  const resetForm = () => {
+    setEditingPunch(null);
+    setForm({ employeeId: '', date: getToday(), clockIn: '09:00', clockOut: '17:00', breakMinutes: '0', cashTips: '0', creditTips: '0', reason: 'Forgot to clock out', note: '' });
+  };
+
+  const openEditPunch = (p) => {
+    setEditingPunch(p);
+    setForm({
+      employeeId: p.employeeId || '',
+      date: p.date || getToday(),
+      clockIn: toLocalTimeInput(p.clockInTime) || '09:00',
+      clockOut: toLocalTimeInput(p.clockOutTime) || new Date().toTimeString().slice(0,5),
+      breakMinutes: String(Math.round(p.breakMinutes || 0)),
+      cashTips: String(p.cashTips || 0),
+      creditTips: String(p.creditTips || 0),
+      reason: p.correctionReason || 'Manager correction',
+      note: p.managerNote || ''
+    });
+    setSubTab('editor');
+    setTimeout(() => document.getElementById('labor-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  const savePunch = async (e) => {
+    e.preventDefault();
+    const emp = users.find(u => u.id === form.employeeId);
+    if (!emp) return addToast('Missing Employee', 'Choose a team member before saving the punch.');
+    if (!form.date || !form.clockIn) return addToast('Missing Time', 'Date and clock-in are required.');
+    const payload = {
+      restaurantId: appUser.restaurantId,
+      employeeId: emp.id,
+      employeeName: emp.name || emp.email || 'Unknown Staff',
+      date: form.date,
+      clockInTime: makeLocalIso(form.date, form.clockIn),
+      clockOutTime: form.clockOut ? makeLocalIso(form.date, form.clockOut) : null,
+      status: form.clockOut ? 'clocked_out' : 'clocked_in',
+      breakMinutes: parseFloat(form.breakMinutes) || 0,
+      cashTips: parseFloat(form.cashTips) || 0,
+      creditTips: parseFloat(form.creditTips) || 0,
+      isManual: true,
+      isApproved: true,
+      correctionReason: form.reason,
+      managerNote: form.note,
+      correctedBy: appUser.name || appUser.email || 'Manager',
+      correctedById: appUser.id || 'unknown',
+      correctedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    try {
+      if (editingPunch?.id) {
+        await updateDoc(doc(db, 'timePunches', editingPunch.id), payload);
+        await logAudit(appUser, 'EDIT_TIME_PUNCH', emp.name || emp.email, `${form.date} ${form.clockIn}-${form.clockOut || 'open'} reason: ${form.reason}`);
+        addToast('Punch Updated', 'Time punch correction saved with audit details.');
+      } else {
+        await addDoc(collection(db, 'timePunches'), { ...payload, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' });
+        await logAudit(appUser, 'ADD_TIME_PUNCH', emp.name || emp.email, `${form.date} ${form.clockIn}-${form.clockOut || 'open'} reason: ${form.reason}`);
+        addToast('Punch Added', 'Manual punch added and marked approved.');
+      }
+      resetForm();
+      setSubTab('fixer');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const forceOut = async (p) => {
+    const now = new Date();
+    try {
+      await updateDoc(doc(db, 'timePunches', p.id), { clockOutTime: now.toISOString(), status: 'clocked_out', correctionReason: 'Manager force clock-out', correctedBy: appUser.name || appUser.email, correctedAt: now.toISOString(), isApproved: true });
+      addToast('Clocked Out', `${p.employeeName || 'Employee'} was clocked out at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const approvePunch = async (p) => {
+    try { await updateDoc(doc(db, 'timePunches', p.id), { isApproved: true, approvedBy: appUser.name || appUser.email, approvedAt: new Date().toISOString() }); addToast('Approved', 'Unscheduled punch approved.'); }
+    catch (err) { addToast('Error', err.message); }
+  };
+
+  const deletePunch = async (p) => {
+    if (!window.confirm(`Delete this punch for ${p.employeeName || 'employee'}? This should only be used for duplicate/bad entries.`)) return;
+    try { await deleteDoc(doc(db, 'timePunches', p.id)); addToast('Deleted', 'Time punch removed.'); }
+    catch (err) { addToast('Error', err.message); }
+  };
+
+  const exportCsv = () => {
+    const rows = [['Employee','Date','Clock In','Clock Out','Break Minutes','Hours','Cash Tips','Credit Tips','Pay Estimate','Issue','Reason']];
+    payrollRows.forEach(r => rows.push([
+      r.emp.name || r.punch.employeeName || 'Unknown',
+      r.punch.date || '',
+      r.punch.clockInTime ? new Date(r.punch.clockInTime).toLocaleString() : '',
+      r.punch.clockOutTime ? new Date(r.punch.clockOutTime).toLocaleString() : '',
+      r.punch.breakMinutes || 0,
+      r.hours.toFixed(2),
+      r.punch.cashTips || 0,
+      r.punch.creditTips || 0,
+      r.pay.toFixed(2),
+      r.issue,
+      r.punch.correctionReason || ''
+    ]));
+    const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `86chaos-labor-${rangeStart}-to-${rangeEnd}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+      <div className={`${T.card} p-4 sm:p-5 cockpit-grid`}>
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Manager Labor Console</div>
+            <h2 className="text-2xl font-black text-white tracking-tight">Labor & Timesheets</h2>
+            <p className="text-xs text-slate-400 font-bold mt-1 max-w-2xl">Punch Fixer, payroll review, tip totals, labor percentage, and export tools live here. Schedule Builder now handles planning; this tab handles what actually happened.</p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full lg:w-auto">
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase font-black text-slate-500">Hours</div><div className="text-lg font-black text-white">{totalHours.toFixed(1)}</div></div>
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase font-black text-slate-500">Labor</div><div className="text-lg font-black text-[#D4A381]">${totalLabor.toFixed(0)}</div></div>
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase font-black text-slate-500">Labor %</div><div className="text-lg font-black text-white">{rangeSales ? laborPct.toFixed(1)+'%' : '—'}</div></div>
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase font-black text-slate-500">Issues</div><div className={`text-lg font-black ${exceptionPunches.length ? 'text-amber-400' : 'text-emerald-400'}`}>{exceptionPunches.length}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
+        {[['fixer','Punch Fixer'],['editor', editingPunch ? 'Edit Punch' : 'Add Punch'],['review','Timesheet Review'],['tips','Tips'],['export','Export']].map(([id,label]) => <button key={id} onClick={() => setSubTab(id)} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>{label}</button>)}
+      </div>
+
+      <div className={`${T.card} p-3 flex flex-col md:flex-row gap-2 md:items-center justify-between`}>
+        <div className="flex flex-wrap gap-2">
+          <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className={`${T.input} py-2 text-xs w-auto`} />
+          <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className={`${T.input} py-2 text-xs w-auto`} />
+          <select value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)} className={`${T.input} py-2 text-xs w-auto`}><option value="">All Staff</option>{activeUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${T.input} py-2 text-xs w-auto`}><option value="all">All Punches</option><option value="exception">Needs Attention</option><option value="open">Open / On Clock</option><option value="clocked_out">Closed</option></select>
+        </div>
+        <button onClick={() => { resetForm(); setSubTab('editor'); }} className={`${T.btn} py-2 text-xs flex items-center gap-2 justify-center`}><Plus size={15}/> Add Punch</button>
+      </div>
+
+      {subTab === 'fixer' && <div className="grid lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-1 space-y-3">
+          <div className={`${T.card} p-4`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-2">Needs Attention</div>{exceptionPunches.length === 0 ? <div className="text-sm font-bold text-emerald-400 bg-emerald-900/10 border border-emerald-900/30 rounded-xl p-4">No punch fires right now. The time-clock goblin is asleep.</div> : exceptionPunches.slice(0, 12).map(p => <div key={p.id} className="bg-[#12161A] border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-white text-sm">{p.employeeName || 'Unknown'}</div><div className="text-[10px] text-amber-400 font-black uppercase tracking-widest">{getPunchIssue(p)}</div><div className="text-xs text-slate-400 mt-1">{p.date ? formatDisplayDate(p.date) : 'No date'} • In {toLocalTimeInput(p.clockInTime) || '—'} • Out {toLocalTimeInput(p.clockOutTime) || '—'}</div><div className="flex gap-2 mt-2"><button onClick={() => openEditPunch(p)} className="flex-1 bg-[#1A2126] border border-[#2A353D] rounded-lg py-1.5 text-[10px] font-black text-slate-300 hover:text-[#D4A381]">Fix</button>{['clocked_in','on_break'].includes(p.status) && <button onClick={() => forceOut(p)} className="flex-1 bg-red-900/20 border border-red-900/50 rounded-lg py-1.5 text-[10px] font-black text-red-300">Clock Out</button>}{p.isUnscheduled && !p.isApproved && <button onClick={() => approvePunch(p)} className="flex-1 bg-amber-900/20 border border-amber-900/50 rounded-lg py-1.5 text-[10px] font-black text-amber-300">Approve</button>}</div></div>)}</div>
+        </div>
+        <div className="lg:col-span-2"><PunchTable rows={payrollRows} openEditPunch={openEditPunch} forceOut={forceOut} approvePunch={approvePunch} deletePunch={deletePunch} /></div>
+      </div>}
+
+      {subTab === 'editor' && <div id="labor-editor" className={`${T.card} p-4`}>
+        <h3 className="font-black text-white text-lg mb-1">{editingPunch ? 'Edit Time Punch' : 'Add Manual Time Punch'}</h3>
+        <p className="text-xs text-slate-400 font-bold mb-4">Simple manager correction form with reason and notes saved for the audit trail.</p>
+        <form onSubmit={savePunch} className="grid md:grid-cols-2 gap-3">
+          <div><label className={T.label}>Employee</label><select value={form.employeeId} onChange={e => setForm({...form, employeeId: e.target.value})} className={T.input} required><option value="">Choose employee</option>{activeUsers.map(u => <option key={u.id} value={u.id}>{u.name} • {u.role}</option>)}</select></div>
+          <div><label className={T.label}>Date</label><input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className={T.input} required /></div>
+          <div><label className={T.label}>Clock In</label><input type="time" value={form.clockIn} onChange={e => setForm({...form, clockIn: e.target.value})} className={T.input} required /></div>
+          <div><label className={T.label}>Clock Out</label><input type="time" value={form.clockOut} onChange={e => setForm({...form, clockOut: e.target.value})} className={T.input} /></div>
+          <div><label className={T.label}>Break Minutes</label><input type="number" value={form.breakMinutes} onChange={e => setForm({...form, breakMinutes: e.target.value})} className={T.input} /></div>
+          <div><label className={T.label}>Reason</label><select value={form.reason} onChange={e => setForm({...form, reason: e.target.value})} className={T.input}><option>Forgot to clock in</option><option>Forgot to clock out</option><option>System issue</option><option>Manager correction</option><option>Training</option><option>Manual entry</option><option>Other</option></select></div>
+          <div><label className={T.label}>Cash Tips</label><input type="number" step="0.01" value={form.cashTips} onChange={e => setForm({...form, cashTips: e.target.value})} className={T.input} /></div>
+          <div><label className={T.label}>Credit Tips</label><input type="number" step="0.01" value={form.creditTips} onChange={e => setForm({...form, creditTips: e.target.value})} className={T.input} /></div>
+          <div className="md:col-span-2"><label className={T.label}>Manager Note</label><textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} className={T.input} rows="3" placeholder="Example: Jenna forgot to clock out after closing duties." /></div>
+          <div className="md:col-span-2 flex gap-2"><button type="submit" className={`${T.btn} flex-1`}>{editingPunch ? 'Save Correction' : 'Add Punch'}</button><button type="button" onClick={resetForm} className={T.btnAlt}>Clear</button></div>
+        </form>
+      </div>}
+
+      {subTab === 'review' && <PunchTable rows={payrollRows} openEditPunch={openEditPunch} forceOut={forceOut} approvePunch={approvePunch} deletePunch={deletePunch} />}
+      {subTab === 'tips' && <div className={`${T.card} p-4`}><h3 className="font-black text-white mb-3">Tip Summary</h3><div className="grid md:grid-cols-3 gap-3"><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Cash Tips</div><div className="text-2xl font-black text-white">${payrollRows.reduce((s,r)=>s+(parseFloat(r.punch.cashTips||0)||0),0).toFixed(2)}</div></div><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Credit Tips</div><div className="text-2xl font-black text-white">${payrollRows.reduce((s,r)=>s+(parseFloat(r.punch.creditTips||0)||0),0).toFixed(2)}</div></div><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Total Tips</div><div className="text-2xl font-black text-[#D4A381]">${totalTips.toFixed(2)}</div></div></div></div>}
+      {subTab === 'export' && <div className={`${T.card} p-5`}><h3 className="font-black text-white text-lg">Payroll Export</h3><p className="text-xs text-slate-400 font-bold mt-1 mb-4">Download the currently filtered range as a CSV for payroll review or accountant handoff.</p><button onClick={exportCsv} className={`${T.btn} flex items-center gap-2 justify-center max-w-xs`}><Package size={16}/> Download CSV</button></div>}
+    </div>
+  );
+};
+
+const PunchTable = ({ rows, openEditPunch, forceOut, approvePunch, deletePunch }) => (
+  <div className={`${T.card} overflow-hidden`}>
+    <div className="bg-[#12161A] border-b border-[#2A353D] p-3 flex justify-between items-center"><h3 className="font-black text-[#D4A381] text-xs uppercase tracking-widest">Punch Ledger</h3><span className="text-[10px] font-bold text-slate-500">{rows.length} records</span></div>
+    <div className="divide-y divide-[#2A353D]">
+      {rows.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-500">No punches match this filter.</div>}
+      {rows.map(({ punch:p, emp, hours, pay, tips, issue }) => <div key={p.id} className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-[#12161A]/50">
+        <div><div className="font-black text-white text-sm">{emp.name || p.employeeName || 'Unknown'} {issue && <span className="ml-2 text-[8px] bg-amber-500 text-slate-900 px-1.5 py-0.5 rounded uppercase tracking-widest">{issue}</span>}</div><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{p.date ? formatDisplayDate(p.date) : 'No date'} • {emp.role || 'No role'}</div></div>
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-3 text-xs font-mono"><span className="text-emerald-400">IN {toLocalTimeInput(p.clockInTime) || '—'}</span><span className="text-red-400">OUT {toLocalTimeInput(p.clockOutTime) || '—'}</span><span className="text-white">{Math.max(0,hours).toFixed(2)}h</span><span className="text-[#D4A381]">${pay.toFixed(2)}</span><span className="text-slate-400">Tips ${tips.toFixed(2)}</span></div>
+        <div className="flex gap-2"><button onClick={() => openEditPunch(p)} className="p-2 bg-[#12161A] border border-[#2A353D] rounded-lg text-slate-400 hover:text-[#D4A381]"><Edit size={14}/></button>{['clocked_in','on_break'].includes(p.status) && <button onClick={() => forceOut(p)} className="px-2 bg-red-900/20 border border-red-900/50 rounded-lg text-[10px] font-black text-red-300">Out</button>}{p.isUnscheduled && !p.isApproved && <button onClick={() => approvePunch(p)} className="px-2 bg-amber-900/20 border border-amber-900/50 rounded-lg text-[10px] font-black text-amber-300">Approve</button>}<button onClick={() => deletePunch(p)} className="p-2 bg-[#12161A] border border-[#2A353D] rounded-lg text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>
+      </div>)}
+    </div>
+  </div>
+);
+
+const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser }) => (
+  <div className="space-y-5">
+    <ScheduleCopilot currentDate={currentDate} users={users} shifts={shifts} timeOffRequests={timeOffRequests} addToast={addToast} appUser={appUser} />
+    <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} />
+  </div>
+);
+
+const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests = [], addToast, appUser }) => {
+  const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId);
+  const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId);
+  const weekDates = getWeekDates(currentDate);
+  const weekStart = weekDates[0];
+  const weekEnd = weekDates[6];
+  const weekShifts = shifts.filter(s => weekDates.includes(s.date));
+  const activeUsers = users.filter(u => u.isActive !== false);
+  const [open, setOpen] = useState(true);
+  const [activeTool, setActiveTool] = useState('targets');
+  const [templateId, setTemplateId] = useState('');
+  const [editingTemplateId, setEditingTemplateId] = useState(null);
+  const [templateName, setTemplateName] = useState('Normal Week');
+  const [templateDesc, setTemplateDesc] = useState('Reusable staffing pattern for this restaurant.');
+  const [templateRows, setTemplateRows] = useState([{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 }]);
+  const [targetForm, setTargetForm] = useState({ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 });
+  const [draggedShiftId, setDraggedShiftId] = useState(null);
+
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const templateOptions = templates.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const activeTemplate = templates.find(t => t.id === templateId) || null;
+  const draftCount = weekShifts.filter(s => !s.isPublished).length;
+  const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests, weekDates);
+  const missingTargets = coverageTargets.flatMap(t => {
+    const date = weekDates[parseInt(t.dayIndex || 0, 10)];
+    const existing = weekShifts.filter(s => s.date === date && roleMatches(s.role, t.role) && (!t.startTime || s.startTime === t.startTime)).length;
+    const needed = Math.max(0, (parseInt(t.count || 0,10) || 0) - existing);
+    return needed > 0 ? [{ ...t, date, needed, existing }] : [];
+  });
+
+  function getScheduleWarnings(schedule, allUsers, requests, dates) {
+    const warnings = [];
+    schedule.forEach(s => {
+      const emp = allUsers.find(u => u.id === s.employeeId);
+      const off = requests.find(r => (r.userId === s.employeeId || r.employeeId === s.employeeId) && r.date === s.date && ['approved','Accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()));
+      if (off) warnings.push(`${emp?.name || 'Someone'} is scheduled on requested-off date ${formatDisplayDate(s.date)}.`);
+    });
+    allUsers.forEach(u => {
+      const count = schedule.filter(s => s.employeeId === u.id).length;
+      if (count >= 6) warnings.push(`${u.name} has ${count} scheduled days this week.`);
+    });
+    dates.forEach(d => {
+      const cooks = schedule.filter(s => s.date === d && roleMatches(s.role, 'Cook')).length;
+      if (cooks === 0) warnings.push(`No cook coverage on ${formatDisplayDate(d)}.`);
+    });
+    return [...new Set(warnings)].slice(0, 12);
+  }
+
+  const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 1 }]);
+  const updateTemplateRow = (idx, patch) => setTemplateRows(templateRows.map((r,i) => i === idx ? { ...r, ...patch } : r));
+  const removeTemplateRow = (idx) => setTemplateRows(templateRows.filter((_,i) => i !== idx));
+
+  const saveTemplate = async (e) => {
+    e.preventDefault();
+    const payload = { restaurantId: appUser.restaurantId, name: templateName.trim(), description: templateDesc.trim(), rows: templateRows.map(r => ({ ...r, dayIndex: parseInt(r.dayIndex,10), count: parseInt(r.count,10) || 1 })), updatedAt: new Date().toISOString(), updatedBy: appUser.name || appUser.email };
+    try {
+      if (editingTemplateId) { await updateDoc(doc(db, 'scheduleTemplates', editingTemplateId), payload); addToast('Template Updated', 'Schedule template saved.'); }
+      else { await addDoc(collection(db, 'scheduleTemplates'), { ...payload, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Template Created', 'Reusable schedule template added.'); }
+      setEditingTemplateId(null); setTemplateName('Normal Week'); setTemplateDesc('Reusable staffing pattern for this restaurant.'); setTemplateRows([{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 }]); setActiveTool('templates');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const editTemplate = (t) => { setEditingTemplateId(t.id); setTemplateName(t.name || 'Template'); setTemplateDesc(t.description || ''); setTemplateRows((t.rows && t.rows.length ? t.rows : [{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 1 }])); setActiveTool('template-editor'); };
+  const deleteTemplate = async (t) => { if (!window.confirm(`Delete template "${t.name}"?`)) return; try { await deleteDoc(doc(db, 'scheduleTemplates', t.id)); addToast('Deleted', 'Template removed.'); } catch(err) { addToast('Error', err.message); } };
+
+  const saveCurrentWeekAsTemplate = async () => {
+    const grouped = {};
+    weekShifts.forEach(s => { const key = `${new Date(s.date+'T12:00:00').getDay()}|${s.role || 'Staff'}|${s.startTime || '09:00'}|${s.endTime || '17:00'}`; grouped[key] = (grouped[key] || 0) + 1; });
+    const rows = Object.entries(grouped).map(([key,count]) => { const [dayIndex, role, startTime, endTime] = key.split('|'); return { dayIndex: parseInt(dayIndex,10), role, startTime, endTime, count }; });
+    if (!rows.length) return addToast('No Shifts', 'Build a week first, then save it as a template.');
+    try { await addDoc(collection(db, 'scheduleTemplates'), { restaurantId: appUser.restaurantId, name: `Week of ${formatDisplayDate(weekStart)}`, description: 'Saved from actual schedule.', rows, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Saved', 'Current week saved as a reusable template.'); }
+    catch(err) { addToast('Error', err.message); }
+  };
+
+  const pickUserForShift = (role, date, usedIds = []) => {
+    const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, role));
+    const pool = candidates.length ? candidates : activeUsers.filter(u => !usedIds.includes(u.id));
+    return pool.find(u => !timeOffRequests.some(r => (r.userId === u.id || r.employeeId === u.id) && r.date === date && String(r.status || '').toLowerCase().includes('approved'))) || pool[0];
+  };
+
+  const createShiftDraft = async (row, date, usedIds = []) => {
+    const employee = pickUserForShift(row.role, date, usedIds);
+    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: employee?.id || '', employeeName: employee?.name || 'Unassigned', role: row.role || employee?.role || 'Staff', date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
+    return employee?.id;
+  };
+
+  const applyTemplate = async () => {
+    if (!activeTemplate) return addToast('Choose Template', 'Select a template first.');
+    if (!window.confirm(`Apply "${activeTemplate.name}" to week of ${formatDisplayDate(weekStart)}? New shifts are added as drafts.`)) return;
+    try {
+      let made = 0;
+      for (const row of (activeTemplate.rows || [])) {
+        const date = weekDates[parseInt(row.dayIndex || 0, 10)];
+        const used = weekShifts.filter(s => s.date === date).map(s => s.employeeId);
+        for (let i=0; i < (parseInt(row.count || 1,10) || 1); i++) { const id = await createShiftDraft(row, date, used); if (id) used.push(id); made++; }
+      }
+      addToast('Template Applied', `${made} draft shifts created. Review and publish when ready.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const copyPreviousWeek = async () => {
+    const prevDates = weekDates.map(d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() - 7); return formatDate(x); });
+    const prevShifts = shifts.filter(s => prevDates.includes(s.date));
+    if (!prevShifts.length) return addToast('No Previous Week', 'No shifts found in the previous week.');
+    if (!window.confirm(`Copy ${prevShifts.length} shifts from previous week as drafts?`)) return;
+    try {
+      let made = 0;
+      for (const s of prevShifts) {
+        const oldIndex = prevDates.indexOf(s.date);
+        const date = weekDates[oldIndex];
+        if (weekShifts.some(x => x.date === date && x.employeeId === s.employeeId && x.startTime === s.startTime)) continue;
+        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: s.employeeId, employeeName: s.employeeName || users.find(u => u.id === s.employeeId)?.name || 'Unknown', role: s.role, date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
+        made++;
+      }
+      addToast('Copied', `${made} draft shifts copied from previous week.`);
+    } catch(err) { addToast('Error', err.message); }
+  };
+
+  const addCoverageTarget = async (e) => {
+    e.preventDefault();
+    try { await addDoc(collection(db, 'scheduleCoverageTargets'), { restaurantId: appUser.restaurantId, ...targetForm, dayIndex: parseInt(targetForm.dayIndex,10), count: parseInt(targetForm.count,10) || 1, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Target Added', 'Coverage target saved for this restaurant.'); }
+    catch(err) { addToast('Error', err.message); }
+  };
+
+  const smartFill = async () => {
+    if (!missingTargets.length) return addToast('Covered', 'No missing coverage targets for this week.');
+    if (!window.confirm(`Smart Fill will create ${missingTargets.reduce((s,m)=>s+m.needed,0)} draft shifts. Continue?`)) return;
+    try {
+      let made = 0;
+      for (const m of missingTargets) {
+        const used = weekShifts.filter(s => s.date === m.date).map(s => s.employeeId);
+        for (let i=0; i<m.needed; i++) { const id = await createShiftDraft(m, m.date, used); if (id) used.push(id); made++; }
+      }
+      addToast('Smart Fill Complete', `${made} draft shifts created from coverage targets.`);
+    } catch(err) { addToast('Error', err.message); }
+  };
+
+  const publishWeek = async () => {
+    const drafts = weekShifts.filter(s => !s.isPublished);
+    if (!drafts.length) return addToast('Nothing To Publish', 'No draft shifts found this week.');
+    const warningText = [...missingTargets.map(m => `${dayNames[m.dayIndex]} ${m.role}: short ${m.needed}`), ...conflictList].slice(0,8).join('\n');
+    if (!window.confirm(`Publish ${drafts.length} draft shifts?${warningText ? '\n\nWarnings:\n' + warningText : ''}`)) return;
+    try { await Promise.all(drafts.map(s => updateDoc(doc(db, 'shifts', s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser.id || 'manager' }))); addToast('Published', `${drafts.length} shifts published.`); }
+    catch(err) { addToast('Error', err.message); }
+  };
+
+  const moveShiftToDay = async (targetDate) => {
+    if (!draggedShiftId || !targetDate) return;
+    const shift = weekShifts.find(s => s.id === draggedShiftId);
+    setDraggedShiftId(null);
+    if (!shift) return;
+    try {
+      await updateDoc(doc(db, 'shifts', shift.id), { date: targetDate, updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-drag-board' });
+      addToast('Shift Moved', `${shift.employeeName || 'Shift'} moved to ${formatDisplayDate(targetDate)}.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const quickUpdateShift = async (shift, patch) => {
+    try {
+      const next = { ...patch, updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-quick-edit' };
+      if (patch.employeeId) {
+        const emp = users.find(u => u.id === patch.employeeId);
+        next.employeeName = emp?.name || shift.employeeName || 'Unknown';
+        next.role = emp?.role || shift.role || 'Staff';
+      }
+      await updateDoc(doc(db, 'shifts', shift.id), next);
+      addToast('Shift Updated', 'Schedule quick edit saved.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  if (!open) return <button onClick={() => setOpen(true)} className={`${T.btnAlt} w-full flex items-center justify-center gap-2`}><ChefHat size={15}/> Open Schedule Copilot</button>;
+
+  return (
+    <div className={`${T.card} p-4 space-y-4 border-[#D4A381]/30`}>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div><h3 className="text-xl font-black text-white">Templates, Coverage, Smart Fill & Publish Preview</h3><p className="text-xs text-slate-400 font-bold">Week of {formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}. Templates and coverage targets are saved per restaurant.</p></div>
+        <div className="flex flex-wrap gap-2"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Previous Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={`${T.btn} py-2`}>Publish Preview</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"><StatusTile label="Drafts" value={draftCount}/><StatusTile label="Missing Targets" value={missingTargets.length}/><StatusTile label="Warnings" value={conflictList.length}/><StatusTile label="Templates" value={templates.length}/></div>
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-2">{[['targets','Coverage Targets'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input} placeholder="Role, e.g. Cook"/><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add targets like Friday dinner: 2 cooks, 3 servers, 1 bartender. Smart Fill uses these."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
+      {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
+      {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input} placeholder="Role"/><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
+      {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days, or use the quick edit controls on each card to change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}
+      {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{missingTargets.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps found for the current week."/> : missingTargets.map(m => <div key={`${m.id}-${m.date}`} className="bg-amber-900/10 border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-amber-300">{formatDisplayDate(m.date)} needs {m.needed} more {m.role}</div><div className="text-xs text-slate-400">Existing: {m.existing} • Target: {m.count}</div></div>)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map((w,i)=><div key={i} className="bg-red-900/10 border border-red-900/40 rounded-xl p-3 mb-2 text-sm font-bold text-red-200">{w}</div>)}</div></div>}
+    </div>
+  );
+};
+
+const StatusTile = ({ label, value }) => <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500">{label}</div><div className="text-xl font-black text-white">{value}</div></div>;
+const FriendlyEmpty = ({ title, text }) => <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center"><div className="font-black text-white text-sm">{title}</div><p className="text-xs text-slate-400 font-bold mt-1">{text}</p></div>;
+
+const HELP_ARTICLES = [
+  { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Demo Mode only in test/client demo accounts, not live customer data.'] },
+  { id:'menu-search', title:'Using the menu search bar', group:'Navigation', keywords:'search menu find feature where is tool', body:['Open the side menu and type a plain word like “punch”, “recipe”, “schedule”, “broken”, “password”, or “inventory”.','The search shows matching tabs and suggested actions. It includes common synonyms so users do not need to know the exact tab name.','This is the fastest way to help tired staff find the correct place without hunting.'] },
+  { id:'labor', title:'Fixing missed punches and timesheets', group:'Labor', keywords:'time punch clock in clock out missed labor payroll timesheet tips', body:['Go to Labor & Timesheets → Punch Fixer.','Review the Needs Attention cards first. These show open punches, missed clock-outs, long shifts, unscheduled punches, and time errors.','Click Fix to edit a punch, or Add Punch to enter a manual shift. Always choose a reason and write a manager note.','Use Export to download the current range for payroll review.'] },
+  { id:'schedule-builder', title:'Building a schedule faster', group:'Scheduling', keywords:'schedule builder copy week publish shift coverage smart fill', body:['Go to Schedule Builder. Use Copy Previous Week when the schedule is similar to last week.','Use Coverage Targets to define how many cooks, servers, bartenders, or managers you need by day and shift time.','Use Smart Fill to create draft shifts from missing coverage targets. Review the drafts before publishing.','Use Drag Board to move shifts between days or quick-edit employee/time without digging through the large grid.','Publish Preview shows draft count, missing coverage, and conflicts before sending the schedule live.'] },
+  { id:'schedule-templates', title:'Creating and editing schedule templates', group:'Scheduling', keywords:'template create edit normal week packers fish fry live music', body:['Open Schedule Builder → Schedule Copilot → Create Template.','Add rows for each day, role, start time, end time, and count. Example: Friday Cook 4p-9p count 2.','Save Current Week turns the current visible week into a reusable template.','Each restaurant has its own template library, so one client’s patterns never leak into another client.'] },
+  { id:'time-off', title:'Handling time-off requests', group:'Scheduling', keywords:'request off unavailable vacation approve deny', body:['Open Time Clock & Shifts → Request Off for employee requests. Managers can review requests from Schedule Builder.','Schedule warnings will flag approved time-off conflicts before publishing.','Partial-day requests should include start and end time so managers can schedule around them.'] },
+  { id:'messages', title:'Posting professional message board updates', group:'Messages', keywords:'message board announcement 86 alert read receipt important', body:['Use Message Board for operational updates, not long chat threads.','Choose the correct category: Announcement, Shift Note, 86 Alert, Maintenance, or General.','Mark important posts when staff must read them. Important posts can show read receipt counts.'] },
+  { id:'ops', title:'Who should see Ops Command Center?', group:'Permissions', keywords:'ops command center manager access permission', body:['Ops Command Center should be limited to owners, managers, kitchen managers, or trusted leads.','Grant access from Staff Roster → Edit User → permissions. Do not give Ops access to every staff account by default.','Ops summarizes labor, prep, low stock, maintenance, events, and manager priorities.'] },
+  { id:'permissions', title:'Why can’t someone see a tab?', group:'Permissions', keywords:'tab missing access permission role manage user', body:['Check that the restaurant has the module enabled.','Check the employee’s permissions in Staff Roster.','Some tabs also require Admin, Manager, or specific feature permissions.','Super Admin and Ghost Mode can see more because they are support tools.'] },
+  { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Ops Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
+  { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
+  { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
+  { id:'weekly-maintenance', title:'Weekly database maintenance', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh', body:['86 Chaos does not magically update production databases from the browser. Weekly automatic maintenance requires a scheduled server job.','The weekly maintenance route can stamp each client account with the latest maintenance run and log the result for support.','True Firestore backups are a separate Google Cloud scheduled export, not something the React app should do from a user phone.'] },
+  { id:'new-124', title:'What changed in version 12.4.1', group:'Release Notes', keywords:'new update 12.4 bug report help center weekly database maintenance cron', body:['Report a Bug / Error moved out of the side menu and into Help Center.','Help Center now includes a searchable article for weekly database maintenance.','The optional weekly maintenance pack adds a Vercel Cron endpoint for support housekeeping.'] }
+];
+
+const TabHelpCenter = ({ appUser, activeTab, addToast }) => {
+  const [query, setQuery] = useState('');
+  const [group, setGroup] = useState('All');
+  const [selectedId, setSelectedId] = useState('start');
+  const [bugText, setBugText] = useState('');
+  const [bugCategory, setBugCategory] = useState('Bug / Error');
+  const [isSubmittingBug, setIsSubmittingBug] = useState(false);
+
+  const handleBugSubmit = async (e) => {
+    e.preventDefault();
+    if (!bugText.trim()) return;
+    setIsSubmittingBug(true);
+    try {
+      await addDoc(collection(db, "crashReports"), {
+        type: 'user_reported_bug',
+        category: bugCategory,
+        message: `USER REPORT: ${bugText.trim()}`,
+        user: appUser?.name || 'Unknown',
+        userEmail: appUser?.email || '',
+        restaurantId: appUser?.restaurantId || 'Unknown',
+        activeTab: activeTab || 'help',
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        url: window.location.href,
+        time: new Date().toISOString()
+      });
+      setBugText('');
+      addToast?.('Report Sent', 'Support report sent with device details.');
+    } catch (err) {
+      addToast?.('Error', 'Failed to send support report.');
+    }
+    setIsSubmittingBug(false);
+  };
+  const groups = ['All', ...Array.from(new Set(HELP_ARTICLES.map(a => a.group)))];
+  const q = query.trim().toLowerCase();
+  const articles = HELP_ARTICLES.filter(a => group === 'All' || a.group === group).filter(a => !q || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q));
+  const selected = HELP_ARTICLES.find(a => a.id === selectedId) || articles[0] || HELP_ARTICLES[0];
+  const related = HELP_ARTICLES.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3);
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+      <div className={`${T.card} p-5 cockpit-grid`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Built-in owner manual</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div>
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-1 space-y-3">
+          <div className={`${T.card} p-3`}><div className="relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search help: punch, schedule, password..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-10 pr-3 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381]"/></div><select value={group} onChange={e=>setGroup(e.target.value)} className={`${T.input} mt-2`}>{groups.map(g=><option key={g}>{g}</option>)}</select></div>
+          <div className={`${T.card} overflow-hidden`}><div className="bg-[#12161A] p-3 border-b border-[#2A353D] text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Articles</div><div className="max-h-[62vh] overflow-y-auto custom-scrollbar divide-y divide-[#2A353D]">{articles.length === 0 && <div className="p-5 text-center text-xs font-bold text-slate-500">No articles found. Try a simpler word.</div>}{articles.map(a => <button key={a.id} onClick={()=>setSelectedId(a.id)} className={`w-full text-left p-3 hover:bg-[#12161A] transition-colors ${selected?.id===a.id ? 'bg-[#12161A] text-[#D4A381]' : 'text-slate-300'}`}><div className="font-black text-sm">{a.title}</div><div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mt-1">{a.group}</div></button>)}</div></div>
+        </div>
+        <div className="lg:col-span-2 space-y-4">
+          <div className={`${T.card} p-5`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{selected.group}</div><h3 className="text-2xl font-black text-white mb-4">{selected.title}</h3><div className="space-y-3">{selected.body.map((line, i) => <div key={i} className="flex gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="w-6 h-6 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-xs font-black flex-shrink-0">{i+1}</div><p className="text-sm font-bold text-slate-200 leading-relaxed">{line}</p></div>)}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { navigator.clipboard?.writeText(`${selected.title}\n\n${selected.body.map((b,i)=>`${i+1}. ${b}`).join('\n')}`); addToast?.('Copied', 'Help article copied.'); }} className={T.btnAlt}>Copy Instructions</button><button onClick={() => window.print()} className={T.btnAlt}>Print</button></div></div>
+          <div className={`${T.card} p-4`}><h4 className="font-black text-white mb-2">Page-aware help</h4><p className="text-xs text-slate-400 font-bold mb-3">You are signed in as {appUser?.role || 'Staff'}. Start with these common articles:</p><div className="grid sm:grid-cols-3 gap-2">{(related.length ? related : HELP_ARTICLES.slice(0,3)).map(a => <button key={a.id} onClick={()=>setSelectedId(a.id)} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50"><div className="font-black text-white text-sm">{a.title}</div><div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{a.group}</div></button>)}</div></div>
+          <div className={`${T.card} p-4 border-orange-900/40`}>
+            <div className="flex items-center gap-2 mb-2"><Bug size={18} className="text-orange-300"/><h4 className="font-black text-orange-300">Report a Bug / Error</h4></div>
+            <p className="text-xs text-slate-400 font-bold mb-3">Send problems from here instead of the side menu. Include exactly what you clicked, what you expected, and what happened. Device, screen, page, and browser details are attached automatically.</p>
+            <form onSubmit={handleBugSubmit} className="space-y-3">
+              <select value={bugCategory} onChange={e=>setBugCategory(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                <option>Bug / Error</option>
+                <option>Feature Request</option>
+                <option>Login Problem</option>
+                <option>Permission Problem</option>
+                <option>Data Looks Wrong</option>
+                <option>Mobile Layout Problem</option>
+              </select>
+              <textarea value={bugText} onChange={e=>setBugText(e.target.value)} className={T.input} rows="4" placeholder="Example: I clicked Schedule → Apply Template. It said success, but no shifts appeared." required></textarea>
+              <button type="submit" disabled={isSubmittingBug || !bugText.trim()} className={`w-full ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}>
+                {isSubmittingBug ? <Loader2 className="animate-spin" size={18}/> : <><Send size={18}/> Send Support Report</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, clientData, setActiveTab, addToast, registerUndo }) => {
@@ -8736,9 +9286,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>New user-friendly shell: Today Command Center, role-based homes, global search, kitchen TV mode, quick actions, setup checklist, demo seeding, read receipts for important posts, message categories, permission presets, and stronger empty states.</p>
+    <p>New manager workflow tools: Labor & Timesheets is now its own tab, the side menu has a search box, Schedule Builder has editable templates, coverage targets, Smart Fill, Drag Board, Copy Previous Week, and Publish Preview, and Help Center now includes searchable instructions for every new tool.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Today tab','Role homes','Quick actions','Global search','Kitchen TV','Demo mode','Setup checklist','Read receipts','Message types','Permission presets','Undo bar','Human errors'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Labor tab','Punch Fixer','Menu search','Help Center','Schedule templates','Coverage targets','Smart Fill','Drag Board','Copy week','Publish preview','Payroll CSV','Support articles'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>
@@ -8824,7 +9374,7 @@ export default function App() {
   const recipes = useLiveCollection('recipes', rId);
   
 // --- LIVE APP USER LOGIC ---
-  const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true };
+  const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true, help: true };
   const realAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
   let liveAppUser = realAppUser;
 
@@ -8893,7 +9443,7 @@ export default function App() {
   // Safety net: if System Admin disables a module while a user still has that tab open,
   // send them back to the main Time Clock/Shifts screen instead of showing a blank page.
   useEffect(() => {
-    const gatedTabs = ['ops', 'events', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'schedule'];
+    const gatedTabs = ['ops', 'events', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'schedule', 'labor'];
     if (gatedTabs.includes(activeTabState) && clientFeatures?.[activeTabState] === false) {
       setActiveTab('published');
     }
@@ -9332,11 +9882,12 @@ return (
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
         {activeTabState === 'today' && <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} clientData={clientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />}
-        {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabScheduleWorkbench key={`schwork-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team) && <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />}
         {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
         {activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops) && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} />}
         {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'labor' && clientFeatures?.labor !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.sales) && <TabLabor key={`lab-${rId}`} currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
         {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
         {activeTabState === 'recipes' && <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />}
@@ -9344,6 +9895,7 @@ return (
         {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />}
         {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />}
         {activeTabState === 'settings' && <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
+        {activeTabState === 'help' && <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} addToast={addToast} />}
         {activeTabState === 'godmode' && ((liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin === true) && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
         {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />}
       </main>
@@ -9360,7 +9912,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.3.0 Full UX Suite</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.4.1</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
