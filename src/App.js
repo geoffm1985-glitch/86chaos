@@ -7637,16 +7637,20 @@ return (
         </div>
       </Modal>
 
-    <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
-{activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'published' && <TabMasterSchedule currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
-{activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}        {activeTabState === 'messages' && <TabMessages events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-{activeTabState === 'prep' && <TabPrep currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
-        {activeTabState === 'recipes' && <TabRecipes appUser={liveAppUser} addToast={addToast} />}
-{activeTabState === 'inventory' && clientFeatures?.inventory !== false && <TabInventory addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'settings' && <TabSettings addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
-{(activeTabState === 'godmode' || (ghostTenant && activeTabState === 'published')) && <TabGodMode appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}      <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
+<main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+      {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
+      {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
+      {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
+      {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
+      {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
+      {activeTabState === 'recipes' && <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />}
+      {activeTabState === 'inventory' && clientFeatures?.inventory !== false && <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />}
+      {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />}
+      {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />}
+      {activeTabState === 'settings' && <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
+      {activeTabState === 'godmode' && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
+      {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />}
+    </main>    <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
             <div className="bg-[#12161A] p-1.5 rounded-full
