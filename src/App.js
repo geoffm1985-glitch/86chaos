@@ -6948,8 +6948,7 @@ Type DELETE USERS to continue.`);
   const loadDuplicateEmailsIntoBulkDelete = () => {
     if (duplicateEmailGroups.length === 0) return addToast('Clean', 'No duplicate email groups found.');
     setSubTab('users');
-    setBulkDeleteEmails(duplicateEmailGroups.map(([email]) => email).join('
-'));
+    setBulkDeleteEmails(duplicateEmailGroups.map(([email]) => email).join('\n'));
     addToast('Loaded', 'Duplicate email groups loaded into the bulk delete box. Review before deleting.');
   };
 
