@@ -7537,7 +7537,7 @@ return (
         </div>
       )}
       
-<style>{`
+      <style>{`
         html, body { overflow-x: hidden !important; max-width: 100vw !important; width: 100% !important; background-color: #0F1318 !important; }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -7584,7 +7584,7 @@ return (
         </button>
       </header>
 
-          {/* SYSTEM BROADCAST BANNER */}
+      {/* SYSTEM BROADCAST BANNER */}
       {clientData?.systemBanner && (
         <div className="bg-blue-600 border-b border-blue-800 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-center shadow-lg uppercase tracking-wider w-full relative z-30 animate-[slideIn_0.2s_ease-out]">
           <div className="flex items-center gap-2 text-center">
@@ -7594,7 +7594,8 @@ return (
         </div>
       )}
 
-<DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} addToast={addToast} />    
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} addToast={addToast} />    
+      
       {['schedule', 'published', 'month', 'sales', 'prep'].includes(activeTabState) && (
         <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {activeTabState === 'sales' ? (
@@ -7634,31 +7635,32 @@ return (
         </div>
       </Modal>
 
-<main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
-      {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
-      {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
-      {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
-      {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-      {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
-      {activeTabState === 'recipes' && <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />}
-      {activeTabState === 'inventory' && clientFeatures?.inventory !== false && <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />}
-      {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />}
-      {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />}
-      {activeTabState === 'settings' && <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
-      {(activeTabState === 'godmode' || (ghostTenant && activeTabState === 'published')) && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
-      {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />}
-    </main> <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
+      <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+        {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabSchedule key={`sch-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
+        {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
+        {activeTabState === 'recipes' && <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />}
+        {activeTabState === 'inventory' && clientFeatures?.inventory !== false && <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />}
+        {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />}
+        {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />}
+        {activeTabState === 'settings' && <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
+        {(activeTabState === 'godmode' || (ghostTenant && activeTabState === 'published')) && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
+        {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />}
+      </main>
+      
+      <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
-            <div className="bg-[#12161A] p-1.5 rounded-full
- text-[#D4A381] mt-0.5 border border-[#2A353D]"><Bell size={16} /></div>
+            <div className="bg-[#12161A] p-1.5 rounded-full text-[#D4A381] mt-0.5 border border-[#2A353D]"><Bell size={16} /></div>
             <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p></div>
             <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
           </div>
         ))}
       </div>
       
-<div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
+      <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
         <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 11.5.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
