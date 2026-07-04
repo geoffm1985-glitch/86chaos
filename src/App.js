@@ -120,7 +120,7 @@ const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-const CURRENT_VERSION = '12.2.0-security-admin';
+const CURRENT_VERSION = '12.2.1-client-timestamps';
 
 // --- Helpers ---
 const useLiveCollection = (coll, restId) => {
@@ -6631,6 +6631,35 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
       addToast('Error', err.message);
     }
   };                 
+
+  const handleStampMissingClientCreatedAt = async () => {
+    const missing = restaurants.filter(r => !getClientCreatedAt(r));
+    if (missing.length === 0) {
+      addToast('All Set', 'Every client already has a created date and time stamp.');
+      return;
+    }
+    if (!window.confirm(`Add a created timestamp to ${missing.length} client(s) missing one?
+
+Old clients cannot reveal their original creation time, so they will be marked as backfilled today.`)) return;
+
+    const stamp = new Date().toISOString();
+    let count = 0;
+    try {
+      for (const r of missing) {
+        await updateDoc(doc(db, "restaurants", r.id), {
+          createdAt: stamp,
+          createdAtEstimated: true,
+          createdAtBackfilledAt: stamp,
+          createdAtSource: 'admin_backfill'
+        });
+        count++;
+      }
+      addToast('Stamped', `Added created timestamps to ${count} client record(s).`);
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
   const handleDeployTenant = async (e) => {
     e.preventDefault(); 
     if (!rName.trim() || !oEmail.trim() || !oName.trim() || !rAddress.trim()) return;
@@ -6662,6 +6691,32 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to deploy tenant.');
+
+      // Stamp new client records with an exact creation date/time.
+      // If the backend route already did it, this safely leaves the same value in place.
+      try {
+        const deployedAt = data.createdAt || new Date().toISOString();
+        const returnedRestId = data.restaurantId || data.tenantId || data.restId || data.id;
+        const deployStamp = {
+          createdAt: deployedAt,
+          createdAtSource: data.createdAt ? 'api_deploy_tenant' : 'app_deploy_confirmed',
+          createdByEmail: appUser?.email || MASTER_ADMIN_EMAIL,
+          createdByName: appUser?.name || 'System Administrator'
+        };
+
+        if (returnedRestId) {
+          await setDoc(doc(db, "restaurants", returnedRestId), deployStamp, { merge: true });
+        } else {
+          const restSnap = await getDocs(query(collection(db, "restaurants"), where("ownerEmail", "==", oEmail.toLowerCase().trim())));
+          const targetDoc = restSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .find(r => (r.name || '').trim().toLowerCase() === rName.trim().toLowerCase() || !getClientCreatedAt(r));
+          if (targetDoc?.id) await setDoc(doc(db, "restaurants", targetDoc.id), deployStamp, { merge: true });
+        }
+      } catch (stampErr) {
+        console.warn('Client timestamp stamp failed:', stampErr);
+      }
+
 
       const welcomeMsg = `Welcome to 86chaos!\n\nYour restaurant OS is live. Access it here: https://app.86chaos.com\n\nUsername: ${oEmail.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in to set a permanent password.`;
       window.location.href = `mailto:${oEmail.toLowerCase().trim()}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${rName.trim()}`)}&body=${encodeURIComponent(welcomeMsg)}`;
@@ -7308,6 +7363,28 @@ const handleRevokeAccess = async (user) => {
     return acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Elite' ? 149 : r.planType === 'Pro' ? 99 : r.planType === 'Starter' ? 49 : 0);
   }, 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
+
+  const parseClientDate = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (typeof value === 'object' && value.seconds) return new Date(value.seconds * 1000);
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const getClientCreatedAt = (client) => client?.createdAt || client?.createdOn || client?.created || client?.deployedAt || null;
+
+  const formatClientCreatedTimestamp = (value) => {
+    const d = parseClientDate(value);
+    if (!d) return 'Not stamped yet';
+    return d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatClientCreatedDate = (value) => {
+    const d = parseClientDate(value);
+    if (!d) return 'Unknown';
+    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+  };
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
   // --- NEW SAAS HEALTH METRICS ---
@@ -7583,14 +7660,19 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
 <form onSubmit={handleUpdateTenant} className="space-y-4">
                 {/* ACTIVE SEATS DASHBOARD */}
-                <div className="flex justify-between items-center bg-[#12161A] p-4 rounded-xl border border-[#2A353D] mb-2 shadow-inner">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#12161A] p-4 rounded-xl border border-[#2A353D] mb-2 shadow-inner">
                   <div>
                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Active User Seats</div>
                     <div className="text-2xl font-black text-[#D4A381]">{userCounts[editingRest.id] || 0} <span className="text-xs text-slate-400 font-bold">Staff Members</span></div>
                   </div>
-                  <div className="text-right">
+                  <div>
+                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Created</div>
+                     <div className="text-xs font-black text-[#D4A381]">{formatClientCreatedTimestamp(getClientCreatedAt(editingRest))}</div>
+                     {editingRest.createdAtEstimated && <div className="text-[8px] font-black uppercase tracking-widest text-amber-400 mt-1">Backfilled</div>}
+                  </div>
+                  <div className="sm:text-right">
                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Workspace ID</div>
-                     <div className="text-xs font-mono font-bold text-slate-300">{editingRest.id}</div>
+                     <div className="text-xs font-mono font-bold text-slate-300 break-all">{editingRest.id}</div>
                   </div>
                 </div>
 
@@ -7927,11 +8009,23 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
           </form>
 
           <div className={`${T.card} overflow-hidden`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-sm text-white">Client Roster</h3><span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurants.length} Total</span></div>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col sm:flex-row justify-between sm:items-center gap-3`}>
+              <div>
+                <h3 className="font-black text-sm text-white">Client Roster</h3>
+                <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Created date/time is stamped on every new client.</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurants.length} Total</span>
+                <button type="button" onClick={handleStampMissingClientCreatedAt} className="bg-[#1A2126] text-[#D4A381] px-2.5 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D] hover:border-[#D4A381]/60 transition-colors">Stamp Missing</button>
+              </div>
+            </div>
 <div className={`divide-y ${T.border}`}>
 {restaurants.map(r => {
                 // Subscription Math Engine
-                const createdDate = new Date(r.createdAt || Date.now());
+                const createdRaw = getClientCreatedAt(r);
+                const createdDate = parseClientDate(createdRaw) || new Date();
+                const createdTimestamp = formatClientCreatedTimestamp(createdRaw);
+                const isBackfilledCreatedAt = r.createdAtEstimated || (!createdRaw && r.createdAtBackfilledAt);
                 const trialDurationDays = r.trialDays !== undefined ? parseInt(r.trialDays) : 14;
                 const trialEndDate = new Date(createdDate.getTime() + trialDurationDays * 24 * 60 * 60 * 1000);
                 const isTrialActive = r.billingStatus === 'Trial';
@@ -7955,8 +8049,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                     {/* BILLING & SUBSCRIPTION HUD */}
                     <div className="flex flex-wrap items-center gap-3 mt-2 mb-1 bg-[#0B0E11] border border-[#2A353D] p-2.5 rounded-lg w-full xl:w-max">
                       <div className="flex flex-col">
-                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Service Started</span>
-                        <span className="text-[10px] font-bold text-slate-300">{createdDate.toLocaleDateString()}</span>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Created</span>
+                        <span className="text-[10px] font-bold text-slate-300" title={createdTimestamp}>{createdTimestamp}</span>
+                        {isBackfilledCreatedAt && <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 mt-0.5">Backfilled</span>}
                       </div>
                       <div className="h-6 w-px bg-[#2A353D]"></div>
         {isTrialActive ? (
