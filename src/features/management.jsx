@@ -30,7 +30,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
   };
   const [perms, setPerms] = useState(DEFAULT_PERMISSIONS);
   const [editingUserId, setEditingUserId] = useState(null);
-  const [loginPacket, setLoginPacket] = useState(null);
+  const [createdLogin, setCreatedLogin] = useState(null);
 
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { limitCount: 100 });
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
@@ -42,26 +42,11 @@ const TabTeam = ({ users, appUser, addToast }) => {
     setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
   };
 
-  const buildLoginMessage = (packet) => `Welcome to 86 Chaos!
-
-Open the app: https://app.86chaos.com
-
-Email: ${packet.email}
-Temporary Password: ${packet.password}
-
-Please log in and set a permanent password.`;
-  const copyLoginPacket = async (packet) => {
-    await navigator.clipboard?.writeText(buildLoginMessage(packet));
-    addToast('Copied', 'Login info copied. This temporary password is only shown in this popup.');
-  };
-  const printLoginPacket = (packet) => {
-    const w = window.open('', '_blank');
-    if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.');
-    w.document.write(`<html><head><title>86 Chaos Login</title><style>body{font-family:Arial;padding:32px} .box{border:2px solid #333;padding:20px;border-radius:12px} h1{margin-top:0}</style></head><body><div class="box"><h1>86 Chaos Login</h1><p><b>Name:</b> ${packet.name}</p><p><b>Email:</b> ${packet.email}</p><p><b>Temporary Password:</b> ${packet.password}</p><p>Open: https://app.86chaos.com</p><p>This password is temporary. Change it after first login.</p></div></body></html>`);
-    w.document.close(); w.focus(); w.print();
-  };
-  const emailLoginPacket = (packet) => { window.location.href = `mailto:${packet.email}?subject=${encodeURIComponent('Your 86 Chaos Account')}&body=${encodeURIComponent(buildLoginMessage(packet))}`; };
-  const textLoginPacket = (packet) => { if (!packet.phone) return addToast('No Phone', 'No phone number was saved for this employee.'); const sep = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?'; window.location.href = `sms:${packet.phone}${sep}body=${encodeURIComponent(buildLoginMessage(packet))}`; };
+  const buildLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nApp: https://app.86chaos.com\n\nName: ${login.name}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
+  const copyLogin = async (login) => { try { await navigator.clipboard.writeText(buildLoginText(login)); addToast('Copied', 'Login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
+  const printLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
+  const emailLogin = (login) => { window.location.href = `mailto:${login.email}?subject=${encodeURIComponent('Your 86 Chaos Account')}&body=${encodeURIComponent(buildLoginText(login))}`; };
+  const textLogin = (login) => { if (!login.phone) return addToast('No Phone', 'This employee does not have a phone number entered.'); const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?'; window.location.href = `sms:${login.phone}${smsChar}body=${encodeURIComponent(buildLoginText(login))}`; };
 
   const handleEditClick = (u) => {
     setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
@@ -96,10 +81,9 @@ Please log in and set a permanent password.`;
         role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
         forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId,
         passwordStored: false, passwordPurgedAt: new Date().toISOString()
-      }); 
-      
-      setLoginPacket({ type: 'employee', name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: tPass });
-      addToast('Staff Added', `Account created. Copy or print the one-time login popup.`); 
+      });
+      setCreatedLogin({ kind:'employee', name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: tPass });
+      addToast('Staff Added', `Account created successfully. Copy or print the one-time login info.`); 
       resetForm();
     } catch (err) { 
       console.error(err); 
@@ -139,20 +123,15 @@ const handleDeactivate = async (u) => {
 
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
-      <Modal isOpen={!!loginPacket} onClose={() => setLoginPacket(null)} title="Employee Login Created" sizeClass="max-w-lg">
-        {loginPacket && <div className="space-y-4">
-          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4 space-y-2">
-            <div><div className={T.label}>Email</div><div className="text-white font-black select-all">{loginPacket.email}</div></div>
-            <div><div className={T.label}>Temporary Password</div><div className="text-2xl text-[#D4A381] font-black tracking-widest select-all">{loginPacket.password}</div></div>
-            <p className="text-xs text-amber-300 font-bold">Shown one time only. Copy, print, email, or text it before closing.</p>
+      <Modal isOpen={!!createdLogin} onClose={() => setCreatedLogin(null)} title="Employee Login Created">
+        {createdLogin && <div className="space-y-4">
+          <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This is shown one time only. Copy, print, email, or text it before closing.</div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-4 space-y-2">
+            <div><div className={T.label}>Email</div><div className="font-mono text-white break-all">{createdLogin.email}</div></div>
+            <div><div className={T.label}>Temporary Password</div><div className="font-mono text-2xl font-black text-[#D4A381]">{createdLogin.password}</div></div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => copyLoginPacket(loginPacket)} className={T.btn}>Copy Login Info</button>
-            <button type="button" onClick={() => printLoginPacket(loginPacket)} className={T.btnAlt}>Print Sheet</button>
-            <button type="button" onClick={() => emailLoginPacket(loginPacket)} className={T.btnAlt}>Email</button>
-            <button type="button" onClick={() => textLoginPacket(loginPacket)} className={T.btnAlt}>Text</button>
-          </div>
-          <button type="button" onClick={() => setLoginPacket(null)} className={`w-full ${T.btnAlt}`}>Done</button>
+          <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => copyLogin(createdLogin)} className={T.btn}>Copy</button><button type="button" onClick={() => printLogin(createdLogin)} className={T.btnAlt}>Print</button><button type="button" onClick={() => emailLogin(createdLogin)} className={T.btnAlt}>Email</button><button type="button" onClick={() => textLogin(createdLogin)} className={T.btnAlt}>Text</button></div>
+          <button type="button" onClick={() => setCreatedLogin(null)} className={`w-full ${T.btn}`}>Done</button>
         </div>}
       </Modal>
       
@@ -208,7 +187,7 @@ return (
                 {Object.keys(perms).map(k => (
                   <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
                     <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
-                    {{ schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Daily Ledger', team: 'Team Management', labor: 'Labor / Timesheets' }[k] || k}
+                    {{ schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets' }[k] || k}
                   </label>
                 ))}
               </div>
@@ -1523,6 +1502,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [backupListFilter, setBackupListFilter] = useState('all');
   const [backupListError, setBackupListError] = useState('');
   const [selectedClient, setSelectedClient] = useState(null);
+  const [createdWorkspaceLogin, setCreatedWorkspaceLogin] = useState(null);
+  const [demoPlan, setDemoPlan] = useState('Pro');
+  const [demoRole, setDemoRole] = useState('manager');
+  const defaultDemoFeatures = { published:true, schedule:true, events:true, ops:true, messages:true, prep:true, recipes:true, inventory:true, financials:true, team:true, maintenance:true, help:true };
+  const [demoFeatures, setDemoFeatures] = useState(defaultDemoFeatures);
   const [adminManualSearch, setAdminManualSearch] = useState('');
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0); 
@@ -1531,13 +1515,18 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [rName, setRName] = useState(''); const [rAddress, setRAddress] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
 const [editingRest, setEditingRest] = useState(null);
+  const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
+  const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
+  const printWorkspaceLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
+  const emailWorkspaceLogin = (login) => { window.location.href = `mailto:${login.email}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${login.restaurantName}`)}&body=${encodeURIComponent(buildWorkspaceLoginText(login))}`; };
+  const textWorkspaceLogin = (login) => { if (!login.phone) return addToast('No Phone', 'No owner phone number was entered.'); const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?'; window.location.href = `sms:${login.phone}${smsChar}body=${encodeURIComponent(buildWorkspaceLoginText(login))}`; };
+  const startDemoMode = (client, role = demoRole) => { if (!client?.id) return; setGhostTenant({ id: client.id, name: client.name, mode: 'demo', demoMode: { plan: demoPlan, role, features: demoFeatures } }); setSelectedClient(null); setActiveTab('published'); addToast('Demo Mode', `${role === 'employee' ? 'Employee' : 'Manager'} demo started. Use the banner to exit.`); };
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
   const [bulkDeleteEmails, setBulkDeleteEmails] = useState('');
   const [isBulkDeletingUsers, setIsBulkDeletingUsers] = useState(false);
   const [editingGlobalUser, setEditingGlobalUser] = useState(null);
   const [supportUserForm, setSupportUserForm] = useState({});
-  const [deployLoginPacket, setDeployLoginPacket] = useState(null);
 
   // Emergency client-side restore data. This writes through the same Firebase app the UI is currently using,
   // so it cannot accidentally restore into the wrong Firebase project.
@@ -1668,20 +1657,6 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
   }, [subTab]);
 
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
-  const buildWorkspaceLoginMessage = (packet) => `Welcome to 86 Chaos!
-
-${packet.restaurantName} is live.
-
-Open the app: https://app.86chaos.com
-
-Email: ${packet.email}
-Temporary Password: ${packet.password}
-
-Please log in and set a permanent password.`;
-  const copyWorkspaceLogin = async (packet) => { await navigator.clipboard?.writeText(buildWorkspaceLoginMessage(packet)); addToast('Copied', 'Workspace login info copied.'); };
-  const printWorkspaceLogin = (packet) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<html><head><title>86 Chaos Workspace Login</title><style>body{font-family:Arial;padding:32px}.box{border:2px solid #333;padding:20px;border-radius:12px}</style></head><body><div class="box"><h1>86 Chaos Workspace Login</h1><p><b>Restaurant:</b> ${packet.restaurantName}</p><p><b>Owner:</b> ${packet.ownerName}</p><p><b>Email:</b> ${packet.email}</p><p><b>Temporary Password:</b> ${packet.password}</p><p>Open: https://app.86chaos.com</p></div></body></html>`); w.document.close(); w.focus(); w.print(); };
-  const emailWorkspaceLogin = (packet) => { window.location.href = `mailto:${packet.email}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${packet.restaurantName}`)}&body=${encodeURIComponent(buildWorkspaceLoginMessage(packet))}`; };
-
 
    const handleDeleteTenant = async (tenantId, tenantName) => {
     if (prompt(`CRITICAL: Type "DELETE" to permanently remove the workspace registry for ${tenantName}. \n\nNOTE: You should use the 'Danger Zone' Nuke tool in the Manage menu first to wipe their underlying data.`) !== 'DELETE') {
@@ -1781,10 +1756,9 @@ Old clients cannot reveal their original creation time, so they will be marked a
       } catch (stampErr) {
         console.warn('Client timestamp stamp failed:', stampErr);
       }
-
-
-      setDeployLoginPacket({ restaurantName: rName.trim(), ownerName: oName.trim(), email: oEmail.toLowerCase().trim(), phone: oPhone.trim(), password: tPass });
-            addToast('Tenant Deployed', `${rName} is now live.`); 
+      setCreatedWorkspaceLogin({ kind:'workspace', restaurantName: rName.trim(), ownerName: oName.trim(), email: oEmail.toLowerCase().trim(), phone: oPhone.trim(), password: tPass, restaurantId: data.restaurantId || data.tenantId || data.restId || data.id || '' });
+      
+      addToast('Tenant Deployed', `${rName} is now live.`); 
       setRName(''); setOName(''); setOEmail(''); setOPhone(''); setRAddress('');    
     } catch (error) { 
       addToast('Deployment Failed', error.message); 
@@ -2695,7 +2669,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents.'] },
-    { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Financials → Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
+    { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Labor & Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
     { title: 'Schedule Builder location', group: 'Scheduling', keywords: 'schedule builder time clock shifts subtab permissions', body: ['Schedule Builder is now a protected subtab inside Time Clock & Schedule.', 'Users still need schedule permission or admin access.', 'Event Calendar remains separate because it is not the same thing as staff scheduling.', 'Old Schedule Builder links route into the same protected schedule workflow.'] },
     { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Today Command Center after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
     ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
@@ -2974,20 +2948,16 @@ Type RESTORE to continue.`);
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      <Modal isOpen={!!deployLoginPacket} onClose={() => setDeployLoginPacket(null)} title="Workspace Login Created" sizeClass="max-w-lg">
-        {deployLoginPacket && <div className="space-y-4">
-          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4 space-y-2">
-            <div><div className={T.label}>Restaurant</div><div className="text-white font-black">{deployLoginPacket.restaurantName}</div></div>
-            <div><div className={T.label}>Owner Email</div><div className="text-white font-black select-all">{deployLoginPacket.email}</div></div>
-            <div><div className={T.label}>Temporary Password</div><div className="text-2xl text-[#D4A381] font-black tracking-widest select-all">{deployLoginPacket.password}</div></div>
-            <p className="text-xs text-amber-300 font-bold">Shown one time only. Copy, print, or email it before closing.</p>
+      <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
+        {createdWorkspaceLogin && <div className="space-y-4">
+          <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-4 space-y-2">
+            <div><div className={T.label}>Workspace</div><div className="font-black text-white">{createdWorkspaceLogin.restaurantName}</div></div>
+            <div><div className={T.label}>Email</div><div className="font-mono text-white break-all">{createdWorkspaceLogin.email}</div></div>
+            <div><div className={T.label}>Temporary Password</div><div className="font-mono text-2xl font-black text-[#D4A381]">{createdWorkspaceLogin.password}</div></div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button type="button" onClick={() => copyWorkspaceLogin(deployLoginPacket)} className={T.btn}>Copy</button>
-            <button type="button" onClick={() => printWorkspaceLogin(deployLoginPacket)} className={T.btnAlt}>Print</button>
-            <button type="button" onClick={() => emailWorkspaceLogin(deployLoginPacket)} className={T.btnAlt}>Email</button>
-          </div>
-          <button type="button" onClick={() => setDeployLoginPacket(null)} className={`w-full ${T.btnAlt}`}>Done</button>
+          <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => copyWorkspaceLogin(createdWorkspaceLogin)} className={T.btn}>Copy</button><button type="button" onClick={() => printWorkspaceLogin(createdWorkspaceLogin)} className={T.btnAlt}>Print</button><button type="button" onClick={() => emailWorkspaceLogin(createdWorkspaceLogin)} className={T.btnAlt}>Email</button><button type="button" onClick={() => textWorkspaceLogin(createdWorkspaceLogin)} className={T.btnAlt}>Text</button></div>
+          <button type="button" onClick={() => setCreatedWorkspaceLogin(null)} className={`w-full ${T.btn}`}>Done</button>
         </div>}
       </Modal>
       {/* ADMIN TOP BAR */}
@@ -3155,8 +3125,6 @@ Type RESTORE to continue.`);
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:justify-end">
                   <button onClick={() => { setGhostTenant({ id: selectedClient.id, name: selectedClient.name, mode: 'workspace' }); setSelectedClient(null); setActiveTab('published'); }} className={`${T.btnAlt} text-[10px] px-3 py-2`}>Possess</button>
-                  <button onClick={() => { setGhostTenant({ id: selectedClient.id, name: selectedClient.name, mode: 'demo', demoMode: true, demoRole: 'manager', demoTier: selectedClient.planType || 'Pro', demoFeatures: selectedClient.features || {} }); setSelectedClient(null); setActiveTab('today'); }} className={`${T.btnAlt} text-[10px] px-3 py-2 border-emerald-500/50 text-emerald-300`}>Demo Manager</button>
-                  <button onClick={() => { setGhostTenant({ id: selectedClient.id, name: selectedClient.name, mode: 'demo', demoMode: true, demoRole: 'employee', demoTier: selectedClient.planType || 'Pro', demoFeatures: selectedClient.features || {} }); setSelectedClient(null); setActiveTab('published'); }} className={`${T.btnAlt} text-[10px] px-3 py-2 border-blue-500/50 text-blue-300`}>Demo Employee</button>
                   <button onClick={() => { setEditingRest(selectedClient); setSelectedClient(null); }} className={`${T.btn} text-[10px] px-3 py-2`}>Manage</button>
                   <button type="button" onClick={() => { setUserSearch(selectedClient.name || selectedClient.id); setSubTab('users'); setSelectedClient(null); }} className={`${T.btnAlt} text-[10px] px-3 py-2 col-span-2 sm:col-span-1`}>Global Users</button>
                 </div>
@@ -3186,6 +3154,20 @@ Type RESTORE to continue.`);
                 <div className="flex flex-wrap gap-1.5">
                   {moduleList.map(feat => <span key={feat} className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border ${selectedClient.features?.[feat] === false ? 'border-red-900/40 text-red-400 bg-red-900/10' : 'border-emerald-900/40 text-emerald-300 bg-emerald-900/10'}`}>{feat}</span>)}
                 </div>
+              </div>
+            </div>
+
+            <div className="bg-purple-950/20 border border-purple-500/40 rounded-2xl p-3 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div><div className="text-[10px] font-black uppercase tracking-widest text-fuchsia-300">Safe Demo Mode</div><p className="text-xs text-slate-400 font-bold mt-1">Use your account to show a customer this workspace with fake contact info and read-only screens.</p></div>
+                <div className="flex gap-2"><button type="button" onClick={() => startDemoMode(selectedClient, 'manager')} className={`${T.btn} text-[10px] px-3`}>Demo Manager</button><button type="button" onClick={() => startDemoMode(selectedClient, 'employee')} className={`${T.btnAlt} text-[10px] px-3`}>Demo Employee</button></div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <div><label className={T.label}>Demo tier</label><select value={demoPlan} onChange={e=>setDemoPlan(e.target.value)} className={T.input}>{['Starter','Pro','Elite','Enterprise'].map(x => <option key={x}>{x}</option>)}</select></div>
+                <div><label className={T.label}>Default view</label><select value={demoRole} onChange={e=>setDemoRole(e.target.value)} className={T.input}><option value="manager">Manager demo</option><option value="employee">Regular employee demo</option></select></div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {Object.keys(defaultDemoFeatures).map(key => <label key={key} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-2"><input type="checkbox" checked={!!demoFeatures[key]} onChange={e=>setDemoFeatures(prev => ({...prev, [key]: e.target.checked}))} className="accent-[#D4A381]" />{key}</label>)}
               </div>
             </div>
 
@@ -4214,6 +4196,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
     if (hours > 12) return 'Long shift, review break/punch';
     if (hours < 0) return 'Clock-out before clock-in';
     if (p.isUnscheduled && !p.isApproved) return 'Unscheduled punch needs approval';
+    if (p.requiresManagerReview || ['outside','unverified','denied','unavailable'].includes(p.clockOutGeofenceStatus)) return 'Clock-out location needs review';
     return '';
   }
 
@@ -4409,7 +4392,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div>
             <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Manager Labor Console</div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Financials → Timesheets</h2>
+            <h2 className="text-2xl font-black text-white tracking-tight">Labor & Timesheets</h2>
             <p className="text-xs text-slate-400 font-bold mt-1 max-w-2xl">Punch Fixer, payroll review, tip totals, labor percentage, and export tools live here. Schedule Builder now handles planning; this tab handles what actually happened.</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full lg:w-auto">
@@ -4484,11 +4467,18 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Demo Mode only in test/client demo accounts, not live customer data.'] },
+  { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
+  { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
+  { id:'manager-quick-start', title:'Manager / Restaurant Quick Start', group:'Quick Start Guides', keywords:'manager restaurant setup workspace tour add employees permissions backups geofence', body:['New workspaces open a manager setup tour that covers saving the app, adding employees, setting permissions, setting clock rules, backups, and Help Center.','Staff Roster shows the one-time generated login popup after adding employees. Copy, print, email, or text before closing.','Set the required work area in Settings so clock-out location can be reviewed.','Backup Center is under System Administrator → Forensics and requires RESTORE confirmation for restore actions.'] },
+  { id:'voice-beta', title:'Using 86 Voice beta', group:'Voice Commands', keywords:'voice beta microphone prep quantity show schedule commands fewer clicks', body:['The microphone button is marked BETA. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list.','Quantities are parsed separately. “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.','Schedule commands like “show Friday schedule” open the full Time Clock & Schedule view, not Schedule Builder.'] },
+  { id:'clock-out-geofence-review', title:'Clock-out location review', group:'Time Clock', keywords:'geofence clock out outside area manager alerted timesheet note location', body:['If a location rule is enabled and an employee clocks out outside the required area, the app still lets them clock out.','The employee sees a warning, the manager gets an important alert, and the punch is marked in Financials → Timesheets with a manager review note.','This avoids trapping someone on the clock while still keeping a clean accountability trail.','If location is denied or unavailable, the punch is saved and marked for review.'] },
+  { id:'safe-demo-mode', title:'Safe customer demo mode', group:'System Administrator', keywords:'demo mode customer tier tabs read only hide phone email address employee manager', body:['Open System Administrator → Clients, choose a workspace, then start Demo Manager or Demo Employee.','Choose the tier and visible tabs before starting the demo. Demo mode hides System Administrator and masks emails, phone numbers, addresses, and wages.','Demo mode is read-only. Buttons that would save, publish, restore, delete, upload, post, clock, or edit are blocked.','Use the banner at the top to exit demo mode and return to System Administrator.'] },
+  { id:'new-1315', title:'What changed in version 13.1.5', group:'Release Notes', keywords:'new update 13.1.5 schedule copilot builder coverage targets staff roles linked', body:['Schedule Copilot and Schedule Builder now use the same staff role source.','Coverage Target role choices come from Staff Roster / Settings and match the role group names shown in the Schedule Builder staff list.','Smart Fill now creates draft shifts using the employee actual staff role, while preserving the requested target role for review.','Older coverage targets are normalized against the current staff role list when checking missing coverage.'] },
+  { id:'new-1314', title:'What changed in version 13.1.4', group:'Release Notes', keywords:'new update 13.1.4 voice beta demo mode geofence tour login popup schedule roles', body:['Employee and workspace creation now show one-time login popups with generated email/temporary password, plus copy, print, email, and text actions.','Clock-out geofence review now allows the punch, alerts managers, and marks the timesheet for review when the employee is outside the required area.','Quick Start tours were added for new employees and new restaurants, with restart access from Help Center.','86 Voice is now labeled beta, uses fewer clicks for safe commands, puts quantities into quantity fields, strips command words from names, and opens full schedule views for schedule commands.','Safe Demo Mode lets System Administrators choose a tier/tabs and show either manager or regular employee view with sensitive contact info hidden and saves blocked.'] },
   { id:'menu-search', title:'Using the menu search bar', group:'Navigation', keywords:'search menu find feature where is tool', body:['Open the side menu and type a plain word like “punch”, “recipe”, “schedule”, “broken”, “password”, or “inventory”.','The search shows matching tabs and suggested actions. It includes common synonyms so users do not need to know the exact tab name.','This is the fastest way to help tired staff find the correct place without hunting.'] },
   { id:'labor', title:'Fixing missed punches and timesheets', group:'Labor', keywords:'time punch clock in clock out missed labor payroll timesheet tips', body:['Go to Financials → Timesheets → Punch Fixer.','Review the Needs Attention cards first. These show open punches, missed clock-outs, long shifts, unscheduled punches, and time errors.','Click Fix to edit a punch, or Add Punch to enter a manual shift. Always choose a reason and write a manager note.','Use Export to download the current range for payroll review as time punch detail or total hours summary. Use the role filter to print Whole Restaurant or any role created in Settings.'] },
   { id:'labor-export-pdf', title:'Exporting timesheets as CSV or PDF', group:'Labor', keywords:'export pdf csv payroll timesheet restaurant filename total hours punch detail', body:['Go to Financials → Timesheets → Export.','Choose Whole Restaurant or a custom role first, then choose Time Punch Detail for every clock-in/out row, or Total Hours Summary for one row per employee.','Use Download CSV for spreadsheets/accountants. Use Print / Save PDF for owner records or a clean printable copy.','Export filenames start with the restaurant name so multi-location owners do not get a pile of generic 86chaos files.'] },
-  { id:'schedule-builder', title:'Building a schedule faster', group:'Scheduling', keywords:'schedule builder copy week publish shift coverage smart fill', body:['Go to Schedule Builder. Use Copy Previous Week when the schedule is similar to last week.','Use Coverage Targets to define how many cooks, servers, bartenders, or managers you need by day and shift time.','Use Smart Fill to create draft shifts from missing coverage targets. Review the drafts before publishing.','Use Drag Board to move shifts between days or quick-edit employee/time without digging through the large grid.','Publish Preview shows draft count, missing coverage, and conflicts before sending the schedule live.'] },
+  { id:'schedule-builder', title:'Building a schedule faster', group:'Scheduling', keywords:'schedule builder copy week publish shift coverage smart fill staff roles copilot', body:['Go to Time Clock & Schedule → Schedule Builder. Schedule Copilot sits above the builder and is part of the same scheduling workflow.','Use Coverage Targets to define how many staff you need by day, shift time, and role. The role dropdown uses the same roles shown in the Schedule Builder staff list, so targets and scheduled staff are no longer separate entities.','Use Smart Fill to create draft shifts from missing coverage targets. It matches employees by their actual Staff Roster role and marks the requested target role for review.','Use Drag Board to move shifts between days or quick-edit employee/time without digging through the large grid.','Publish Preview shows draft count, missing coverage, and conflicts before sending the schedule live.'] },
   { id:'schedule-templates', title:'Creating and editing schedule templates', group:'Scheduling', keywords:'template create edit normal week packers fish fry live music', body:['Open Schedule Builder → Schedule Copilot → Create Template.','Add rows for each day, role, start time, end time, and count. Example: Friday Cook 4p-9p count 2.','Save Current Week turns the current visible week into a reusable template.','Each restaurant has its own template library, so one client’s patterns never leak into another client.'] },
   { id:'time-off', title:'Handling time-off requests', group:'Scheduling', keywords:'request off unavailable vacation approve deny', body:['Open Time Clock & Schedule → Request Off for employee requests. Managers can review requests from Schedule Builder.','Schedule warnings will flag approved time-off conflicts before publishing.','Partial-day requests should include start and end time so managers can schedule around them.'] },
   { id:'messages', title:'Posting professional message board updates', group:'Messages', keywords:'message board announcement 86 alert read receipt important', body:['Use Message Board for operational updates, not long chat threads.','Choose the correct category: Announcement, Shift Note, 86 Alert, Maintenance, or General.','Mark important posts when staff must read them. Important posts can show read receipt counts.'] },
@@ -4511,17 +4501,13 @@ const HELP_ARTICLES = [
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
-  { id:'quick-start-tour', title:'Quick Start Tours', group:'Quick Start', keywords:'tour onboarding first login add home screen install app employee manager setup', body:['New employees get a one-time first-login tour that explains how to add the web app to their phone, clock in/out, view schedule, messages, and Help Center.', 'Managers can restart Quick Start help from Help Center any time.', 'Because 86 Chaos is web-based, phone setup means Add to Home Screen on iPhone Safari or Android Chrome.', 'The tour is intentionally short so training stays tap-tap-done instead of manual archaeology.'] },
-  { id:'voice-beta', title:'Using 86 Voice Beta', group:'Voice Commands', keywords:'voice microphone beta prep quantity command schedule full schedule', body:['The microphone button is marked Beta because browser speech recognition can still mishear kitchen noise.', 'Say commands naturally, like “prep 2 pans tomatoes” or “show Friday schedule”.', 'Prep quantities go into the quantity field. The item name stays clean, so “prep 2 pans tomatoes” becomes name: tomatoes, quantity: 2, unit: pans.', 'Schedule voice commands open Time Clock & Schedule → Full Schedule, not Schedule Builder.'] },
-  { id:'geofence-clockout', title:'Geofence clock-out alerts', group:'Time Clock', keywords:'geofence clock out outside area manager alert timesheet note gps', body:['If clock-out location checking is enabled and an employee clocks out outside the required area, the app still allows the clock-out.', 'The employee sees a warning before finishing the punch.', 'A manager alert is posted and the time punch gets a timesheet note for review.', 'This creates accountability without trapping someone in the app when they need to leave.'] },
-  { id:'new-1314', title:'What changed in version 13.1.4', group:'Release Notes', keywords:'new update 13.1.4 voice beta demo mode guided tour generated password geofence clock out time clock schedule', body:['86 Voice Beta now keeps command words out of fields, puts prep quantities in the quantity field, opens schedule requests in Full Schedule, and auto-runs safe commands with fewer clicks.', 'Time Clock & Schedule was renamed Time Clock & Schedule.', 'Coverage Target role choices now come from the restaurant-created roles/staff roles instead of fixed text.', 'Employee and workspace creation now show generated email and temporary password in a one-time popup with copy, print, email, and text options.', 'Geofence clock-out now allows the punch, warns the employee, alerts managers, and marks the timesheet punch for review.', 'Help Center and Administrator Manual were updated for the new workflow language.'] },
   { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste', body:['Open System Administrator → Forensics → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
   { id:'new-1311', title:'What changed in version 13.1.1', group:'Release Notes', keywords:'new update 13.1.1 backup center restore list download backups', body:['System Administrator → Forensics now has a Backup Center with selectable backups.', 'You no longer need to paste Firebase Storage paths to restore a backup.', 'Backup entries show scheduled/manual type, date, size, document count, Download, and Restore actions.', 'Administrator Manual and Help Center were updated with Backup Center troubleshooting.'] },
   { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
-  { id:'financials-tab', title:'Using Financials', group:'Financials', keywords:'financials labor timesheets daily ledger sales payroll export costs', body:['Financials combines Financials → Timesheets with Daily Ledger so managers do not jump between separate money screens.', 'Use the Financials → Timesheets subtab for punches, payroll exports, role filters, tips, and punch corrections.', 'Use the Daily Ledger subtab for sales, labor cost, food cost, and context notes.', 'Old links for Labor or Daily Ledger still open Financials and land on the matching subtab.'] },
+  { id:'financials-tab', title:'Using Financials', group:'Financials', keywords:'financials labor timesheets daily ledger sales payroll export costs', body:['Financials combines Labor & Timesheets with Daily Ledger so managers do not jump between separate money screens.', 'Use the Labor & Timesheets subtab for punches, payroll exports, role filters, tips, and punch corrections.', 'Use the Daily Ledger subtab for sales, labor cost, food cost, and context notes.', 'Old links for Labor or Daily Ledger still open Financials and land on the matching subtab.'] },
   { id:'schedule-builder-under-shifts', title:'Finding Schedule Builder', group:'Scheduling', keywords:'schedule builder maker time clock shifts subtab publish template coverage', body:['Schedule Builder now lives inside Time Clock & Schedule as a subtab for users with schedule access.', 'Open Time Clock & Schedule, then choose Schedule Builder from the subtab row.', 'The Schedule Builder is still hidden from staff who do not have schedule permission.', 'Event Calendar remains its own main menu tab.'] },
   { id:'full-backup-restore', title:'Restoring a full database backup', group:'System Administrator', keywords:'restore backup firestore storage path deleted data database recovery gzip json', body:['Full automatic backups are saved to Firebase Storage as compressed JSON files.', 'To restore one, open System Administrator → Forensics → Backup Center, select a backup, and click Restore.', 'The restore is merge-based: it puts back missing/deleted documents and overwrites damaged documents from the backup, without deleting new documents that are not in the backup.', 'Always run a fresh backup before restoring so there is a current safety copy.'] },
-  { id:'new-1310', title:'What changed in version 13.1.0', group:'Release Notes', keywords:'new update 13.1.0 financials schedule builder restore backup help manual', body:['Schedule Builder moved under Time Clock & Schedule as a protected subtab.', 'Financials → Timesheets and Daily Ledger merged into Financials as separate subtabs.', 'Full backup restore from Firebase Storage was added to System Administrator → Forensics.', 'The one-off Cheers July restore button was removed.', 'Help Center and Administrator Manual were updated for these workflow changes.'] },
+  { id:'new-1310', title:'What changed in version 13.1.0', group:'Release Notes', keywords:'new update 13.1.0 financials schedule builder restore backup help manual', body:['Schedule Builder moved under Time Clock & Schedule as a protected subtab.', 'Labor & Timesheets and Daily Ledger merged into Financials as separate subtabs.', 'Full backup restore from Firebase Storage was added to System Administrator → Forensics.', 'The one-off Cheers July restore button was removed.', 'Help Center and Administrator Manual were updated for these workflow changes.'] },
   { id:'new-1291', title:'What changed in version 12.9.1', group:'Release Notes', keywords:'new update 12.9.1 backup automatic firestore storage command deck run backup now', body:['Added automatic Firestore JSON backups through a Vercel cron route.','Command Deck and Forensics can now trigger Run Backup Now for super admins.','Backup status writes to system/backupStatus so support can see last backup time, status, document count, and storage path.','Help/Admin Manual now includes searchable backup troubleshooting steps.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Financials → Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
   { id:'low-stock-focus', title:'Finding below-par inventory from alerts', group:'Inventory', keywords:'below par low stock inventory alert highlight command center today', body:['Below-par alerts only count items where current stock is less than par. Items equal to par are not considered low.','Click a low-stock alert from Today or Command Center to open Inventory in Below-Par Focus mode.','Below-Par Focus filters the list to low items and highlights them so managers can update stock, par, or ordering quickly.'] },
@@ -4585,7 +4571,7 @@ const TabHelpCenter = ({ appUser, activeTab, addToast }) => {
   const latestRelease = HELP_ARTICLES.find(a => a.id === `new-${String(CURRENT_VERSION).replace(/\D/g, '')}`) || HELP_ARTICLES.find(a => a.group === 'Release Notes');
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-24">
-      <div className={`${T.card} p-5 cockpit-grid`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Built-in owner manual</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div>
+      <div className={`${T.card} p-5 cockpit-grid flex flex-col lg:flex-row lg:items-end justify-between gap-3`}><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Built-in owner manual</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'employee' } }))} className={T.btnAlt}>Restart Employee Tour</button>{(appUser?.isAdmin || appUser?.permissions?.team) && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'manager' } }))} className={T.btn}>Restart Manager Tour</button>}</div></div>
       {latestRelease && <button type="button" onClick={() => { setSelectedId(latestRelease.id); setGroup('Release Notes'); }} className="w-full text-left bg-blue-900/15 border border-blue-500/40 rounded-xl p-4 hover:bg-blue-900/25 transition-colors"><div className="text-[10px] uppercase tracking-widest font-black text-blue-300 mb-1">Latest update brief</div><div className="font-black text-white">{latestRelease.title}</div><div className="text-xs text-slate-300 font-bold mt-1 line-clamp-2">{latestRelease.body?.[0]}</div></button>}
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-1 space-y-3">
@@ -4628,10 +4614,10 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
       <div className={`${T.card} p-4 sm:p-5 cockpit-grid`}>
         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Financials</div>
         <h2 className="text-2xl font-black text-white tracking-tight">Financials</h2>
-        <p className="text-xs text-slate-400 font-bold mt-1 max-w-3xl">Financials → Timesheets and Daily Ledger now live together here. Labor handles payroll reality; Daily Ledger handles sales, costs, and trend notes.</p>
+        <p className="text-xs text-slate-400 font-bold mt-1 max-w-3xl">Labor & Timesheets and Daily Ledger now live together here. Labor handles payroll reality; Daily Ledger handles sales, costs, and trend notes.</p>
       </div>
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
-        <button onClick={() => setSubTab('labor')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'labor' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Financials → Timesheets</button>
+        <button onClick={() => setSubTab('labor')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'labor' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Labor & Timesheets</button>
         <button onClick={() => setSubTab('ledger')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'ledger' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Daily Ledger</button>
       </div>
       {subTab === 'labor' ? (

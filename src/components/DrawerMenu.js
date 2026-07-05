@@ -11,7 +11,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
   // Dynamic Module Checks
-  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/> });  
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time Clock', icon: <Clock size={18}/> });  
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/> });
