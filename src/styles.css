@@ -33,15 +33,8 @@ img {
 }
 
 @keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -60,4 +53,8 @@ img {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #D4A381;
+}
+
+@media print {
+  .no-print { display: none !important; }
 }
