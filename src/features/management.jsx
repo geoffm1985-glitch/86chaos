@@ -1503,6 +1503,43 @@ const [editingRest, setEditingRest] = useState(null);
   const [editingGlobalUser, setEditingGlobalUser] = useState(null);
   const [supportUserForm, setSupportUserForm] = useState({});
 
+  // Emergency client-side restore data. This writes through the same Firebase app the UI is currently using,
+  // so it cannot accidentally restore into the wrong Firebase project.
+  const CHEERS_RESTORE_RESTAURANT_ID = 'cheers_chilton_01';
+  const CHEERS_RESTORE_MONTH_START = '2026-07-01';
+  const CHEERS_RESTORE_MONTH_END = '2026-07-31';
+const CHEERS_JULY_2026_SCHEDULE = [
+    ['2026-07-01','Chuck','10:00','21:00'],['2026-07-01','Julia','10:00','16:00'],['2026-07-01','Maicol','16:00','21:00'],['2026-07-01','Lani','16:00','21:00'],
+    ['2026-07-02','Lani','10:00','21:00'],['2026-07-02','Geoff','10:00','21:00'],['2026-07-02','Ellis','16:00','21:00'],['2026-07-02','Maicol','16:00','21:00'],
+    ['2026-07-03','Ellis','16:00','21:00'],['2026-07-03','Clare','11:00','14:00'],['2026-07-03','Chuck','14:00','22:00'],['2026-07-03','Lani','10:00','21:00'],['2026-07-03','Geoff','10:00','21:00'],
+    ['2026-07-04','Lani','10:00','16:00'],['2026-07-04','Chuck','10:00','16:00'],
+    ['2026-07-07','Chuck','10:00','16:00'],['2026-07-07','Geoff','09:00','15:00'],['2026-07-07','Julia','16:00','21:00'],['2026-07-07','Lani','16:00','21:00'],['2026-07-07','Maicol','16:00','21:00'],
+    ['2026-07-08','Lani','16:00','21:00'],['2026-07-08','Julia','10:00','16:00'],['2026-07-08','Geoff','09:00','15:00'],['2026-07-08','Maicol','16:00','21:00'],['2026-07-08','Chuck','16:00','21:00'],
+    ['2026-07-09','Lani','14:00','21:00'],['2026-07-09','Ellis','16:00','21:00'],['2026-07-09','Chuck','10:00','21:00'],['2026-07-09','Maicol','16:00','21:00'],
+    ['2026-07-10','Clare','11:00','14:00'],['2026-07-10','Chuck','10:00','22:00'],['2026-07-10','Geoff','10:00','22:00'],['2026-07-10','Ellis','16:00','21:00'],['2026-07-10','Lani','14:00','22:00'],
+    ['2026-07-11','Maicol','16:00','21:00'],['2026-07-11','Lani','10:00','21:00'],['2026-07-11','Geoff','10:00','16:00'],
+    ['2026-07-12','Maicol','16:00','21:00'],['2026-07-12','Chuck','10:00','16:00'],['2026-07-12','Geoff','09:00','15:00'],['2026-07-12','Lani','16:00','21:00'],
+    ['2026-07-13','Maicol','16:00','21:00'],['2026-07-13','Geoff','09:00','15:00'],['2026-07-13','Julia','10:00','21:00'],
+    ['2026-07-14','Geoff','09:00','15:00'],['2026-07-14','Julia','10:00','21:00'],
+    ['2026-07-15','Maicol','16:00','21:00'],['2026-07-15','Lani','16:00','21:00'],['2026-07-15','Geoff','09:00','15:00'],['2026-07-15','Julia','10:00','16:00'],
+    ['2026-07-16','Lani','10:00','21:00'],['2026-07-16','Ellis','16:00','21:00'],['2026-07-16','Chuck','10:00','21:00'],
+    ['2026-07-17','Clare','11:00','14:00'],['2026-07-17','Maicol','16:00','22:00'],['2026-07-17','Geoff','10:00','21:00'],['2026-07-17','Chuck','10:00','21:00'],['2026-07-17','Ellis','16:00','21:00'],
+    ['2026-07-18','Lani','10:00','21:00'],['2026-07-18','Chuck','10:00','16:00'],['2026-07-18','Maicol','16:00','21:00'],
+    ['2026-07-19','Geoff','10:00','16:00'],['2026-07-19','Lani','16:00','21:00'],['2026-07-19','Maicol','10:00','21:00'],
+    ['2026-07-20','Chuck','10:00','21:00'],['2026-07-20','Ellis','16:00','21:00'],['2026-07-20','Lani','16:00','21:00'],['2026-07-20','Geoff','10:00','16:00'],
+    ['2026-07-21','Chuck','10:00','16:00'],['2026-07-21','Maicol','16:00','21:00'],['2026-07-21','Geoff','09:00','15:00'],['2026-07-21','Lani','16:00','21:00'],
+    ['2026-07-22','Julia','10:00','16:00'],['2026-07-22','Geoff','09:00','15:00'],['2026-07-22','Lani','16:00','21:00'],['2026-07-22','Maicol','16:00','21:00'],
+    ['2026-07-23','Geoff','10:00','16:00'],['2026-07-23','Ellis','16:00','21:00'],['2026-07-23','Maicol','16:00','21:00'],['2026-07-23','Chuck','10:00','21:00'],
+    ['2026-07-24','Clare','11:00','14:00'],['2026-07-24','Maicol','16:00','22:00'],['2026-07-24','Chuck','10:00','21:00'],['2026-07-24','Lani','14:00','21:00'],['2026-07-24','Geoff','10:00','21:00'],['2026-07-24','Ellis','16:00','21:00'],
+    ['2026-07-25','Maicol','16:00','21:00'],['2026-07-25','Lani','10:00','21:00'],['2026-07-25','Chuck','10:00','16:00'],
+    ['2026-07-26','Maicol','16:00','21:00'],['2026-07-26','Geoff','10:00','16:00'],['2026-07-26','Chuck','10:00','16:00'],['2026-07-26','Lani','16:00','21:00'],
+    ['2026-07-27','Julia','10:00','21:00'],['2026-07-27','Ellis','16:00','21:00'],['2026-07-27','Chuck','10:00','21:00'],
+    ['2026-07-28','Julia','10:00','16:00'],['2026-07-28','Geoff','09:00','15:00'],['2026-07-28','Maicol','16:00','21:00'],['2026-07-28','Lani','16:00','21:00'],
+    ['2026-07-29','Geoff','09:00','15:00'],['2026-07-29','Chuck','16:00','21:00'],['2026-07-29','Maicol','16:00','21:00'],['2026-07-29','Julia','10:00','16:00'],
+    ['2026-07-30','Geoff','09:00','15:00'],['2026-07-30','Chuck','10:00','21:00'],['2026-07-30','Maicol','15:00','21:00'],['2026-07-30','Ellis','16:00','21:00'],
+    ['2026-07-31','Clare','11:00','14:00'],['2026-07-31','Lani','14:00','22:00'],['2026-07-31','Ellis','16:00','21:00'],['2026-07-31','Geoff','10:00','21:00'],['2026-07-31','Chuck','10:00','21:00']
+  ];
+
 // Pricing & MRR States
   const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
   const [isEditingPrices, setIsEditingPrices] = useState(false);
@@ -2668,28 +2705,104 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
 
   const handleRestoreCheersJulySchedule = async () => {
-    const phrase = window.prompt('This will delete existing July 2026 shifts for cheers_chilton_01, download a backup of what was replaced, then import the PDF schedule as published shifts. Type IMPORT JULY to continue.');
+    const phrase = window.prompt('This will restore the July 2026 schedule directly into the SAME Firebase database this app is currently showing. It will delete existing July 2026 shifts for cheers_chilton_01, download a backup, then import the PDF schedule as published shifts. Type IMPORT JULY to continue.');
     if ((phrase || '').trim().toUpperCase() !== 'IMPORT JULY') {
       addToast('Canceled', 'July schedule import was not run.');
       return;
     }
-    addToast('Import Started', 'Restoring Cheers Chilton July 2026 schedule.');
+
+    addToast('Import Started', 'Restoring Cheers Chilton July 2026 schedule in the current app database.');
+
     try {
-      const response = await secureFetch('/api/import-cheers-july-schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: 'IMPORT_JULY_2026', deleteExisting: true })
+      const rosterSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', CHEERS_RESTORE_RESTAURANT_ID)));
+      const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const byFirstName = new Map();
+      roster.forEach(u => {
+        const key = String(u.name || u.email || u.id || '').trim().split(/\s+/)[0].toLowerCase();
+        if (key && !byFirstName.has(key)) byFirstName.set(key, u);
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result.ok === false) throw new Error(result.error || `Import failed with status ${response.status}`);
-      if (result.backup) {
-        const backupName = `Cheers_Chilton_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-        downloadTextFile(backupName, JSON.stringify(result.backup, null, 2), 'application/json;charset=utf-8;');
+
+      const namesNeeded = Array.from(new Set(CHEERS_JULY_2026_SCHEDULE.map(row => String(row[1]).toLowerCase())));
+      const unmatched = namesNeeded.filter(name => !byFirstName.get(name));
+      if (unmatched.length) {
+        throw new Error(`Missing user profile(s) in ${CHEERS_RESTORE_RESTAURANT_ID}: ${unmatched.join(', ')}. Nothing was deleted.`);
       }
-      addToast('Schedule Restored', `${result.importedCount || 0} shift(s) imported. ${result.deletedCount || 0} existing shift(s) replaced.`);
+
+      const allTenantShiftsSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', CHEERS_RESTORE_RESTAURANT_ID)));
+      const julyDocs = allTenantShiftsSnap.docs.filter(d => {
+        const date = String((d.data() || {}).date || '');
+        return date >= CHEERS_RESTORE_MONTH_START && date <= CHEERS_RESTORE_MONTH_END;
+      });
+
+      const backup = {
+        type: 'client-side-cheers-july-2026-shift-import-backup',
+        restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
+        month: '2026-07',
+        generatedAt: new Date().toISOString(),
+        actor: appUser?.email || appUser?.id || 'system-admin',
+        currentHost: window.location.hostname,
+        replacedShiftCount: julyDocs.length,
+        replacedShifts: julyDocs.map(d => ({ id: d.id, ...d.data() })),
+        sourceNotes: [
+          'Source: 86CHAOS SCHEDULE JULY 2026 uploaded PDF.',
+          'This restore wrote through the frontend Firebase instance currently loaded by the app.',
+          'The schedule listener now uses a schedule-safe tenant query so a missing composite index cannot overwrite the restored view with stale fallback data.',
+          'Duplicate exact Clare 11a-2p rows were deduplicated.',
+          'Obvious AM/PM typos were normalized: Lani 2a-9p to 2p-9p, Chuck 10p-4p to 10a-4p.'
+        ]
+      };
+
+      const backupName = `Cheers_Chilton_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      downloadTextFile(backupName, JSON.stringify(backup, null, 2), 'application/json;charset=utf-8;');
+
+      for (const oldShift of julyDocs) {
+        await deleteDoc(doc(db, 'shifts', oldShift.id));
+      }
+
+      const now = new Date().toISOString();
+      let importedCount = 0;
+      for (const [date, employeeName, startTime, endTime] of CHEERS_JULY_2026_SCHEDULE) {
+        const user = byFirstName.get(String(employeeName).toLowerCase());
+        await addDoc(collection(db, 'shifts'), {
+          restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
+          employeeId: user.id,
+          employeeName: user.name || employeeName,
+          role: user.role || 'Unassigned',
+          date,
+          startTime,
+          endTime,
+          isPublished: true,
+          importedAt: now,
+          importedBy: appUser?.email || appUser?.id || 'system-admin',
+          source: '86CHAOS SCHEDULE JULY 2026 PDF',
+          restoreMode: 'client-side-current-database'
+        });
+        importedCount += 1;
+      }
+
+      await addDoc(collection(db, 'auditLogs'), {
+        restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
+        action: 'EMERGENCY_IMPORT_JULY_SCHEDULE_CLIENT_SIDE',
+        target: 'shifts',
+        details: `Deleted ${julyDocs.length} existing July shift(s), imported ${importedCount} published shift(s) through current app Firebase instance.`,
+        userId: appUser?.id || 'system-admin',
+        userName: appUser?.email || appUser?.name || 'System Admin',
+        timestamp: now,
+        isGhost: appUser?.isGhost || false
+      });
+
+      const verifySnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', CHEERS_RESTORE_RESTAURANT_ID)));
+      const verifiedJuly = verifySnap.docs.filter(d => {
+        const date = String((d.data() || {}).date || '');
+        return date >= CHEERS_RESTORE_MONTH_START && date <= CHEERS_RESTORE_MONTH_END;
+      });
+
+      addToast('Schedule Restored', `${importedCount} imported. Verification found ${verifiedJuly.length} July shift(s) in this app database.`);
+      window.alert(`Restore complete.\n\nDeleted: ${julyDocs.length}\nImported: ${importedCount}\nVerified July shifts now in this app database: ${verifiedJuly.length}\n\nThe schedule screen now uses a restore-safe listener. Open July 2026 in Schedule Builder and the restored shifts should stay visible.`);
       setSubTab('forensics');
     } catch (err) {
-      addToast('Import Error', err.message || 'The schedule import route failed. Check Vercel logs.');
+      addToast('Import Error', err.message || 'Client-side schedule import failed.');
+      window.alert(`Import failed:\n\n${err.message || err}`);
     }
   };
 
@@ -4224,7 +4337,7 @@ const HELP_ARTICLES = [
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
-  { id:'weekly-maintenance', title:'Weekly database maintenance and backups', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh firestore storage', body:['Weekly maintenance stamps client records so support can see that housekeeping ran.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
+  { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
   { id:'new-1291', title:'What changed in version 12.9.1', group:'Release Notes', keywords:'new update 12.9.1 backup automatic firestore storage command deck run backup now', body:['Added automatic Firestore JSON backups through a Vercel cron route.','Command Deck and Forensics can now trigger Run Backup Now for super admins.','Backup status writes to system/backupStatus so support can see last backup time, status, document count, and storage path.','Help/Admin Manual now includes searchable backup troubleshooting steps.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
   { id:'low-stock-focus', title:'Finding below-par inventory from alerts', group:'Inventory', keywords:'below par low stock inventory alert highlight command center today', body:['Below-par alerts only count items where current stock is less than par. Items equal to par are not considered low.','Click a low-stock alert from Today or Command Center to open Inventory in Below-Par Focus mode.','Below-Par Focus filters the list to low items and highlights them so managers can update stock, par, or ordering quickly.'] },
@@ -4237,7 +4350,7 @@ const HELP_ARTICLES = [
 
   { id:'schedule-publish-backup', title:'Schedule publish creates a backup file', group:'Scheduling', keywords:'schedule publish backup download json restore shifts deleted duplicate', body:['When a manager clicks Publish, the app downloads a JSON backup of the current month shifts and all unpublished shifts before anything is changed.','Keep this file if you are making major schedule edits or publishing a rebuilt month. It can help support restore shifts if something is accidentally deleted.','The backup filename starts with the restaurant name and includes the schedule month and timestamp.'] },
   { id:'admin-emergency-schedule-restore', title:'Emergency schedule restore from PDF', group:'System Administrator', keywords:'admin restore schedule import shifts july cheers delete duplicates published', body:['Open System Administrator → Operations → Emergency Schedule Restore when support needs to rebuild a damaged schedule from a verified copy.','For the Cheers July 2026 rescue, the import deletes existing July shifts for cheers_chilton_01, downloads a backup of what it replaced, and imports the PDF schedule as published shifts.','The tool matches employees by first name inside the target restaurant. If a user is missing, the import stops before deleting anything.'] },
-  { id:'new-1306', title:'What changed in version 13.0.6', group:'Release Notes', keywords:'new update 13.0.6 schedule publish backup emergency import july shifts restore', body:['Publishing a schedule now downloads a local JSON backup file before shifts are marked live.','System Administrator → Operations now includes the Cheers July 2026 emergency schedule restore tool.','The restore tool replaces existing July shifts for cheers_chilton_01 with the verified schedule from the uploaded PDF and downloads a backup of replaced shifts.'] },
+  { id:'new-1309', title:'What changed in version 13.0.9', group:'Release Notes', keywords:'new update 13.0.9 schedule restore backup daily firebase reads index import', body:['Schedule Restore now uses an index-safe shift listener so imported shifts do not get replaced by a stale fallback snapshot.','Automatic Firestore backups now run daily through the Vercel cron route.','The restore tool still downloads a replaced-shifts backup before importing and verifies the July shift count afterward.'] },
   { id:'invoice-payload-storage-scan', title:'Invoice scanner: PDF upload too large / payload too large', group:'Inventory', keywords:'invoice pdf scan payload too large 413 Vercel upload firebase storage large file crash scanner', body:['If an invoice scan says payload too large, the app now uploads the original PDF or image directly to Firebase Storage first, then sends only a small file reference to the scanner.','This avoids the Vercel request-size limit that can happen when PDFs are converted to base64 before scanning.','PDFs are still limited by Gemini document processing limits. If a PDF is unusually large, split it into smaller PDFs or scan fewer pages at once.'] },
   { id:'new-1303', title:'What changed in version 13.0.3', group:'Release Notes', keywords:'new update 13.0.3 invoice scanner pdf payload storage scan', body:['Invoice scanning now uses Firebase Storage handoff for PDFs and images instead of sending the whole file through Vercel.','This fixes payload-too-large scanner crashes on normal invoice PDFs and keeps the full original file quality for extraction.'] },
   { id:'new-1302', title:'What changed in version 13.0.2', group:'Release Notes', keywords:'new update 13.0.2 mobile clutter quick action reads client users drawer admin layout', body:['Removed the floating quick-action menu button from the lower-right corner to reduce mobile clutter. The main menu remains in the header and 86 Voice remains available.','Reduced default live listener windows and caps again so Today and dashboard screens pull fewer documents on login.','Rebuilt the System Administrator client-user drawer with a wider responsive layout, cleaner user cards, and easier support diagnostics on desktop and mobile.','Version labels now use numbers only.'] },

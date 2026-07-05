@@ -94,7 +94,7 @@ async function exportCollection(collectionRef, collectionPath, backup, counters)
   }
 }
 
-async function pruneOldBackups(bucket, keepCount = 24) {
+async function pruneOldBackups(bucket, keepCount = 35) {
   try {
     const [files] = await bucket.getFiles({ prefix: 'backups/firestore/' });
     const backupFiles = files
@@ -130,7 +130,7 @@ async function handler(req, res) {
       lastRunAt: startedAt.toISOString(),
       actor: auth.actor,
       source: auth.source,
-      version: '12.9.1-automatic-firestore-backups'
+      version: '13.0.9'
     }, { merge: true });
 
     const collections = await db.listCollections();
@@ -138,7 +138,7 @@ async function handler(req, res) {
       metadata: {
         app: '86 Chaos',
         type: 'firestore-json-backup',
-        version: '12.9.1-automatic-firestore-backups',
+        version: '13.0.9',
         projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount().project_id || loadServiceAccount().projectId || null,
         mode,
         runId,
@@ -197,7 +197,7 @@ async function handler(req, res) {
       compressedBytes: gzipped.length,
       rawBytes: Buffer.byteLength(json, 'utf8'),
       deletedOldBackups,
-      version: '12.9.1-automatic-firestore-backups'
+      version: '13.0.9'
     };
 
     await statusRef.set(statusPayload, { merge: true });
@@ -214,7 +214,7 @@ async function handler(req, res) {
           lastError: err.message,
           lastErrorAt: failedAt,
           runFinishedAt: failedAt,
-          version: '12.9.1-automatic-firestore-backups'
+          version: '13.0.9'
         }, { merge: true });
         await db.collection('system').doc('backupStatus').collection('errors').add({
           message: err.message,

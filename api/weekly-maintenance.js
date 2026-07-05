@@ -44,7 +44,7 @@ module.exports = async function handler(req, res) {
     const app = initAdmin();
     const db = app.firestore();
     const runStartedAt = new Date().toISOString();
-    const version = '12.4.1-help-bug-weekly';
+    const version = '13.0.9';
 
     const restaurantsSnap = await db.collection('restaurants').get();
     const writes = [];
