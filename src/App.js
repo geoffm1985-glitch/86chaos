@@ -4,7 +4,7 @@ import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
-import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, QuickActionDock, VoiceCommandDock } from './components/common';
+import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabSales, TabLabor, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
 export default function App() {
@@ -85,9 +85,12 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const scheduleWindowStart = addDays(monthBounds.start, -7);
   const scheduleWindowEnd = addDays(monthBounds.end, 14);
   const recentWindowStart = addDays(getToday(), -30);
-  const futureWindowEnd = addDays(getToday(), 21);
-  const punchWindowStart = addDays(currentDate, -14);
-  const punchWindowEnd = addDays(currentDate, 7);
+  const futureWindowEnd = addDays(getToday(), 14);
+  const todayOpsWindowEnd = addDays(getToday(), 7);
+  const laborPunchWindowStart = addDays(currentDate, -14);
+  const laborPunchWindowEnd = addDays(currentDate, 7);
+  const lightPunchWindowStart = addDays(getToday(), -1);
+  const lightPunchWindowEnd = addDays(getToday(), 1);
 
   // --- DATABASE IMPORTS (Aggressive Read Saver) ---
   // Each tab now asks for only the date window and collections it actually needs.
@@ -102,22 +105,22 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsMaintenanceData = wantsToday || ['maintenance', 'ops'].includes(activeTabState);
   const wantsSalesData = ['sales', 'ops', 'labor'].includes(activeTabState);
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
-  const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : futureWindowEnd;
+  const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd;
   const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
 
-  const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: 250, fallbackLimitCount: 80 });
-  const shifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', shiftRangeStart], ['date','<=', shiftRangeEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: wantsScheduleScreen ? 320 : 120, fallbackLimitCount: 75 });
-  const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 80, fallbackLimitCount: 40 });
-  const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || isGlobalSearchOpen), whereClauses: [['date','>=', messageRangeStart]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'messages' ? 120 : 60, fallbackLimitCount: 45 });
-  const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 60, fallbackLimitCount: 30 });
-  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, limitCount: 90, fallbackLimitCount: 40 });
-  const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', punchWindowStart], ['date','<=', punchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 220 : 100, fallbackLimitCount: 60 });
-  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 300 : 120, fallbackLimitCount: 80 });
-  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: activeTabState === 'maintenance' ? 140 : 50, fallbackLimitCount: 40 });
-  const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 120, fallbackLimitCount: 50 });
-  const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 120, fallbackLimitCount: 50 });
-  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 220, fallbackLimitCount: 60 });
+  const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
+  const shifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', shiftRangeStart], ['date','<=', shiftRangeEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: wantsScheduleScreen ? 260 : 70, fallbackLimitCount: 45 });
+  const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 50, fallbackLimitCount: 25 });
+  const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || isGlobalSearchOpen), whereClauses: [['date','>=', messageRangeStart]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'messages' ? 90 : 35, fallbackLimitCount: 25 });
+  const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
+  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 70 : 30, fallbackLimitCount: 25 });
+  const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });
+  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 240 : 75, fallbackLimitCount: 55 });
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: activeTabState === 'maintenance' ? 110 : 30, fallbackLimitCount: 25 });
+  const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
+  const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 75, fallbackLimitCount: 35 });
+  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 180, fallbackLimitCount: 45 });
   
 // --- LIVE APP USER LOGIC ---
   const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true, help: true };
@@ -581,7 +584,6 @@ return (
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
       <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={users} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} addToast={addToast} />
-      <QuickActionDock appUser={liveAppUser} setActiveTab={setActiveTab} openSearch={() => setIsGlobalSearchOpen(true)} openTV={() => setIsKitchenTVOpen(true)} addToast={addToast} />    
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">

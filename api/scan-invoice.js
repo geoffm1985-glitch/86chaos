@@ -78,21 +78,107 @@ function normalizeInvoicePayload(parsed) {
     extractionNotes: data.extractionNotes || [],
     extractionWarnings: data.extractionWarnings || [],
     confidence: data.confidence || 'review',
-    scannerVersion: '12.7.0-full-invoice-extraction'
+    scannerVersion: '13.0.3'
+  };
+}
+
+
+const admin = require('firebase-admin');
+
+function loadServiceAccount() {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (raw) {
+    try { return JSON.parse(raw); }
+    catch (err) { throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is not valid JSON.'); }
+  }
+  return {
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
+  };
+}
+
+function initAdmin() {
+  if (admin.apps.length) return admin.app();
+  const serviceAccount = loadServiceAccount();
+  const projectId = serviceAccount.project_id || serviceAccount.projectId;
+  if (!projectId) throw new Error('Missing Firebase service account project id. Set FIREBASE_SERVICE_ACCOUNT_KEY in Vercel.');
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
+  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
+}
+
+async function verifySignedIn(req, adminApp) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!token) throw new Error('Missing authorization token. Please log in again.');
+  return adminApp.auth().verifyIdToken(token);
+}
+
+function sanitizeStoragePath(path = '') {
+  const clean = String(path || '').replace(/^\/+/, '');
+  if (!clean || clean.includes('..')) throw new Error('Invalid scan file path.');
+  return clean;
+}
+
+async function readScanSource(reqBody, req, adminApp) {
+  const body = reqBody || {};
+  const mimeType = body.mimeType || 'image/jpeg';
+  const fileName = body.fileName || 'invoice';
+
+  // Preferred production path: browser uploads file directly to Firebase Storage,
+  // then sends only the small storage path to Vercel. This avoids Vercel's 4.5MB request limit.
+  if (body.storagePath) {
+    const decoded = await verifySignedIn(req, adminApp);
+    const storagePath = sanitizeStoragePath(body.storagePath);
+    const expectedRest = String(body.restaurantId || '').trim();
+    if (expectedRest && !storagePath.startsWith(`${expectedRest}/`)) {
+      throw new Error('Scan file path does not match the selected workspace.');
+    }
+    const bucket = adminApp.storage().bucket();
+    const [buffer] = await bucket.file(storagePath).download();
+    const detectedMime = body.mimeType || (fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+    const pdfLike = detectedMime === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
+    const maxBytes = pdfLike ? 50 * 1024 * 1024 : 95 * 1024 * 1024;
+    if (buffer.length > maxBytes) {
+      throw new Error(pdfLike
+        ? 'PDF is over Gemini\'s 50MB document limit. Split it into smaller PDFs or scan fewer pages at once.'
+        : 'Image/file is too large for one scan. Try a smaller file or fewer pages.');
+    }
+    return {
+      fileBase64: buffer.toString('base64'),
+      mimeType: detectedMime,
+      fileName,
+      source: 'firebase-storage',
+      storagePath,
+      decodedUid: decoded.uid,
+      originalBytes: buffer.length
+    };
+  }
+
+  // Legacy/fallback path for small images only. Large files should use storagePath.
+  if (!body.fileBase64) throw new Error('Missing scan file. Please upload the invoice again.');
+  return {
+    fileBase64: body.fileBase64,
+    mimeType,
+    fileName,
+    source: 'inline-base64',
+    originalBytes: Math.round((String(body.fileBase64).length * 3) / 4)
   };
 }
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  let scanSource = null;
   try {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY or GOOGLE_API_KEY in Vercel.' });
 
-    const { fileBase64, mimeType = 'image/jpeg', fileName = 'invoice' } = req.body || {};
-    if (!fileBase64) return res.status(400).json({ error: 'Missing fileBase64.' });
-
+    const adminApp = initAdmin();
+    scanSource = await readScanSource(req.body || {}, req, adminApp);
+    const { fileBase64, mimeType = 'image/jpeg', fileName = 'invoice' } = scanSource;
     const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
     const prompt = `
 You are the invoice extraction engine for a restaurant inventory system.
 
@@ -167,7 +253,13 @@ Return this JSON shape:
 
     const raw = await response.text();
     if (!response.ok) {
-      return res.status(response.status).json({ error: 'Gemini invoice scan failed.', details: raw.slice(0, 1000) });
+      return res.status(response.status).json({
+        error: 'Gemini invoice scan failed.',
+        details: raw.slice(0, 2000),
+        scanSource: scanSource?.source || 'unknown',
+        fileName: scanSource?.fileName || fileName,
+        originalBytes: scanSource?.originalBytes || null
+      });
     }
 
     const gemini = JSON.parse(raw);
@@ -184,10 +276,22 @@ Return this JSON shape:
     const normalized = normalizeInvoicePayload(parsed);
     normalized.scanFileName = fileName;
     normalized.scanMimeType = mimeType;
+    normalized.scanSource = scanSource?.source || 'unknown';
+    normalized.scanStoragePath = scanSource?.storagePath || '';
+    normalized.scanOriginalBytes = scanSource?.originalBytes || null;
     normalized.processedAt = new Date().toISOString();
+    normalized.scannerVersion = '13.0.3';
 
     return res.status(200).json(normalized);
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'Invoice scanner failed.' });
+    const message = err.message || 'Invoice scanner failed.';
+    const status = /authorization|token|permission|login/i.test(message) ? 401 : 500;
+    return res.status(status).json({
+      error: message,
+      hint: message.toLowerCase().includes('payload')
+        ? 'Upload the invoice through Firebase Storage mode instead of sending it through Vercel.'
+        : undefined,
+      scanSource: scanSource?.source || 'unknown'
+    });
   }
 };

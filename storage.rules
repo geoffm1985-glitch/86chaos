@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() {
+      return signedIn() && (
+        request.auth.token.superAdmin == true ||
+        request.auth.token.email == 'geoffm1985@gmail.com'
+      );
+    }
+
+    function isTenantMatch(restaurantId) {
+      return signedIn() && userDoc().restaurantId == restaurantId;
+    }
+
+    function isAllowedImage() {
+      return request.resource != null &&
+        request.resource.size < 8 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    function isAllowedDocument() {
+      return request.resource != null &&
+        request.resource.size < 15 * 1024 * 1024 &&
+        (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
+    }
+
+    function isAllowedInvoiceScan() {
+      return request.resource != null &&
+        request.resource.size < 50 * 1024 * 1024 &&
+        (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
+    }
+
+    match /{restaurantId}/profilePhotos/{allPaths=**} {
+      allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
+      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
+    }
+
+    match /{restaurantId}/messageAttachments/{allPaths=**} {
+      allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
+      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedDocument();
+    }
+
+    match /{restaurantId}/maintenancePhotos/{allPaths=**} {
+      allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
+      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
+    }
+
+    match /{restaurantId}/invoices/{allPaths=**} {
+      allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
+      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedInvoiceScan();
+    }
+
+    match /backups/{allPaths=**} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // Compatibility fallback for older app uploads while you migrate paths.
+    match /{allPaths=**} {
+      allow read, write: if isSuperAdmin();
+      allow write: if signedIn() && isAllowedDocument();
+      allow read: if signedIn();
+    }
+  }
+}
