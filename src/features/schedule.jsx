@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
@@ -674,7 +674,7 @@ const [eventDate, setEventDate] = useState(getToday());
   };
 
 const handlePublish = async () => { 
-    if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
+    if(!window.confirm("Publish schedule? Notifications will be sent. A backup file will download first.")) return; 
     
     const unpub = shifts.filter(s => !s.isPublished); 
     
@@ -682,14 +682,38 @@ const handlePublish = async () => {
       addToast('Notice', 'No unpublished shifts found.');
       return;
     }
+
+    try {
+      const publishMonth = getMonthStr(currentDate);
+      const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
+      const now = new Date();
+      const backupPayload = {
+        app: '86chaos',
+        type: 'schedule-publish-backup',
+        version: CURRENT_VERSION,
+        generatedAt: now.toISOString(),
+        restaurantId: appUser?.restaurantId || null,
+        restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
+        publishMonth,
+        unpublishedShiftCount: unpub.length,
+        allMonthShiftCount: shifts.filter(s => (s.date || '').startsWith(publishMonth)).length,
+        unpublishedShifts: unpub.map(s => ({ ...s })),
+        monthShifts: shifts.filter(s => (s.date || '').startsWith(publishMonth)).map(s => ({ ...s }))
+      };
+      const stamp = now.toISOString().replace(/[:.]/g, '-');
+      downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishMonth}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
+    } catch (backupErr) {
+      console.warn('Schedule publish backup download failed:', backupErr);
+      if (!window.confirm('The local backup download failed. Continue publishing anyway?')) return;
+    }
     
     addToast('Publishing...', `Pushing ${unpub.length} shifts live. Please wait.`);
     
     try {
-      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true })));
+      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser?.id || appUser?.email || 'unknown' })));
       
-      addToast("Published", "Schedule is live."); 
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live.`); 
+      addToast("Published", "Schedule is live and a backup file was downloaded."); 
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live. Local backup JSON downloaded before publish.`); 
 
 // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
       try {
