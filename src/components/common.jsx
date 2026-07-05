@@ -42,7 +42,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   tabs.push({ id: 'today', label: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
+  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
   if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
@@ -388,7 +388,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (q.includes('prep')) return { intent:'navigate', label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.', safe:true };
       if (q.includes('message')) return { intent:'navigate', label:'Open Messages', tab:'messages', summary:'Open the Message Board.', safe:true };
       if (q.includes('maintenance') || q.includes('repair')) return { intent:'navigate', label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.', safe:true };
-      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial')) return { intent:'navigate', label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.', safe:true };
+      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial')) return { intent:'navigate', label:'Open Financials', tab:'financials', summary:'Open Financials for Labor & Timesheets and Daily Ledger.', safe:true };
       if (q.includes('schedule')) {
         const date = parseNextWeekday(q);
         return { intent:'navigate_schedule', label:'Open Schedule', tab:'published', date, summary: date ? `Open Time Clock & Shifts / Schedule Builder on ${formatDisplayDate(date)}.` : 'Open Time Clock & Shifts / Schedule Builder.', safe:true };
@@ -606,7 +606,7 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>New manager workflow tools: Labor & Timesheets is now its own tab, the side menu has a search box, Schedule Builder has editable templates, coverage targets, Smart Fill, Drag Board, Copy Previous Week, and Publish Preview, and Help Center now includes searchable instructions for every new tool.</p>
+    <p>New manager workflow tools: Financials now contains Labor & Timesheets, the side menu has a search box, Schedule Builder has editable templates, coverage targets, Smart Fill, Drag Board, Copy Previous Week, and Publish Preview, and Help Center now includes searchable instructions for every new tool.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
       {['Labor tab','Punch Fixer','Menu search','Help Center','Schedule templates','Coverage targets','Smart Fill','Drag Board','Copy week','Publish preview','Payroll CSV','Support articles'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>

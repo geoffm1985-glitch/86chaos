@@ -259,7 +259,7 @@ const handleOfferSwap = async (shift) => {
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'time-off', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab.replace('-', ' ')}
+            {{ 'my-schedule': 'My Schedule', 'full-schedule': 'Full Schedule', 'month-view': 'Month View', 'time-off': 'Time Off', 'schedule-builder': 'Schedule Builder' }[tab] || tab.replace('-', ' ')}
           </button>
         ))}
       </div>
@@ -1022,7 +1022,7 @@ const handleExportTimesheets = () => {
     const pStartStr = new Date(periodStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const pEndStr = new Date(periodEnd + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
-    // Header for the Payroll Summary
+    // Header for the Legacy Payroll Summary
     let csv = `"--- PAYROLL SUMMARY ---"\n"Pay Period: ${pStartStr} - ${pEndStr}"\n\n"Employee Name","Reg Hours","OT Hours","Hourly Rate","Total Gross Pay","Declared Cash Tips","Declared Credit Tips"\n`;
     summaryList.forEach(s => { 
       csv += `"${s.name}","${s.regHours.toFixed(2)}","${s.otHours.toFixed(2)}","$${s.rate.toFixed(2)}","$${s.pay.toFixed(2)}","$${s.cashTips.toFixed(2)}","$${s.creditTips.toFixed(2)}"\n`; 
@@ -1047,7 +1047,7 @@ const handleExportTimesheets = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a"); 
     link.setAttribute("href", url); 
-    link.setAttribute("download", `${getRestaurantExportPrefix(appUser)}-Payroll-Export-${periodStart}-to-${periodEnd}.csv`);
+    link.setAttribute("download", `${getRestaurantExportPrefix(appUser)}-Legacy Payroll-Export-${periodStart}-to-${periodEnd}.csv`);
     document.body.appendChild(link); 
     link.click(); 
     document.body.removeChild(link); 
@@ -1268,8 +1268,8 @@ const handleExportTimesheets = () => {
 {/* TOP NAVIGATION TOGGLE */}
       {!hideSubTabs && (
         <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
-          <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
-          <span className="text-[10px] font-bold text-slate-500 self-center">Labor and punch editing moved to the Labor tab.</span>
+          <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Builder</button>
+          <span className="text-[10px] font-bold text-slate-500 self-center">Labor and punch editing moved to Financials → Labor & Timesheets.</span>
         </div>
       )}
 
@@ -1534,7 +1534,7 @@ const handleExportTimesheets = () => {
           
           <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
             <div className="flex items-center gap-4 flex-wrap">
-              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Payroll</h3>
+              <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}>Legacy Payroll</h3>
               <div className="flex items-center gap-2 bg-[#1A2126] border border-[#2A353D] p-1.5 rounded-lg shadow-inner">
                  <input type="date" value={periodStart} onChange={e=>setPeriodStart(e.target.value)} className="bg-transparent text-[#D4A381] text-xs font-bold outline-none cursor-pointer" />
                  <span className="text-slate-500 font-black text-[10px] uppercase">to</span>
@@ -1602,7 +1602,7 @@ const handleExportTimesheets = () => {
 
 {summaryList.length > 0 && (
             <div className="p-4 border-b border-[#2A353D] bg-[#0B0E11]">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Payroll Summary</h4>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-3">Period Legacy Payroll Summary</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {summaryList.map(s => (
                   <div key={s.name} className="bg-[#1A2126] p-3 rounded-xl border border-[#2A353D] flex justify-between items-center shadow-sm hover:border-[#D4A381]/50 transition-colors">
