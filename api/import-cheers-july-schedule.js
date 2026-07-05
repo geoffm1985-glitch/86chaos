@@ -132,11 +132,17 @@ module.exports = async function handler(req, res) {
       return res.status(409).json({ ok: false, error: `Cannot import. Missing user profile(s) in ${RESTAURANT_ID}: ${unmatched.join(', ')}`, unmatched });
     }
 
-    const existingSnap = await db.collection('shifts')
+    // Avoid Firestore composite-index requirement by querying the tenant only, then filtering July in memory.
+    // This import is a one-time rescue operation for one restaurant, so the small extra read cost is safer than
+    // requiring a production index while employees need their shifts restored.
+    const allRestaurantShiftsSnap = await db.collection('shifts')
       .where('restaurantId', '==', RESTAURANT_ID)
-      .where('date', '>=', MONTH_START)
-      .where('date', '<=', MONTH_END)
       .get();
+    const julyShiftDocs = allRestaurantShiftsSnap.docs.filter(d => {
+      const date = String((d.data() || {}).date || '');
+      return date >= MONTH_START && date <= MONTH_END;
+    });
+    const existingSnap = { docs: julyShiftDocs, size: julyShiftDocs.length };
     const backup = {
       type: 'cheers-july-2026-shift-import-backup',
       restaurantId: RESTAURANT_ID,
