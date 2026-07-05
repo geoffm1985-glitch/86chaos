@@ -440,6 +440,7 @@ const TabInventory = ({ addToast, appUser }) => {
   const vendors = useLiveCollection('vendors', appUser?.restaurantId, { limitCount: 150 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
   const [invTab, setInvTab] = useState('count');
+  const [focusBelowPar, setFocusBelowPar] = useState(() => sessionStorage.getItem('inventoryFocus') === 'belowPar');
 const [searchTerm, setSearchTerm] = useState(''); 
   const [groupBy, setGroupBy] = useState('Category');
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -447,6 +448,15 @@ const [searchTerm, setSearchTerm] = useState('');
   // Fetch invoices securely directly inside this tab
   const invoices = useLiveCollection('invoices', appUser?.restaurantId, { limitCount: 120 });
   const [viewInvoice, setViewInvoice] = useState(null);
+
+  useEffect(() => {
+    if (sessionStorage.getItem('inventoryFocus') === 'belowPar') {
+      setFocusBelowPar(true);
+      setInvTab('count');
+      sessionStorage.removeItem('inventoryFocus');
+      setTimeout(() => document.getElementById('below-par-focus-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    }
+  }, []);
 
   // Inventory Form
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
@@ -857,7 +867,12 @@ if (item.matchedItemId === 'CREATE_NEW') {
      }
   };
 
-const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { 
+const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
+const belowParItems = inventoryItems.filter(isBelowPar);
+const groupedItems = inventoryItems
+  .filter(i => !focusBelowPar || isBelowPar(i))
+  .filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)))
+  .reduce((acc, item) => { 
     const key = groupBy === 'Vendor' ? (vendors.find(v=>v.id===item.supplierId)?.name || 'Unassigned Vendor') : (item.category || 'Uncategorized');
     if (!acc[key]) acc[key] = []; acc[key].push(item); return acc; 
   }, {});
@@ -1015,18 +1030,22 @@ const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().inc
 
 {invTab === 'count' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div id="below-par-focus-panel" className="flex flex-col sm:flex-row gap-3">
             <input type="text" placeholder="Search product or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={`${T.input} flex-1`} />
             <select value={groupBy} onChange={e => setGroupBy(e.target.value)} className={`${T.input} sm:w-48 font-bold`}>
               <option value="Category">Group by Category</option>
               <option value="Vendor">Group by Vendor</option>
             </select>
+            <button type="button" onClick={() => setFocusBelowPar(v => !v)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${focusBelowPar ? 'bg-red-900/30 border-red-500/50 text-red-300' : 'bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-white'}`}>
+              {focusBelowPar ? `Showing ${belowParItems.length} Below Par` : `Below-Par Focus (${belowParItems.length})`}
+            </button>
           </div>
+          {focusBelowPar && belowParItems.length === 0 && <div className="bg-emerald-900/10 border border-emerald-500/30 text-emerald-300 rounded-xl p-4 text-sm font-bold">No inventory items are currently below par. Items equal to par are not counted as low.</div>}
           {Object.entries(groupedItems).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
             <div key={category} className="space-y-2">
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
-                  <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
+                  <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2 ${isBelowPar(item) ? 'border-red-500/70 shadow-[0_0_18px_rgba(239,68,68,0.15)] bg-red-950/10' : ''}`}>
                     <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
@@ -1965,7 +1984,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   );
 };
 
-const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast }) => {
+const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab }) => {
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
   const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { limitCount: 200 });
@@ -2245,6 +2264,8 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     }
   };
 
+  const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab?.('inventory'); };
+
   const kpiCards = [
     { label: 'Health Score', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Strong shift posture' : healthScore >= 70 ? 'Watch the weak spots' : 'Needs manager attention' },
     { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
@@ -2277,11 +2298,11 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
         {kpiCards.map(card => (
-          <div key={card.label} className={`${T.card} p-3 text-center`}>
+          <button key={card.label} type="button" onClick={card.label === 'Low Stock' ? openInventoryFocus : undefined} className={`${T.card} p-3 text-center ${card.label === 'Low Stock' ? 'hover:border-red-500/60 transition-colors cursor-pointer' : 'cursor-default'}`}>
             <div className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>{card.label}</div>
             <div className="text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
             <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -2338,7 +2359,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
               const stock = Number(item.currentStock || 0);
               const needed = Math.max(0, par - stock);
               return (
-                <div key={item.id} className={`${T.row} flex justify-between items-center gap-3`}>
+                <button key={item.id} type="button" onClick={openInventoryFocus} className={`${T.row} w-full text-left flex justify-between items-center gap-3 hover:border-red-500/40`}>
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-white truncate">{item.name}</div>
                     <div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Stock {stock} / Par {par}</div>
@@ -2347,7 +2368,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
                     <div className="text-xs font-black text-orange-400">Order {needed}</div>
                     <div className="text-[9px] text-slate-500 font-bold">${Number(item.price || 0).toFixed(2)}</div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -2444,7 +2465,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const activePunches = timePunches.filter(p => ['clocked_in','on_break'].includes(p.status));
   const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
   const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
-  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) <= Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
+  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
   const urgentMaintenance = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5);
   const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
   const pendingRequests = timeOffRequests.filter(r => r.status === 'pending').slice(0, 5);
@@ -2460,8 +2481,9 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance' }
   ];
   const setupDone = setupItems.filter(i => i.done).length;
+  const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
   const problems = [
-    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory' } : null,
+    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
     urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
     pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
     openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
@@ -2560,13 +2582,13 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className={`${T.card} p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
           {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
-            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="The equipment gods are quiet, the schedule has a pulse, and nothing is screaming for help." />}
+            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="The equipment gods are quiet, the schedule has a pulse, and nothing is screaming for help." />}
           </div>}
         </div>
 
         <div className={`${T.card} p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
-          {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={() => setActiveTab('inventory')} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
+          {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={openInventoryFocus} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
           {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Ops" detail="Open full command center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
           {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
         </div>

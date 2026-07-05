@@ -3420,6 +3420,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   const [rangeEnd, setRangeEnd] = useState(getWeekDates(currentDate)[6]);
   const [employeeFilter, setEmployeeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [exportMode, setExportMode] = useState('detail');
   const [editingPunch, setEditingPunch] = useState(null);
   const [form, setForm] = useState({ employeeId: '', date: getToday(), clockIn: '09:00', clockOut: '17:00', breakMinutes: '0', cashTips: '0', creditTips: '0', reason: 'Forgot to clock out', note: '' });
 
@@ -3536,26 +3537,77 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   };
 
   const exportCsv = () => {
-    const rows = [['Employee','Date','Clock In','Clock Out','Break Minutes','Hours','Cash Tips','Credit Tips','Pay Estimate','Issue','Reason']];
-    payrollRows.forEach(r => rows.push([
-      r.emp.name || r.punch.employeeName || 'Unknown',
-      r.punch.date || '',
-      r.punch.clockInTime ? formatClockDateTime(r.punch.clockInTime) : '',
-      r.punch.clockOutTime ? formatClockDateTime(r.punch.clockOutTime) : '',
-      r.punch.breakMinutes || 0,
-      r.hours.toFixed(2),
-      r.punch.cashTips || 0,
-      r.punch.creditTips || 0,
-      r.pay.toFixed(2),
-      r.issue,
-      r.punch.correctionReason || ''
-    ]));
+    let rows;
+    let exportName = 'time-punch-detail';
+
+    if (exportMode === 'summary') {
+      exportName = 'total-hours-summary';
+      const summaryMap = payrollRows.reduce((acc, r) => {
+        const key = r.punch.employeeId || r.emp.id || r.punch.employeeName || 'unknown';
+        if (!acc[key]) {
+          acc[key] = {
+            employee: r.emp.name || r.punch.employeeName || 'Unknown',
+            hours: 0,
+            pay: 0,
+            cashTips: 0,
+            creditTips: 0,
+            tips: 0,
+            punchCount: 0,
+            issueCount: 0,
+            reasons: new Set()
+          };
+        }
+        const row = acc[key];
+        row.hours += Math.max(0, r.hours || 0);
+        row.pay += Math.max(0, r.pay || 0);
+        row.cashTips += parseFloat(r.punch.cashTips || 0) || 0;
+        row.creditTips += parseFloat(r.punch.creditTips || 0) || 0;
+        row.tips += r.tips || 0;
+        row.punchCount += 1;
+        if (r.issue) row.issueCount += 1;
+        if (r.punch.correctionReason) row.reasons.add(r.punch.correctionReason);
+        return acc;
+      }, {});
+
+      rows = [['Employee','Range Start','Range End','Total Hours','Pay Estimate','Cash Tips','Credit Tips','Total Tips','Punch Count','Issue Count','Reasons']];
+      Object.values(summaryMap)
+        .sort((a,b) => a.employee.localeCompare(b.employee))
+        .forEach(r => rows.push([
+          r.employee,
+          rangeStart,
+          rangeEnd,
+          r.hours.toFixed(2),
+          r.pay.toFixed(2),
+          r.cashTips.toFixed(2),
+          r.creditTips.toFixed(2),
+          r.tips.toFixed(2),
+          r.punchCount,
+          r.issueCount,
+          Array.from(r.reasons).join('; ')
+        ]));
+    } else {
+      rows = [['Employee','Date','Clock In','Clock Out','Break Minutes','Hours','Cash Tips','Credit Tips','Pay Estimate','Issue','Reason']];
+      payrollRows.forEach(r => rows.push([
+        r.emp.name || r.punch.employeeName || 'Unknown',
+        r.punch.date || '',
+        r.punch.clockInTime ? formatClockDateTime(r.punch.clockInTime) : '',
+        r.punch.clockOutTime ? formatClockDateTime(r.punch.clockOutTime) : '',
+        r.punch.breakMinutes || 0,
+        r.hours.toFixed(2),
+        r.punch.cashTips || 0,
+        r.punch.creditTips || 0,
+        r.pay.toFixed(2),
+        r.issue,
+        r.punch.correctionReason || ''
+      ]));
+    }
+
     const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `86chaos-labor-${rangeStart}-to-${rangeEnd}.csv`;
+    a.download = `86chaos-${exportName}-${rangeStart}-to-${rangeEnd}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -3618,7 +3670,23 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 
       {subTab === 'review' && <PunchTable rows={payrollRows} openEditPunch={openEditPunch} forceOut={forceOut} approvePunch={approvePunch} deletePunch={deletePunch} />}
       {subTab === 'tips' && <div className={`${T.card} p-4`}><h3 className="font-black text-white mb-3">Tip Summary</h3><div className="grid md:grid-cols-3 gap-3"><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Cash Tips</div><div className="text-2xl font-black text-white">${payrollRows.reduce((s,r)=>s+(parseFloat(r.punch.cashTips||0)||0),0).toFixed(2)}</div></div><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Credit Tips</div><div className="text-2xl font-black text-white">${payrollRows.reduce((s,r)=>s+(parseFloat(r.punch.creditTips||0)||0),0).toFixed(2)}</div></div><div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4"><div className="text-[10px] uppercase text-slate-500 font-black">Total Tips</div><div className="text-2xl font-black text-[#D4A381]">${totalTips.toFixed(2)}</div></div></div></div>}
-      {subTab === 'export' && <div className={`${T.card} p-5`}><h3 className="font-black text-white text-lg">Payroll Export</h3><p className="text-xs text-slate-400 font-bold mt-1 mb-4">Download the currently filtered range as a CSV for payroll review or accountant handoff.</p><button onClick={exportCsv} className={`${T.btn} flex items-center gap-2 justify-center max-w-xs`}><Package size={16}/> Download CSV</button></div>}
+      {subTab === 'export' && <div className={`${T.card} p-5 space-y-4`}>
+        <div>
+          <h3 className="font-black text-white text-lg">Payroll Export</h3>
+          <p className="text-xs text-slate-400 font-bold mt-1">Download the currently filtered range as a CSV for payroll review or accountant handoff.</p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3 max-w-2xl">
+          <button type="button" onClick={() => setExportMode('detail')} className={`text-left rounded-xl border p-4 transition-all ${exportMode === 'detail' ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/50'}`}>
+            <div className="text-sm font-black text-white">Time Punch Detail</div>
+            <div className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Every clock-in/clock-out row</div>
+          </button>
+          <button type="button" onClick={() => setExportMode('summary')} className={`text-left rounded-xl border p-4 transition-all ${exportMode === 'summary' ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/50'}`}>
+            <div className="text-sm font-black text-white">Total Hours Summary</div>
+            <div className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">One row per employee</div>
+          </button>
+        </div>
+        <button onClick={exportCsv} className={`${T.btn} flex items-center gap-2 justify-center max-w-xs`}><Package size={16}/> Download {exportMode === 'summary' ? 'Summary' : 'Punch Detail'} CSV</button>
+      </div>}
     </div>
   );
 };
@@ -3637,6 +3705,8 @@ const HELP_ARTICLES = [
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'weekly-maintenance', title:'Weekly database maintenance', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh', body:['86 Chaos does not magically update production databases from the browser. Weekly automatic maintenance requires a scheduled server job.','The weekly maintenance route can stamp each client account with the latest maintenance run and log the result for support.','True Firestore backups are a separate Google Cloud scheduled export, not something the React app should do from a user phone.'] },
+  { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
+  { id:'low-stock-focus', title:'Finding below-par inventory from alerts', group:'Inventory', keywords:'below par low stock inventory alert highlight command center today', body:['Below-par alerts only count items where current stock is less than par. Items equal to par are not considered low.','Click a low-stock alert from Today or Command Center to open Inventory in Below-Par Focus mode.','Below-Par Focus filters the list to low items and highlights them so managers can update stock, par, or ordering quickly.'] },
   { id:'new-1242', title:'What changed in version 12.4.2', group:'Release Notes', keywords:'new update 12.4.2 time format 12 hour 24 hour military labor timesheets punches settings preferences', body:['Time format preferences now control schedule times, punch ledger times, Labor & Timesheets displays, Ops timeline times, toast messages, maintenance logs, and payroll CSV exports.','Native time entry fields may still use the device/browser picker, but saved/displayed times honor the selected preference.'] },
   { id:'new-124', title:'What changed in version 12.4.1', group:'Release Notes', keywords:'new update 12.4 bug report help center weekly database maintenance cron', body:['Report a Bug / Error moved out of the side menu and into Help Center.','Help Center now includes a searchable article for weekly database maintenance.','The optional weekly maintenance pack adds a Vercel Cron endpoint for support housekeeping.'] }
 ];
