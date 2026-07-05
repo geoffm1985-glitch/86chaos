@@ -222,6 +222,14 @@ const getWeekDates = (dateStr) => {
   });
 };
 
+
+const ROLE_KEYWORDS = {
+  Manager: ['manager','gm','owner','lead','supervisor'],
+  Kitchen: ['cook','chef','kitchen','prep','dish'],
+  Bar: ['bar','bartender'],
+  Service: ['server','host','wait','expo','runner'],
+};
+
 const roleMatches = (userRole = '', targetRole = '') => {
   if (!targetRole) return true;
   const u = String(userRole).toLowerCase();

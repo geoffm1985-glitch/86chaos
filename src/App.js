@@ -25,6 +25,10 @@ export default function App() {
       
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const [activeTabState, setActiveTabState] = useState(() => appUser?.preferences?.defaultTab || 'today');
+  const [clientData, setClientData] = useState(null);
+  const clientFeatures = clientData?.features || {};
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
