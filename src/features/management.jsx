@@ -1486,6 +1486,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [backupStatus, setBackupStatus] = useState(null);
+  const [isBackupRunning, setIsBackupRunning] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [adminManualSearch, setAdminManualSearch] = useState('');
   const [userCounts, setUserCounts] = useState({});
@@ -2466,9 +2467,10 @@ const handleRevokeAccess = async (user) => {
     .sort((a,b) => b.getTime() - a.getTime())[0] || null;
   const lastBackupDate = parseAnyDate(backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastExportAt || backupStatus?.lastRunAt) || latestWorkspaceMaintenance;
   const backupAgeHours = lastBackupDate ? Math.round((Date.now() - lastBackupDate.getTime()) / 36e5) : null;
-  const backupStatusLabel = lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported';
-  const backupIsStale = !lastBackupDate || backupAgeHours > 7 * 24;
-  const backupDetail = backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp' : 'No backup status doc');
+  const backupRunning = backupStatus?.status === 'running';
+  const backupStatusLabel = backupRunning ? 'Running...' : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported');
+  const backupIsStale = !backupRunning && (!lastBackupDate || backupAgeHours > 7 * 24);
+  const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp' : 'No backup status doc'));
 
   // --- NEW SAAS HEALTH METRICS ---
 const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length;
@@ -2532,7 +2534,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -2597,7 +2599,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → Users or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Clients tab', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Clients and click the client name or Users button.', 'The client drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and billing state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that client or user sees.'] },
-    { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export', body: ['The Command Deck reads system/backupStatus when available.', 'If that document does not exist, it falls back to the latest weekly maintenance stamp on restaurants.', 'A stale or missing backup status is a warning to verify your scheduled Firestore export outside the app.', 'Weekly maintenance is not a true database backup; real Firestore export/backup should be configured separately.'] },
+    { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
+    { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic weekly database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Return-to-landing behavior', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today', body: ['When a user leaves the app for more than five minutes and comes back, the app returns them to Today Command Center.', 'This prevents stale tabs from sitting open on a phone after a shift or break.', 'It does not delete their session; it simply returns them to the safest landing screen.'] },
     ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
   ];
@@ -2640,6 +2643,26 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       addToast('Copied', 'Support diagnostics copied to clipboard.');
     } catch (err) {
       addToast('Diagnostics', diagnostics.substring(0, 220));
+    }
+  };
+
+
+  const handleRunBackupNow = async () => {
+    if (isBackupRunning) return;
+    const ok = window.confirm('Run a full Firestore JSON backup now? This can take a minute on large databases.');
+    if (!ok) return;
+    setIsBackupRunning(true);
+    addToast('Backup Started', 'Creating a database backup and writing status to the Command Deck.');
+    try {
+      const response = await secureFetch('/api/firestore-backup?mode=manual', { method: 'POST' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Backup failed with status ${response.status}`);
+      addToast('Backup Complete', `${result.documentCount || 0} document(s) saved to Storage.`);
+      setSubTab('forensics');
+    } catch (err) {
+      addToast('Backup Error', err.message || 'Backup route failed. Check Vercel logs.');
+    } finally {
+      setIsBackupRunning(false);
     }
   };
 
@@ -2729,7 +2752,11 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                 <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
                 <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('users')} />
                 <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('tenants')} />
-                <CockpitMetric label="Last Backup" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} onClick={() => jumpToAdminIssue('support')} />
+                <CockpitMetric label="Last Backup" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} onClick={() => jumpToAdminIssue('forensics')} />
+                <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white transition-colors flex items-center justify-center gap-2">
+                  {(isBackupRunning || backupRunning) ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
+                  {(isBackupRunning || backupRunning) ? 'Backup Running' : 'Run Backup Now'}
+                </button>
               </div>
             </div>
 
@@ -3619,6 +3646,7 @@ another@email.com"></textarea>
               <div className="space-y-2">
                 <button onClick={() => setIsRawInspectorOpen(true)} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"><Wrench size={12} /> Inspect Raw JSON</button>
                 <button onClick={handleCopyDiagnostics} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Copy Support Diagnostics</button>
+                <button onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 hover:bg-emerald-900/40 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">{(isBackupRunning || backupRunning) && <Loader2 size={12} className="animate-spin" />} Run Backup Now</button>
                 <button onClick={() => jumpToAdminIssue('support')} className="w-full bg-orange-900/20 text-orange-300 border border-orange-900/50 hover:bg-orange-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Open Support Bay</button>
               </div>
               <p className="text-[10px] text-slate-500 font-bold mt-3 leading-snug">Use raw JSON only when normal screens cannot explain the issue. For destructive changes, copy diagnostics first.</p>
@@ -4119,13 +4147,14 @@ const HELP_ARTICLES = [
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
   { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Grant Access for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },
   { id:'admin-client-users', title:'Viewing and managing users from a client', group:'System Administrator', keywords:'client users restaurant users support edit possess force logout delete notifications gps billing modules', body:['Open System Administrator → Clients and click the client name or Users button.','The client drawer shows all users in that workspace, admin count, online users, push token count, GPS permission snapshots, billing state, and enabled modules.','Use Support Edit from the client drawer to move a user, update their role/status, force password change, or correct workspace routing.','Use Possess from the client drawer to troubleshoot exactly what a client user sees.'] },
-  { id:'admin-backup-status', title:'Checking database backup status', group:'System Administrator', keywords:'database backup last backup status command deck weekly maintenance firestore export', body:['The System Administrator Command Deck includes Last Backup.','The app reads system/backupStatus when your backup job writes it. If that document is missing, it falls back to the latest weekly maintenance stamp.','A stale backup warning means you should verify your real Firestore scheduled export/backup outside the app. Weekly maintenance is housekeeping, not a full backup.','Copy Platform Snapshot before making risky data changes.'] },
+  { id:'admin-backup-status', title:'Checking database backup status', group:'System Administrator', keywords:'database backup last backup status command deck weekly maintenance firestore export storage run now', body:['The System Administrator Command Deck includes Last Backup.','The app reads system/backupStatus when the automatic Firestore backup route writes it.','Click Last Backup or open Forensics to run a manual backup and verify the route.','A stale backup warning means you should check Vercel cron, CRON_SECRET, Firebase service account credentials, and Firebase Storage bucket settings.'] },
   { id:'landing-after-away', title:'Why did the app return to Today?', group:'Navigation', keywords:'landing page today away five minutes background tab phone stale session', body:['If someone leaves the app for more than five minutes and comes back, 86 Chaos returns them to Today Command Center.','This keeps old screens from sitting stale on mobile phones and tablets.','The user is not logged out; they are simply returned to the safest landing screen.'] },
   { id:'new-1290', title:'What changed in version 12.9.0', group:'Release Notes', keywords:'new update 12.9 admin client users searchable manual backup help update landing page', body:['System Administrator → Clients now opens a full client user drawer with workspace users, admin count, online status, push/GPS diagnostics, billing, modules, support edit, possess, force logout, and delete tools.','The Administrator Manual is now a searchable troubleshooting database that also includes the full app Help Center articles.','Users who leave the app for more than five minutes return to Today Command Center when they come back.','The startup update popup was removed. New version briefs now live inside Help Center and show as a Help Center notification dot.','The Command Deck now includes Last Backup status using system/backupStatus or the latest weekly maintenance stamp.'] },
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
-  { id:'weekly-maintenance', title:'Weekly database maintenance', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh', body:['86 Chaos does not magically update production databases from the browser. Weekly automatic maintenance requires a scheduled server job.','The weekly maintenance route can stamp each client account with the latest maintenance run and log the result for support.','True Firestore backups are a separate Google Cloud scheduled export, not something the React app should do from a user phone.'] },
+  { id:'weekly-maintenance', title:'Weekly database maintenance and backups', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh firestore storage', body:['Weekly maintenance stamps client records so support can see that housekeeping ran.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
+  { id:'new-1291', title:'What changed in version 12.9.1', group:'Release Notes', keywords:'new update 12.9.1 backup automatic firestore storage command deck run backup now', body:['Added automatic Firestore JSON backups through a Vercel cron route.','Command Deck and Forensics can now trigger Run Backup Now for super admins.','Backup status writes to system/backupStatus so support can see last backup time, status, document count, and storage path.','Help/Admin Manual now includes searchable backup troubleshooting steps.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
   { id:'low-stock-focus', title:'Finding below-par inventory from alerts', group:'Inventory', keywords:'below par low stock inventory alert highlight command center today', body:['Below-par alerts only count items where current stock is less than par. Items equal to par are not considered low.','Click a low-stock alert from Today or Command Center to open Inventory in Below-Par Focus mode.','Below-Par Focus filters the list to low items and highlights them so managers can update stock, par, or ordering quickly.'] },
 
