@@ -906,23 +906,43 @@ const executeOrder = async (method) => {
   const normalizeSku = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizeName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+  const scanFileViaStorage = async (file) => {
+    const ext = (file.name.split('.').pop() || 'upload').toLowerCase().replace(/[^a-z0-9]/g, '') || 'upload';
+    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const restaurantId = appUser?.restaurantId || 'unknown-restaurant';
+    const storagePath = `${restaurantId}/invoices/scans/${safeName}`;
+    const fileRef = ref(storage, storagePath);
+    await uploadBytes(fileRef, file, {
+      contentType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
+      customMetadata: {
+        originalName: file.name,
+        restaurantId,
+        uploadedBy: appUser?.id || '',
+        uploadedByName: appUser?.name || '',
+        purpose: 'invoice-scan'
+      }
+    });
+    return {
+      storagePath,
+      mimeType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
+      fileName: file.name,
+      restaurantId,
+      originalSize: file.size
+    };
+  };
+
   const handleScanInvoice = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setIsScanningInvoice(true);
-    addToast('Scanning Invoice', file.type === 'application/pdf' ? 'Reading PDF and extracting every visible row...' : 'Optimizing image and extracting every visible row...');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    addToast('Scanning Invoice', isPdf ? 'Uploading PDF safely, then extracting every visible row...' : 'Uploading image safely, then extracting every visible row...');
 
     try {
-      let payload;
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        const base64 = await readFileAsBase64(file);
-        if (base64.length > 4_100_000) throw new Error('PDF is too large for direct scan. Try a smaller PDF or export the invoice page as an image.');
-        payload = { fileBase64: base64, mimeType: 'application/pdf', fileName: file.name };
-      } else {
-        const imagePayload = await compressImageForScan(file);
-        payload = { fileBase64: imagePayload.base64, mimeType: imagePayload.mimeType, fileName: file.name, scanDetail: imagePayload.scanDetail };
-      }
+      // Important: upload the original file directly to Firebase Storage first.
+      // This avoids Vercel's request body limit, which is easy to hit when PDFs are base64 encoded.
+      let payload = await scanFileViaStorage(file);
 
       const response = await secureFetch('/api/scan-invoice', {
         method: 'POST',
@@ -932,11 +952,13 @@ const executeOrder = async (method) => {
 
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-         throw new Error("Vercel Server Error: invoice scanner crashed or payload was too large.");
+         throw new Error("Invoice scanner crashed before returning JSON. The file may be too large for the scanner or Vercel returned an HTML error page.");
       }
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to scan invoice.');
+      if (!response.ok) {
+        throw new Error(data.error || data.details || 'Failed to scan invoice.');
+      }
 
       const allRows = data.allExtractedRows || data.invoiceRows || data.lineItems || [];
       const normalizedLineItems = allRows.map((item, rowIndex) => {
@@ -959,27 +981,21 @@ const executeOrder = async (method) => {
            totalPrice: item.totalPrice ?? item.extendedPrice ?? item.lineTotal ?? '',
            rowType,
            isInventoryLine,
-           matchedItemId: isInventoryLine && match ? match.id : ""
+           rawText: item.rawText || '',
+           matchId: match?.id || '',
+           matchName: match?.name || '',
+           action: isInventoryLine ? (match ? 'update' : 'create') : 'record'
          };
       });
-
-      setScannedInvoice({ 
-        ...data, 
-        allExtractedRows: normalizedLineItems,
-        lineItems: normalizedLineItems,
-        scanFileName: file.name,
-        scanMimeType: payload.mimeType,
-        scannedAt: new Date().toISOString()
-      });
-      addToast('Success', `Extracted ${normalizedLineItems.length} invoice row${normalizedLineItems.length === 1 ? '' : 's'}. Please verify before approving.`);
+      setScannedInvoice({ ...data, lineItems: normalizedLineItems, allExtractedRows: normalizedLineItems, sourceFile: file.name });
+      addToast('Scan Complete', `Found ${normalizedLineItems.length} visible rows. Please review before approving.`);
     } catch (err) {
-      addToast('Error', err.message);
-    } finally {
-      setIsScanningInvoice(false);
-      e.target.value = '';
+      console.error(err);
+      addToast('Scan Error', err.message || 'Could not scan invoice.');
     }
+    setIsScanningInvoice(false);
+    e.target.value = ''; 
   };
-
   const handleApproveInvoice = async () => {
      try {
        // 1. Log the invoice record for history

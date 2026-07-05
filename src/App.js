@@ -4,7 +4,7 @@ import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
-import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, QuickActionDock } from './components/common';
+import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabSales, TabLabor, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
 export default function App() {
@@ -68,29 +68,59 @@ export default function App() {
     return () => window.removeEventListener('appinstalled', handleAppInstall);
   }, []);
 
-// --- DATABASE IMPORTS (Read-Optimized) ---
-  // Loads only the sections the current screen needs and caps large collections.
+const [currentDate, setCurrentDate] = useState(getToday());
+
+  const addDays = (dateStr, amount) => {
+    const d = new Date(`${dateStr}T12:00:00`);
+    d.setDate(d.getDate() + amount);
+    return formatDate(d);
+  };
+  const getMonthBounds = (dateStr) => {
+    const [year, month] = getMonthStr(dateStr).split('-').map(Number);
+    const start = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = new Date(year, month, 0);
+    return { start, end: formatDate(endDate) };
+  };
+  const monthBounds = getMonthBounds(currentDate);
+  const scheduleWindowStart = addDays(monthBounds.start, -7);
+  const scheduleWindowEnd = addDays(monthBounds.end, 14);
+  const recentWindowStart = addDays(getToday(), -30);
+  const futureWindowEnd = addDays(getToday(), 14);
+  const todayOpsWindowEnd = addDays(getToday(), 7);
+  const laborPunchWindowStart = addDays(currentDate, -14);
+  const laborPunchWindowEnd = addDays(currentDate, 7);
+  const lightPunchWindowStart = addDays(getToday(), -1);
+  const lightPunchWindowEnd = addDays(getToday(), 1);
+
+  // --- DATABASE IMPORTS (Aggressive Read Saver) ---
+  // Each tab now asks for only the date window and collections it actually needs.
+  // If a Firestore index is missing, useLiveCollection falls back to a small capped listener instead of blanking the app.
   const wantsToday = activeTabState === 'today';
-  const wantsScheduleData = wantsToday || ['schedule', 'events', 'published', 'labor', 'ops'].includes(activeTabState);
-  const wantsLaborData = wantsToday || ['labor', 'sales', 'ops', 'schedule'].includes(activeTabState);
+  const wantsScheduleScreen = ['schedule', 'events', 'published'].includes(activeTabState);
+  const wantsScheduleData = wantsToday || wantsScheduleScreen || ['labor', 'ops'].includes(activeTabState);
+  const wantsLaborData = wantsToday || ['labor', 'sales', 'ops'].includes(activeTabState);
   const wantsInventoryData = wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen;
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
-  const wantsRecipesData = wantsToday || activeTabState === 'recipes' || isGlobalSearchOpen;
+  const wantsRecipesData = activeTabState === 'recipes' || isGlobalSearchOpen;
   const wantsMaintenanceData = wantsToday || ['maintenance', 'ops'].includes(activeTabState);
-  const wantsSalesData = wantsToday || ['sales', 'ops', 'labor'].includes(activeTabState);
+  const wantsSalesData = ['sales', 'ops', 'labor'].includes(activeTabState);
+  const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
+  const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd;
+  const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
+  const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
 
-  const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: 500 });
-  const shifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: 650 });
-  const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, limitCount: 150 });
-  const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || isGlobalSearchOpen), limitCount: 250 });
-  const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, limitCount: 120 });
-  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, limitCount: 180 });
-  const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, limitCount: 500 });
-  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: 500 });
-  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: 180 });
-  const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, limitCount: 250 });
-  const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 350 });
-  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 350 });
+  const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
+  const shifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', shiftRangeStart], ['date','<=', shiftRangeEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: wantsScheduleScreen ? 260 : 70, fallbackLimitCount: 45 });
+  const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 50, fallbackLimitCount: 25 });
+  const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || isGlobalSearchOpen), whereClauses: [['date','>=', messageRangeStart]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'messages' ? 90 : 35, fallbackLimitCount: 25 });
+  const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
+  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 70 : 30, fallbackLimitCount: 25 });
+  const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });
+  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 240 : 75, fallbackLimitCount: 55 });
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: activeTabState === 'maintenance' ? 110 : 30, fallbackLimitCount: 25 });
+  const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
+  const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 75, fallbackLimitCount: 35 });
+  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 180, fallbackLimitCount: 45 });
   
 // --- LIVE APP USER LOGIC ---
   const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true, help: true };
@@ -305,38 +335,7 @@ useEffect(() => {
     }
   }, [appUser]);
 
-  // --- RETURN-TO-LANDING AFTER LEAVING APP (5 MINUTES) ---
-  useEffect(() => {
-    if (!appUser) return;
-    const key = `chaosLeftAt_${appUser.id}`;
-    const FIVE_MINUTES = 5 * 60 * 1000;
-
-    const sendToLandingIfStale = () => {
-      const leftAt = parseInt(localStorage.getItem(key) || '0', 10);
-      if (leftAt && Date.now() - leftAt > FIVE_MINUTES) {
-        localStorage.removeItem(key);
-        setActiveTab('today');
-        addToast('Welcome Back', 'You were away for more than five minutes, so 86 Chaos returned to the landing page.');
-      }
-    };
-
-    const markLeftOrReturned = () => {
-      if (document.hidden) localStorage.setItem(key, Date.now().toString());
-      else sendToLandingIfStale();
-    };
-
-    sendToLandingIfStale();
-    document.addEventListener('visibilitychange', markLeftOrReturned);
-    window.addEventListener('focus', sendToLandingIfStale);
-    window.addEventListener('pageshow', sendToLandingIfStale);
-    window.addEventListener('beforeunload', () => localStorage.setItem(key, Date.now().toString()));
-
-    return () => {
-      document.removeEventListener('visibilitychange', markLeftOrReturned);
-      window.removeEventListener('focus', sendToLandingIfStale);
-      window.removeEventListener('pageshow', sendToLandingIfStale);
-    };
-  }, [appUser?.id]);
+  // Auto-return-to-landing was removed. Users stay on their current page when they come back.
 
   useEffect(() => {
     if (activeTabState === 'help' && hasHelpUpdate) {
@@ -346,7 +345,6 @@ useEffect(() => {
   }, [activeTabState, hasHelpUpdate]);
   
 
-  const [currentDate, setCurrentDate] = useState(getToday());
   const [toasts, setToasts] = useState([]);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -452,6 +450,43 @@ useEffect(() => {
   if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
 
   if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
+
+
+  const renderMainContent = () => {
+    if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} clientData={clientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
+    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabScheduleWorkbench key={`schwork-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />;
+    if (activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />;
+    if (activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales)) return <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />;
+    if (activeTabState === 'labor' && clientFeatures?.labor !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.sales)) return <TabLabor key={`lab-${rId}`} currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />;
+    if (activeTabState === 'messages') return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />;
+    if (activeTabState === 'prep') return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />;
+    if (activeTabState === 'recipes') return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />;
+    if (activeTabState === 'inventory' && clientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
+    if (activeTabState === 'team' && clientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />;
+    if (activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
+    if (activeTabState === 'settings') return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />;
+    if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} addToast={addToast} />;
+    if (activeTabState === 'godmode' && ((liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin === true)) return <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin)) return <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />;
+
+    return (
+      <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4`}>
+        <div className="mx-auto w-12 h-12 rounded-2xl bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-[#D4A381]">
+          <Menu size={24} />
+        </div>
+        <div>
+          <h2 className="text-xl font-black text-white">This page is not available</h2>
+          <p className="text-sm font-bold text-slate-400 mt-2">The tab may be turned off for this workspace, your permissions may have changed, or an old app link opened a page that no longer exists.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          <button onClick={() => setActiveTab('today')} className={T.btn}>Go to Today</button>
+          <button onClick={() => setIsMenuOpen(true)} className={T.btnAlt}>Open Menu</button>
+        </div>
+      </div>
+    );
+  };
 
   // BILLING LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
   if (clientData?.billingStatus === 'Past Due' && !ghostTenant) {
@@ -585,7 +620,7 @@ return (
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={users} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
-      <QuickActionDock appUser={liveAppUser} setActiveTab={setActiveTab} openSearch={() => setIsGlobalSearchOpen(true)} openTV={() => setIsKitchenTVOpen(true)} addToast={addToast} />    
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={users} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} addToast={addToast} />
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
@@ -636,23 +671,7 @@ return (
       </Modal>
 
       <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
-        {activeTabState === 'today' && <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} clientData={clientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />}
-        {activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule) && <TabScheduleWorkbench key={`schwork-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team) && <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />}
-        {activeTabState === 'published' && <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} />}
-        {activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops) && <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} />}
-        {activeTabState === 'sales' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.sales) && <TabSales key={`sal-${rId}`} sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'labor' && clientFeatures?.labor !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.sales) && <TabLabor key={`lab-${rId}`} currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'messages' && <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'prep' && <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />}
-        {activeTabState === 'recipes' && <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'inventory' && clientFeatures?.inventory !== false && <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />}
-        {activeTabState === 'team' && clientFeatures?.team !== false && <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />}
-        {activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team) && <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />}
-        {activeTabState === 'settings' && <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />}
-        {activeTabState === 'help' && <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} addToast={addToast} />}
-        {activeTabState === 'godmode' && ((liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin === true) && <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />}
-        {activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin) && <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />}
+        {renderMainContent()}
       </main>
       
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
@@ -667,7 +686,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.9.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version 13.0.4</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>

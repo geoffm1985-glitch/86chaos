@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, limit as firestoreLimit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getMessaging } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
@@ -119,11 +119,18 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '12.9.1';
+export const CURRENT_VERSION = '13.0.4';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
-  const { enabled = true, limitCount = null } = options || {};
+  const {
+    enabled = true,
+    limitCount = null,
+    whereClauses = [],
+    orderByField = null,
+    orderDirection = 'asc',
+    fallbackLimitCount = 75
+  } = options || {};
   const [data, setData] = useState([]);
 
   useEffect(() => {
@@ -132,22 +139,44 @@ export const useLiveCollection = (coll, restId, options = {}) => {
       return;
     }
 
-    const constraints = [where("restaurantId", "==", restId)];
-    if (limitCount && Number(limitCount) > 0) {
-      constraints.push(firestoreLimit(Number(limitCount)));
-    }
+    let fallbackUnsubscribe = null;
+    const serializedWhere = JSON.stringify(whereClauses || []);
+    const buildConstraints = (useWindow = true) => {
+      const constraints = [where("restaurantId", "==", restId)];
+      if (useWindow) {
+        (whereClauses || []).forEach(([field, op, value]) => {
+          if (field && op && value !== undefined && value !== null && value !== '') constraints.push(where(field, op, value));
+        });
+        if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
+      }
+      if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
+      return constraints;
+    };
 
-    const q = query(collection(db, coll), ...constraints);
-    const unsubscribe = onSnapshot(
-      q,
+    const subscribe = (constraints, label) => onSnapshot(
+      query(collection(db, coll), ...constraints),
       snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err => {
-        console.error(`Live collection error for ${coll} / ${restId}:`, err);
-        setData([]);
+        console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
+        const canFallback = label !== 'fallback' && (err?.code === 'failed-precondition' || /index|requires an index|invalid/i.test(err?.message || ''));
+        if (canFallback) {
+          console.warn(`Falling back to capped ${coll} query while Firestore index is missing.`);
+          const fallbackConstraints = [where("restaurantId", "==", restId)];
+          const cap = Number(fallbackLimitCount || limitCount || 75);
+          if (cap > 0) fallbackConstraints.push(firestoreLimit(cap));
+          fallbackUnsubscribe = subscribe(fallbackConstraints, 'fallback');
+        } else {
+          setData([]);
+        }
       }
     );
-    return () => unsubscribe();
-  }, [coll, restId, enabled, limitCount]);
+
+    const unsubscribe = subscribe(buildConstraints(true), 'primary');
+    return () => {
+      if (unsubscribe) unsubscribe();
+      if (fallbackUnsubscribe) fallbackUnsubscribe();
+    };
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, JSON.stringify(whereClauses || [])]);
 
   return data;
 };

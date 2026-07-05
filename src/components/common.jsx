@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
@@ -15,11 +15,11 @@ const CheersLogo = () => (
   </div>
 );
 
-const Modal = ({ isOpen, onClose, title, children }) => {
+const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-[#12161A]/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md transition-opacity">
-      <div className={`${T.card} max-w-md w-full max-h-[90vh] overflow-y-auto`}>
+      <div className={`${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto`}>
         <div className={`flex justify-between items-center p-4 border-b ${T.border}`}>
           <h3 className="font-bold text-lg text-white">{title}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors"><X size={20}/></button>
@@ -306,6 +306,287 @@ const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }
   </div>;
 };
 
+
+
+const normalizeVoiceText = (text = '') => String(text || '').toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
+const cleanVoiceItemName = (text = '') => String(text || '')
+  .replace(/^(the|a|an)\s+/i, '')
+  .replace(/\b(to|in|on|for|please|right now|today)\b/gi, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+const findVoiceMatch = (items = [], spoken = '') => {
+  const q = normalizeVoiceText(spoken);
+  if (!q) return null;
+  const scored = (items || []).map(item => {
+    const name = normalizeVoiceText(item.name || item.title || item.equipment || '');
+    if (!name) return { item, score: 0 };
+    let score = 0;
+    if (name === q) score += 100;
+    if (name.includes(q) || q.includes(name)) score += 50;
+    const qWords = q.split(' ').filter(w => w.length > 2);
+    const nWords = name.split(' ').filter(w => w.length > 2);
+    score += qWords.filter(w => nWords.some(n => n.includes(w) || w.includes(n))).length * 12;
+    return { item, score };
+  }).sort((a,b) => b.score - a.score);
+  return scored[0]?.score > 0 ? scored[0].item : null;
+};
+const parseVoiceAmount = (text = '') => {
+  const words = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12 };
+  const normalized = normalizeVoiceText(text);
+  const numberMatch = normalized.match(/(\d+(?:\.\d+)?)/);
+  if (numberMatch) return parseFloat(numberMatch[1]);
+  for (const [word, value] of Object.entries(words)) if (new RegExp(`\\b${word}\\b`).test(normalized)) return value;
+  return 1;
+};
+const parseNextWeekday = (phrase = '') => {
+  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const q = normalizeVoiceText(phrase);
+  const idx = days.findIndex(d => q.includes(d));
+  if (idx < 0) return null;
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  const delta = (idx - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + delta);
+  return formatDate(d);
+};
+const inferVoiceBurnMode = (text = '', item = {}) => {
+  const q = normalizeVoiceText(text);
+  if (/\b(lb|lbs|pound|pounds|oz|ounce|ounces)\b/.test(q)) return 'weight';
+  if (/\b(case|cases|box|boxes|stock unit|stock units)\b/.test(q)) return 'stock';
+  return item?.burnDefaultMode || 'count';
+};
+const getVoiceUnitsPerStockUnit = (item = {}) => Math.max(1, parseFloat(item.unitsPerStockUnit || item.unitsPerCase || item.yieldQty || item.caseQty || 1) || 1);
+const getVoiceWeightPerStockUnit = (item = {}) => {
+  const direct = parseFloat(item.weightPerStockUnit || item.caseWeight || item.packWeight || item.weightLbs || 0) || 0;
+  if (direct > 0) return direct;
+  const pack = String(item.packSize || item.size || '').toLowerCase();
+  const m = pack.match(/(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds)/);
+  return m ? parseFloat(m[1]) : 0;
+};
+
+const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], setActiveTab, setCurrentDate, addToast }) => {
+  const [open, setOpen] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [heardText, setHeardText] = useState('');
+  const [manualText, setManualText] = useState('');
+  const [pending, setPending] = useState(null);
+  const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+  const canUseSpeech = Boolean(SpeechRecognition);
+
+  const openDock = () => {
+    setOpen(true);
+    setPending(null);
+    setHeardText('');
+  };
+
+  const parseCommand = async (spokenText) => {
+    const raw = String(spokenText || '').trim();
+    const q = normalizeVoiceText(raw);
+    if (!q) return null;
+
+    // Navigation commands first because they are safe and fast.
+    if (/\b(open|go to|show|take me to)\b/.test(q)) {
+      if (q.includes('inventory')) return { intent:'navigate', label:'Open Inventory', tab:'inventory', summary:'Open the Inventory tab.', safe:true };
+      if (q.includes('prep')) return { intent:'navigate', label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.', safe:true };
+      if (q.includes('message')) return { intent:'navigate', label:'Open Messages', tab:'messages', summary:'Open the Message Board.', safe:true };
+      if (q.includes('maintenance') || q.includes('repair')) return { intent:'navigate', label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.', safe:true };
+      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet')) return { intent:'navigate', label:'Open Labor', tab:'labor', summary:'Open Labor & Timesheets.', safe:true };
+      if (q.includes('schedule')) {
+        const date = parseNextWeekday(q);
+        return { intent:'navigate_schedule', label:'Open Schedule', tab:'schedule', date, summary: date ? `Open Schedule Builder on ${formatDisplayDate(date)}.` : 'Open Schedule Builder.', safe:true };
+      }
+      const recipePhrase = q.replace(/\b(open|go to|show|take me to|recipe)\b/g, ' ').trim();
+      const recipe = findVoiceMatch(recipes, recipePhrase);
+      if (recipe) return { intent:'navigate', label:`Open recipe: ${recipe.title}`, tab:'recipes', summary:`Open Recipe Book and search for ${recipe.title}.`, safe:true, localSearch: recipe.title };
+    }
+
+    // 86 / out-of-stock commands.
+    let itemPhrase = '';
+    if (/\b(86|eighty six)\b/.test(q)) itemPhrase = q.replace(/\b(86|eighty six|item|the|please)\b/g, ' ');
+    const outMatch = q.match(/(?:we are|we're|were|out of|we ran out of|ran out of)\s+(.+)/);
+    if (!itemPhrase && outMatch) itemPhrase = outMatch[1];
+    if (!itemPhrase && q.startsWith('out of ')) itemPhrase = q.replace(/^out of\s+/, '');
+    if (itemPhrase) {
+      const item = findVoiceMatch(inventoryItems, cleanVoiceItemName(itemPhrase));
+      if (item) return { intent:'inventory_zero', label:`86 ${item.name}`, item, summary:`Set ${item.name} inventory to 0 and post an important 86 alert.`, needsConfirmation:true };
+      return { intent:'search_inventory', label:'Find inventory item', tab:'inventory', summary:`I heard an 86/out-of-stock command but could not confidently match “${cleanVoiceItemName(itemPhrase)}”.`, safe:true };
+    }
+
+    // Prep tasks.
+    if (/\b(prep|prepare)\b/.test(q) || /we need\s+(.+)/.test(q)) {
+      const phrase = q
+        .replace(/\b(we need to|we need|need to|please|add|create|prep|prepare|task|of)\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const amount = parseVoiceAmount(q);
+      const unitMatch = q.match(/\b(pan|pans|quart|quarts|gallon|gallons|lb|lbs|pound|pounds|case|cases|batch|batches|thing|things|tray|trays)\b/);
+      const unit = unitMatch ? unitMatch[1] : 'item';
+      const itemText = cleanVoiceItemName(phrase.replace(/\b\d+(?:\.\d+)?\b/g, '').replace(new RegExp(`\\b${unit}\\b`, 'gi'), '')) || phrase || 'prep task';
+      return { intent:'create_prep', label:'Create prep task', amount, unit, itemText, summary:`Add prep task: ${amount} ${unit} ${itemText}.`, needsConfirmation:false };
+    }
+
+    // Message board posts.
+    if (/\b(post|send|message|announce|announcement)\b/.test(q)) {
+      const msg = raw.replace(/^(post|send|message|announce|announcement)\s*(message|announcement)?\s*:?\s*/i, '').trim() || raw;
+      return { intent:'post_message', label:'Post message', messageText: msg, summary:`Post to Message Board: “${msg}”`, needsConfirmation:true };
+    }
+
+    // Maintenance.
+    if (/\b(report|maintenance|broken|leaking|not working|won't|wont)\b/.test(q)) {
+      const issue = raw.replace(/^(report|maintenance|add maintenance issue)\s*/i, '').trim() || raw;
+      return { intent:'maintenance', label:'Create maintenance issue', issue, summary:`Create maintenance issue: ${issue}`, needsConfirmation:true };
+    }
+
+    // Burn/waste.
+    if (/\b(waste|burn|spill|spilled|throw away|toss)\b/.test(q)) {
+      const amount = parseVoiceAmount(q);
+      const itemPhrase = q.replace(/\b(waste|burn|log|record|spilled|spill|throw away|toss|of|the|please)\b/g, ' ').replace(/\b\d+(?:\.\d+)?\b/g, ' ').trim();
+      const item = findVoiceMatch(inventoryItems, itemPhrase);
+      if (item) {
+        const mode = inferVoiceBurnMode(q, item);
+        const weightPerStockUnit = getVoiceWeightPerStockUnit(item);
+        const unitsPerStockUnit = getVoiceUnitsPerStockUnit(item);
+        const stockDeducted = mode === 'weight'
+          ? (weightPerStockUnit > 0 ? amount / weightPerStockUnit : 0)
+          : mode === 'stock'
+            ? amount
+            : amount / unitsPerStockUnit;
+        const label = mode === 'weight' ? 'lb' : mode === 'stock' ? 'stock unit' : (item.burnUnitLabel || 'unit');
+        const needsSetup = mode === 'weight' && weightPerStockUnit <= 0;
+        return { intent:'burn_log', label:`Log burn: ${item.name}`, item, amount, mode, labelUnit:label, stockDeducted, needsSetup, summary: needsSetup ? `Open Inventory to set weight per stock unit for ${item.name} before logging a weight burn.` : `Log ${amount} ${label} ${item.name} and deduct ${stockDeducted.toFixed(3)} stock units.`, needsConfirmation:!needsSetup, safe:needsSetup };
+      }
+      return { intent:'navigate', label:'Open Burn Log', tab:'inventory', summary:'Open Inventory/Burn Log. I could not confidently match the item.', safe:true };
+    }
+
+    // Optional AI fallback. If the route is not installed, ignore and use help.
+    try {
+      const res = await secureFetch('/api/voice-command', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ text: raw, restaurantId: appUser?.restaurantId })
+      });
+      if (res.ok) {
+        const ai = await res.json();
+        if (ai?.intent && ai.intent !== 'unknown') return { ...ai, summary: ai.summary || `AI understood: ${ai.intent}`, needsConfirmation: true };
+      }
+    } catch(e) {}
+
+    return { intent:'help', label:'Search Help', tab:'help', summary:`I could not safely turn “${raw}” into an action. Opening Help Center/search is safer.`, safe:true };
+  };
+
+  const processText = async (text) => {
+    const action = await parseCommand(text);
+    setHeardText(text);
+    if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
+    setPending(action);
+    if (action.safe && !action.needsConfirmation) {
+      // Keep safe actions visible for review instead of surprising users.
+    }
+  };
+
+  const startListening = () => {
+    if (!canUseSpeech) return setOpen(true);
+    try {
+      const rec = new SpeechRecognition();
+      rec.lang = 'en-US';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      setListening(true);
+      setOpen(true);
+      rec.onresult = (event) => {
+        const text = event.results?.[0]?.[0]?.transcript || '';
+        setListening(false);
+        processText(text);
+      };
+      rec.onerror = () => { setListening(false); addToast('Voice Error', 'Microphone recognition failed. You can type the command instead.'); };
+      rec.onend = () => setListening(false);
+      rec.start();
+    } catch (err) {
+      setListening(false);
+      addToast('Voice Unavailable', 'Browser voice recognition is unavailable. Use the text box instead.');
+    }
+  };
+
+  const executePending = async () => {
+    if (!pending || !appUser?.restaurantId) return;
+    try {
+      if (pending.intent === 'navigate') {
+        setActiveTab(pending.tab || 'today');
+        setOpen(false); return;
+      }
+      if (pending.intent === 'navigate_schedule') {
+        if (pending.date && setCurrentDate) setCurrentDate(pending.date);
+        setActiveTab(pending.tab || 'schedule'); setOpen(false); return;
+      }
+      if (pending.intent === 'inventory_zero') {
+        await updateDoc(doc(db, 'inventoryItems', pending.item.id), { currentStock: 0, updatedAt: new Date().toISOString(), lastVoiceCommand: heardText });
+        await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'86 Alert', title:`86 ${pending.item.name}`, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:true, replies:[], voiceCommand: heardText, createdAt:new Date().toISOString() });
+        await logAudit(appUser, 'VOICE_86_ITEM', pending.item.name, heardText);
+        addToast('86 Posted', `${pending.item.name} set to 0 and posted to Message Board.`);
+        setActiveTab('inventory'); setOpen(false); return;
+      }
+      if (pending.intent === 'create_prep') {
+        const text = `${pending.amount || 1} ${pending.unit || 'item'} ${pending.itemText || 'prep task'}`.replace(/\s+/g,' ').trim();
+        await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date:getToday(), text, station:'Voice', isCompleted:false, qty: pending.amount || 1, createdAt:new Date().toISOString(), createdBy: appUser.name || appUser.email || 'Voice Command', voiceCommand: heardText });
+        await logAudit(appUser, 'VOICE_PREP_TASK', text, heardText);
+        addToast('Prep Added', text);
+        setActiveTab('prep'); setOpen(false); return;
+      }
+      if (pending.intent === 'post_message') {
+        await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'Announcement', title: pending.messageText, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:false, replies:[], voiceCommand: heardText, createdAt:new Date().toISOString() });
+        await logAudit(appUser, 'VOICE_MESSAGE', 'Message Board', pending.messageText);
+        addToast('Message Posted', pending.messageText);
+        setActiveTab('messages'); setOpen(false); return;
+      }
+      if (pending.intent === 'maintenance') {
+        await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment:'Voice Report', issue: pending.issue, status:'Open', priority:'Medium', reportedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), createdAt:new Date().toISOString(), voiceCommand: heardText });
+        await logAudit(appUser, 'VOICE_MAINTENANCE', 'Maintenance', pending.issue);
+        addToast('Maintenance Added', pending.issue);
+        setActiveTab('maintenance'); setOpen(false); return;
+      }
+      if (pending.intent === 'burn_log') {
+        if (pending.needsSetup) { setActiveTab('inventory'); setOpen(false); return; }
+        const item = pending.item;
+        const stockDeducted = Math.max(0, Number(pending.stockDeducted || 0));
+        const costLost = (parseFloat(item.price || 0) || 0) * stockDeducted;
+        await addDoc(collection(db, 'wasteLogs'), { restaurantId: appUser.restaurantId, itemId:item.id, itemName:item.name, qty:pending.amount, burnAmount:pending.amount, burnUnitLabel:pending.labelUnit, burnMode:pending.mode, stockDeducted, costLost, reason:'Voice command', loggedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), timestamp:new Date().toISOString(), voiceCommand: heardText });
+        if (stockDeducted > 0) await updateDoc(doc(db, 'inventoryItems', item.id), { currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeducted), updatedAt:new Date().toISOString() });
+        await logAudit(appUser, 'VOICE_BURN_LOG', item.name, heardText);
+        addToast('Burn Logged', `${pending.amount} ${pending.labelUnit} ${item.name}.`);
+        setActiveTab('inventory'); setOpen(false); return;
+      }
+      setActiveTab(pending.tab || 'help'); setOpen(false);
+    } catch(err) {
+      addToast('Voice Command Error', err.message || 'Could not complete the command.');
+    }
+  };
+
+  return <div className="fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
+    {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
+      <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
+        <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap, speak one command, confirm.</div></div>
+        <button onClick={() => setOpen(false)} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
+      </div>
+      <div className="space-y-2">
+        <button type="button" onClick={startListening} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
+          {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
+        </button>
+        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "post message cooler is high", "open Friday schedule"' />
+        <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
+        {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
+        {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
+          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Suggested Action</div>
+          <div className="text-sm font-black text-white mt-1">{pending.label || pending.intent}</div>
+          <div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{pending.summary}</div>
+          <div className="flex gap-2 mt-3"><button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button><button onClick={() => setPending(null)} className={T.btnAlt}>Cancel</button></div>
+        </div>}
+        {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
+      </div>
+    </div>}
+    <button onClick={open ? () => setOpen(false) : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice"><Mic size={24}/></button>
+  </div>;
+};
+
 const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenanceLogs, inventoryItems }) => {
   if (!isOpen) return null;
   const today = getToday();
@@ -314,7 +595,7 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
   const alerts = events.filter(e => e.type === 'note' && e.isImportant).slice(0, 5);
   const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today);
   const maint = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status)).slice(0, 5);
-  const low = inventoryItems.filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) <= Number(i.parLevel||0)).slice(0, 6);
+  const low = inventoryItems.filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) < Number(i.parLevel||0)).slice(0, 6);
   return <div className="fixed inset-0 z-[100000] bg-[#0B0E11] text-white p-5 sm:p-8 overflow-y-auto">
     <div className="flex justify-between items-start mb-6"><div><div className="text-[#D4A381] text-sm font-black uppercase tracking-widest">86 Chaos Kitchen TV</div><h1 className="text-4xl sm:text-6xl font-black">{formatDisplayFullDate(today)}</h1></div><button onClick={onClose} className="bg-white text-slate-900 rounded-xl px-4 py-2 font-black uppercase text-xs">Exit</button></div>
     <div className="grid md:grid-cols-3 gap-4">
@@ -343,4 +624,4 @@ const UndoBar = ({ undoItem, clearUndo }) => {
   </div>;
 };
 
-export { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar };
+export { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, VoiceCommandDock, KitchenTVMode, ChangeLogModal, UndoBar };
