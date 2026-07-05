@@ -1,0 +1,2598 @@
+import React, { useState, useEffect } from 'react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { getToken, onMessage } from 'firebase/messaging';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
+import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+
+const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
+  const prepItems = useLiveCollection('prepItems', appUser?.restaurantId, { limitCount: 250 });
+  const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
+  const [subTab, setSubTab] = useState('prep');
+  const [prepDate, setPrepDate] = useState(currentDate);
+
+  // --- USDA Food Safety Standards Engine ---
+  const USDA_CATEGORIES = {
+    'Cold Holding (≤ 41°F)': { max: 41 },
+    'Hot Holding (≥ 135°F)': { min: 135 },
+    'Poultry / Reheat (≥ 165°F)': { min: 165 },
+    'Ground Meats (≥ 155°F)': { min: 155 },
+    'Whole Meats / Fish (≥ 145°F)': { min: 145 }
+  };
+
+  const evaluateTemp = (temp, cat) => {
+    const rules = USDA_CATEGORIES[cat];
+    if (!rules) return 'Unknown';
+    const t = parseFloat(temp);
+    if (rules.max && t > rules.max) return 'Danger';
+    if (rules.min && t < rules.min) return 'Danger';
+    return 'Safe';
+  };
+
+  // Sync internal prepDate with global currentDate
+  useEffect(() => { setPrepDate(currentDate); }, [currentDate]);
+
+  // Permissions
+  const canManageLineChecks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
+
+  // Local selection state (Fixes checkboxes staying checked across days)
+  const [selectedPreps, setSelectedPreps] = useState([]);
+
+  // Prep Form State
+  const [text, setText] = useState(''); 
+  const [station, setStation] = useState('Grill'); 
+  const dbPrepCats = useLiveCollection('prepCategories', appUser?.restaurantId, { limitCount: 100 }); 
+  const displayStations = dbPrepCats.length > 0 ? dbPrepCats.map(c => c.name).sort() : ['Grill', 'Fry', 'Salad/Cold', 'Expo', 'Prep Table'];
+  const [isMaster, setIsMaster] = useState(true);
+  
+  // Task Form State
+  const [taskText, setTaskText] = useState(''); 
+  const [taskCat, setTaskCat] = useState('Cleaning'); 
+  const [taskFreq, setTaskFreq] = useState('daily');
+  const [taskTargetDay, setTaskTargetDay] = useState('Monday'); 
+  const [taskTargetDate, setTaskTargetDate] = useState('1');
+  const [editingTaskId, setEditingTaskId] = useState(null);
+
+  // Line Check State
+  const lineChecks = useLiveCollection('lineCheckItems', appUser?.restaurantId, { limitCount: 150 });
+  const tempLogs = useLiveCollection('tempLogs', appUser?.restaurantId, { limitCount: 150 });
+  
+  const [lcSearch, setLcSearch] = useState('');
+  const [lcName, setLcName] = useState('');
+  const [lcCat, setLcCat] = useState('Cold Holding (≤ 41°F)');
+  const [temps, setTemps] = useState({});
+  const [editLineCheckItem, setEditLineCheckItem] = useState(null);
+
+  // --- PREP LOGIC ---
+  const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
+  
+  const handleAddPrep = async (e) => { 
+    e.preventDefault(); 
+    if(text.trim()) { 
+      await addDoc(collection(db, "prepItems"), { 
+        date: isMaster ? 'MASTER' : prepDate, 
+        text: text.trim(), 
+        station, 
+        isCompleted: false, 
+        completedDates: {}, 
+        isMaster, 
+        qty: 1,
+        restaurantId: appUser.restaurantId
+      }); 
+      setText(''); 
+    } 
+  };
+  
+  const toggleSelection = (id) => {
+    setSelectedPreps(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const togglePrepStatus = async (item) => { 
+    if (item.isMaster) { 
+      const dts = {...(item.completedDates||{})}; 
+      if (dts[prepDate]) {
+        delete dts[prepDate]; 
+      } else {
+        dts[prepDate] = appUser.name;
+      }
+      await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts }); 
+    } else { 
+      await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null }); 
+    } 
+  };
+  
+  const groupedPrep = activePrep.reduce((acc, i) => { const s = i.station || 'General'; if(!acc[s]) acc[s]=[]; acc[s].push(i); return acc; }, {});
+
+  // --- LINE CHECK LOGIC ---
+  const handleAddLineCheck = async (e) => {
+    e.preventDefault();
+    if(lcName.trim()) {
+      await addDoc(collection(db, "lineCheckItems"), {
+        name: lcName.trim(),
+        category: lcCat,
+        restaurantId: appUser.restaurantId
+      });
+      setLcName('');
+    }
+  };
+
+  const handleSaveLineCheckEdit = async (e) => {
+    e.preventDefault();
+    await updateDoc(doc(db, "lineCheckItems", editLineCheckItem.id), {
+      name: editLineCheckItem.name.trim(),
+      category: editLineCheckItem.category
+    });
+    setEditLineCheckItem(null);
+  };
+
+  const handleLogTemp = async (item) => {
+    const val = temps[item.id];
+    if (!val) return;
+    
+    const status = evaluateTemp(val, item.category);
+    
+    await addDoc(collection(db, "tempLogs"), {
+      itemId: item.id,
+      itemName: item.name,
+      category: item.category,
+      temp: parseFloat(val),
+      status: status,
+      loggedBy: appUser.name,
+      date: getToday(),
+      timestamp: new Date().toISOString(),
+      restaurantId: appUser.restaurantId
+    });
+    
+    setTemps({...temps, [item.id]: ''});
+  };
+
+  const filteredLineChecks = lineChecks
+    .filter(lc => (lc.name || '').toLowerCase().includes(lcSearch.toLowerCase()))
+    .sort((a, b) => a.category.localeCompare(b.category));
+
+  // --- TASK LOGIC ---
+  const handleAddTask = async (e) => { 
+    e.preventDefault(); 
+    if(taskText.trim()) { 
+      if (editingTaskId) {
+        await updateDoc(doc(db, "tasks", editingTaskId), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null });
+        setEditingTaskId(null);
+      } else {
+        await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {}, restaurantId: appUser.restaurantId }); 
+      }
+      setTaskText(''); 
+    } 
+  };
+
+  const editTask = (t) => {
+    setTaskText(t.title);
+    setTaskCat(t.category || 'Cleaning');
+    setTaskFreq(t.frequency || 'daily');
+    if (t.frequency === 'weekly') setTaskTargetDay(t.targetDay || 'Monday');
+    if (t.frequency === 'monthly') setTaskTargetDate(t.targetDate || '1');
+    setEditingTaskId(t.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelTaskEdit = () => {
+    setTaskText('');
+    setEditingTaskId(null);
+  };
+  
+  const getTaskPeriodKey = (freq) => {
+    if (freq === 'daily') return prepDate;
+    if (freq === 'weekly') { 
+      const d = new Date(prepDate+'T12:00:00'); 
+      const day = d.getDay(); 
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1)); 
+      return formatDate(d); 
+    }
+    if (freq === 'monthly') return prepDate.substring(0, 7);
+  };
+
+  const toggleTaskStatus = async (task) => {
+    const periodKey = getTaskPeriodKey(task.frequency);
+    const updatedCompletions = { ...(task.completions || {}) };
+    if (updatedCompletions[periodKey]) { 
+      delete updatedCompletions[periodKey]; 
+    } else { 
+      updatedCompletions[periodKey] = { by: appUser.name, at: formatClockTime(new Date()) }; 
+    }
+    await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
+  };
+
+  const renderTasks = (freqFilter) => {
+    const filteredTasks = tasks.filter(t => t.frequency === freqFilter);
+    const grouped = filteredTasks.reduce((acc, t) => { if(!acc[t.category]) acc[t.category]=[]; acc[t.category].push(t); return acc; }, { 'Cleaning': [], 'General': [] });
+    const periodKey = getTaskPeriodKey(freqFilter);
+    
+    return (
+      <div className="space-y-4 mt-4">
+        {canManageLineChecks && (
+          <form onSubmit={handleAddTask} className={`${T.card} p-3 flex flex-col md:flex-row gap-2 items-center bg-[#1A2126]`}>
+            {editingTaskId && <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest px-2 whitespace-nowrap">Editing Task</div>}
+            <input type="text" value={taskText} onChange={e=>setTaskText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-sm font-medium text-white" placeholder={`New ${freqFilter} task...`} required/>
+            <div className="flex w-full md:w-auto gap-2">
+              <select value={taskCat} onChange={e=>setTaskCat(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white"><option>Cleaning</option><option>General</option></select>
+              {freqFilter === 'weekly' && <select value={taskTargetDay} onChange={e=>setTaskTargetDay(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=><option key={d}>{d}</option>)}</select>}
+              {freqFilter === 'monthly' && <select value={taskTargetDate} onChange={e=>setTaskTargetDate(e.target.value)} className="w-1/2 md:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl text-white">{Array.from({length:31}).map((_,i)=><option key={i+1}>{i+1}</option>)}</select>}
+              <button type="submit" className={`${T.btn} px-4 py-2 flex items-center justify-center`}>{editingTaskId ? <Check size={18}/> : <Plus size={18}/>}</button>
+              {editingTaskId && <button type="button" onClick={cancelTaskEdit} className={`${T.btnAlt} px-4 py-2 flex items-center justify-center border-red-900/50 text-red-400 hover:text-red-300`}><X size={18}/></button>}
+            </div>
+          </form>
+        )}
+
+        {['Cleaning', 'General'].map(cat => {
+          if (grouped[cat].length === 0) return null;
+          return (
+            <div key={cat} className={`${T.card} overflow-hidden`}>
+              <div className={T.th}><span>{cat} Tasks</span></div>
+              <div className={`divide-y ${T.border}`}>
+                {grouped[cat].map(t => {
+                  const completion = t.completions?.[periodKey];
+                  const isDone = !!completion;
+                  return (
+                    <div key={t.id} className={`${T.row} flex items-center justify-between gap-3`}>
+                      <div>
+                        <div className={`text-sm font-bold ${isDone ? 'line-through text-slate-500' : 'text-white'}`}>{t.title}</div>
+                        <div className={`text-[9px] font-black uppercase mt-1 flex gap-2`}>
+                          {freqFilter === 'weekly' && <span className="text-[#D4A381]">Due: {t.targetDay}s</span>}
+                          {freqFilter === 'monthly' && <span className="text-[#D4A381]">Due: {t.targetDate}{t.targetDate.endsWith('1') && t.targetDate !== '11' ? 'st' : t.targetDate.endsWith('2') && t.targetDate !== '12' ? 'nd' : t.targetDate.endsWith('3') && t.targetDate !== '13' ? 'rd' : 'th'}</span>}
+                          {isDone && <span className="text-emerald-500 tracking-wider">✓ {completion.by} @ {completion.at}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
+                        {canManageLineChecks && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
+                        {canManageLineChecks && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4 pb-40">
+      
+      {/* EDIT LINE CHECK MODAL */}
+      <Modal isOpen={!!editLineCheckItem} onClose={() => setEditLineCheckItem(null)} title="Edit Line Check">
+        {editLineCheckItem && (
+          <form onSubmit={handleSaveLineCheckEdit} className="space-y-4">
+            <div>
+              <label className={T.label}>Item / Cooler Name</label>
+              <input type="text" value={editLineCheckItem.name} onChange={e=>setEditLineCheckItem({...editLineCheckItem, name: e.target.value})} className={T.input} required />
+            </div>
+            <div>
+              <label className={T.label}>USDA Safe Temp Rule</label>
+              <select value={editLineCheckItem.category} onChange={e=>setEditLineCheckItem({...editLineCheckItem, category: e.target.value})} className={T.input}>
+                {Object.keys(USDA_CATEGORIES).map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
+          </form>
+        )}
+      </Modal>
+
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
+        {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => (
+          <button key={tab} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {tab === 'prep' ? 'Food Prep' : tab === 'line-check' ? 'Line Check' : `${tab} Tasks`}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'line-check' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+              <input type="text" placeholder="Search logs & coolers..." value={lcSearch} onChange={e=>setLcSearch(e.target.value)} className={`${T.input} pl-10`} />
+            </div>
+          </div>
+
+          {canManageLineChecks && (
+            <form onSubmit={handleAddLineCheck} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
+              <input type="text" value={lcName} onChange={e=>setLcName(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add cooler or food item..." required/>
+              <div className="flex w-full sm:w-auto gap-2 items-center">
+                <select value={lcCat} onChange={e=>setLcCat(e.target.value)} className="w-full sm:w-48 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-[#D4A381]">
+                  {Object.keys(USDA_CATEGORIES).map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+                <button type="submit" className={`${T.btn} py-2 px-4 flex-shrink-0`}><Plus size={18}/></button>
+              </div>
+            </form>
+          )}
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>USDA Safety & Temp Log (Today)</div>
+            <div className={`divide-y ${T.border}`}>
+              {filteredLineChecks.length === 0 && <div className="p-6 text-center font-bold text-slate-500 text-sm">No items configured for line check.</div>}
+              {filteredLineChecks.map(item => {
+                // Find latest log for this item TODAY
+                const todaysLogs = tempLogs.filter(l => l.itemId === item.id && l.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const latestLog = todaysLogs.length > 0 ? todaysLogs[0] : null;
+
+                return (
+                  <div key={item.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                    <div className="flex-1">
+                      <div className="font-bold text-white text-base">{item.name}</div>
+                      <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">{item.category}</div>
+                      
+                      {latestLog ? (
+                        <div className={`text-[10px] font-black mt-2 inline-flex items-center gap-2 px-2 py-1 rounded-md border ${latestLog.status === 'Safe' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>
+                          <span className="text-sm">{latestLog.temp}°F</span> 
+                          <span>({latestLog.status})</span>
+                          <span className="opacity-70 font-bold border-l border-current pl-2 ml-1">By {latestLog.loggedBy} at {formatClockTime(latestLog.timestamp)}</span>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-slate-500 font-bold mt-2 uppercase tracking-widest">Not logged yet today</div>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-3 md:self-end">
+                      <div className="flex items-center gap-1 bg-[#12161A] p-1 rounded-lg border border-[#2A353D]">
+                        <input type="number" step="0.1" value={temps[item.id] || ''} onChange={e=>setTemps({...temps, [item.id]: e.target.value})} placeholder="°F" className="w-16 bg-transparent text-white font-black text-center text-sm outline-none" />
+                        <button onClick={() => handleLogTemp(item)} disabled={!temps[item.id]} className="bg-slate-800 text-white disabled:opacity-50 px-3 py-1.5 rounded text-xs font-black uppercase hover:bg-slate-700 transition-colors">Log</button>
+                      </div>
+                      
+                      {canManageLineChecks && (
+                        <div className="flex gap-1 border-l border-[#2A353D] pl-3">
+                          <button onClick={() => setEditLineCheckItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button>
+                          <button onClick={() => { if(window.confirm(`Delete ${item.name}?`)) deleteDoc(doc(db,"lineCheckItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'prep' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-3 flex justify-between items-center bg-[#1A2126]`}>
+            <h3 className={`font-black flex items-center gap-2 text-sm text-white uppercase tracking-wider`}><ClipboardList size={18} className={T.copper}/> Target Date:</h3>
+            <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 bg-[#12161A] border border-[#2A353D] rounded-lg outline-none text-sm font-bold text-[#D4A381] shadow-inner"/>
+          </div>
+          <form onSubmit={handleAddPrep} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
+            <input type="text" value={text} onChange={e=>setText(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add prep item..." required/>
+            <div className="flex w-full sm:w-auto gap-3 items-center">
+              <select value={station} onChange={e=>setStation(e.target.value)} className="w-full sm:w-32 p-2 text-xs font-bold bg-[#12161A] border border-[#2A353D] rounded-xl outline-none text-white">{displayStations.map(s => <option key={s} value={s}>{s}</option>)}</select> 
+              <label className={`flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold ${T.muted} cursor-pointer`}><input type="checkbox" checked={isMaster} onChange={e=>setIsMaster(e.target.checked)} className="w-4 h-4 accent-[#8F6040] bg-[#12161A] border-[#2A353D] rounded"/> Master</label>
+              <button className={`${T.btn} py-2 px-4`}><Plus size={18}/></button>
+            </div>
+          </form>
+          
+          <div className={`${T.card} overflow-hidden`}>
+            {Object.entries(groupedPrep).map(([stationName, items]) => (
+              <div key={stationName}>
+                <div className={T.th}><span>{stationName} Station</span><span className="float-right text-slate-500">{items.filter(i => (i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted)).length}/{items.length} Done</span></div>
+                <div className={`divide-y ${T.border}`}>
+                  {items.map(i=>{
+                    const isDone = i.isMaster ? !!i.completedDates?.[prepDate] : i.isCompleted; 
+                    const doneBy = i.isMaster ? i.completedDates?.[prepDate] : i.completedBy; 
+                    const qty = i.qty ?? 1;
+                    const isSelected = selectedPreps.includes(i.id);
+                    
+                    return (
+                    <div key={i.id} className={`${T.row} ${isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
+                      <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
+                        <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
+                        <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                      </div>
+                    </div>
+                  )})}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className={`fixed bottom-0 left-0 right-0 p-4 bg-[#161D22] border-t ${T.border} z-50 backdrop-blur-md bg-opacity-95`}>
+            <div className="max-w-2xl mx-auto flex gap-3">
+              <button onClick={() => { 
+                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
+                  if(sel.length===0)return; 
+                  const toP=[]; 
+                  sel.forEach(i=>{for(let j=0;j<(i.qty ?? 1);j++)toP.push({...i, printId:`${i.id}-${j}`});}); 
+                  setLabelsToPrint({items:toP, prepDate}); 
+              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print Selected</button>
+              
+              <button onClick={async () => { 
+                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
+                  for(const item of sel){ 
+                      if(item.isMaster){ 
+                          const dts={...(item.completedDates||{})}; 
+                          dts[prepDate]=appUser.name; 
+                          await updateDoc(doc(db,"prepItems",item.id),{completedDates:dts}); 
+                      } else {
+                          await updateDoc(doc(db,"prepItems",item.id),{isCompleted:true, completedBy:appUser.name}); 
+                      }
+                  } 
+                  setSelectedPreps([]);
+              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
+            </div>
+          </div>
+  
+      </div>
+      )}
+
+      {subTab !== 'prep' && subTab !== 'line-check' && <div className="animate-[slideIn_0.2s_ease-out]">{renderTasks(subTab)}</div>}
+    </div>
+  );
+};
+
+const TabInventory = ({ addToast, appUser }) => {
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
+  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { limitCount: 150 });
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
+  const [invTab, setInvTab] = useState('count');
+const [searchTerm, setSearchTerm] = useState(''); 
+  const [groupBy, setGroupBy] = useState('Category');
+  const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  
+  // Fetch invoices securely directly inside this tab
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { limitCount: 120 });
+  const [viewInvoice, setViewInvoice] = useState(null);
+
+  // Inventory Form
+  const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
+  const [editItem, setEditItem] = useState(null); 
+  const [orderOverrides, setOrderOverrides] = useState({}); 
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, vendorId: null, items: [] });
+  
+  // Vendor Form
+  const [vName, setVName] = useState(''); const [vRep, setVRep] = useState(''); const [vPhone, setVPhone] = useState(''); const [vEmail, setVEmail] = useState(''); const [vDays, setVDays] = useState([]); const [vTime, setVTime] = useState('');
+  const [editVendor, setEditVendor] = useState(null);
+
+  // Waste Form States
+  const [wItemId, setWItemId] = useState(''); 
+  const [wQty, setWQty] = useState(''); 
+  const [wReason, setWReason] = useState('Dropped / Spilled');
+  const [editWaste, setEditWaste] = useState(null);
+  const [wSearchTerm, setWSearchTerm] = useState(''); // Search filter for selecting items to burn
+  const [wasteSearch, setWasteSearch] = useState(''); // Search filter for looking up past burn logs
+
+  // AI Invoice Scanner State
+  const [isScanningInvoice, setIsScanningInvoice] = useState(false);
+  const [scannedInvoice, setScannedInvoice] = useState(null);
+
+  // Master Permission Check for Inventory Tabs
+  const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
+
+  // --- LOGIC ---
+  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
+  const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category || 'Other', pfgCode: (editItem.pfgCode || '').trim(), supplierId: editItem.supplierId, packSize: editItem.packSize, yieldQty: parseInt(editItem.yieldQty) || 1, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
+  const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseFloat(newStock) || 0) });
+  const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseFloat(newPar) || 0) });
+  const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
+  
+  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
+const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
+
+const handleLogWaste = async (e) => {
+    e.preventDefault(); 
+    if(!wItemId || !wQty) return; 
+    
+    const item = inventoryItems.find(i => i.id === wItemId); 
+    if(!item) return;
+
+    // 1. Get the raw inputs
+    const unitsWasted = parseFloat(wQty); 
+    const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1; 
+    const pricePerCase = parseFloat(item.price) || 0;
+
+    // 2. Calculate individual unit metrics
+    const pricePerUnit = pricePerCase / yieldPerCase;
+    const totalCostLost = pricePerUnit * unitsWasted;
+    
+    // 3. Calculate how much of a case to deduct from the main stock
+    const stockDeduction = unitsWasted / yieldPerCase; 
+
+    // 4. Save to Database
+    await addDoc(collection(db, "wasteLogs"), { 
+      itemId: item.id, 
+      itemName: item.name, 
+      qty: unitsWasted, 
+      costLost: totalCostLost, 
+      reason: wReason, 
+      loggedBy: appUser.name, 
+      date: getToday(), 
+      timestamp: new Date().toISOString(), 
+      restaurantId: appUser.restaurantId 
+    });
+
+    await updateDoc(doc(db, "inventoryItems", item.id), { 
+      currentStock: Math.max(0, (item.currentStock || 0) - stockDeduction) 
+    });
+
+    setWItemId(''); setWQty(''); setWSearchTerm(''); 
+    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} (${unitsWasted} units) deducted from stock.`);
+  };
+
+  const handleDeleteWaste = async (log) => {
+    if (!window.confirm(`Delete burn log for ${log.itemName} and restore stock?`)) return;
+    const item = inventoryItems.find(i => i.id === log.itemId);
+    if (item) {
+       const yieldDivider = parseFloat(item.yieldQty) || 1;
+       const stockRestoration = (parseFloat(log.qty) || 0) / yieldDivider;
+       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (item.currentStock||0) + stockRestoration) });
+    }
+    await deleteDoc(doc(db, "wasteLogs", log.id));
+    addToast('Log Deleted', 'Stock restored successfully.');
+  };
+
+ const handleSaveWasteEdit = async (e) => {
+    e.preventDefault();
+    const log = editWaste;
+    const item = inventoryItems.find(i => i.id === log.itemId);
+    
+    if (item) {
+       const originalLog = wasteLogs.find(w => w.id === log.id);
+       const oldQty = parseFloat(originalLog.qty) || 0;
+       const newQty = parseFloat(log.qty) || 0;
+       
+       const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1;
+       const pricePerCase = parseFloat(item.price) || 0;
+       const pricePerUnit = pricePerCase / yieldPerCase;
+
+       const stockDifference = (newQty - oldQty) / yieldPerCase; 
+       const newCostLost = pricePerUnit * newQty;
+
+       await updateDoc(doc(db, "inventoryItems", item.id), { 
+         currentStock: Math.max(0, (item.currentStock || 0) - stockDifference) 
+       });
+       await updateDoc(doc(db, "wasteLogs", log.id), { 
+         qty: newQty, 
+         reason: log.reason, 
+         costLost: newCostLost 
+       });
+    } else {
+       await updateDoc(doc(db, "wasteLogs", log.id), { qty: log.qty, reason: log.reason });
+    }
+    
+    setEditWaste(null);
+    addToast('Log Updated', 'Burn log and stock adjusted.');
+  };
+
+  const itemsToOrder = inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : (i.currentStock || 0) < (i.parLevel || 0); });
+  const vendorsWithDeficits = vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id));
+  const pendingVendors = vendors.filter(v => inventoryItems.some(i => i.supplierId === v.id && (i.pendingQty || 0) > 0));
+
+  const handleReviewOrder = (vendorId) => {
+    const list = itemsToOrder.filter(i => i.supplierId === vendorId).map(item => { const deficit = Math.max(0, (item.parLevel||0) - (item.currentStock||0)); const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.ceil(deficit); return { ...item, orderQty: qty }; }).filter(i => i.orderQty > 0);
+    if (list.length === 0) return addToast('Order Empty', `No deficits for this vendor.`);
+    setConfirmModal({ isOpen: true, vendorId, items: list });
+  };
+
+const executeOrder = async (method) => {
+    const { vendorId, items } = confirmModal; const vendor = vendors.find(v => v.id === vendorId);
+    
+    let bodyText = items.map(i => `${i.orderQty}x ${i.pfgCode ? `[${i.pfgCode}] ` : ''}${i.name} (${i.packSize})`).join('%0D%0A');
+    let fullText = `Order via 86chaos%0D%0A%0D%0A${bodyText}`;
+
+    // UNIVERSAL FAILSAFE: Always copy to clipboard in the background just in case
+    try { await navigator.clipboard.writeText(decodeURIComponent(fullText)); } catch (e) { console.log(e); }
+
+    if (method === 'csv') {
+      let csvContent = "data:text/csv;charset=utf-8,Qty,Code,Name,Pack Size\n" + items.map(i => `${i.orderQty},"${i.pfgCode||''}","${i.name}","${i.packSize||''}"`).join("\n");
+      const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", `Order_${(vendor?.name||'Vendor').replace(/\s+/g,'_')}_${getToday()}.csv`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      addToast('Exported', 'Order downloaded as Spreadsheet.');
+    } else if (method === 'email') {
+      const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
+      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
+      else { window.location.href = emailUrl; }
+    } else if (method === 'sms') {
+      const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
+      if (smsUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened SMS, just tap and PASTE.'); window.location.href = `sms:${vendor?.phone||''}`; } 
+      else { window.location.href = smsUrl; }
+    } else if (method === 'edi') {
+      
+      // 1. Check for Endpoint
+      if (!vendor?.ediEndpoint) {
+        return addToast('Missing Config', 'Please add an EDI API Webhook URL in the Vendor Settings first.');
+      }
+      
+      addToast('Transmitting', `Establishing secure handshake with ${vendor.name}...`);
+      
+      // 2. Compile Machine-Readable Payload
+      const ediPayload = {
+        restaurantId: appUser.restaurantId,
+        timestamp: new Date().toISOString(),
+        items: items.map(i => ({ sku: i.pfgCode || 'UNKNOWN', quantity: i.orderQty, packSize: i.packSize }))
+      };
+
+      // 3. Transmit (Currently simulating the API call)
+      try {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        console.log(`[EDI SIMULATION] Payload sent to ${vendor.ediEndpoint}:`, ediPayload);
+        addToast('EDI Success', `Order securely injected into ${vendor.name}'s system.`);
+      } catch (err) {
+        addToast('EDI Failure', 'Connection timed out. Retrying...');
+        return; // Abort stock updates on failure so the user can try again
+      }
+
+    } else {
+      addToast('Copied', 'Order list copied to clipboard!');
+    }
+    
+    // Update Pending Stock
+    for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
+    setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
+  };
+
+  const handleReceiveDelivery = async (vendorId) => {
+    const itemsToReceive = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
+    for (const item of itemsToReceive) {
+      await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 });
+    }
+    addToast('Delivery Accepted', `Stock automatically updated for ${itemsToReceive.length} items.`);
+  };
+
+  const handleUpdatePendingQty = async (itemId, newQty) => {
+    await updateDoc(doc(db, "inventoryItems", itemId), { pendingQty: Math.max(0, parseInt(newQty) || 0) });
+  };
+
+  const handleCancelDelivery = async (vendorId) => {
+    if (!window.confirm("Cancel this dispatched order? This will clear all pending incoming stock for this vendor.")) return;
+    const itemsToCancel = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
+    for (const item of itemsToCancel) {
+      await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: 0 });
+    }
+    addToast('Order Canceled', 'Pending quantities cleared.');
+  };
+
+  // --- CSV INVENTORY UPLOAD ---
+  const handleCSVUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!window.confirm(`Upload ${file.name} to your inventory?`)) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const rows = text.split('\n').filter(row => row.trim());
+        let addedCount = 0;
+        for (let i = 1; i < rows.length; i++) {
+          const cols = rows[i].split(/(?!\B"[^"]*),(?![^"]*"\B)/).map(c => c.trim().replace(/^"|"$/g, ''));
+          if (cols.length < 2) continue; 
+          
+          const name = cols[0];
+          const category = cols[1] || 'Other';
+          const code = cols[2] || '';
+          const packSize = cols[3] || '1 CS';
+          const yieldQty = parseFloat(cols[4]) || 1;
+          const price = parseFloat(cols[5]) || 0;
+          const vendorName = cols[6] || 'Unassigned Vendor';
+
+          let vId = '';
+          let existingVendor = vendors.find(v => v.name.toLowerCase() === vendorName.toLowerCase());
+          
+          if (existingVendor) {
+            vId = existingVendor.id;
+          } else {
+            const newVRef = await addDoc(collection(db, "vendors"), { name: vendorName, rep: "", email: "", phone: "", restaurantId: appUser.restaurantId });
+            vId = newVRef.id;
+            vendors.push({id: vId, name: vendorName}); 
+          }
+
+          await addDoc(collection(db, "inventoryItems"), {
+            name, category, pfgCode: code, packSize, yieldQty, price, parLevel: 0,
+            lastOrderedQty: 0, lastOrderedDate: null, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, restaurantId: appUser.restaurantId
+          });
+          addedCount++;
+        }
+        addToast("Upload Complete", `Successfully imported ${addedCount} items.`);
+      } catch (err) {
+        addToast("Error", "Failed to parse CSV file. Ensure it matches the exact template format.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; 
+  };
+
+// --- INVOICE SCANNER (NOW WITH COMPRESSION) ---
+  const handleScanInvoice = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsScanningInvoice(true);
+    addToast('Scanning Invoice', 'Compressing image and extracting data...');
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = async () => {
+        // Force compression so Vercel doesn't crash on payloads > 4.5MB
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
+        const base64Data = base64Compressed.split(',')[1];
+
+        try {
+          const response = await secureFetch('/api/scan-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileBase64: base64Data, mimeType: 'image/jpeg' })
+          });
+
+          // Prevent the "Unexpected token A" HTML crash
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+             throw new Error("Vercel Server Error: Payload too large or backend crashed.");
+          }
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to scan invoice.');
+          
+          const reconciledItems = (data.lineItems || []).map(item => {
+             const match = inventoryItems.find(inv => 
+                inv.name.toLowerCase() === item.itemName.toLowerCase() || 
+                (inv.pfgCode && item.itemName.includes(inv.pfgCode))
+             );
+             return { ...item, matchedItemId: match ? match.id : "" };
+          });
+
+          setScannedInvoice({ ...data, lineItems: reconciledItems });
+          addToast('Success', 'Invoice extracted! Please verify matched items.');
+        } catch (err) {
+          addToast('Error', err.message);
+        } finally {
+          setIsScanningInvoice(false);
+        }
+      };
+    };
+    e.target.value = '';
+  };
+
+  const handleApproveInvoice = async () => {
+     try {
+       // 1. Log the invoice record for history
+       await addDoc(collection(db, "invoices"), {
+         ...scannedInvoice,
+         restaurantId: appUser.restaurantId,
+         processedAt: new Date().toISOString(),
+         processedBy: appUser.name
+       });
+
+       // 2. Resolve Vendor (Auto-Create if Missing)
+       let vId = '';
+       let existingVendor = vendors.find(v => v.name.toLowerCase() === (scannedInvoice.vendorName || '').toLowerCase());
+       
+       if (existingVendor) {
+          vId = existingVendor.id;
+       } else if (scannedInvoice.vendorName) {
+          const newVRef = await addDoc(collection(db, "vendors"), { 
+            name: scannedInvoice.vendorName, 
+            rep: "", email: "", phone: "", 
+            restaurantId: appUser.restaurantId 
+          });
+          vId = newVRef.id;
+       }
+
+       // 3. Loop through and apply stock updates OR create new items
+       let updateCount = 0;
+       let newCount = 0;
+       
+for (const item of scannedInvoice.lineItems) {
+          // Catch every possible key name the AI might use for the SKU/Product Code
+          const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
+
+if (item.matchedItemId === 'CREATE_NEW') {
+             // Smart Auto-Categorizer
+             const n = (item.itemName || '').toLowerCase();
+             let autoCat = 'Other';
+             if (n.includes('beef') || n.includes('chicken') || n.includes('pork') || n.includes('steak') || n.includes('bacon') || n.includes('sausage') || n.includes('turkey')) autoCat = 'Meat';
+             else if (n.includes('lettuce') || n.includes('tomato') || n.includes('onion') || n.includes('potato') || n.includes('apple') || n.includes('lemon') || n.includes('lime') || n.includes('pepper') || n.includes('produce')) autoCat = 'Produce';
+             else if (n.includes('milk') || n.includes('cheese') || n.includes('cream') || n.includes('butter') || n.includes('yogurt') || n.includes('dairy')) autoCat = 'Dairy';
+             else if (n.includes('bread') || n.includes('bun') || n.includes('roll') || n.includes('tortilla') || n.includes('dough')) autoCat = 'Bakery';
+             else if (n.includes('fish') || n.includes('shrimp') || n.includes('salmon') || n.includes('crab') || n.includes('seafood')) autoCat = 'Seafood';
+             else if (n.includes('fry') || n.includes('fries') || n.includes('frozen') || n.includes('ice')) autoCat = 'Frozen';
+             else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
+             else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
+
+             await addDoc(collection(db, "inventoryItems"), {
+                name: item.itemName,
+                category: autoCat, 
+                pfgCode: incomingCode, 
+                supplierId: vId,
+                packSize: item.packSize || '1 CS',
+                yieldQty: 1, 
+                price: parseFloat(item.unitPrice) || 0,
+                parLevel: 0,
+                currentStock: parseFloat(item.quantity) || 0,
+                pendingQty: 0,
+                isStarred: false,
+                lastOrderedDate: null,
+                restaurantId: appUser.restaurantId
+             });
+             newCount++;
+          } else if (item.matchedItemId) {
+             const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
+             if (invItem) {
+                const addedStock = parseFloat(item.quantity) || 0;
+                const updates = { 
+                   currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
+                };
+                
+                // If the item doesn't have a product code yet, but the invoice found one, save it
+                if (!invItem.pfgCode && incomingCode) {
+                   updates.pfgCode = incomingCode;
+                }
+
+                await updateDoc(doc(db, "inventoryItems", invItem.id), updates);
+                updateCount++;
+             }
+          }
+       }
+
+       addToast('Invoice Processed', `Updated ${updateCount} items and added ${newCount} new items.`);
+       setScannedInvoice(null);
+     } catch(e) {
+       addToast('Error', 'Failed to process invoice updates.');
+     }
+  };
+
+const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { 
+    const key = groupBy === 'Vendor' ? (vendors.find(v=>v.id===item.supplierId)?.name || 'Unassigned Vendor') : (item.category || 'Uncategorized');
+    if (!acc[key]) acc[key] = []; acc[key].push(item); return acc; 
+  }, {});
+  const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-4 pb-24">
+      
+      {/* INVOICE RECONCILIATION MODAL */}
+      <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Reconcile & Approve Invoice">
+        {scannedInvoice && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+              <div>
+                <div className="font-black text-white text-lg">{scannedInvoice.vendorName}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate}</div>
+              </div>
+<div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
+            </div>
+            
+            <div className="flex justify-between items-center mt-2 mb-1">
+              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest pl-1">Stock Matcher</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { const newItems = scannedInvoice.lineItems.map(i => ({...i, matchedItemId: ''})); setScannedInvoice({...scannedInvoice, lineItems: newItems}); }} className="text-[9px] bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white px-2 py-1 rounded font-black uppercase tracking-widest transition-colors shadow-sm">
+                  Clear All
+                </button>
+                <button type="button" onClick={() => { const newItems = scannedInvoice.lineItems.map(i => ({...i, matchedItemId: i.matchedItemId || 'CREATE_NEW'})); setScannedInvoice({...scannedInvoice, lineItems: newItems}); }} className="text-[9px] bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 px-2 py-1 rounded font-black uppercase tracking-widest transition-colors shadow-sm">
+                  Mark Unmatched as New
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {(scannedInvoice.lineItems || []).map((item, idx) => (
+                <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+<div className="font-bold text-white text-sm flex items-center gap-1.5">
+  {item.productCode && <span className="text-[#D4A381] font-black">[{item.productCode}]</span>}
+  {item.itemName}
+</div>                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
+                        {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
+                      </div>
+                    </div>
+                    <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
+                  </div>
+                  
+                  {/* RECONCILIATION DROPDOWN */}
+                  <select 
+                    value={item.matchedItemId} 
+                    onChange={(e) => {
+                       const newItems = [...scannedInvoice.lineItems];
+                       newItems[idx].matchedItemId = e.target.value;
+                       setScannedInvoice({...scannedInvoice, lineItems: newItems});
+                    }}
+                    className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
+                  >
+                    <option value="">-- Do Not Import / Skip --</option>
+                    <option value="CREATE_NEW">➕ Add as New Item</option>
+                    {inventoryItems.map(inv => (
+                      <option key={inv.id} value={inv.id}>{inv.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Update Stock</button>
+          </div>
+        )}
+      </Modal>
+
+      {/* VIEW PAST INVOICE DETAILS MODAL */}
+      <Modal isOpen={!!viewInvoice} onClose={() => setViewInvoice(null)} title="Invoice Details">
+        {viewInvoice && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
+              <div>
+                <div className="font-black text-white text-lg">{viewInvoice.vendorName}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{viewInvoice.invoiceDate}</div>
+              </div>
+              <div className="text-xl font-black text-emerald-400">${Number(viewInvoice.invoiceTotal || 0).toFixed(2)}</div>
+            </div>
+            
+            <div className="max-h-60 overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {(viewInvoice.lineItems || []).map((item, idx) => (
+                <div key={idx} className="p-2.5 bg-[#1A2126] flex justify-between items-center">
+                  <div>
+                    <div className="font-bold text-white text-sm">{item.itemName}</div>
+                    <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                      {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
+                    </div>
+                    {item.matchedItemId && item.matchedItemId !== 'CREATE_NEW' && <div className="text-[8px] text-emerald-500 font-black uppercase mt-1">Matched to Inventory</div>}
+                    {item.matchedItemId === 'CREATE_NEW' && <div className="text-[8px] text-blue-400 font-black uppercase mt-1">Added as New Item</div>}
+                  </div>
+                  <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setViewInvoice(null)} className={`w-full ${T.btnAlt} py-3`}>Close</button>
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`}>
+         <div className="space-y-4">
+           <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
+           <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
+<div className="grid grid-cols-2 gap-2">
+<button onClick={() => executeOrder('edi')} className={`w-full col-span-2 bg-blue-900/20 text-blue-400 font-black tracking-widest uppercase border border-blue-900/50 hover:bg-blue-900/40 transition-all flex items-center justify-center gap-2 py-3 text-xs rounded-xl shadow-[0_0_10px_rgba(59,130,246,0.1)]`}>
+                <Globe size={16}/> Direct EDI Sync
+                <span className="ml-2 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Beta</span>
+              </button>              <button onClick={() => executeOrder('email')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}><Send size={16}/> Email</button>
+              <button onClick={() => executeOrder('sms')} className={`w-full ${T.btn} flex items-center justify-center gap-2 py-2 text-xs`}><MessageSquare size={16}/> Text</button>
+             <button onClick={() => executeOrder('csv')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}><Package size={16}/> CSV Export</button>
+             <button onClick={() => executeOrder('copy')} className={`w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-[#D4A381] transition-all px-2 py-2 text-xs flex items-center justify-center gap-2`}><ClipboardList size={16}/> Copy List</button>
+           </div>
+         </div>
+      </Modal>
+
+      <Modal isOpen={!!editVendor} onClose={() => setEditVendor(null)} title="Edit Vendor">
+        {editVendor && (
+          <form onSubmit={handleSaveVendorEdit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3"><input type="text" value={editVendor.name} onChange={e=>setEditVendor({...editVendor, name: e.target.value})} className={T.input} required placeholder="Company Name"/><input type="text" value={editVendor.rep || ''} onChange={e=>setEditVendor({...editVendor, rep: e.target.value})} className={T.input} placeholder="Rep Name"/></div>
+      <div className="grid grid-cols-2 gap-3"><input type="tel" value={editVendor.phone || ''} onChange={e=>setEditVendor({...editVendor, phone: e.target.value})} className={T.input} placeholder="Phone"/><input type="email" value={editVendor.email || ''} onChange={e=>setEditVendor({...editVendor, email: e.target.value})} className={T.input} placeholder="Email"/></div>
+            <div>
+              <label className={T.label}>Direct EDI / API Webhook URL</label>
+              <input type="url" value={editVendor.ediEndpoint || ''} onChange={e=>setEditVendor({...editVendor, ediEndpoint: e.target.value})} className={`${T.input} border-blue-900/50 focus:border-blue-500`} placeholder="https://api.sysco.com/v1/orders..." />
+            </div>
+            <div>
+              <label className={T.label}>Order Cut-Off Time</label>
+              <input type="time" value={editVendor.cutOffTime || ''} onChange={e=>setEditVendor({...editVendor, cutOffTime: e.target.value})} className={T.input}/>
+            </div>
+            <div>
+              <label className={T.label}>Order Cut-Off Days</label>
+              <div className="flex flex-wrap gap-2 mt-1">{weekDays.map(d=><button type="button" key={d} onClick={()=>toggleVendorDay(d, true)} className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors ${editVendor.cutOffDays?.includes(d) ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:text-white'}`}>{d.substring(0,3)}</button>)}</div>
+            </div>
+            <button type="submit" className={`w-full ${T.btn} mt-2`}>Save Vendor Details</button>
+          </form>
+        )}
+      </Modal>
+
+      <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b ${T.border} pb-3`}>
+        <h2 className="text-2xl font-black flex items-center gap-2 text-white"><ClipboardList size={24} className={T.copper}/> Inventory</h2>
+        <div className={`bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
+          <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
+          {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
+          {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
+<button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>
+            🚨 Burn Log <span className="ml-1 bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+          </button>        </div>
+      </div>
+
+{invTab === 'count' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input type="text" placeholder="Search product or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={`${T.input} flex-1`} />
+            <select value={groupBy} onChange={e => setGroupBy(e.target.value)} className={`${T.input} sm:w-48 font-bold`}>
+              <option value="Category">Group by Category</option>
+              <option value="Vendor">Group by Vendor</option>
+            </select>
+          </div>
+          {Object.entries(groupedItems).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
+            <div key={category} className="space-y-2">
+              <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
+                  <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
+                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
+                    <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
+                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
+                      <div className={`h-6 w-px bg-[#2A353D]`}></div>
+                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, (item.currentStock||0) - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>-</button><span className={`w-6 text-center font-black text-sm ${(item.currentStock||0) < (item.parLevel||0) ? 'text-red-500' : 'text-white'}`}>{Number(item.currentStock||0).toFixed(2).replace(/\.00$/, '')}</span><button onClick={() => updateStock(item.id, (item.currentStock||0) + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>+</button></div></div>
+                    </div>
+                  </div>
+                ))}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasInvPerms && invTab === 'order' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          
+          {pendingVendors.length > 0 && (
+            <div className="mb-6 space-y-4">
+              <h3 className="text-sm font-black text-emerald-400 border-b border-[#2A353D] pb-2 uppercase tracking-widest">Inbound Deliveries</h3>
+              {pendingVendors.map(vendor => {
+                 const vItems = inventoryItems.filter(i => i.supplierId === vendor.id && (i.pendingQty || 0) > 0);
+                 return (
+                   <div key={`pending-${vendor.id}`} className={`${T.card} overflow-hidden border-emerald-900/50`}>
+                     <div className={`p-4 bg-[#12161A] border-b ${T.border} flex justify-between items-center`}>
+                       <h3 className="font-black text-lg text-white">{vendor.name} Delivery</h3>
+                       <span className={`bg-emerald-900/20 border border-emerald-500/50 text-emerald-400 px-3 py-1 rounded-full font-black text-[10px] uppercase`}>{vItems.length} Pending</span>
+                     </div>
+                     <div className="p-4 space-y-2">
+                       {vItems.map(item => (
+                          <div key={item.id} className="flex justify-between items-center text-sm font-bold text-slate-300">
+                            <span className="truncate pr-4">{item.name} <span className="text-[10px] text-slate-500 font-normal">({item.packSize})</span></span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-400 font-black">+</span>
+                              <input type="number" min="0" value={item.pendingQty} onChange={(e) => handleUpdatePendingQty(item.id, e.target.value)} className="w-16 bg-[#1A2126] border border-[#2A353D] text-emerald-400 font-black text-center py-1 rounded outline-none" />
+                            </div>
+                          </div>
+                       ))}
+                     </div>
+                     <div className={`p-4 bg-[#12161A] border-t ${T.border} flex gap-2`}>
+                       <button onClick={() => handleReceiveDelivery(vendor.id)} className={`flex-1 bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-emerald-400 hover:text-white font-black py-2 rounded-xl transition-colors`}>✅ Accept & Add</button>
+                       <button onClick={() => handleCancelDelivery(vendor.id)} className={`px-4 bg-red-900/20 hover:bg-red-900 border border-red-500/50 text-red-400 hover:text-white font-black py-2 rounded-xl transition-colors`} title="Cancel Order"><X size={18}/></button>
+                     </div>
+                   </div>
+                 )
+              })}
+            </div>
+          )}
+
+          {vendorsWithDeficits.length === 0 ? <div className={`${T.card} p-8 text-center text-slate-400 font-bold`}>No deficit alerts.</div> : vendorsWithDeficits.map(vendor => {
+              const vendorItems = itemsToOrder.filter(i => i.supplierId === vendor.id);
+              return (
+                <div key={vendor.id} className={`${T.card} overflow-hidden`}>
+                  <div className={`p-4 bg-[#12161A] border-b ${T.border} flex justify-between items-center`}><h3 className="font-black text-lg text-white">{vendor.name} Order</h3><span className={`bg-[#1A2126] border ${T.border} ${T.copper} px-3 py-1 rounded-full font-black text-[10px] uppercase`}>{vendorItems.length} Items</span></div>
+                  <table className="w-full text-left">
+                    <tbody className={`divide-y ${T.border}`}>{vendorItems.map(item => {
+                      const deficit = Math.max(0, (item.parLevel||0) - (item.currentStock||0));
+                      const currentOrder = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.ceil(deficit);
+                      return (
+                        <tr key={item.id} className={T.row}>
+                          <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel||0}   Case: ${Number(item.price||0).toFixed(2)}</span></td>
+                          <td className="p-3"><div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className={`w-12 h-8 text-center font-black bg-[#12161A] border ${T.border} ${T.copper} rounded-lg outline-none`}/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>+</button></div></td>
+                        </tr>
+                      )
+                    })}</tbody>
+                  </table>
+                  <div className={`p-4 bg-[#12161A] border-t ${T.border} text-right`}><button onClick={()=>handleReviewOrder(vendor.id)} className={`${T.btn} px-4 py-2 flex items-center justify-center gap-2 ml-auto`}><Check size={16}/> Dispatch</button></div>
+                </div>
+              )
+            })
+          }
+        </div>
+      )}
+
+      {hasInvPerms && invTab === 'manage' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <Modal isOpen={!!editItem} onClose={() => setEditItem(null)} title="Edit Item">
+             {editItem && (
+               <form onSubmit={handleSaveEdit} className="space-y-3">
+                 <div className="grid grid-cols-2 gap-3">
+                   <div className="col-span-2 sm:col-span-1">
+                     <label className={T.label}>Product Number / SKU</label>
+                     <input type="text" value={editItem.pfgCode || ''} onChange={e => setEditItem({...editItem, pfgCode: e.target.value})} className={T.input} />
+                   </div>
+                   <div className="col-span-2 sm:col-span-1">
+                     <label className={T.label}>Name</label>
+                     <input type="text" value={editItem.name} onChange={e => setEditItem({...editItem, name: e.target.value})} className={T.input} required />
+                   </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div>
+                     <label className={T.label}>Category</label>
+                     <select value={editItem.category || 'Produce'} onChange={e => setEditItem({...editItem, category: e.target.value})} className={T.input}>
+                       {['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}
+                     </select>
+                   </div>
+                   <div>
+                     <label className={T.label}>Vendor</label>
+                     <select value={editItem.supplierId || ''} onChange={e => setEditItem({...editItem, supplierId: e.target.value})} className={T.input} required>
+                       <option value="">Select...</option>
+                       {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                     </select>
+                   </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div>
+                     <label className={T.label}>Case Price ($)</label>
+                     <input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} />
+                   </div>
+                   <div>
+                     <label className={T.label}>Units per Case (Yield)</label>
+                     <input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required />
+                   </div>
+                 </div>
+                 <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
+               </form>
+             )}
+          </Modal>
+
+          <div className="flex flex-col gap-3 mb-6">
+            
+            {/* INVOICE SCANNER: Split Camera & Upload */}
+            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
+               <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
+                  {isScanningInvoice ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
+                  <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+               </label>
+               <label className="flex-1 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381] font-black uppercase tracking-widest text-[11px] sm:text-xs" title="Upload Photo or PDF">
+                  <span>📄 Scan Invoice (PDF/Photo)</span>
+                  <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+               </label>
+            </div>
+
+            {/* CSV IMPORT */}
+            <label className={`flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>
+              <span className="text-[11px] sm:text-xs">📊 Import CSV</span>
+              <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
+            </label>
+
+          </div>
+
+          <form onSubmit={handleAddItem} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+            <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add New Item</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+              <input type="text" placeholder="Prod # / SKU" value={newItemCode} onChange={e=>setNewItemCode(e.target.value)} className={`${T.input} col-span-2 sm:col-span-1 py-1.5 text-xs`} />
+              <input type="text" placeholder="Item Name..." value={newItemName} onChange={e=>setNewItemName(e.target.value)} className={`${T.input} col-span-2 py-1.5 text-xs`} required/>
+              <select value={newItemCat} onChange={e=>setNewItemCat(e.target.value)} className={`${T.input} col-span-2 sm:col-span-1 py-1.5 text-xs`}><option disabled value="">Category...</option>{['Produce', 'Meat', 'Seafood', 'Dairy', 'Bakery', 'Frozen', 'Dry Goods', 'Supplies', 'Beverage', 'Other'].map(c=><option key={c} value={c}>{c}</option>)}</select>
+              <select value={newItemSupplier} onChange={e=>setNewItemSupplier(e.target.value)} className={`${T.input} col-span-2 sm:col-span-1 py-1.5 text-xs`} required><option value="">Vendor...</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>
+              <input type="number" step="0.01" placeholder="Case $" value={newItemPrice} onChange={e=>setNewItemPrice(e.target.value)} className={`${T.input} col-span-1 py-1.5 text-xs`}/>
+              <input type="number" min="1" placeholder="Yield" value={newItemYield} onChange={e=>setNewItemYield(e.target.value)} className={`${T.input} col-span-1 py-1.5 text-xs`} required/>
+            </div>
+            <div className="flex justify-end mt-2">
+              <button type="submit" className={`w-full sm:w-auto ${T.btn} py-2 px-6`}><Plus size={18} className="inline mr-2"/> Add to Master List</button>
+            </div>
+          </form>
+
+          {/* SEARCH BAR */}
+          <div className="relative w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#D4A381]" size={20}/>
+            <input type="text" placeholder="Search master list by name or product number..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
+          </div>
+
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={() => { if(window.confirm(`Are you sure you want to delete ${item.name}?`)) deleteDoc(doc(db,"inventoryItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+        </div>
+      )}
+
+      {hasInvPerms && invTab === 'vendors' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <form onSubmit={handleAddVendor} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+            <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add Vendor</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Company Name..." value={vName} onChange={e=>setVName(e.target.value)} className={T.input} required/><input type="text" placeholder="Rep Name..." value={vRep} onChange={e=>setVRep(e.target.value)} className={T.input}/><input type="tel" placeholder="Phone (For SMS Orders)" value={vPhone} onChange={e=>setVPhone(e.target.value)} className={T.input}/><input type="email" placeholder="Email (For PDF Orders)" value={vEmail} onChange={e=>setVEmail(e.target.value)} className={T.input}/></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className={T.label}>Cut-Off Time</label><input type="time" value={vTime} onChange={e=>setVTime(e.target.value)} className={T.input}/></div>
+              <div><label className={T.label}>Cut-Off Days</label><div className="flex flex-wrap gap-1 mt-1">{weekDays.map(d=><button type="button" key={d} onClick={()=>toggleVendorDay(d)} className={`px-2 py-1 rounded-md text-[10px] font-bold border transition-colors ${vDays.includes(d) ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#12161A] text-slate-400 border-[#2A353D]'}`}>{d.substring(0,3)}</button>)}</div></div>
+            </div>
+            <button type="submit" className={`w-full ${T.btn} py-2`}>Save Vendor</button>
+          </form>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><div className="flex justify-between items-start"><h4 className="font-black text-white text-lg">{v.name}</h4><button onClick={()=>setEditVendor(v)} className="text-slate-400 hover:text-white"><Edit size={14}/></button></div><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p><p className="text-[#D4A381] mt-2">Cut-Off: {v.cutOffDays?.length > 0 ? v.cutOffDays.join(', ') : 'None'} {v.cutOffTime ? `@ ${v.cutOffTime}` : ''}</p></div><button onClick={()=>deleteDoc(doc(db,"vendors",v.id))} className="mt-4 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
+        </div>
+      )}
+
+      {hasInvPerms && invTab === 'invoices' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
+              <h3 className="font-black text-sm text-white flex items-center gap-2">Invoice History</h3>
+              <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{invoices.length} Total</span>
+            </div>
+            <div className={`divide-y ${T.border} max-h-[60vh] overflow-y-auto custom-scrollbar`}>
+              {invoices.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 font-bold">No invoices logged yet.</div>
+              ) : (
+                invoices.sort((a,b) => new Date(b.processedAt || 0) - new Date(a.processedAt || 0)).map(inv => (
+                  <div key={inv.id} className={`${T.row} flex justify-between items-center p-4`}>
+                    <div>
+                      <div className="font-black text-white text-base">{inv.vendorName}</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Inv Date: {inv.invoiceDate}</div>
+                      <div className="text-[9px] text-slate-500 mt-1">Processed by {inv.processedBy} on {new Date(inv.processedAt).toLocaleDateString()}</div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-emerald-400 font-black text-lg">${Number(inv.invoiceTotal || 0).toFixed(2)}</div>
+                      <button onClick={() => setViewInvoice(inv)} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">View</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {invTab === 'waste' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          
+          <Modal isOpen={!!editWaste} onClose={() => setEditWaste(null)} title="Edit Burn Log">
+            {editWaste && (
+              <form onSubmit={handleSaveWasteEdit} className="space-y-3">
+                <div><label className={T.label}>Item</label><input type="text" value={editWaste.itemName} disabled className={`${T.input} opacity-50 cursor-not-allowed`} /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={T.label}>Qty Wasted</label><input type="number" min="1" value={editWaste.qty} onChange={e=>setEditWaste({...editWaste, qty: e.target.value})} className={T.input} required/></div>
+                  <div><label className={T.label}>Reason</label><select value={editWaste.reason} onChange={e=>setEditWaste({...editWaste, reason: e.target.value})} className={T.input}><option>Dropped / Spilled</option><option>Expired / Bad Quality</option><option>Cooked Incorrectly</option><option>Comped</option></select></div>
+                </div>
+                <button type="submit" className={`w-full ${T.btn} mt-2`}>Update & Adjust Stock</button>
+              </form>
+            )}
+          </Modal>
+
+          <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
+<h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">
+              🚨 The Burn Log
+              <span className="bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+            </h3>            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+              
+              {/* THE FILTERABLE DROPDOWN */}
+              <div className="space-y-2">
+                <input type="text" placeholder="Type to filter inventory..." value={wSearchTerm} onChange={e=>setWSearchTerm(e.target.value)} className={`${T.input} py-2 text-xs border-red-900/30 focus:border-red-500`} />
+                <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required>
+                  <option value="">Select Item to Burn...</option>
+                  {inventoryItems
+                    .filter(i => (i.name||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()) || (i.pfgCode||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()))
+                    .map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <input type="number" min="0" step="any" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
+                <span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span>
+              </div>
+              
+              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}>
+                <option>Dropped / Spilled</option>
+                <option>Expired / Bad Quality</option>
+                <option>Cooked Incorrectly</option>
+                <option>Comped</option>
+              </select>
+            </div>
+            <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors mt-2`}>
+              Log Waste & Deduct Stock
+            </button>
+          </form>
+          
+          {/* SEARCH BAR */}
+          <div className="relative w-full mb-4">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-red-400" size={20}/>
+            <input type="text" placeholder="Search logs by item, reason, person, or date..." value={wasteSearch} onChange={(e)=>setWasteSearch(e.target.value)} className={`${T.input} pl-12 border-red-900/30 focus:border-red-500/50`}/>
+          </div>
+
+          <div className={`${T.card} divide-y ${T.border}`}>
+            <div className={T.th}><span>{wasteSearch ? 'Search Results' : "Today's Burn"}</span></div>
+            {wasteLogs.filter(w => wasteSearch ? (w.itemName+w.reason+w.loggedBy+w.date).toLowerCase().includes(wasteSearch.toLowerCase()) : w.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).map(w => (
+              <div key={w.id} className={`${T.row} flex justify-between items-center`}>
+                <div className="flex-1"> 
+                  <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.date} • {w.reason}   By {w.loggedBy}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div>
+                  <div className="flex gap-1 border-l border-[#2A353D] pl-3 ml-1">
+                    <button onClick={() => setEditWaste({...w})} className="p-1.5 text-slate-400 hover:text-white transition-colors"><Edit size={14}/></button>
+                    <button onClick={() => handleDeleteWaste(w)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {wasteLogs.filter(w => wasteSearch ? (w.itemName+w.reason+w.loggedBy+w.date).toLowerCase().includes(wasteSearch.toLowerCase()) : w.date === getToday()).length === 0 && <div className="p-4 text-center text-slate-400 font-bold text-sm">No waste logs found.</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TabRecipes = ({ appUser, addToast }) => {
+  const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCat, setFilterCat] = useState('All'); 
+  const [isFormOpen, setIsFormOpen] = useState(false); 
+  const [activeRecipe, setActiveRecipe] = useState(null); 
+  const [yieldMult, setYieldMult] = useState(1);
+  const [editingRecipeId, setEditingRecipeId] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+
+  // --- SCREEN WAKE LOCK ENGINE ---
+  const [isAwake, setIsAwake] = useState(false);
+  const [wakeLock, setWakeLock] = useState(null);
+
+  const toggleWakeLock = async () => {
+    if (!isAwake) {
+      try {
+        if ('wakeLock' in navigator) {
+          const lock = await navigator.wakeLock.request('screen');
+          setWakeLock(lock);
+          setIsAwake(true);
+          addToast('Screen Awake', 'Screen will stay on. Perfect for messy hands.');
+          
+          // Browsers automatically release the lock if the user switches tabs/minimizes
+          lock.addEventListener('release', () => { setIsAwake(false); setWakeLock(null); });
+        } else {
+          addToast('Error', 'Screen Wake Lock is not supported on this device/browser.');
+        }
+      } catch (err) { addToast('Error', err.message); }
+    } else {
+      if (wakeLock) {
+        await wakeLock.release();
+        setWakeLock(null);
+      }
+      setIsAwake(false);
+      addToast('Screen Normal', 'Screen sleep timeout restored.');
+    }
+  };
+
+  const handleScanRecipe = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsScanning(true);
+    addToast('Scanning', 'Optimizing and reading recipe...');
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = async () => {
+        // Compress the image on the device BEFORE sending it to Vercel/Gemini
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200; // Drops a massive photo down to ~200KB instantly
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) {
+           scaleSize = MAX_WIDTH / img.width;
+        }
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
+        const base64Data = base64Compressed.split(',')[1];
+
+        try {
+          // THIS IS THE CRITICAL BLOCK. It MUST explicitly say POST.
+          const response = await secureFetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64Data })
+          });
+
+          // Prevent the "Unexpected token A" HTML crash
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+             throw new Error("Vercel Server Error: Payload too large or backend crashed.");
+          }
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to scan recipe.');
+
+          setTitle(data.title || '');
+          setPrepTime(data.prepTime || '--');
+          setYieldAmt(data.yieldAmt || '--');
+          setIngredients(data.ingredients || '');
+          setInstructions(data.instructions || '');
+          
+          setIsFormOpen(true);
+          addToast('Success', 'Recipe extracted! Please review.');
+        } catch (err) {
+          addToast('Error', err.message);
+        } finally {
+          setIsScanning(false);
+        }
+      };
+    };
+    e.target.value = ''; // Reset input so you can scan the same file again if needed
+  };
+  
+  const parseAndMultiply = (text, mult) => { if (mult === 1) return text; const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/); if (!match) return text; let numStr = match[1], rest = match[2], val = 0; if (numStr.includes('/')) { const parts = numStr.split(' '); if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); } else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); } } else { val = parseFloat(numStr); } let finalVal = val * mult; let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2); if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim(); else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim(); else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim(); else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim(); else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim(); if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); return `${cleanVal} ${rest}`; };
+  
+  const [title, setTitle] = useState(''); 
+  const [category, setCategory] = useState('Sauce/Dressing'); 
+  const [prepTime, setPrepTime] = useState(''); 
+  const [yieldAmt, setYieldAmt] = useState(''); 
+  const [ingredients, setIngredients] = useState('');
+ 
+  const [instructions, setInstructions] = useState('');
+  const categories = ['All', 'Sauce/Dressing', 'Meat Prep', 'Appetizer', 'Entree', 'Side', 'Dessert', 'Cocktail'];
+
+  const resetForm = () => {
+    setTitle(''); setCategory('Sauce/Dressing'); setPrepTime(''); setYieldAmt(''); setIngredients(''); setInstructions(''); setEditingRecipeId(null);
+  };
+
+  const handleEdit = () => {
+    setTitle(activeRecipe.title);
+    setCategory(activeRecipe.category || 'Sauce/Dressing');
+    setPrepTime(activeRecipe.prepTime === '--' ? '' : activeRecipe.prepTime);
+    setYieldAmt(activeRecipe.yieldAmt === '--' ? '' : activeRecipe.yieldAmt);
+    setIngredients(activeRecipe.ingredients);
+    setInstructions(activeRecipe.instructions);
+    setEditingRecipeId(activeRecipe.id);
+    setActiveRecipe(null);
+    setIsFormOpen(true);
+  };
+
+  const handleSave = async (e) => { 
+    e.preventDefault(); 
+    if (!title.trim() || !ingredients.trim() || !instructions.trim()) return addToast('Error', 'Missing fields.'); 
+    try { 
+      if (editingRecipeId) {
+        await updateDoc(doc(db, "recipes", editingRecipeId), { 
+          title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), lastUpdated: new Date().toISOString() 
+        }); 
+        addToast('Recipe Updated', `${title} updated successfully.`); 
+      } else {
+        await addDoc(collection(db, "recipes"), { 
+          title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId 
+        }); 
+        addToast('Recipe Saved', `${title} added to the book.`); 
+      }
+      setIsFormOpen(false); 
+      resetForm();
+    } catch (err) { addToast('Error', 'Could not save.'); } 
+  };
+  
+  const handleDelete = async (id) => { if (!window.confirm("Delete recipe?")) return; await deleteDoc(doc(db, "recipes", id)); setActiveRecipe(null); addToast('Deleted', 'Recipe removed.'); };
+  
+  const handleInjectLegacyRecipes = async () => {
+    const legacyData = [
+      {
+        title: "French Onion Dip", category: "Sauce/Dressing", prepTime: "10 mins", yieldAmt: "--",
+        ingredients: "2 Packs French Onion Dip\n3 Cups Cottage Cheese\n3 Cups Sour Cream",
+        instructions: "Combine all ingredients.\nUse Vita Mix, leave a little chunky."
+      },
+      {
+        title: "Chili", category: "Entree", prepTime: "1 hour", yieldAmt: "--",
+        ingredients: "2 (5lb) Beef logs\nPeppers/Onion\n3 cans Tomato Soup (Basement)\n4 cans Tomato Juice (Basement)\n1 can Chili Bean (Basement)\n1 can Diced Tomato (Basement)\n2 (4oz) cups Chili powder\n1 (4oz) cup Kosher salt\n1 (2oz) cup pepper\n1 (2oz) cup garlic granulated\n1 (2oz) cup oregano\n1 (2oz) cup Italian\n1/2 (2oz) cup red pep flakes",
+        instructions: "Brown the beef logs and drain grease.\nSauté peppers and onions.\nCombine beef, sautéed veggies, tomato soup, tomato juice, chili beans, and diced tomatoes in a large pot.\nStir in all seasonings (chili powder, salt, pepper, garlic, oregano, italian, red pepper flakes).\nSimmer until flavors are thoroughly combined."
+      },
+      {
+        title: "Beer Dip", category: "Appetizer", prepTime: "15 mins", yieldAmt: "--",
+        ingredients: "2 Bottles Miller Light\n1 package Ranch Seasoning\n1 package Softened Cream Cheese\n3 Cups Shredded Cheese",
+        instructions: "Whisk together the Miller Light and Ranch Seasoning.\nHand mix the beer/ranch mixture with the softened cream cheese until whippy.\nFold in the shredded cheese to the mixture. Make sure it is properly mixed to the bottom."
+      },
+      {
+        title: "Beer Cheese", category: "Sauce/Dressing", prepTime: "30 mins", yieldAmt: "--",
+        ingredients: "1 lb Butter\n1 lb Flour\n1/2 Tablespoon Dry mustard powder\n1/2 Tablespoon Onion powder\n1/2 Tablespoon Garlic granulated\n1/2 Tablespoon Pepper\n1 Tablespoon Salt\n1 Pint Spotted Cow\n1 gallon milk\n80 slices american (Two Blocks)\n8 cups shredded cheddar",
+        instructions: "Start with a gallon of milk over a double boiler.\nIn a separate pot, melt the butter. Once melted, add the flour and all seasonings (mustard, onion, garlic, pepper, salt). Whisk together to make a roux.\nOnce combined, add the pint of Spotted Cow to the roux and mix well.\nOnce the milk is steaming, add your roux and mix thoroughly.\nImmediately after, add the American and cheddar cheeses and mix thoroughly.\nTake off heat and cool down."
+      },
+      {
+        title: "Cheesy Potato Bacon Soup", category: "Side", prepTime: "45 mins", yieldAmt: "2 White Buckets",
+        ingredients: "1 White Bucket Peeled Potatoes\n1 1/2 Budlight Pitchers Water\n1 Bag Cheese Mix\n1 Gallon Milk\n1 Bag Bacon Bits\n1 Block American Cheese\n1 Tablespoon granulated garlic\n1 Tablespoon granulated onion\n1 Tablespoon Kosher Salt\n1/2 Tablespoon Black pepper",
+        instructions: "Put peeled potatoes through potato slicer and dice small. Boil, then drain.\nUse metal pot for double boiler. Use second metal pot on top.\nBring 1 1/2 Budlight pitchers of water to a steam.\nWhisk 1 bag of cheese mix into the steaming water.\nAdd 1 gallon milk, 1 bag bacon bits, and all seasonings (garlic, onion, salt, pepper).\nGradually add American cheese block by slice. Heat until cheese is thoroughly combined.\nSplit the boiled potatoes and the cheese sauce evenly between two white buckets."
+      }
+    ];
+
+    let count = 0;
+    for (const recipe of legacyData) {
+      if (!recipes.find(r => r.title === recipe.title)) {
+        await addDoc(collection(db, "recipes"), { ...recipe, authorName: "System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId });
+        count++;
+      }
+    }
+    addToast('Import Complete', `Injected ${count} legacy recipes.`);
+  };
+
+  const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
+
+  // Determine if the current user has permission to edit/delete the viewed recipe
+  const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+  const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
+      
+      {/* THE NEW SLEEK CONTROL PANEL */}
+      <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-lg overflow-hidden mb-4">
+        {/* Search / Filter Area */}
+        <div className="p-3 sm:p-4 flex flex-col md:flex-row gap-3 border-b border-[#2A353D] bg-[#12161A]/50">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+            <input 
+              type="text" 
+              placeholder="Search specs or ingredients..." 
+              value={searchTerm} 
+              onChange={(e)=>setSearchTerm(e.target.value)} 
+              className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm font-medium rounded-xl pl-11 pr-4 py-3 outline-none focus:border-[#D4A381] transition-colors shadow-inner"
+            />
+          </div>
+          <div className="relative md:w-64 shrink-0">
+            <select 
+              value={filterCat} 
+              onChange={(e)=>setFilterCat(e.target.value)} 
+              className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm font-bold rounded-xl px-4 py-3 outline-none focus:border-[#D4A381] transition-colors appearance-none shadow-inner cursor-pointer"
+            >
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none rotate-90" size={16}/>
+          </div>
+        </div>
+
+        {/* Action Buttons Area */}
+        <div className="p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+          
+          {/* Left Side Actions (Screen Lock / Import) */}
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button 
+              onClick={toggleWakeLock} 
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border ${isAwake ? 'bg-amber-900/20 text-amber-400 border-amber-900/50 shadow-[0_0_10px_rgba(251,191,36,0.1)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:text-amber-400 hover:border-amber-900/50'}`}
+              title="Keep Screen On"
+            >
+              <Sun size={16} className={isAwake ? 'animate-pulse' : ''} />
+              <span className="hidden sm:inline">{isAwake ? 'Screen Locked' : 'Keep Awake'}</span>
+              <span className="sm:hidden">Awake</span>
+            </button>
+
+            {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
+              <button onClick={handleInjectLegacyRecipes} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest bg-[#12161A] text-slate-400 border border-[#2A353D] hover:text-emerald-400 transition-all">
+                <Package size={16} /> <span className="hidden sm:inline">Import</span>
+              </button>
+            )}
+          </div>
+
+          {/* Right Side Actions (AI Scan & New Spec) */}
+          {canManageRecipes && (
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
+              
+              {/* Unified Scan/Upload Button */}
+              <div className={`flex w-full sm:w-auto bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm ${isScanning ? 'opacity-50 pointer-events-none' : ''}`}>
+                 <label className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-slate-300 hover:text-[#D4A381]" title="Take Photo">
+                    {isScanning ? <Loader2 className="animate-spin" size={16} /> : <Camera size={16} />}
+                    <span className="text-[11px] font-black uppercase tracking-widest sm:hidden">Photo</span>
+                    <input type="file" accept="image/*" capture="environment" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
+                 </label>
+                 <label className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-[#1A2126] transition-colors text-slate-300 hover:text-[#D4A381]" title="Upload File">
+                    <span className="text-[11px] font-black uppercase tracking-widest">Upload File</span>
+                    <input type="file" accept="image/*" onChange={handleScanRecipe} className="hidden" disabled={isScanning} />
+                 </label>
+              </div>
+
+              {/* Primary CTA */}
+              <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`w-full sm:w-auto bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:from-[#D4A381] hover:to-[#A37050] text-slate-900 shadow-lg px-6 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all`}>
+                <Plus size={16}/> New Spec
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* RECIPE GRID */}
+      {filteredRecipes.length === 0 ? (
+        <div className={`text-center py-24 px-4 border border-dashed border-[#2A353D] bg-[#1A2126]/50 rounded-3xl`}>
+          <div className="bg-[#12161A] w-20 h-20 mx-auto rounded-full flex items-center justify-center border border-[#2A353D] mb-4 shadow-inner">
+            <ChefHat className={T.copper} size={32}/>
+          </div>
+          <h3 className="text-lg font-black text-white">No specs found.</h3>
+          <p className="text-sm font-medium text-slate-500 mt-2">Try adjusting your search or category filter.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {filteredRecipes.map(r => (
+            <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className="recipe-card-v13 group relative bg-[#1A2126] rounded-lg border border-[#2A353D] hover:border-[#D4A381]/50 overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-200 hover:shadow-[0_8px_24px_rgba(0,0,0,0.24)]">
+              
+              {/* Card Header Pattern */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#C59373] to-[#8F6040] opacity-20 group-hover:opacity-100 transition-opacity"></div>
+              
+              <div className="p-2.5 flex flex-col flex-grow">
+                <div className="flex justify-between items-start mb-1.5">
+                  <span className="text-[8px] font-black uppercase tracking-widest bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded shadow-sm">
+                    {r.category}
+                  </span>
+                  <div className="w-6 h-6 rounded-full bg-[#12161A] border border-[#2A353D] flex items-center justify-center text-slate-400 group-hover:text-[#D4A381] group-hover:bg-[#1A2126] transition-all">
+                    <ChevronRight size={13} />
+                  </div>
+                </div>
+                
+                <h3 className="text-[15px] font-black text-white mb-1 leading-tight group-hover:text-[#D4A381] transition-colors line-clamp-2">
+                  {r.title}
+                </h3>
+                
+                <div className="mt-auto pt-2">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 bg-[#12161A] p-1.5 rounded-md border border-[#2A353D]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Clock size={12} className="text-slate-500 shrink-0"/> 
+                      <span className="truncate">{r.prepTime}</span>
+                    </div>
+                    <div className="w-px h-4 bg-[#2A353D] shrink-0 mx-2"></div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Scale size={12} className="text-slate-500 shrink-0"/> 
+                      <span className="truncate">Yield: {r.yieldAmt}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
+        {activeRecipe && (
+          <div className="space-y-6">
+            <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{activeRecipe.title}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{activeRecipe.category}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {activeRecipe.prepTime}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span></div></div>
+            <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#12161A] p-3 rounded-xl border ${T.border} mb-6`}><span className={`text-[10px] font-black uppercase ${T.muted} tracking-widest`}>Yield Multiplier</span><div className={`flex bg-[#1A2126] rounded-lg p-1 border ${T.border}`}>{[0.5, 1, 2, 4].map(m => (<button key={m} onClick={() => setYieldMult(m)} className={`px-4 py-1.5 text-xs font-black rounded-md transition-all ${yieldMult === m ? `${T.grad} text-slate-900` : `text-slate-500 hover:text-white`}`}>{m}x</button>))}</div></div>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+              <div className="md:col-span-2 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Ingredients <span className={`lowercase ml-1 ${yieldMult !== 1 ? T.copper : ''}`}>({yieldMult}x)</span></h4><ul className="space-y-2 text-sm font-bold text-slate-300">{activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${yieldMult !== 1 ? 'bg-[#D4A381]' : 'bg-slate-500'}`}/><span>{parseAndMultiply(ing, yieldMult)}</span></li>)}</ul></div>
+              <div className="md:col-span-3 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Method</h4><div className="space-y-3 text-sm font-medium text-slate-300">{activeRecipe.instructions.split('\n').map((step, i) => step.trim() && <p key={i} className="leading-relaxed"><strong className="text-white mr-1">{i+1}.</strong>{step}</p>)}</div></div>
+            </div>
+            
+            <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-6 border-t ${T.border} mt-6`}>
+              <div className={`text-[10px] font-bold ${T.muted}`}>
+                Added by {activeRecipe.authorName} <br/> 
+                {activeRecipe.lastUpdated && <span className="opacity-70">Updated: {new Date(activeRecipe.lastUpdated).toLocaleDateString()}</span>}
+              </div>
+              
+              {canModifyRecipe && (
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button onClick={handleEdit} className="flex-1 sm:flex-none flex justify-center items-center gap-1 text-xs font-bold text-blue-400 hover:text-blue-300 bg-[#12161A] border border-[#2A353D] px-4 py-2 rounded-lg transition-colors"><Edit size={14}/> Edit</button>
+                  <button onClick={() => handleDelete(activeRecipe.id)} className="flex-1 sm:flex-none flex justify-center items-center gap-1 text-xs font-bold text-red-500 hover:text-red-400 bg-[#12161A] border border-[#2A353D] px-4 py-2 rounded-lg transition-colors"><Trash2 size={14}/> Delete</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+      
+      <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={editingRecipeId ? "Edit Spec" : "Add New Spec"}>
+        <form onSubmit={handleSave} className="space-y-4">
+          <div><label className={T.label}>Recipe Title</label><input type="text" value={title} onChange={(e)=>setTitle(e.target.value)} className={T.input} required placeholder="e.g. House Ranch"/></div>
+          <div className="grid grid-cols-3 gap-3"><div><label className={T.label}>Category</label><select value={category} onChange={(e)=>setCategory(e.target.value)} className={T.input}>{categories.slice(1).map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Prep Time</label><input type="text" value={prepTime} onChange={(e)=>setPrepTime(e.target.value)} className={T.input} placeholder="e.g. 15 mins"/></div><div><label className={T.label}>Yield</label><input type="text" value={yieldAmt} onChange={(e)=>setYieldAmt(e.target.value)} className={T.input} placeholder="e.g. 4 Quarts"/></div></div>
+          <div><label className={T.label}>Ingredients (One per line)</label><textarea value={ingredients} onChange={(e)=>setIngredients(e.target.value)} rows="5" className={T.input} required placeholder="1 Cup Mayo&#10;1/2 Cup Buttermilk&#10;1 Tbsp Dill"/></div>
+          <div><label className={T.label}>Method / Instructions (One step per line)</label><textarea value={instructions} onChange={(e)=>setInstructions(e.target.value)} rows="5" className={T.input} required placeholder="Combine mayo and buttermilk in cambro.&#10;Whisk in dry seasoning.&#10;Label and date."/></div>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingRecipeId ? "Update Recipe" : "Save Recipe"}</button>
+        </form>
+      </Modal>
+    </div>
+  );
+};
+
+const TabMaintenance = ({ appUser, addToast }) => {
+  const logs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { limitCount: 200 });
+  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId, { limitCount: 150 });
+  
+  const [subTab, setSubTab] = useState('issues'); // 'issues' or 'pm'
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPmModalOpen, setIsPmModalOpen] = useState(false);
+  
+  // Reactive Form State
+  const [equipment, setEquipment] = useState('');
+  const [issue, setIssue] = useState('');
+  const [urgency, setUrgency] = useState('Standard');
+  const [status, setStatus] = useState('Reported');
+  const [cost, setCost] = useState('');
+  const [notes, setNotes] = useState('');
+  const [editingLogId, setEditingLogId] = useState(null);
+
+  // PM Form State
+  const [pmTitle, setPmTitle] = useState('');
+  const [pmEquipment, setPmEquipment] = useState('');
+  const [pmDays, setPmDays] = useState('30');
+  const [editingPmId, setEditingPmId] = useState(null);
+
+  const resetForm = () => {
+    setEquipment(''); setIssue(''); setUrgency('Standard'); 
+    setStatus('Reported'); setCost(''); setNotes(''); setEditingLogId(null);
+  };
+
+  const resetPmForm = () => {
+    setPmTitle(''); setPmEquipment(''); setPmDays('30'); setEditingPmId(null);
+  };
+
+  const handleEdit = (log) => {
+    setEquipment(log.equipment); setIssue(log.issue); setUrgency(log.urgency);
+    setStatus(log.status); setCost(log.cost || ''); setNotes(log.notes || '');
+    setEditingLogId(log.id); setIsModalOpen(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!equipment.trim() || !issue.trim()) return addToast('Error', 'Equipment and issue are required.');
+    
+    const payload = {
+      equipment: equipment.trim(),
+      issue: issue.trim(),
+      urgency,
+      status,
+      cost: parseFloat(cost) || 0,
+      notes: notes.trim(),
+      restaurantId: appUser.restaurantId,
+      lastUpdated: new Date().toISOString(),
+      updatedBy: appUser.name
+    };
+
+    try {
+      if (editingLogId) {
+        if (status === 'Resolved' && logs.find(l => l.id === editingLogId)?.status !== 'Resolved') {
+            payload.resolvedAt = new Date().toISOString();
+        }
+        await updateDoc(doc(db, "maintenanceLogs", editingLogId), payload);
+        addToast('Updated', 'Maintenance log updated successfully.');
+      } else {
+        payload.reportedAt = new Date().toISOString();
+        payload.reportedBy = appUser.name;
+        await addDoc(collection(db, "maintenanceLogs"), payload);
+        addToast('Logged', 'New equipment issue reported.');
+      }
+      setIsModalOpen(false); resetForm();
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  // --- PM ENGINE LOGIC ---
+  const handleSavePm = async (e) => {
+    e.preventDefault();
+    if(!pmTitle || !pmEquipment || !pmDays) return;
+    const payload = {
+      title: pmTitle.trim(),
+      equipment: pmEquipment.trim(),
+      frequencyDays: parseInt(pmDays) || 30,
+      restaurantId: appUser.restaurantId,
+      lastUpdatedBy: appUser.name
+    };
+    try {
+      if (editingPmId) {
+        await updateDoc(doc(db, "pmSchedules", editingPmId), payload);
+        addToast('Updated', 'PM Schedule updated.');
+      } else {
+        payload.lastCompleted = getToday(); // Default to today on creation
+        await addDoc(collection(db, "pmSchedules"), payload);
+        addToast('Created', 'New PM Schedule active.');
+      }
+      setIsPmModalOpen(false); resetPmForm();
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleMarkPmDone = async (pm) => {
+    if(!window.confirm(`Mark ${pm.title} as completed for today?`)) return;
+    try {
+      // 1. Update the PM tracker
+      await updateDoc(doc(db, "pmSchedules", pm.id), { lastCompleted: getToday() });
+      
+      // 2. Auto-generate a historical paper trail in the main logs
+      await addDoc(collection(db, "maintenanceLogs"), {
+        equipment: pm.equipment,
+        issue: `[PM COMPLETED] ${pm.title}`,
+        urgency: 'Standard',
+        status: 'Resolved',
+        cost: 0,
+        notes: `Routine Preventative Maintenance. Cycle: ${pm.frequencyDays} days.`,
+        restaurantId: appUser.restaurantId,
+        reportedAt: new Date().toISOString(),
+        reportedBy: appUser.name,
+        resolvedAt: new Date().toISOString(),
+        updatedBy: appUser.name,
+        lastUpdated: new Date().toISOString()
+      });
+      
+      addToast('PM Completed', 'Schedule reset and historical log created.');
+    } catch (e) { addToast('Error', e.message); }
+  };
+
+  const getStatusColor = (s) => {
+    if (s === 'Reported') return 'text-orange-400 bg-orange-900/20 border-orange-900/50';
+    if (s === 'In Progress' || s === 'Pending Parts') return 'text-blue-400 bg-blue-900/20 border-blue-900/50';
+    if (s === 'Resolved') return 'text-emerald-400 bg-emerald-900/20 border-emerald-900/50';
+    return 'text-slate-400 bg-slate-900/20 border-slate-700';
+  };
+
+  const getUrgencyColor = (u) => {
+    if (u === 'Critical') return 'text-red-500 font-black animate-pulse';
+    if (u === 'High') return 'text-orange-500 font-bold';
+    return 'text-slate-400';
+  };
+
+  // Calculate Overdue PMs for the notification dot
+  const todayMs = new Date(getToday()+'T12:00:00').getTime();
+  const overdueCount = pmSchedules.filter(pm => {
+    const lastMs = new Date(pm.lastCompleted+'T12:00:00').getTime();
+    return (pm.frequencyDays - Math.floor((todayMs - lastMs) / 86400000)) <= 0;
+  }).length;
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      
+      {/* REACTIVE MODAL */}
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Log" : "Report Equipment Issue"}>
+        <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className={T.label}>Equipment / Area</label><input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required /></div>
+            <div><label className={T.label}>Urgency Level</label><select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}><option value="Standard">Standard (Monitor)</option><option value="High">High (Needs Repair Soon)</option><option value="Critical">Critical (Down/Hazard)</option></select></div>
+          </div>
+          <div><label className={T.label}>Issue Description</label><textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-[#2A353D]">
+            <div><label className={T.label}>Current Status</label><select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}><option value="Reported">Reported (Open)</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved / Fixed</option></select></div>
+            <div><label className={T.label}>Repair Cost ($)</label><input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." /></div>
+          </div>
+          <div><label className={T.label}>Repair Notes / Vendor Used</label><input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" /></div>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingLogId ? 'Update Log' : 'Submit Report'}</button>
+        </form>
+      </Modal>
+
+      {/* PM MODAL */}
+      <Modal isOpen={isPmModalOpen} onClose={() => { setIsPmModalOpen(false); resetPmForm(); }} title={editingPmId ? "Edit PM Schedule" : "New Preventative Maintenance"}>
+        <form onSubmit={handleSavePm} className="space-y-4">
+          <div><label className={T.label}>Task Title</label><input type="text" value={pmTitle} onChange={e=>setPmTitle(e.target.value)} className={T.input} placeholder="e.g. Clean Hood Vents" required /></div>
+          <div><label className={T.label}>Equipment / Area</label><input type="text" value={pmEquipment} onChange={e=>setPmEquipment(e.target.value)} className={T.input} placeholder="e.g. Grill Line" required /></div>
+          <div><label className={T.label}>Frequency (In Days)</label><input type="number" min="1" value={pmDays} onChange={e=>setPmDays(e.target.value)} className={T.input} placeholder="e.g. 90 for quarterly" required /></div>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingPmId ? 'Update Schedule' : 'Start Countdown'}</button>
+        </form>
+      </Modal>
+
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
+        <button onClick={() => setSubTab('issues')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'issues' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Reactive Repairs</button>
+        <button onClick={() => setSubTab('pm')} className={`relative px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'pm' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          PM Schedules
+          {overdueCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg animate-pulse">{overdueCount}</span>}
+        </button>
+      </div>
+
+      {subTab === 'issues' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2"><Wrench className={T.copper} size={20}/> Logged Repairs</h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track broken equipment and repair costs.</p>
+            </div>
+            <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>Active & Resolved Issues</div>
+            <div className={`divide-y ${T.border}`}>
+              {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged.</div>}
+              {logs.sort((a,b) => {
+                  if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
+                  if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
+                  if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
+                  if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
+                  return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
+              }).map(log => (
+                <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' && !log.issue.includes('[PM') ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-white text-base">{log.equipment}</span>
+                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
+                      {log.issue.includes('[PM COMPLETED]') && <span className="text-[8px] font-black uppercase tracking-widest bg-blue-900/20 text-blue-400 px-2 py-0.5 rounded border border-blue-900/50">Auto-Logged PM</span>}
+                      {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
+                    </div>
+                    <div className={`text-sm font-medium mt-1 ${log.issue.includes('[PM') ? 'text-blue-300' : 'text-slate-300'}`}>{log.issue}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
+                      {!log.issue.includes('[PM') && <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>}
+                      <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
+                      {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 md:self-end">
+                    <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
+                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'pm' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={20}/> Preventative Schedules</h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Automated countdowns for recurring tasks.</p>
+            </div>
+            <button onClick={() => setIsPmModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> New PM</button>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={T.th}>Active PM Countdowns</div>
+            <div className={`divide-y ${T.border}`}>
+              {pmSchedules.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No preventative maintenance schedules set up.</div>}
+              {pmSchedules.sort((a,b) => {
+                const aDaysLeft = a.frequencyDays - Math.floor((todayMs - new Date(a.lastCompleted+'T12:00:00').getTime()) / 86400000);
+                const bDaysLeft = b.frequencyDays - Math.floor((todayMs - new Date(b.lastCompleted+'T12:00:00').getTime()) / 86400000);
+                return aDaysLeft - bDaysLeft;
+              }).map(pm => {
+                const lastMs = new Date(pm.lastCompleted+'T12:00:00').getTime();
+                const daysSince = Math.floor((todayMs - lastMs) / 86400000);
+                const daysLeft = pm.frequencyDays - daysSince;
+                
+                let statusColor = 'text-emerald-500 bg-emerald-900/20 border-emerald-900/50';
+                let statusText = `${daysLeft} Days Left`;
+                if (daysLeft <= 0) { statusColor = 'text-red-500 bg-red-900/20 border-red-900/50 animate-pulse'; statusText = `OVERDUE (${Math.abs(daysLeft)}d)`; }
+                else if (daysLeft <= 7) { statusColor = 'text-orange-400 bg-orange-900/20 border-orange-900/50'; statusText = `DUE SOON (${daysLeft}d)`; }
+
+                return (
+                  <div key={pm.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
+                    <div className="flex-1">
+                      <div className="font-bold text-white text-base">{pm.title}</div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">{pm.equipment} • Every {pm.frequencyDays} Days</div>
+                      <div className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-widest">Last Done: {new Date(pm.lastCompleted+'T12:00:00').toLocaleDateString()}</div>
+                    </div>
+                    <div className="flex items-center gap-3 md:self-end">
+                      <div className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border ${statusColor}`}>
+                        {statusText}
+                      </div>
+                      <button onClick={() => handleMarkPmDone(pm)} className="bg-[#12161A] text-emerald-500 border border-[#2A353D] hover:bg-[#1A2126] hover:border-emerald-900/50 font-black text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-1">
+                        <Check size={14}/> Mark Done
+                      </button>
+                      <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
+                        <button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(pm.frequencyDays.toString()); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><Edit size={14}/></button>
+                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) deleteDoc(doc(db,"pmSchedules",pm.id)); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast }) => {
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { limitCount: 200 });
+  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId, { limitCount: 150 });
+  const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
+  const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
+
+  const today = currentDate || getToday();
+  const todayDate = new Date(today + 'T12:00:00');
+  const yesterdayDate = new Date(todayDate);
+  yesterdayDate.setDate(todayDate.getDate() - 1);
+  const yesterday = formatDate(yesterdayDate);
+  const todayName = todayDate.toLocaleDateString('en-US', { weekday: 'long' });
+  const monthStr = getMonthStr(today);
+
+  const sameDay = (date) => date === today;
+  const openMaintenance = maintenanceLogs.filter(l => (l.status || 'Reported') !== 'Resolved');
+  const criticalMaintenance = openMaintenance.filter(l => l.urgency === 'Critical' || l.urgency === 'High');
+  const lowStockItems = inventoryItems
+    .filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0))
+    .sort((a, b) => ((Number(a.currentStock || 0) / Math.max(1, Number(a.parLevel || 1))) - (Number(b.currentStock || 0) / Math.max(1, Number(b.parLevel || 1)))));
+  const pendingOrderItems = inventoryItems.filter(i => Number(i.pendingQty || 0) > 0);
+  const todayWaste = wasteLogs.filter(w => w.date === today);
+  const todayEvents = events.filter(e => (e.date || '').startsWith(today) || e.date === today);
+  const importantEvents = todayEvents.filter(e => e.isImportant || (e.title || '').toLowerCase().includes('86'));
+  const todayShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const activePunches = timePunches.filter(p => p.date === today && ['clocked_in', 'on_break'].includes(p.status));
+  const yesterdaySales = sales.find(s => s.date === yesterday);
+  const todaySales = sales.find(s => s.date === today);
+  const monthSales = sales.filter(s => (s.date || '').startsWith(monthStr));
+
+  const parseShiftHours = (start, end) => {
+    if (!start || !end) return 0;
+    const [sh, sm] = String(start).split(':').map(Number);
+    let eh = 23; let em = 0;
+    if (end !== 'CLOSE') {
+      const parts = String(end).split(':').map(Number);
+      eh = parts[0]; em = parts[1] || 0;
+    }
+    const startM = (sh * 60) + (sm || 0);
+    let endM = (eh * 60) + (em || 0);
+    if (endM <= startM) endM += 24 * 60;
+    return Math.max(0, (endM - startM) / 60);
+  };
+
+  const punchHours = (p) => {
+    if (!p.clockInTime) return 0;
+    const end = p.clockOutTime ? new Date(p.clockOutTime) : new Date();
+    const rawMins = (end - new Date(p.clockInTime)) / 60000;
+    return Math.max(0, (rawMins - Number(p.breakMinutes || 0)) / 60);
+  };
+
+  const todayLaborCost = timePunches.filter(p => p.date === today).reduce((sum, p) => {
+    const emp = users.find(u => u.id === p.employeeId);
+    return sum + (punchHours(p) * Number(emp?.wage || 0));
+  }, 0);
+
+  const taskPeriodKey = (task, dateStr) => {
+    if ((task.frequency || 'daily') === 'daily') return dateStr;
+    if (task.frequency === 'weekly') {
+      const d = new Date(dateStr + 'T12:00:00');
+      const day = d.getDay();
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+      return formatDate(d);
+    }
+    if (task.frequency === 'monthly') return dateStr.substring(0, 7);
+    return dateStr;
+  };
+
+  const taskIsDueToday = (task) => {
+    if ((task.frequency || 'daily') === 'daily') return true;
+    if (task.frequency === 'weekly') return !task.targetDay || task.targetDay === todayName;
+    if (task.frequency === 'monthly') return String(task.targetDate || '1') === String(todayDate.getDate());
+    return true;
+  };
+
+  const dueTasks = tasks.filter(taskIsDueToday);
+  const doneTasks = dueTasks.filter(t => !!t.completions?.[taskPeriodKey(t, today)]);
+  const openTasks = dueTasks.filter(t => !t.completions?.[taskPeriodKey(t, today)]);
+  const taskPct = dueTasks.length ? Math.round((doneTasks.length / dueTasks.length) * 100) : 100;
+
+  const todayMs = new Date(today + 'T12:00:00').getTime();
+  const overduePm = pmSchedules.filter(pm => {
+    if (!pm.lastCompleted) return true;
+    const lastMs = new Date(pm.lastCompleted + 'T12:00:00').getTime();
+    const daysSince = Math.floor((todayMs - lastMs) / 86400000);
+    return (Number(pm.frequencyDays || 30) - daysSince) <= 0;
+  });
+
+  const avgMonthSales = monthSales.length ? monthSales.reduce((s, d) => s + Number(d.grossSales || 0), 0) / monthSales.length : 0;
+  const sameWeekdaySales = sales.filter(s => {
+    if (!s.date || s.date >= today) return false;
+    return new Date(s.date + 'T12:00:00').getDay() === todayDate.getDay();
+  }).slice(-8);
+  const forecastSales = sameWeekdaySales.length
+    ? sameWeekdaySales.reduce((sum, s) => sum + Number(s.grossSales || 0), 0) / sameWeekdaySales.length
+    : avgMonthSales;
+
+  const laborPct = todaySales?.grossSales ? Math.round((todayLaborCost / Math.max(1, Number(todaySales.grossSales))) * 1000) / 10 : null;
+  const wasteCost = todayWaste.reduce((sum, w) => sum + Number(w.cost || 0), 0);
+
+  const healthParts = [
+    Math.max(0, 100 - (lowStockItems.length * 4)),
+    Math.max(0, 100 - (openMaintenance.length * 8) - (criticalMaintenance.length * 10)),
+    taskPct,
+    Math.max(0, 100 - (todayWaste.length * 6)),
+    laborPct === null ? 90 : Math.max(0, 100 - Math.max(0, laborPct - 25) * 4)
+  ];
+  const healthScore = Math.round(healthParts.reduce((a,b)=>a+b,0) / healthParts.length);
+
+  const prepForecast = [
+    { label: 'Forecast Sales', value: forecastSales ? `$${Math.round(forecastSales).toLocaleString()}` : 'Needs sales data', note: sameWeekdaySales.length ? 'Based on same weekdays' : 'Based on month average' },
+    { label: 'Kitchen Coverage', value: `${todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length} scheduled`, note: `${todayShifts.length} total published shifts` },
+    { label: 'Prep Pressure', value: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High' : forecastSales > 0 ? 'Normal' : 'Unknown', note: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'Sales forecast is above normal' : 'No spike detected' },
+    { label: 'Low Stock', value: `${lowStockItems.length} items`, note: lowStockItems.slice(0, 3).map(i => i.name).join(', ') || 'No par issues found' }
+  ];
+
+  const scheduleWarnings = users.map(u => {
+    const weekShifts = shifts.filter(s => s.employeeId === u.id && s.isPublished && s.date >= today && s.date <= formatDate(new Date(todayDate.getTime() + 6 * 86400000)));
+    const hours = weekShifts.reduce((sum, s) => sum + parseShiftHours(s.startTime, s.endTime), 0);
+    const days = [...new Set(weekShifts.map(s => s.date))].length;
+    if (hours >= 38) return `${u.name} is projected near overtime (${hours.toFixed(1)} hrs).`;
+    if (days >= 6) return `${u.name} has ${days} scheduled days in the next week.`;
+    return null;
+  }).filter(Boolean).slice(0, 5);
+
+  const recommendations = [
+    lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.',
+    criticalMaintenance.length > 0 ? `Maintenance first: ${criticalMaintenance[0].equipment} needs attention.` : 'No high priority equipment fires showing.',
+    openTasks.length > 0 ? `Opening focus: ${openTasks.slice(0, 3).map(t => t.title).join(', ')}.` : 'Today\'s task list is buttoned up.',
+    overduePm.length > 0 ? `Preventative maintenance overdue: ${overduePm.slice(0, 2).map(pm => pm.title).join(', ')}.` : 'Preventative maintenance countdowns are quiet.',
+    scheduleWarnings.length > 0 ? scheduleWarnings[0] : 'No immediate schedule warnings detected.'
+  ];
+
+  const stockNeed = (item) => Math.max(0, Math.ceil(Number(item.parLevel || 0) - Number(item.currentStock || 0)));
+  const urgent86Items = lowStockItems.filter(i => Number(i.currentStock || 0) <= 0 || (Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) / Math.max(1, Number(i.parLevel || 1)) <= 0.25));
+  const suggestedPrepTasks = [
+    ...lowStockItems.slice(0, 4).map(i => `Prep/order recovery: ${i.name} is below par by ${stockNeed(i)}.`),
+    forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High forecast: add backup proteins, fries, sauces, and expo garnish before rush.' : null,
+    importantEvents.length > 0 ? `Event prep: review ${importantEvents.slice(0, 2).map(e => e.title).join(' / ')}.` : null,
+    criticalMaintenance.length > 0 ? `Equipment watch: ${criticalMaintenance[0].equipment} needs manager follow-up.` : null,
+    todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length < 2 ? 'Coverage risk: verify kitchen backup plan before peak service.' : null
+  ].filter(Boolean).slice(0, 8);
+
+  const handleBuildSmartOrder = async () => {
+    const items = lowStockItems.filter(i => stockNeed(i) > 0);
+    if (items.length === 0) return addToast('Smart Order', 'No below-par items found.');
+    if (!window.confirm(`Build pending order quantities for ${items.length} below-par items?`)) return;
+    try {
+      await Promise.all(items.map(i => updateDoc(doc(db, 'inventoryItems', i.id), {
+        pendingQty: Math.max(Number(i.pendingQty || 0), stockNeed(i)),
+        lastSmartOrderDate: getToday(),
+        lastSmartOrderBy: appUser?.name || 'Ops Command Center'
+      })));
+      await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Ops Command Center.`);
+      addToast('Smart Order Built', `${items.length} item(s) queued for ordering.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleCreateSmartPrepTasks = async () => {
+    if (suggestedPrepTasks.length === 0) return addToast('Smart Prep', 'No smart prep tasks needed right now.');
+    if (!window.confirm(`Create ${suggestedPrepTasks.length} smart prep task(s) for today?`)) return;
+    try {
+      const existingToday = new Set(tasks.filter(t => t.source === 'ops-smart-prep' && t.generatedForDate === today).map(t => t.title));
+      const adds = suggestedPrepTasks
+        .filter(title => !existingToday.has(title))
+        .map(title => addDoc(collection(db, 'tasks'), {
+          title,
+          category: 'Smart Prep',
+          frequency: 'daily',
+          generatedForDate: today,
+          generatedAt: new Date().toISOString(),
+          source: 'ops-smart-prep',
+          completions: {},
+          restaurantId: appUser.restaurantId
+        }));
+      await Promise.all(adds);
+      await logAudit(appUser, 'SMART_PREP_CREATED', 'tasks', `Created ${adds.length} smart prep tasks for ${today}.`);
+      addToast('Smart Prep Created', `${adds.length} task(s) added to Prep & Tasks.`);
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handlePost86Alert = async () => {
+    if (urgent86Items.length === 0) return addToast('86 Radar', 'No urgent 86/low-stock items found.');
+    const alertLines = urgent86Items.slice(0, 10).map(i => `• ${i.name}: ${Number(i.currentStock || 0)} on hand / par ${Number(i.parLevel || 0)}`);
+    const text = `86 / Low Stock Watch:\n${alertLines.join('\n')}`;
+    try {
+      await addDoc(collection(db, 'events'), {
+        date: new Date().toISOString(), title: text, type: 'note', author: appUser?.name || 'Ops Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
+      });
+      addToast('86 Alert Posted', 'Important low-stock alert posted to Message Board.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const handleMarkOpsReviewed = async () => {
+    try {
+      await logAudit(appUser, 'OPS_REVIEWED', 'ops', `Reviewed Ops Command Center for ${today}. Health score ${healthScore}/100.`);
+      addToast('Ops Reviewed', 'Review logged to audit trail.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const timeline = [
+    ...timePunches.filter(p => p.date === today).map(p => ({
+      at: p.clockOutTime || p.clockInTime,
+      type: p.clockOutTime ? 'Clock Out' : 'Clock In',
+      title: `${p.employeeName || users.find(u => u.id === p.employeeId)?.name || 'Staff'} ${p.clockOutTime ? 'clocked out' : 'clocked in'}`,
+      detail: p.status || ''
+    })),
+    ...todayWaste.map(w => ({ at: w.timestamp || today, type: 'Waste', title: `${w.itemName || 'Item'} wasted`, detail: `${w.qty || ''} ${w.reason || ''}` })),
+    ...maintenanceLogs.filter(l => (l.reportedAt || '').startsWith(today) || (l.lastUpdated || '').startsWith(today)).map(l => ({ at: l.lastUpdated || l.reportedAt, type: 'Maintenance', title: l.equipment, detail: l.issue })),
+    ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.type || 'Event', title: e.title || 'Event', detail: e.author || '' })),
+    ...todayShifts.slice(0, 12).map(s => ({ at: `${today}T${s.startTime || '00:00'}:00`, type: 'Scheduled', title: `${users.find(u => u.id === s.employeeId)?.name || 'Staff'} ${s.role || ''}`, detail: `${formatShortTime(s.startTime)} - ${formatShortTime(s.endTime)}` }))
+  ].filter(x => x.at).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0, 18);
+
+  const briefText = () => {
+    const lines = [
+      `Good morning, ${appUser?.name?.split(' ')[0] || 'team'}.`,
+      `Restaurant health score: ${healthScore}/100.`,
+      yesterdaySales ? `Yesterday sales: $${Number(yesterdaySales.grossSales || 0).toLocaleString()}.` : 'Yesterday sales are not entered yet.',
+      todaySales ? `Today sales entered: $${Number(todaySales.grossSales || 0).toLocaleString()}.` : 'Today sales are not entered yet.',
+      `Today: ${todayShifts.length} shifts, ${activePunches.length} currently clocked in.`,
+      `Open tasks: ${openTasks.length}. Low-stock items: ${lowStockItems.length}. Open maintenance: ${openMaintenance.length}.`,
+      `Top priority: ${recommendations.find(Boolean) || 'Keep service smooth.'}`
+    ];
+    return lines.join('\n');
+  };
+
+  const handlePostBrief = async () => {
+    try {
+      await addDoc(collection(db, 'events'), {
+        date: new Date().toISOString(),
+        title: briefText(),
+        type: 'note',
+        author: appUser?.name || 'Ops Command Center',
+        isImportant: false,
+        restaurantId: appUser.restaurantId,
+        replies: []
+      });
+      addToast('Morning Brief Posted', 'Saved to the Message Board for the team.');
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  const handleSeedKitchenOps = async () => {
+    if (!window.confirm('Add the default end-all kitchen tasks and PM schedules? Existing matching titles will be skipped.')) return;
+    const defaultTasks = [
+      { title: 'Opening line check completed', category: 'General', frequency: 'daily' },
+      { title: 'Cooler and freezer temps logged', category: 'General', frequency: 'daily' },
+      { title: '86 list reviewed with FOH', category: 'General', frequency: 'daily' },
+      { title: 'Fryer filter and oil quality checked', category: 'Cleaning', frequency: 'daily' },
+      { title: 'Expo station stocked before rush', category: 'General', frequency: 'daily' },
+      { title: 'Walk-in shelves wiped down', category: 'Cleaning', frequency: 'weekly', targetDay: 'Monday' },
+      { title: 'Deep clean fryer bay', category: 'Cleaning', frequency: 'weekly', targetDay: 'Tuesday' },
+      { title: 'Check first aid and burn kit', category: 'General', frequency: 'monthly', targetDate: '1' }
+    ];
+    const defaultPm = [
+      { title: 'Clean hood filters', equipment: 'Hood System', frequencyDays: 7 },
+      { title: 'Delime dish machine', equipment: 'Dish Machine', frequencyDays: 30 },
+      { title: 'Inspect cooler gaskets', equipment: 'Coolers', frequencyDays: 30 },
+      { title: 'Grease trap service check', equipment: 'Grease Trap', frequencyDays: 30 },
+      { title: 'Fire suppression visual check', equipment: 'Fire Suppression', frequencyDays: 90 }
+    ];
+    try {
+      const existingTaskTitles = new Set(tasks.map(t => (t.title || '').toLowerCase()));
+      const existingPmTitles = new Set(pmSchedules.map(p => (p.title || '').toLowerCase()));
+      const taskAdds = defaultTasks
+        .filter(t => !existingTaskTitles.has(t.title.toLowerCase()))
+        .map(t => addDoc(collection(db, 'tasks'), { ...t, completions: {}, restaurantId: appUser.restaurantId }));
+      const pmAdds = defaultPm
+        .filter(p => !existingPmTitles.has(p.title.toLowerCase()))
+        .map(p => addDoc(collection(db, 'pmSchedules'), { ...p, lastCompleted: getToday(), lastUpdatedBy: appUser.name, restaurantId: appUser.restaurantId }));
+      await Promise.all([...taskAdds, ...pmAdds]);
+      addToast('Kitchen Ops Seeded', `Added ${taskAdds.length + pmAdds.length} operating standards.`);
+    } catch (err) {
+      addToast('Error', err.message);
+    }
+  };
+
+  const kpiCards = [
+    { label: 'Health Score', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Strong shift posture' : healthScore >= 70 ? 'Watch the weak spots' : 'Needs manager attention' },
+    { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
+    { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
+    { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
+    { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} on clock` : 'Nobody clocked in' },
+    { label: 'Waste Today', value: `${todayWaste.length}`, detail: wasteCost ? `$${wasteCost.toFixed(2)} logged` : 'No cost logged' }
+  ];
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
+        <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#D4A381] mb-2">Morning Brief</div>
+            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">Kitchen Command Center</h1>
+            <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A live cockpit for prep, people, inventory, maintenance, labor, waste, and the little gremlins that usually wait until dinner rush.</p>
+          </div>
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+            <button onClick={handlePostBrief} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Post Brief</button>
+            <button onClick={handleCreateSmartPrepTasks} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ClipboardList size={16}/> Prep Plan</button>
+            <button onClick={handleBuildSmartOrder} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Package size={16}/> Smart Order</button>
+            <button onClick={handlePost86Alert} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Bell size={16}/> 86 Alert</button>
+            <button onClick={handleMarkOpsReviewed} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Check size={16}/> Reviewed</button>
+            {(appUser?.isAdmin || appUser?.permissions?.prep || appUser?.permissions?.team) && <button onClick={handleSeedKitchenOps} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Plus size={16}/> Seed Standards</button>}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+        {kpiCards.map(card => (
+          <div key={card.label} className={`${T.card} p-3 text-center`}>
+            <div className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>{card.label}</div>
+            <div className="text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
+            <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className={`${T.card} p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
+        <div className="lg:col-span-2">
+          <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Smart Action Dock</h2>
+          <p className="text-xs text-slate-400 font-bold mt-1">These buttons turn the dashboard into actual work: pending orders, prep tasks, 86 alerts, and audit trail checkpoints.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Suggested Prep</div><div className="text-xl font-black text-white">{suggestedPrepTasks.length}</div></div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">86 Watch</div><div className={`text-xl font-black ${urgent86Items.length ? 'text-red-400' : 'text-emerald-400'}`}>{urgent86Items.length}</div></div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={`${T.card} p-4 lg:col-span-2`}>
+          <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
+            <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Manager Readout</h2>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {recommendations.map((rec, idx) => (
+              <div key={idx} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Priority {idx + 1}</div>
+                <div className="text-sm font-bold text-slate-200 leading-snug">{rec}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Smart Prep Forecast</h2>
+          <div className="space-y-2">
+            {prepForecast.map(row => (
+              <div key={row.label} className="flex justify-between gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <div>
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{row.label}</div>
+                  <div className="text-xs text-slate-400 font-bold mt-1">{row.note}</div>
+                </div>
+                <div className="text-sm font-black text-[#D4A381] text-right whitespace-nowrap">{row.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Inventory Radar</div>
+          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+            {lowStockItems.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No par problems detected.</div>}
+            {lowStockItems.slice(0, 12).map(item => {
+              const par = Number(item.parLevel || 0);
+              const stock = Number(item.currentStock || 0);
+              const needed = Math.max(0, par - stock);
+              return (
+                <div key={item.id} className={`${T.row} flex justify-between items-center gap-3`}>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{item.name}</div>
+                    <div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Stock {stock} / Par {par}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-black text-orange-400">Order {needed}</div>
+                    <div className="text-[9px] text-slate-500 font-bold">${Number(item.price || 0).toFixed(2)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Equipment Radar</div>
+          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+            {openMaintenance.length === 0 && overduePm.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No equipment warnings right now.</div>}
+            {criticalMaintenance.concat(openMaintenance.filter(l => !criticalMaintenance.includes(l))).slice(0, 8).map(log => (
+              <div key={log.id} className={`${T.row}`}>
+                <div className="flex justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{log.equipment}</div>
+                    <div className="text-xs text-slate-400 font-medium mt-1 line-clamp-2">{log.issue}</div>
+                  </div>
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${log.urgency === 'Critical' ? 'text-red-500' : log.urgency === 'High' ? 'text-orange-400' : 'text-slate-500'}`}>{log.urgency || 'Standard'}</span>
+                </div>
+              </div>
+            ))}
+            {overduePm.slice(0, 4).map(pm => (
+              <div key={pm.id} className={`${T.row} bg-red-950/10`}>
+                <div className="text-sm font-bold text-red-300">PM Overdue: {pm.title}</div>
+                <div className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-1">{pm.equipment} • every {pm.frequencyDays} days</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Users size={14}/> Labor & Schedule Warnings</div>
+          <div className={`divide-y ${T.border}`}>
+            {scheduleWarnings.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No obvious schedule warnings in the next week.</div>}
+            {scheduleWarnings.map((w, idx) => <div key={idx} className={`${T.row} text-sm font-bold text-slate-200`}>{w}</div>)}
+            {todayShifts.slice(0, 8).map(s => (
+              <div key={s.id} className={`${T.row} flex justify-between items-center text-xs`}>
+                <span className="font-bold text-white">{users.find(u => u.id === s.employeeId)?.name || 'Staff'} <span className="text-slate-500">{s.role}</span></span>
+                <span className="font-mono text-[#D4A381]">{formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={`${T.th} flex items-center gap-2`}><Clock size={14}/> Kitchen Timeline</div>
+          <div className={`divide-y ${T.border} max-h-[420px] overflow-y-auto custom-scrollbar`}>
+            {timeline.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No timeline activity for this day yet.</div>}
+            {timeline.map((item, idx) => (
+              <div key={`${item.type}-${idx}`} className={`${T.row} flex gap-3`}>
+                <div className="text-[10px] font-mono text-[#D4A381] w-16 flex-shrink-0">{formatClockTime(item.at)}</div>
+                <div className="min-w-0">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{item.type}</div>
+                  <div className="text-sm font-bold text-white truncate">{item.title}</div>
+                  {item.detail && <div className="text-xs text-slate-400 truncate">{item.detail}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className={`${T.card} p-4`}>
+        <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
+          <h2 className="font-black text-white flex items-center gap-2"><BookOpen size={18} className={T.copper}/> Recipe & Menu Brain</h2>
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{recipes.length} recipes tracked</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Use Before It Hurts</div>
+            <div className="text-sm font-bold text-white">{lowStockItems.length ? 'Avoid specials using low-stock items.' : 'Inventory is flexible enough for specials.'}</div>
+          </div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Specials Signal</div>
+            <div className="text-sm font-bold text-white">{forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'Run fast, high-margin items today.' : 'Normal day: good test window for a new special.'}</div>
+          </div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">86 Watch</div>
+            <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, clientData, setActiveTab, addToast, registerUndo }) => {
+  const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
+  const today = getToday();
+  const profile = getHomeProfile(appUser);
+  const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const myShift = todaysShifts.find(s => s.employeeId === appUser.id);
+  const activePunches = timePunches.filter(p => ['clocked_in','on_break'].includes(p.status));
+  const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
+  const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
+  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) <= Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
+  const urgentMaintenance = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5);
+  const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
+  const pendingRequests = timeOffRequests.filter(r => r.status === 'pending').slice(0, 5);
+  const openSwaps = shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5);
+  const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
+  const setupItems = [
+    { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings' },
+    { label: 'Add team members', done: users.length > 1, tab: 'team' },
+    { label: 'Build this week schedule', done: shifts.some(s => s.date >= today), tab: 'schedule' },
+    { label: 'Add recipes', done: recipes.length > 0, tab: 'recipes' },
+    { label: 'Add inventory items', done: inventoryItems.length > 0, tab: 'inventory' },
+    { label: 'Post first announcement', done: events.some(e => e.type === 'note'), tab: 'messages' },
+    { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance' }
+  ];
+  const setupDone = setupItems.filter(i => i.done).length;
+  const problems = [
+    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory' } : null,
+    urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
+    pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
+    openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
+    !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
+  ].filter(Boolean);
+
+  const quickCreate = async (kind) => {
+    try {
+      let refDoc = null;
+      if (kind === '86') {
+        const item = prompt('What item is 86\'d or low?');
+        if (!item) return;
+        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] });
+        addToast('86 Alert Posted', item);
+      }
+      if (kind === 'prep') {
+        const item = prompt('Prep task to add for today?');
+        if (!item) return;
+        refDoc = await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: item, station: 'General', isCompleted: false, qty: 1, createdAt: new Date().toISOString(), createdBy: appUser.name });
+        addToast('Prep Added', item);
+      }
+      if (kind === 'maintenance') {
+        const issue = prompt('Maintenance issue?');
+        if (!issue) return;
+        refDoc = await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'General', issue, urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: appUser.name });
+        addToast('Maintenance Added', issue);
+      }
+      if (kind === 'message') {
+        const msg = prompt('Message to post?');
+        if (!msg) return;
+        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: msg, messageCategory: 'Shift Note', author: appUser.name, isImportant: false, date: new Date().toISOString(), replies: [] });
+        addToast('Message Posted', msg.slice(0, 60));
+      }
+      if (refDoc) registerUndo?.({ label: `Undo ${kind}`, action: async () => { await deleteDoc(refDoc); addToast('Undone', 'The last quick action was removed.'); } });
+    } catch (err) { addToast('Could not save', err.message || 'Permission or connection issue.'); }
+  };
+
+  const seedDemoData = async () => {
+    if (!appUser?.isAdmin && !appUser?.isSuperAdmin) return addToast('Manager Only', 'Ask a manager to seed demo data.');
+    if (!window.confirm('Add a complete demo set to this workspace? This adds sample recipes, prep, inventory, messages, events, and maintenance.')) return;
+    const stamp = new Date().toISOString();
+    await Promise.all([
+      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: 'DEMO: Tonight has live music and heavy dinner volume expected.', messageCategory: 'Announcement', author: '86 Demo', isImportant: true, date: stamp, replies: [], readBy: [] }),
+      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'special_event', title: 'DEMO: Patio Rush / Live Music', date: today, time: '19:00', notes: 'Expect extra bar and fryer volume.', addedBy: '86 Demo' }),
+      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Portion burger patties', station: 'Grill', qty: 24, isCompleted: false }),
+      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Backup ranch and blue cheese', station: 'Cold', qty: 2, isCompleted: false }),
+      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Chicken Breast', category: 'Protein', parLevel: 3, currentStock: 1, pendingQty: 0, price: 84, packSize: '40 lb case', yieldQty: 1, isStarred: true }),
+      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Fries', category: 'Frozen', parLevel: 5, currentStock: 2, pendingQty: 0, price: 33, packSize: 'Case', yieldQty: 1, isStarred: true }),
+      addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'DEMO Fryer #2', issue: 'Filter due before dinner rush', urgency: 'High', status: 'Reported', reportedAt: stamp, reportedBy: '86 Demo' }),
+      addDoc(collection(db, 'recipes'), { restaurantId: appUser.restaurantId, title: 'DEMO House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 gallon', ingredients: 'Mayo\nButtermilk\nRanch seasoning', instructions: 'Whisk. Label. Chill.', authorName: '86 Demo', lastUpdated: stamp })
+    ]);
+    addToast('Demo Mode Seeded', 'Sample operating data was added to this workspace.');
+  };
+
+  const applyNotificationPreset = async () => {
+    const presets = {
+      manager: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: true, notifLevel: 'all', muteOnDaysOff: false },
+      kitchen: { notifSchedule: true, notifMessages: true, notifTrades: false, notifReminders: true, notifLevel: 'mentions', keywords: '86,prep,critical,walk-in,fryer,line' },
+      bar: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'mentions', keywords: 'bar,bartender,beer,86,critical' },
+      service: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'critical' },
+      staff: { notifSchedule: true, notifMessages: true, notifTrades: true, notifReminders: false, notifLevel: 'critical' }
+    };
+    await updateDoc(doc(db, 'users', appUser.id), { preferences: { ...(appUser.preferences || {}), ...(presets[profile] || presets.staff) } });
+    addToast('Notification Preset Applied', 'Your alerts now match your role.');
+  };
+
+  const heroTitle = profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief';
+  const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
+
+  return <div className="max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
+      <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
+      <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{formatDisplayFullDate(today)}</div>
+          <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{heroTitle}</h1>
+          <p className="text-sm text-slate-300 font-bold mt-2 max-w-2xl leading-snug">{topPriority}</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 min-w-[230px]">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">On Schedule</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Clocked In</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{problems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Needs Eyes</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <button onClick={() => quickCreate('86')} className="bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
+      <button onClick={() => quickCreate('prep')} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
+      <button onClick={() => quickCreate('message')} className="bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
+      <button onClick={() => quickCreate('maintenance')} className="bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>
+    </div>
+
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="lg:col-span-2 space-y-3">
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
+          {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
+            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="The equipment gods are quiet, the schedule has a pulse, and nothing is screaming for help." />}
+          </div>}
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
+          {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={() => setActiveTab('inventory')} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
+          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Ops" detail="Open full command center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
+          {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
+        </div>
+
+        <div className={`${T.card} p-4`}>
+          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">Important Messages</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open Board</button></div>
+          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div></div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/7</span></button>
+          {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
+        </div>
+        <div className={`${T.card} p-4`}>
+          <h2 className="font-black text-white text-lg mb-3">Recently Used</h2>
+          <div className="flex flex-wrap gap-2">{recentTabs.length ? recentTabs.map(t => <button key={t} onClick={() => setActiveTab(t)} className="px-3 py-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[10px] text-slate-300 font-black uppercase tracking-widest">{t}</button>) : <p className="text-xs text-slate-500 font-bold">Tabs you use will appear here.</p>}</div>
+        </div>
+        <div className={`${T.card} p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, prefs: !e.prefs}))}><h2 className="font-black text-white text-lg">My Preferences</h2><Settings size={16}/></button>
+          {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Apply {profile} Notification Preset</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">Open Full Settings</button></div>}
+        </div>
+      </div>
+    </div>
+  </div>;
+};
+
+export { TabPrep, TabInventory, TabRecipes, TabMaintenance, TabOpsCenter, TabToday };
