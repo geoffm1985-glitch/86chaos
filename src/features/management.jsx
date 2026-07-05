@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabTeam = ({ users, appUser, addToast }) => {
@@ -1728,7 +1728,7 @@ Old clients cannot reveal their original creation time, so they will be marked a
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `Users_Export_${rest.name.replace(/\s+/g, '_')}.csv`);
+      link.setAttribute("download", `${safeFilenamePart(rest.name || 'Restaurant')}-Users-Export.csv`);
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
       addToast('Exported', 'User list downloaded.');
     } catch (err) { 
@@ -1753,7 +1753,7 @@ Old clients cannot reveal their original creation time, so they will be marked a
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `86chaos_Backup_${rest.name.replace(/\s+/g, '_')}_${getToday()}.json`);
+      link.setAttribute("download", `${safeFilenamePart(rest.name || 'Restaurant')}-Backup-${getToday()}.json`);
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
@@ -1810,7 +1810,7 @@ Old clients cannot reveal their original creation time, so they will be marked a
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `86chaos_Employee_${u.name.replace(/\s+/g, '_')}_${getToday()}.json`);
+      link.setAttribute("download", `${getRestaurantExportPrefix(appUser)}-Employee-${safeFilenamePart(u.name || 'Staff')}-${getToday()}.json`);
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
       URL.revokeObjectURL(url);
       addToast('Backup Complete', 'Employee JSON downloaded.');
@@ -3536,12 +3536,14 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
     catch (err) { addToast('Error', err.message); }
   };
 
-  const exportCsv = () => {
+  const buildLaborExport = () => {
     let rows;
     let exportName = 'time-punch-detail';
+    let title = 'Time Punch Detail';
 
     if (exportMode === 'summary') {
       exportName = 'total-hours-summary';
+      title = 'Total Hours Summary';
       const summaryMap = payrollRows.reduce((acc, r) => {
         const key = r.punch.employeeId || r.emp.id || r.punch.employeeName || 'unknown';
         if (!acc[key]) {
@@ -3590,8 +3592,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
       payrollRows.forEach(r => rows.push([
         r.emp.name || r.punch.employeeName || 'Unknown',
         r.punch.date || '',
-        r.punch.clockInTime ? formatClockDateTime(r.punch.clockInTime) : '',
-        r.punch.clockOutTime ? formatClockDateTime(r.punch.clockOutTime) : '',
+        r.punch.clockInTime ? formatClockDateTime(r.punch.clockInTime, appUser) : '',
+        r.punch.clockOutTime ? formatClockDateTime(r.punch.clockOutTime, appUser) : '',
         r.punch.breakMinutes || 0,
         r.hours.toFixed(2),
         r.punch.cashTips || 0,
@@ -3602,14 +3604,25 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
       ]));
     }
 
-    const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `86chaos-${exportName}-${rangeStart}-to-${rangeEnd}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const prefix = getRestaurantExportPrefix(appUser);
+    const filenameBase = `${prefix}-${exportName}-${rangeStart}-to-${rangeEnd}`;
+    const subtitle = `${appUser?.restaurantName || 'Restaurant'} • ${rangeStart} to ${rangeEnd} • ${payrollRows.length} punch${payrollRows.length === 1 ? '' : 'es'}`;
+    return { rows, exportName, title, filenameBase, subtitle };
+  };
+
+  const exportCsv = () => {
+    if (payrollRows.length === 0) return addToast('Empty', 'No labor records match the current filters.');
+    const { rows, filenameBase } = buildLaborExport();
+    downloadCsvRows(`${filenameBase}.csv`, rows);
+    addToast('Exported', `${exportMode === 'summary' ? 'Total hours summary' : 'Time punch detail'} CSV downloaded.`);
+  };
+
+  const exportPdf = () => {
+    if (payrollRows.length === 0) return addToast('Empty', 'No labor records match the current filters.');
+    const { rows, title, filenameBase, subtitle } = buildLaborExport();
+    const opened = openPrintableReport({ title: `${appUser?.restaurantName || 'Restaurant'} - ${title}`, subtitle, rows, filename: `${filenameBase}.pdf` });
+    if (opened) addToast('PDF Ready', 'Print window opened. Choose Save as PDF or your printer.');
+    else addToast('Popup Blocked', 'Allow popups for this site, then try PDF again.');
   };
 
   return (
@@ -3673,7 +3686,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
       {subTab === 'export' && <div className={`${T.card} p-5 space-y-4`}>
         <div>
           <h3 className="font-black text-white text-lg">Payroll Export</h3>
-          <p className="text-xs text-slate-400 font-bold mt-1">Download the currently filtered range as a CSV for payroll review or accountant handoff.</p>
+          <p className="text-xs text-slate-400 font-bold mt-1">Download the currently filtered range as a CSV or print-ready PDF for payroll review, accountant handoff, or owner records. Filenames now start with the restaurant name.</p>
         </div>
         <div className="grid sm:grid-cols-2 gap-3 max-w-2xl">
           <button type="button" onClick={() => setExportMode('detail')} className={`text-left rounded-xl border p-4 transition-all ${exportMode === 'detail' ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/50'}`}>
@@ -3685,7 +3698,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
             <div className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">One row per employee</div>
           </button>
         </div>
-        <button onClick={exportCsv} className={`${T.btn} flex items-center gap-2 justify-center max-w-xs`}><Package size={16}/> Download {exportMode === 'summary' ? 'Summary' : 'Punch Detail'} CSV</button>
+        <div className="flex flex-col sm:flex-row gap-2"><button onClick={exportCsv} className={`${T.btn} flex items-center gap-2 justify-center`}><Package size={16}/> Download {exportMode === 'summary' ? 'Summary' : 'Punch Detail'} CSV</button><button onClick={exportPdf} className={`${T.btnAlt} flex items-center gap-2 justify-center`}><Package size={16}/> Print / Save PDF</button></div>
       </div>}
     </div>
   );
@@ -3694,7 +3707,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 const HELP_ARTICLES = [
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Demo Mode only in test/client demo accounts, not live customer data.'] },
   { id:'menu-search', title:'Using the menu search bar', group:'Navigation', keywords:'search menu find feature where is tool', body:['Open the side menu and type a plain word like “punch”, “recipe”, “schedule”, “broken”, “password”, or “inventory”.','The search shows matching tabs and suggested actions. It includes common synonyms so users do not need to know the exact tab name.','This is the fastest way to help tired staff find the correct place without hunting.'] },
-  { id:'labor', title:'Fixing missed punches and timesheets', group:'Labor', keywords:'time punch clock in clock out missed labor payroll timesheet tips', body:['Go to Labor & Timesheets → Punch Fixer.','Review the Needs Attention cards first. These show open punches, missed clock-outs, long shifts, unscheduled punches, and time errors.','Click Fix to edit a punch, or Add Punch to enter a manual shift. Always choose a reason and write a manager note.','Use Export to download the current range for payroll review.'] },
+  { id:'labor', title:'Fixing missed punches and timesheets', group:'Labor', keywords:'time punch clock in clock out missed labor payroll timesheet tips', body:['Go to Labor & Timesheets → Punch Fixer.','Review the Needs Attention cards first. These show open punches, missed clock-outs, long shifts, unscheduled punches, and time errors.','Click Fix to edit a punch, or Add Punch to enter a manual shift. Always choose a reason and write a manager note.','Use Export to download the current range for payroll review as time punch detail or total hours summary.'] },
+  { id:'labor-export-pdf', title:'Exporting timesheets as CSV or PDF', group:'Labor', keywords:'export pdf csv payroll timesheet restaurant filename total hours punch detail', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail for every clock-in/out row, or Total Hours Summary for one row per employee.','Use Download CSV for spreadsheets/accountants. Use Print / Save PDF for owner records or a clean printable copy.','Export filenames start with the restaurant name so multi-location owners do not get a pile of generic 86chaos files.'] },
   { id:'schedule-builder', title:'Building a schedule faster', group:'Scheduling', keywords:'schedule builder copy week publish shift coverage smart fill', body:['Go to Schedule Builder. Use Copy Previous Week when the schedule is similar to last week.','Use Coverage Targets to define how many cooks, servers, bartenders, or managers you need by day and shift time.','Use Smart Fill to create draft shifts from missing coverage targets. Review the drafts before publishing.','Use Drag Board to move shifts between days or quick-edit employee/time without digging through the large grid.','Publish Preview shows draft count, missing coverage, and conflicts before sending the schedule live.'] },
   { id:'schedule-templates', title:'Creating and editing schedule templates', group:'Scheduling', keywords:'template create edit normal week packers fish fry live music', body:['Open Schedule Builder → Schedule Copilot → Create Template.','Add rows for each day, role, start time, end time, and count. Example: Friday Cook 4p-9p count 2.','Save Current Week turns the current visible week into a reusable template.','Each restaurant has its own template library, so one client’s patterns never leak into another client.'] },
   { id:'time-off', title:'Handling time-off requests', group:'Scheduling', keywords:'request off unavailable vacation approve deny', body:['Open Time Clock & Shifts → Request Off for employee requests. Managers can review requests from Schedule Builder.','Schedule warnings will flag approved time-off conflicts before publishing.','Partial-day requests should include start and end time so managers can schedule around them.'] },
@@ -3707,6 +3721,9 @@ const HELP_ARTICLES = [
   { id:'weekly-maintenance', title:'Weekly database maintenance', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh', body:['86 Chaos does not magically update production databases from the browser. Weekly automatic maintenance requires a scheduled server job.','The weekly maintenance route can stamp each client account with the latest maintenance run and log the result for support.','True Firestore backups are a separate Google Cloud scheduled export, not something the React app should do from a user phone.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
   { id:'low-stock-focus', title:'Finding below-par inventory from alerts', group:'Inventory', keywords:'below par low stock inventory alert highlight command center today', body:['Below-par alerts only count items where current stock is less than par. Items equal to par are not considered low.','Click a low-stock alert from Today or Command Center to open Inventory in Below-Par Focus mode.','Below-Par Focus filters the list to low items and highlights them so managers can update stock, par, or ordering quickly.'] },
+  { id:'burn-log-stock', title:'Burn Log stock deduction rules', group:'Inventory', keywords:'burn log waste case each unit deduct stock par inventory', body:['Burn Log quantities are individual units, not whole cases. If you enter 1 burger, bottle, portion, or item, the app deducts one unit from the stock record instead of wiping out the whole case.','For case-based inventory, set Yield/Units Per Stock Unit on the inventory item. Example: a 24-count case should use yield 24, so burning 1 deducts 1/24 of a case.','The Burn Log preview shows how much stock will be deducted before you save. Deleting or editing a burn restores/adjusts the exact amount that was deducted.'] },
+  { id:'mobile-drag-board', title:'Moving shifts on phones', group:'Scheduling', keywords:'drag board mobile move shift day schedule phone', body:['On desktop, drag shift cards between days in Schedule Builder → Schedule Copilot → Drag Board.','On phones/tablets, use the Move to day dropdown on the shift card. Mobile browsers can be clumsy with drag-and-drop, so the dropdown is the safer touch-friendly option.','Changing the day, employee, start time, or end time saves immediately.'] },
+  { id:'new-1260', title:'What changed in version 12.6.0', group:'Release Notes', keywords:'new update 12.6 pdf export restaurant filename burn log mobile drag board', body:['Labor exports now support CSV and print/save-as-PDF. Filenames start with the restaurant name.','Order exports, payroll exports, backups, employee exports, and user exports now use restaurant-aware filenames.','Burn Log now treats entered quantity as individual units and stores the exact stock deduction for safer edit/delete restoration.','Schedule Drag Board now has a mobile-friendly Move to day dropdown.'] },
   { id:'new-1242', title:'What changed in version 12.4.2', group:'Release Notes', keywords:'new update 12.4.2 time format 12 hour 24 hour military labor timesheets punches settings preferences', body:['Time format preferences now control schedule times, punch ledger times, Labor & Timesheets displays, Ops timeline times, toast messages, maintenance logs, and payroll CSV exports.','Native time entry fields may still use the device/browser picker, but saved/displayed times honor the selected preference.'] },
   { id:'new-124', title:'What changed in version 12.4.1', group:'Release Notes', keywords:'new update 12.4 bug report help center weekly database maintenance cron', body:['Report a Bug / Error moved out of the side menu and into Help Center.','Help Center now includes a searchable article for weekly database maintenance.','The optional weekly maintenance pack adds a Vercel Cron endpoint for support housekeeping.'] }
 ];

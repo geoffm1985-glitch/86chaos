@@ -119,7 +119,7 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '12.5.3';
+export const CURRENT_VERSION = '12.6.0-component-export-pdf-burn-fix';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -189,6 +189,77 @@ export const formatClockDateTime = (value, userOrFormat) => {
   if (Number.isNaN(d.getTime())) return '';
   return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${formatClockTime(d, userOrFormat)}`;
 };
+
+export const safeFilenamePart = (value, fallback = '86chaos') => {
+  const raw = String(value || fallback || '86chaos').trim();
+  const cleaned = raw
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9\-_\.\s]/gi, '')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+  return cleaned || fallback || '86chaos';
+};
+
+export const getRestaurantExportPrefix = (appUser, fallback = '86chaos') => {
+  const name = appUser?.restaurantName || appUser?.restaurant || appUser?.businessName || appUser?.systemSettings?.restaurantName || appUser?.systemSettings?.businessName || fallback;
+  return safeFilenamePart(name, fallback);
+};
+
+export const csvFromRows = (rows) => (rows || [])
+  .map(row => (row || []).map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+  .join('\n');
+
+export const downloadTextFile = (filename, content, mime = 'text/plain;charset=utf-8;') => {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+export const downloadCsvRows = (filename, rows) => {
+  downloadTextFile(filename, '\uFEFF' + csvFromRows(rows), 'text/csv;charset=utf-8;');
+};
+
+export const openPrintableReport = ({ title, subtitle = '', rows = [], filename = '86chaos-report' }) => {
+  const safeTitle = String(title || filename || '86 Chaos Report');
+  const safeSubtitle = String(subtitle || '');
+  const headers = rows[0] || [];
+  const bodyRows = rows.slice(1);
+  const esc = (v) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const html = `<!doctype html><html><head><title>${esc(filename)}</title><meta charset="utf-8" />
+    <style>
+      body{font-family:Arial,sans-serif;color:#111;margin:28px;}
+      .brand{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#7a4f31;margin-bottom:4px;}
+      h1{font-size:22px;margin:0 0 4px;}
+      .sub{font-size:12px;color:#555;margin-bottom:18px;}
+      table{width:100%;border-collapse:collapse;font-size:10px;}
+      th{background:#222;color:white;text-align:left;padding:7px;border:1px solid #444;}
+      td{padding:6px;border:1px solid #ccc;vertical-align:top;}
+      tr:nth-child(even) td{background:#f7f7f7;}
+      .foot{margin-top:14px;font-size:10px;color:#777;}
+      @media print{button{display:none} body{margin:18px}}
+    </style></head><body>
+    <button onclick="window.print()" style="float:right;padding:8px 12px;border-radius:8px;border:1px solid #999;background:#111;color:white;font-weight:bold;">Print / Save PDF</button>
+    <div class="brand">86 Chaos</div><h1>${esc(safeTitle)}</h1><div class="sub">${esc(safeSubtitle)}</div>
+    <table><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${bodyRows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <div class="foot">Generated ${esc(new Date().toLocaleString())}</div>
+    <script>setTimeout(() => window.print(), 350);</script>
+    </body></html>`;
+  const win = window.open('', '_blank');
+  if (!win) return false;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  return true;
+};
+
 export const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 export const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 

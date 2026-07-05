@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
@@ -493,6 +493,22 @@ const [searchTerm, setSearchTerm] = useState('');
   const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
 const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
+const getBurnUnitsPerStockUnit = (item) => {
+    const explicitYield = parseFloat(item?.yieldQty);
+    if (Number.isFinite(explicitYield) && explicitYield > 1) return explicitYield;
+    const pack = String(item?.packSize || '');
+    const packMatch = pack.match(/(\d+(?:\.\d+)?)/);
+    const countWords = /(ct|count|each|ea|piece|pieces|pc|pcs|pack|pk|bottle|bottles|can|cans|portion|portions|patty|patties)/i;
+    if (packMatch && countWords.test(pack)) return Math.max(1, parseFloat(packMatch[1]));
+    return 1;
+  };
+
+const getBurnStockDeduction = (qty, item) => {
+    const units = Math.max(0, parseFloat(qty) || 0);
+    const unitsPerStockUnit = getBurnUnitsPerStockUnit(item);
+    return units / unitsPerStockUnit;
+  };
+
 const handleLogWaste = async (e) => {
     e.preventDefault(); 
     if(!wItemId || !wQty) return; 
@@ -500,24 +516,25 @@ const handleLogWaste = async (e) => {
     const item = inventoryItems.find(i => i.id === wItemId); 
     if(!item) return;
 
-    // 1. Get the raw inputs
-    const unitsWasted = parseFloat(wQty); 
-    const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1; 
-    const pricePerCase = parseFloat(item.price) || 0;
-
-    // 2. Calculate individual unit metrics
-    const pricePerUnit = pricePerCase / yieldPerCase;
+    // Burn quantities are entered as INDIVIDUAL units. If a stock record represents a case/pack,
+    // divide by the item's yield/pack count so burning 1 burger, bottle, portion, etc. does not remove a whole case.
+    const unitsWasted = Math.max(0, parseFloat(wQty) || 0); 
+    if (unitsWasted <= 0) return addToast('Missing Qty', 'Enter how many individual units were wasted.');
+    const unitsPerStockUnit = getBurnUnitsPerStockUnit(item);
+    const pricePerStockUnit = parseFloat(item.price) || 0;
+    const pricePerUnit = unitsPerStockUnit > 0 ? pricePerStockUnit / unitsPerStockUnit : pricePerStockUnit;
     const totalCostLost = pricePerUnit * unitsWasted;
-    
-    // 3. Calculate how much of a case to deduct from the main stock
-    const stockDeduction = unitsWasted / yieldPerCase; 
+    const stockDeduction = getBurnStockDeduction(unitsWasted, item); 
 
     // 4. Save to Database
     await addDoc(collection(db, "wasteLogs"), { 
       itemId: item.id, 
       itemName: item.name, 
       qty: unitsWasted, 
-      costLost: totalCostLost, 
+      costLost: totalCostLost,
+      stockDeducted: stockDeduction,
+      unitsPerStockUnit,
+      burnQtyMode: 'individual_units', 
       reason: wReason, 
       loggedBy: appUser.name, 
       date: getToday(), 
@@ -530,15 +547,14 @@ const handleLogWaste = async (e) => {
     });
 
     setWItemId(''); setWQty(''); setWSearchTerm(''); 
-    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} (${unitsWasted} units) deducted from stock.`);
+    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} logged. ${unitsWasted} unit${unitsWasted === 1 ? '' : 's'} deducted as ${stockDeduction.toFixed(3).replace(/0+$/,'').replace(/\.$/,'')} stock unit${stockDeduction === 1 ? '' : 's'}.`);
   };
 
   const handleDeleteWaste = async (log) => {
     if (!window.confirm(`Delete burn log for ${log.itemName} and restore stock?`)) return;
     const item = inventoryItems.find(i => i.id === log.itemId);
     if (item) {
-       const yieldDivider = parseFloat(item.yieldQty) || 1;
-       const stockRestoration = (parseFloat(log.qty) || 0) / yieldDivider;
+       const stockRestoration = parseFloat(log.stockDeducted) || getBurnStockDeduction(log.qty, item);
        await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (item.currentStock||0) + stockRestoration) });
     }
     await deleteDoc(doc(db, "wasteLogs", log.id));
@@ -555,11 +571,13 @@ const handleLogWaste = async (e) => {
        const oldQty = parseFloat(originalLog.qty) || 0;
        const newQty = parseFloat(log.qty) || 0;
        
-       const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1;
-       const pricePerCase = parseFloat(item.price) || 0;
-       const pricePerUnit = pricePerCase / yieldPerCase;
+       const unitsPerStockUnit = getBurnUnitsPerStockUnit(item);
+       const pricePerStockUnit = parseFloat(item.price) || 0;
+       const pricePerUnit = unitsPerStockUnit > 0 ? pricePerStockUnit / unitsPerStockUnit : pricePerStockUnit;
 
-       const stockDifference = (newQty - oldQty) / yieldPerCase; 
+       const oldDeduction = parseFloat(originalLog?.stockDeducted) || getBurnStockDeduction(oldQty, item);
+       const newDeduction = getBurnStockDeduction(newQty, item);
+       const stockDifference = newDeduction - oldDeduction; 
        const newCostLost = pricePerUnit * newQty;
 
        await updateDoc(doc(db, "inventoryItems", item.id), { 
@@ -568,7 +586,10 @@ const handleLogWaste = async (e) => {
        await updateDoc(doc(db, "wasteLogs", log.id), { 
          qty: newQty, 
          reason: log.reason, 
-         costLost: newCostLost 
+         costLost: newCostLost,
+         stockDeducted: newDeduction,
+         unitsPerStockUnit,
+         burnQtyMode: 'individual_units' 
        });
     } else {
        await updateDoc(doc(db, "wasteLogs", log.id), { qty: log.qty, reason: log.reason });
@@ -598,13 +619,14 @@ const executeOrder = async (method) => {
     try { await navigator.clipboard.writeText(decodeURIComponent(fullText)); } catch (e) { console.log(e); }
 
     if (method === 'csv') {
-      let csvContent = "data:text/csv;charset=utf-8,Qty,Code,Name,Pack Size\n" + items.map(i => `${i.orderQty},"${i.pfgCode||''}","${i.name}","${i.packSize||''}"`).join("\n");
-      const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", `Order_${(vendor?.name||'Vendor').replace(/\s+/g,'_')}_${getToday()}.csv`);
-      document.body.appendChild(link); link.click(); document.body.removeChild(link);
-      addToast('Exported', 'Order downloaded as Spreadsheet.');
+      const rows = [['Qty','Code','Name','Pack Size'], ...items.map(i => [i.orderQty, i.pfgCode || '', i.name, i.packSize || ''])];
+      const filename = `${getRestaurantExportPrefix(appUser)}-Order-${safeFilenamePart(vendor?.name || 'Vendor')}-${getToday()}.csv`;
+      downloadCsvRows(filename, rows);
+      addToast('Exported', 'Order downloaded with the restaurant name in the filename.');
     } else if (method === 'email') {
-      const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
-      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
+      const subject = `${appUser?.restaurantName || 'Restaurant'} Order`;
+      const emailUrl = `mailto:${vendor?.email||''}?subject=${encodeURIComponent(subject)}&body=${fullText}`;
+      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=${encodeURIComponent(subject + ' (Paste From Clipboard)')}`; } 
       else { window.location.href = emailUrl; }
     } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
@@ -869,6 +891,9 @@ if (item.matchedItemId === 'CREATE_NEW') {
 
 const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
 const belowParItems = inventoryItems.filter(isBelowPar);
+const selectedWasteItem = inventoryItems.find(i => i.id === wItemId) || null;
+const selectedWasteUnitsPerStock = selectedWasteItem ? getBurnUnitsPerStockUnit(selectedWasteItem) : 1;
+const selectedWasteDeductionPreview = selectedWasteItem && wQty ? getBurnStockDeduction(wQty, selectedWasteItem) : 0;
 const groupedItems = inventoryItems
   .filter(i => !focusBelowPar || isBelowPar(i))
   .filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)))
@@ -1292,6 +1317,10 @@ const groupedItems = inventoryItems
               <div>
                 <input type="number" min="0" step="any" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
                 <span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span>
+                {selectedWasteItem && <div className="mt-2 rounded-lg border border-red-900/40 bg-red-950/10 p-2 text-[10px] font-bold text-red-100 leading-snug">
+                  <div>{selectedWasteItem.name}: {selectedWasteUnitsPerStock > 1 ? `1 stock unit = ${selectedWasteUnitsPerStock} burn units` : '1 stock unit = 1 burn unit'}</div>
+                  {wQty && <div className="text-red-300">This burn will deduct {selectedWasteDeductionPreview.toFixed(3).replace(/0+$/,'').replace(/\.$/,'')} from stock.</div>}
+                </div>}
               </div>
               
               <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}>
