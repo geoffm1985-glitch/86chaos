@@ -1503,6 +1503,43 @@ const [editingRest, setEditingRest] = useState(null);
   const [editingGlobalUser, setEditingGlobalUser] = useState(null);
   const [supportUserForm, setSupportUserForm] = useState({});
 
+  // Emergency client-side restore data. This writes through the same Firebase app the UI is currently using,
+  // so it cannot accidentally restore into the wrong Firebase project.
+  const CHEERS_RESTORE_RESTAURANT_ID = 'cheers_chilton_01';
+  const CHEERS_RESTORE_MONTH_START = '2026-07-01';
+  const CHEERS_RESTORE_MONTH_END = '2026-07-31';
+const CHEERS_JULY_2026_SCHEDULE = [
+    ['2026-07-01','Chuck','10:00','21:00'],['2026-07-01','Julia','10:00','16:00'],['2026-07-01','Maicol','16:00','21:00'],['2026-07-01','Lani','16:00','21:00'],
+    ['2026-07-02','Lani','10:00','21:00'],['2026-07-02','Geoff','10:00','21:00'],['2026-07-02','Ellis','16:00','21:00'],['2026-07-02','Maicol','16:00','21:00'],
+    ['2026-07-03','Ellis','16:00','21:00'],['2026-07-03','Clare','11:00','14:00'],['2026-07-03','Chuck','14:00','22:00'],['2026-07-03','Lani','10:00','21:00'],['2026-07-03','Geoff','10:00','21:00'],
+    ['2026-07-04','Lani','10:00','16:00'],['2026-07-04','Chuck','10:00','16:00'],
+    ['2026-07-07','Chuck','10:00','16:00'],['2026-07-07','Geoff','09:00','15:00'],['2026-07-07','Julia','16:00','21:00'],['2026-07-07','Lani','16:00','21:00'],['2026-07-07','Maicol','16:00','21:00'],
+    ['2026-07-08','Lani','16:00','21:00'],['2026-07-08','Julia','10:00','16:00'],['2026-07-08','Geoff','09:00','15:00'],['2026-07-08','Maicol','16:00','21:00'],['2026-07-08','Chuck','16:00','21:00'],
+    ['2026-07-09','Lani','14:00','21:00'],['2026-07-09','Ellis','16:00','21:00'],['2026-07-09','Chuck','10:00','21:00'],['2026-07-09','Maicol','16:00','21:00'],
+    ['2026-07-10','Clare','11:00','14:00'],['2026-07-10','Chuck','10:00','22:00'],['2026-07-10','Geoff','10:00','22:00'],['2026-07-10','Ellis','16:00','21:00'],['2026-07-10','Lani','14:00','22:00'],
+    ['2026-07-11','Maicol','16:00','21:00'],['2026-07-11','Lani','10:00','21:00'],['2026-07-11','Geoff','10:00','16:00'],
+    ['2026-07-12','Maicol','16:00','21:00'],['2026-07-12','Chuck','10:00','16:00'],['2026-07-12','Geoff','09:00','15:00'],['2026-07-12','Lani','16:00','21:00'],
+    ['2026-07-13','Maicol','16:00','21:00'],['2026-07-13','Geoff','09:00','15:00'],['2026-07-13','Julia','10:00','21:00'],
+    ['2026-07-14','Geoff','09:00','15:00'],['2026-07-14','Julia','10:00','21:00'],
+    ['2026-07-15','Maicol','16:00','21:00'],['2026-07-15','Lani','16:00','21:00'],['2026-07-15','Geoff','09:00','15:00'],['2026-07-15','Julia','10:00','16:00'],
+    ['2026-07-16','Lani','10:00','21:00'],['2026-07-16','Ellis','16:00','21:00'],['2026-07-16','Chuck','10:00','21:00'],
+    ['2026-07-17','Clare','11:00','14:00'],['2026-07-17','Maicol','16:00','22:00'],['2026-07-17','Geoff','10:00','21:00'],['2026-07-17','Chuck','10:00','21:00'],['2026-07-17','Ellis','16:00','21:00'],
+    ['2026-07-18','Lani','10:00','21:00'],['2026-07-18','Chuck','10:00','16:00'],['2026-07-18','Maicol','16:00','21:00'],
+    ['2026-07-19','Geoff','10:00','16:00'],['2026-07-19','Lani','16:00','21:00'],['2026-07-19','Maicol','10:00','21:00'],
+    ['2026-07-20','Chuck','10:00','21:00'],['2026-07-20','Ellis','16:00','21:00'],['2026-07-20','Lani','16:00','21:00'],['2026-07-20','Geoff','10:00','16:00'],
+    ['2026-07-21','Chuck','10:00','16:00'],['2026-07-21','Maicol','16:00','21:00'],['2026-07-21','Geoff','09:00','15:00'],['2026-07-21','Lani','16:00','21:00'],
+    ['2026-07-22','Julia','10:00','16:00'],['2026-07-22','Geoff','09:00','15:00'],['2026-07-22','Lani','16:00','21:00'],['2026-07-22','Maicol','16:00','21:00'],
+    ['2026-07-23','Geoff','10:00','16:00'],['2026-07-23','Ellis','16:00','21:00'],['2026-07-23','Maicol','16:00','21:00'],['2026-07-23','Chuck','10:00','21:00'],
+    ['2026-07-24','Clare','11:00','14:00'],['2026-07-24','Maicol','16:00','22:00'],['2026-07-24','Chuck','10:00','21:00'],['2026-07-24','Lani','14:00','21:00'],['2026-07-24','Geoff','10:00','21:00'],['2026-07-24','Ellis','16:00','21:00'],
+    ['2026-07-25','Maicol','16:00','21:00'],['2026-07-25','Lani','10:00','21:00'],['2026-07-25','Chuck','10:00','16:00'],
+    ['2026-07-26','Maicol','16:00','21:00'],['2026-07-26','Geoff','10:00','16:00'],['2026-07-26','Chuck','10:00','16:00'],['2026-07-26','Lani','16:00','21:00'],
+    ['2026-07-27','Julia','10:00','21:00'],['2026-07-27','Ellis','16:00','21:00'],['2026-07-27','Chuck','10:00','21:00'],
+    ['2026-07-28','Julia','10:00','16:00'],['2026-07-28','Geoff','09:00','15:00'],['2026-07-28','Maicol','16:00','21:00'],['2026-07-28','Lani','16:00','21:00'],
+    ['2026-07-29','Geoff','09:00','15:00'],['2026-07-29','Chuck','16:00','21:00'],['2026-07-29','Maicol','16:00','21:00'],['2026-07-29','Julia','10:00','16:00'],
+    ['2026-07-30','Geoff','09:00','15:00'],['2026-07-30','Chuck','10:00','21:00'],['2026-07-30','Maicol','15:00','21:00'],['2026-07-30','Ellis','16:00','21:00'],
+    ['2026-07-31','Clare','11:00','14:00'],['2026-07-31','Lani','14:00','22:00'],['2026-07-31','Ellis','16:00','21:00'],['2026-07-31','Geoff','10:00','21:00'],['2026-07-31','Chuck','10:00','21:00']
+  ];
+
 // Pricing & MRR States
   const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
   const [isEditingPrices, setIsEditingPrices] = useState(false);
@@ -2668,28 +2705,102 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
 
   const handleRestoreCheersJulySchedule = async () => {
-    const phrase = window.prompt('This will delete existing July 2026 shifts for cheers_chilton_01, download a backup of what was replaced, then import the PDF schedule as published shifts. Type IMPORT JULY to continue.');
+    const phrase = window.prompt('This will restore the July 2026 schedule directly into the SAME Firebase database this app is currently showing. It will delete existing July 2026 shifts for cheers_chilton_01, download a backup, then import the PDF schedule as published shifts. Type IMPORT JULY to continue.');
     if ((phrase || '').trim().toUpperCase() !== 'IMPORT JULY') {
       addToast('Canceled', 'July schedule import was not run.');
       return;
     }
-    addToast('Import Started', 'Restoring Cheers Chilton July 2026 schedule.');
+
+    addToast('Import Started', 'Restoring Cheers Chilton July 2026 schedule in the current app database.');
+
     try {
-      const response = await secureFetch('/api/import-cheers-july-schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: 'IMPORT_JULY_2026', deleteExisting: true })
+      const roster = allUsers.filter(u => u.restaurantId === CHEERS_RESTORE_RESTAURANT_ID);
+      const byFirstName = new Map();
+      roster.forEach(u => {
+        const key = String(u.name || u.email || u.id || '').trim().split(/\s+/)[0].toLowerCase();
+        if (key && !byFirstName.has(key)) byFirstName.set(key, u);
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result.ok === false) throw new Error(result.error || `Import failed with status ${response.status}`);
-      if (result.backup) {
-        const backupName = `Cheers_Chilton_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-        downloadTextFile(backupName, JSON.stringify(result.backup, null, 2), 'application/json;charset=utf-8;');
+
+      const namesNeeded = Array.from(new Set(CHEERS_JULY_2026_SCHEDULE.map(row => String(row[1]).toLowerCase())));
+      const unmatched = namesNeeded.filter(name => !byFirstName.get(name));
+      if (unmatched.length) {
+        throw new Error(`Missing user profile(s) in ${CHEERS_RESTORE_RESTAURANT_ID}: ${unmatched.join(', ')}. Nothing was deleted.`);
       }
-      addToast('Schedule Restored', `${result.importedCount || 0} shift(s) imported. ${result.deletedCount || 0} existing shift(s) replaced.`);
+
+      const allTenantShiftsSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', CHEERS_RESTORE_RESTAURANT_ID)));
+      const julyDocs = allTenantShiftsSnap.docs.filter(d => {
+        const date = String((d.data() || {}).date || '');
+        return date >= CHEERS_RESTORE_MONTH_START && date <= CHEERS_RESTORE_MONTH_END;
+      });
+
+      const backup = {
+        type: 'client-side-cheers-july-2026-shift-import-backup',
+        restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
+        month: '2026-07',
+        generatedAt: new Date().toISOString(),
+        actor: appUser?.email || appUser?.id || 'system-admin',
+        currentHost: window.location.hostname,
+        replacedShiftCount: julyDocs.length,
+        replacedShifts: julyDocs.map(d => ({ id: d.id, ...d.data() })),
+        sourceNotes: [
+          'Source: 86CHAOS SCHEDULE JULY 2026 uploaded PDF.',
+          'This restore wrote through the frontend Firebase instance currently loaded by the app.',
+          'Duplicate exact Clare 11a-2p rows were deduplicated.',
+          'Obvious AM/PM typos were normalized: Lani 2a-9p to 2p-9p, Chuck 10p-4p to 10a-4p.'
+        ]
+      };
+
+      const backupName = `Cheers_Chilton_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      downloadTextFile(backupName, JSON.stringify(backup, null, 2), 'application/json;charset=utf-8;');
+
+      for (const oldShift of julyDocs) {
+        await deleteDoc(doc(db, 'shifts', oldShift.id));
+      }
+
+      const now = new Date().toISOString();
+      let importedCount = 0;
+      for (const [date, employeeName, startTime, endTime] of CHEERS_JULY_2026_SCHEDULE) {
+        const user = byFirstName.get(String(employeeName).toLowerCase());
+        await addDoc(collection(db, 'shifts'), {
+          restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
+          employeeId: user.id,
+          employeeName: user.name || employeeName,
+          role: user.role || 'Unassigned',
+          date,
+          startTime,
+          endTime,
+          isPublished: true,
+          importedAt: now,
+          importedBy: appUser?.email || appUser?.id || 'system-admin',
+          source: '86CHAOS SCHEDULE JULY 2026 PDF',
+          restoreMode: 'client-side-current-database'
+        });
+        importedCount += 1;
+      }
+
+      await addDoc(collection(db, 'auditLogs'), {
+        restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
+        action: 'EMERGENCY_IMPORT_JULY_SCHEDULE_CLIENT_SIDE',
+        target: 'shifts',
+        details: `Deleted ${julyDocs.length} existing July shift(s), imported ${importedCount} published shift(s) through current app Firebase instance.`,
+        userId: appUser?.id || 'system-admin',
+        userName: appUser?.email || appUser?.name || 'System Admin',
+        timestamp: now,
+        isGhost: appUser?.isGhost || false
+      });
+
+      const verifySnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', CHEERS_RESTORE_RESTAURANT_ID)));
+      const verifiedJuly = verifySnap.docs.filter(d => {
+        const date = String((d.data() || {}).date || '');
+        return date >= CHEERS_RESTORE_MONTH_START && date <= CHEERS_RESTORE_MONTH_END;
+      });
+
+      addToast('Schedule Restored', `${importedCount} imported. Verification found ${verifiedJuly.length} July shift(s) in this app database.`);
+      window.alert(`Restore complete.\n\nDeleted: ${julyDocs.length}\nImported: ${importedCount}\nVerified July shifts now in this app database: ${verifiedJuly.length}\n\nIf the schedule grid is already open, refresh the page or switch tabs once.`);
       setSubTab('forensics');
     } catch (err) {
-      addToast('Import Error', err.message || 'The schedule import route failed. Check Vercel logs.');
+      addToast('Import Error', err.message || 'Client-side schedule import failed.');
+      window.alert(`Import failed:\n\n${err.message || err}`);
     }
   };
 
