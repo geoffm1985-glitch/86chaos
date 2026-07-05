@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabTeam = ({ users, appUser, addToast }) => {
@@ -2666,6 +2666,33 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     }
   };
 
+
+  const handleRestoreCheersJulySchedule = async () => {
+    const phrase = window.prompt('This will delete existing July 2026 shifts for cheers_chilton_01, download a backup of what was replaced, then import the PDF schedule as published shifts. Type IMPORT JULY to continue.');
+    if ((phrase || '').trim().toUpperCase() !== 'IMPORT JULY') {
+      addToast('Canceled', 'July schedule import was not run.');
+      return;
+    }
+    addToast('Import Started', 'Restoring Cheers Chilton July 2026 schedule.');
+    try {
+      const response = await secureFetch('/api/import-cheers-july-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'IMPORT_JULY_2026', deleteExisting: true })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Import failed with status ${response.status}`);
+      if (result.backup) {
+        const backupName = `Cheers_Chilton_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        downloadTextFile(backupName, JSON.stringify(result.backup, null, 2), 'application/json;charset=utf-8;');
+      }
+      addToast('Schedule Restored', `${result.importedCount || 0} shift(s) imported. ${result.deletedCount || 0} existing shift(s) replaced.`);
+      setSubTab('forensics');
+    } catch (err) {
+      addToast('Import Error', err.message || 'The schedule import route failed. Check Vercel logs.');
+    }
+  };
+
   const handleClearAllBanners = async () => {
     if (!window.confirm('Clear system banners from every workspace?')) return;
     try {
@@ -3770,6 +3797,15 @@ another@email.com"></textarea>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
             </div>
+
+            <div className={`${T.card} p-5 border-cyan-900/30 sm:col-span-2`}>
+              <h3 className="font-black text-white mb-1">Emergency Schedule Restore: Cheers July 2026</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Rebuilds the July 2026 published schedule for cheers_chilton_01 from the uploaded PDF. Existing July shifts are backed up to a downloaded JSON file, deleted, then replaced with the clean imported schedule.</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <a href="/imports/cheers_chilton_01_july_2026_shifts.json" download className="w-full text-center bg-[#12161A] text-cyan-300 border border-cyan-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-cyan-900/20 transition-colors">Download Import JSON</a>
+                <button onClick={handleRestoreCheersJulySchedule} type="button" className="w-full bg-cyan-900/20 text-cyan-300 border border-cyan-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-cyan-900/40 transition-colors">Restore July Schedule</button>
+              </div>
+            </div>
             
             <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
               <h3 className="font-black text-white mb-1">Global Lockdown</h3>
@@ -4199,6 +4235,9 @@ const HELP_ARTICLES = [
   { id:'burn-log-stock', title:'Burn Log stock deduction rules', group:'Inventory', keywords:'burn log waste case each unit deduct stock par inventory', body:['Burn Log can deduct by count, weight, whole stock unit, or record-only note. Use the mode selector before saving a burn.','For case-based count inventory, set Yield/Units Per Stock Unit on the inventory item. Example: a 24-count case should use yield 24, so burning 1 deducts 1/24 of a case.','For catch-weight items, set Weight per Stock Unit. Example: one pack is 5 lb and you burn 2 lb, so the app deducts 0.4 stock units.','The Burn Log preview shows how much stock will be deducted before you save. Deleting or editing a burn restores/adjusts the exact amount that was deducted.'] },
   { id:'mobile-drag-board', title:'Moving shifts on phones', group:'Scheduling', keywords:'drag board mobile move shift day schedule phone', body:['On desktop, drag shift cards between days in Schedule Builder → Schedule Copilot → Drag Board.','On phones/tablets, use the Move to day dropdown on the shift card. Mobile browsers can be clumsy with drag-and-drop, so the dropdown is the safer touch-friendly option.','Changing the day, employee, start time, or end time saves immediately.'] },
 
+  { id:'schedule-publish-backup', title:'Schedule publish creates a backup file', group:'Scheduling', keywords:'schedule publish backup download json restore shifts deleted duplicate', body:['When a manager clicks Publish, the app downloads a JSON backup of the current month shifts and all unpublished shifts before anything is changed.','Keep this file if you are making major schedule edits or publishing a rebuilt month. It can help support restore shifts if something is accidentally deleted.','The backup filename starts with the restaurant name and includes the schedule month and timestamp.'] },
+  { id:'admin-emergency-schedule-restore', title:'Emergency schedule restore from PDF', group:'System Administrator', keywords:'admin restore schedule import shifts july cheers delete duplicates published', body:['Open System Administrator → Operations → Emergency Schedule Restore when support needs to rebuild a damaged schedule from a verified copy.','For the Cheers July 2026 rescue, the import deletes existing July shifts for cheers_chilton_01, downloads a backup of what it replaced, and imports the PDF schedule as published shifts.','The tool matches employees by first name inside the target restaurant. If a user is missing, the import stops before deleting anything.'] },
+  { id:'new-1306', title:'What changed in version 13.0.6', group:'Release Notes', keywords:'new update 13.0.6 schedule publish backup emergency import july shifts restore', body:['Publishing a schedule now downloads a local JSON backup file before shifts are marked live.','System Administrator → Operations now includes the Cheers July 2026 emergency schedule restore tool.','The restore tool replaces existing July shifts for cheers_chilton_01 with the verified schedule from the uploaded PDF and downloads a backup of replaced shifts.'] },
   { id:'invoice-payload-storage-scan', title:'Invoice scanner: PDF upload too large / payload too large', group:'Inventory', keywords:'invoice pdf scan payload too large 413 Vercel upload firebase storage large file crash scanner', body:['If an invoice scan says payload too large, the app now uploads the original PDF or image directly to Firebase Storage first, then sends only a small file reference to the scanner.','This avoids the Vercel request-size limit that can happen when PDFs are converted to base64 before scanning.','PDFs are still limited by Gemini document processing limits. If a PDF is unusually large, split it into smaller PDFs or scan fewer pages at once.'] },
   { id:'new-1303', title:'What changed in version 13.0.3', group:'Release Notes', keywords:'new update 13.0.3 invoice scanner pdf payload storage scan', body:['Invoice scanning now uses Firebase Storage handoff for PDFs and images instead of sending the whole file through Vercel.','This fixes payload-too-large scanner crashes on normal invoice PDFs and keeps the full original file quality for extraction.'] },
   { id:'new-1302', title:'What changed in version 13.0.2', group:'Release Notes', keywords:'new update 13.0.2 mobile clutter quick action reads client users drawer admin layout', body:['Removed the floating quick-action menu button from the lower-right corner to reduce mobile clutter. The main menu remains in the header and 86 Voice remains available.','Reduced default live listener windows and caps again so Today and dashboard screens pull fewer documents on login.','Rebuilt the System Administrator client-user drawer with a wider responsive layout, cleaner user cards, and easier support diagnostics on desktop and mobile.','Version labels now use numbers only.'] },
