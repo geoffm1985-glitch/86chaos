@@ -4,7 +4,7 @@ import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
-import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, QuickActionDock } from './components/common';
+import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, QuickActionDock, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabSales, TabLabor, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
 export default function App() {
@@ -68,29 +68,56 @@ export default function App() {
     return () => window.removeEventListener('appinstalled', handleAppInstall);
   }, []);
 
-// --- DATABASE IMPORTS (Read-Optimized) ---
-  // Loads only the sections the current screen needs and caps large collections.
+const [currentDate, setCurrentDate] = useState(getToday());
+
+  const addDays = (dateStr, amount) => {
+    const d = new Date(`${dateStr}T12:00:00`);
+    d.setDate(d.getDate() + amount);
+    return formatDate(d);
+  };
+  const getMonthBounds = (dateStr) => {
+    const [year, month] = getMonthStr(dateStr).split('-').map(Number);
+    const start = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = new Date(year, month, 0);
+    return { start, end: formatDate(endDate) };
+  };
+  const monthBounds = getMonthBounds(currentDate);
+  const scheduleWindowStart = addDays(monthBounds.start, -7);
+  const scheduleWindowEnd = addDays(monthBounds.end, 14);
+  const recentWindowStart = addDays(getToday(), -30);
+  const futureWindowEnd = addDays(getToday(), 21);
+  const punchWindowStart = addDays(currentDate, -14);
+  const punchWindowEnd = addDays(currentDate, 7);
+
+  // --- DATABASE IMPORTS (Aggressive Read Saver) ---
+  // Each tab now asks for only the date window and collections it actually needs.
+  // If a Firestore index is missing, useLiveCollection falls back to a small capped listener instead of blanking the app.
   const wantsToday = activeTabState === 'today';
-  const wantsScheduleData = wantsToday || ['schedule', 'events', 'published', 'labor', 'ops'].includes(activeTabState);
-  const wantsLaborData = wantsToday || ['labor', 'sales', 'ops', 'schedule'].includes(activeTabState);
+  const wantsScheduleScreen = ['schedule', 'events', 'published'].includes(activeTabState);
+  const wantsScheduleData = wantsToday || wantsScheduleScreen || ['labor', 'ops'].includes(activeTabState);
+  const wantsLaborData = wantsToday || ['labor', 'sales', 'ops'].includes(activeTabState);
   const wantsInventoryData = wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen;
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
-  const wantsRecipesData = wantsToday || activeTabState === 'recipes' || isGlobalSearchOpen;
+  const wantsRecipesData = activeTabState === 'recipes' || isGlobalSearchOpen;
   const wantsMaintenanceData = wantsToday || ['maintenance', 'ops'].includes(activeTabState);
-  const wantsSalesData = wantsToday || ['sales', 'ops', 'labor'].includes(activeTabState);
+  const wantsSalesData = ['sales', 'ops', 'labor'].includes(activeTabState);
+  const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
+  const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : futureWindowEnd;
+  const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
+  const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
 
-  const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: 500 });
-  const shifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: 650 });
-  const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, limitCount: 150 });
-  const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || isGlobalSearchOpen), limitCount: 250 });
-  const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, limitCount: 120 });
-  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, limitCount: 180 });
-  const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, limitCount: 500 });
-  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: 500 });
-  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: 180 });
-  const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, limitCount: 250 });
-  const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 350 });
-  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 350 });
+  const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: 250, fallbackLimitCount: 80 });
+  const shifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', shiftRangeStart], ['date','<=', shiftRangeEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: wantsScheduleScreen ? 320 : 120, fallbackLimitCount: 75 });
+  const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 80, fallbackLimitCount: 40 });
+  const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || isGlobalSearchOpen), whereClauses: [['date','>=', messageRangeStart]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'messages' ? 120 : 60, fallbackLimitCount: 45 });
+  const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 60, fallbackLimitCount: 30 });
+  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, limitCount: 90, fallbackLimitCount: 40 });
+  const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', punchWindowStart], ['date','<=', punchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 220 : 100, fallbackLimitCount: 60 });
+  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 300 : 120, fallbackLimitCount: 80 });
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: activeTabState === 'maintenance' ? 140 : 50, fallbackLimitCount: 40 });
+  const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 120, fallbackLimitCount: 50 });
+  const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 120, fallbackLimitCount: 50 });
+  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 220, fallbackLimitCount: 60 });
   
 // --- LIVE APP USER LOGIC ---
   const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true, help: true };
@@ -305,38 +332,7 @@ useEffect(() => {
     }
   }, [appUser]);
 
-  // --- RETURN-TO-LANDING AFTER LEAVING APP (5 MINUTES) ---
-  useEffect(() => {
-    if (!appUser) return;
-    const key = `chaosLeftAt_${appUser.id}`;
-    const FIVE_MINUTES = 5 * 60 * 1000;
-
-    const sendToLandingIfStale = () => {
-      const leftAt = parseInt(localStorage.getItem(key) || '0', 10);
-      if (leftAt && Date.now() - leftAt > FIVE_MINUTES) {
-        localStorage.removeItem(key);
-        setActiveTab('today');
-        addToast('Welcome Back', 'You were away for more than five minutes, so 86 Chaos returned to the landing page.');
-      }
-    };
-
-    const markLeftOrReturned = () => {
-      if (document.hidden) localStorage.setItem(key, Date.now().toString());
-      else sendToLandingIfStale();
-    };
-
-    sendToLandingIfStale();
-    document.addEventListener('visibilitychange', markLeftOrReturned);
-    window.addEventListener('focus', sendToLandingIfStale);
-    window.addEventListener('pageshow', sendToLandingIfStale);
-    window.addEventListener('beforeunload', () => localStorage.setItem(key, Date.now().toString()));
-
-    return () => {
-      document.removeEventListener('visibilitychange', markLeftOrReturned);
-      window.removeEventListener('focus', sendToLandingIfStale);
-      window.removeEventListener('pageshow', sendToLandingIfStale);
-    };
-  }, [appUser?.id]);
+  // Auto-return-to-landing was removed. Users stay on their current page when they come back.
 
   useEffect(() => {
     if (activeTabState === 'help' && hasHelpUpdate) {
@@ -346,7 +342,6 @@ useEffect(() => {
   }, [activeTabState, hasHelpUpdate]);
   
 
-  const [currentDate, setCurrentDate] = useState(getToday());
   const [toasts, setToasts] = useState([]);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -585,6 +580,7 @@ return (
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={users} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={users} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} addToast={addToast} />
       <QuickActionDock appUser={liveAppUser} setActiveTab={setActiveTab} openSearch={() => setIsGlobalSearchOpen(true)} openTV={() => setIsKitchenTVOpen(true)} addToast={addToast} />    
 
       {ghostTenant?.impersonate && (
@@ -667,7 +663,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.9.0</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 13.0.0 Voice + Read Saver</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>

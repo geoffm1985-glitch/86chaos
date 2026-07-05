@@ -2601,7 +2601,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Client user management from Clients tab', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Clients and click the client name or Users button.', 'The client drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and billing state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that client or user sees.'] },
     { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic weekly database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
-    { title: 'Return-to-landing behavior', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today', body: ['When a user leaves the app for more than five minutes and comes back, the app returns them to Today Command Center.', 'This prevents stale tabs from sitting open on a phone after a shift or break.', 'It does not delete their session; it simply returns them to the safest landing screen.'] },
+    { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Today Command Center after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
     ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
   ];
   const adminManualQuery = adminManualSearch.trim().toLowerCase();
@@ -3844,13 +3844,26 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   const [rangeEnd, setRangeEnd] = useState(getWeekDates(currentDate)[6]);
   const [employeeFilter, setEmployeeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
   const [exportMode, setExportMode] = useState('detail');
   const [editingPunch, setEditingPunch] = useState(null);
   const [form, setForm] = useState({ employeeId: '', date: getToday(), clockIn: '09:00', clockOut: '17:00', breakMinutes: '0', cashTips: '0', creditTips: '0', reason: 'Forgot to clock out', note: '' });
 
   const activeUsers = users.filter(u => u.isActive !== false).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const getLaborDepartment = (user = {}) => {
+    const role = String(user.role || '').toLowerCase();
+    if (user.isAdmin || role.includes('manager') || role.includes('owner') || role.includes('gm') || role.includes('lead')) return 'Management';
+    if (role.includes('cook') || role.includes('chef') || role.includes('kitchen') || role.includes('prep') || role.includes('dish')) return 'Kitchen';
+    if (role.includes('bar') || role.includes('bartender')) return 'Bar';
+    if (role.includes('server') || role.includes('host') || role.includes('expo') || role.includes('runner')) return 'Service';
+    return 'Other';
+  };
+  const departmentOptions = ['all', 'Management', 'Kitchen', 'Bar', 'Service', 'Other'];
+  const userMatchesDepartment = (user = {}) => departmentFilter === 'all' || getLaborDepartment(user) === departmentFilter;
+  const filteredUsersForExport = activeUsers.filter(userMatchesDepartment);
   const visiblePunches = timePunches
     .filter(p => (p.date || '') >= rangeStart && (p.date || '') <= rangeEnd)
+    .filter(p => { const emp = users.find(u => u.id === p.employeeId) || {}; return userMatchesDepartment(emp); })
     .filter(p => employeeFilter ? p.employeeId === employeeFilter : true)
     .filter(p => statusFilter === 'all' ? true : statusFilter === 'open' ? ['clocked_in','on_break'].includes(p.status) : statusFilter === 'exception' ? Boolean(getPunchIssue(p)) : p.status === statusFilter)
     .sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
@@ -3872,7 +3885,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   const payrollRows = visiblePunches.map(p => {
     const emp = users.find(u => u.id === p.employeeId) || {};
     const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-    return { punch: p, emp, hours, pay: hours * (parseFloat(emp.wage || 0) || 0), tips: (parseFloat(p.cashTips || 0) || 0) + (parseFloat(p.creditTips || 0) || 0), issue: getPunchIssue(p) };
+    return { punch: p, emp, department: getLaborDepartment(emp), hours, pay: hours * (parseFloat(emp.wage || 0) || 0), tips: (parseFloat(p.cashTips || 0) || 0) + (parseFloat(p.creditTips || 0) || 0), issue: getPunchIssue(p) };
   });
   const totalHours = payrollRows.reduce((s,r) => s + Math.max(0, r.hours), 0);
   const totalLabor = payrollRows.reduce((s,r) => s + Math.max(0, r.pay), 0);
@@ -3973,6 +3986,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
         if (!acc[key]) {
           acc[key] = {
             employee: r.emp.name || r.punch.employeeName || 'Unknown',
+            department: r.department || 'Other',
             hours: 0,
             pay: 0,
             cashTips: 0,
@@ -3995,11 +4009,12 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
         return acc;
       }, {});
 
-      rows = [['Employee','Range Start','Range End','Total Hours','Pay Estimate','Cash Tips','Credit Tips','Total Tips','Punch Count','Issue Count','Reasons']];
+      rows = [['Employee','Department','Range Start','Range End','Total Hours','Pay Estimate','Cash Tips','Credit Tips','Total Tips','Punch Count','Issue Count','Reasons']];
       Object.values(summaryMap)
         .sort((a,b) => a.employee.localeCompare(b.employee))
         .forEach(r => rows.push([
           r.employee,
+          r.department || 'Other',
           rangeStart,
           rangeEnd,
           r.hours.toFixed(2),
@@ -4012,9 +4027,10 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
           Array.from(r.reasons).join('; ')
         ]));
     } else {
-      rows = [['Employee','Date','Clock In','Clock Out','Break Minutes','Hours','Cash Tips','Credit Tips','Pay Estimate','Issue','Reason']];
+      rows = [['Employee','Department','Date','Clock In','Clock Out','Break Minutes','Hours','Cash Tips','Credit Tips','Pay Estimate','Issue','Reason']];
       payrollRows.forEach(r => rows.push([
         r.emp.name || r.punch.employeeName || 'Unknown',
+        r.department || 'Other',
         r.punch.date || '',
         r.punch.clockInTime ? formatClockDateTime(r.punch.clockInTime, appUser) : '',
         r.punch.clockOutTime ? formatClockDateTime(r.punch.clockOutTime, appUser) : '',
@@ -4029,8 +4045,9 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
     }
 
     const prefix = getRestaurantExportPrefix(appUser);
-    const filenameBase = `${prefix}-${exportName}-${rangeStart}-to-${rangeEnd}`;
-    const subtitle = `${appUser?.restaurantName || 'Restaurant'} • ${rangeStart} to ${rangeEnd} • ${payrollRows.length} punch${payrollRows.length === 1 ? '' : 'es'}`;
+    const deptPart = departmentFilter === 'all' ? 'whole-restaurant' : departmentFilter.toLowerCase();
+    const filenameBase = `${prefix}-${deptPart}-${exportName}-${rangeStart}-to-${rangeEnd}`;
+    const subtitle = `${appUser?.restaurantName || 'Restaurant'} • ${departmentFilter === 'all' ? 'Whole Restaurant' : departmentFilter} • ${rangeStart} to ${rangeEnd} • ${payrollRows.length} punch${payrollRows.length === 1 ? '' : 'es'}`;
     return { rows, exportName, title, filenameBase, subtitle };
   };
 
@@ -4075,7 +4092,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
         <div className="flex flex-wrap gap-2">
           <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className={`${T.input} py-2 text-xs w-auto`} />
           <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className={`${T.input} py-2 text-xs w-auto`} />
-          <select value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)} className={`${T.input} py-2 text-xs w-auto`}><option value="">All Staff</option>{activeUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+          <select value={departmentFilter} onChange={e => { setDepartmentFilter(e.target.value); setEmployeeFilter(''); }} className={`${T.input} py-2 text-xs w-auto`}><option value="all">Whole Restaurant</option>{departmentOptions.filter(d => d !== 'all').map(d => <option key={d} value={d}>{d}</option>)}</select>
+          <select value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)} className={`${T.input} py-2 text-xs w-auto`}><option value="">All Staff</option>{filteredUsersForExport.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={`${T.input} py-2 text-xs w-auto`}><option value="all">All Punches</option><option value="exception">Needs Attention</option><option value="open">Open / On Clock</option><option value="clocked_out">Closed</option></select>
         </div>
         <button onClick={() => { resetForm(); setSubTab('editor'); }} className={`${T.btn} py-2 text-xs flex items-center gap-2 justify-center`}><Plus size={15}/> Add Punch</button>
@@ -4110,7 +4128,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
       {subTab === 'export' && <div className={`${T.card} p-5 space-y-4`}>
         <div>
           <h3 className="font-black text-white text-lg">Payroll Export</h3>
-          <p className="text-xs text-slate-400 font-bold mt-1">Download the currently filtered range as a CSV or print-ready PDF for payroll review, accountant handoff, or owner records. Filenames now start with the restaurant name.</p>
+          <p className="text-xs text-slate-400 font-bold mt-1">Download the selected department or whole restaurant as a CSV or print-ready PDF for payroll review, accountant handoff, or owner records. Filenames start with the restaurant and department name.</p>
         </div>
         <div className="grid sm:grid-cols-2 gap-3 max-w-2xl">
           <button type="button" onClick={() => setExportMode('detail')} className={`text-left rounded-xl border p-4 transition-all ${exportMode === 'detail' ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/50'}`}>
@@ -4131,8 +4149,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 const HELP_ARTICLES = [
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Demo Mode only in test/client demo accounts, not live customer data.'] },
   { id:'menu-search', title:'Using the menu search bar', group:'Navigation', keywords:'search menu find feature where is tool', body:['Open the side menu and type a plain word like “punch”, “recipe”, “schedule”, “broken”, “password”, or “inventory”.','The search shows matching tabs and suggested actions. It includes common synonyms so users do not need to know the exact tab name.','This is the fastest way to help tired staff find the correct place without hunting.'] },
-  { id:'labor', title:'Fixing missed punches and timesheets', group:'Labor', keywords:'time punch clock in clock out missed labor payroll timesheet tips', body:['Go to Labor & Timesheets → Punch Fixer.','Review the Needs Attention cards first. These show open punches, missed clock-outs, long shifts, unscheduled punches, and time errors.','Click Fix to edit a punch, or Add Punch to enter a manual shift. Always choose a reason and write a manager note.','Use Export to download the current range for payroll review as time punch detail or total hours summary.'] },
-  { id:'labor-export-pdf', title:'Exporting timesheets as CSV or PDF', group:'Labor', keywords:'export pdf csv payroll timesheet restaurant filename total hours punch detail', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail for every clock-in/out row, or Total Hours Summary for one row per employee.','Use Download CSV for spreadsheets/accountants. Use Print / Save PDF for owner records or a clean printable copy.','Export filenames start with the restaurant name so multi-location owners do not get a pile of generic 86chaos files.'] },
+  { id:'labor', title:'Fixing missed punches and timesheets', group:'Labor', keywords:'time punch clock in clock out missed labor payroll timesheet tips', body:['Go to Labor & Timesheets → Punch Fixer.','Review the Needs Attention cards first. These show open punches, missed clock-outs, long shifts, unscheduled punches, and time errors.','Click Fix to edit a punch, or Add Punch to enter a manual shift. Always choose a reason and write a manager note.','Use Export to download the current range for payroll review as time punch detail or total hours summary. Use the department filter for Kitchen, Bar, Service, Management, Other, or Whole Restaurant.'] },
+  { id:'labor-export-pdf', title:'Exporting timesheets as CSV or PDF', group:'Labor', keywords:'export pdf csv payroll timesheet restaurant filename total hours punch detail', body:['Go to Labor & Timesheets → Export.','Choose Whole Restaurant or a department first, then choose Time Punch Detail for every clock-in/out row, or Total Hours Summary for one row per employee.','Use Download CSV for spreadsheets/accountants. Use Print / Save PDF for owner records or a clean printable copy.','Export filenames start with the restaurant name so multi-location owners do not get a pile of generic 86chaos files.'] },
   { id:'schedule-builder', title:'Building a schedule faster', group:'Scheduling', keywords:'schedule builder copy week publish shift coverage smart fill', body:['Go to Schedule Builder. Use Copy Previous Week when the schedule is similar to last week.','Use Coverage Targets to define how many cooks, servers, bartenders, or managers you need by day and shift time.','Use Smart Fill to create draft shifts from missing coverage targets. Review the drafts before publishing.','Use Drag Board to move shifts between days or quick-edit employee/time without digging through the large grid.','Publish Preview shows draft count, missing coverage, and conflicts before sending the schedule live.'] },
   { id:'schedule-templates', title:'Creating and editing schedule templates', group:'Scheduling', keywords:'template create edit normal week packers fish fry live music', body:['Open Schedule Builder → Schedule Copilot → Create Template.','Add rows for each day, role, start time, end time, and count. Example: Friday Cook 4p-9p count 2.','Save Current Week turns the current visible week into a reusable template.','Each restaurant has its own template library, so one client’s patterns never leak into another client.'] },
   { id:'time-off', title:'Handling time-off requests', group:'Scheduling', keywords:'request off unavailable vacation approve deny', body:['Open Time Clock & Shifts → Request Off for employee requests. Managers can review requests from Schedule Builder.','Schedule warnings will flag approved time-off conflicts before publishing.','Partial-day requests should include start and end time so managers can schedule around them.'] },
@@ -4148,8 +4166,11 @@ const HELP_ARTICLES = [
   { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Grant Access for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },
   { id:'admin-client-users', title:'Viewing and managing users from a client', group:'System Administrator', keywords:'client users restaurant users support edit possess force logout delete notifications gps billing modules', body:['Open System Administrator → Clients and click the client name or Users button.','The client drawer shows all users in that workspace, admin count, online users, push token count, GPS permission snapshots, billing state, and enabled modules.','Use Support Edit from the client drawer to move a user, update their role/status, force password change, or correct workspace routing.','Use Possess from the client drawer to troubleshoot exactly what a client user sees.'] },
   { id:'admin-backup-status', title:'Checking database backup status', group:'System Administrator', keywords:'database backup last backup status command deck weekly maintenance firestore export storage run now', body:['The System Administrator Command Deck includes Last Backup.','The app reads system/backupStatus when the automatic Firestore backup route writes it.','Click Last Backup or open Forensics to run a manual backup and verify the route.','A stale backup warning means you should check Vercel cron, CRON_SECRET, Firebase service account credentials, and Firebase Storage bucket settings.'] },
-  { id:'landing-after-away', title:'Why did the app return to Today?', group:'Navigation', keywords:'landing page today away five minutes background tab phone stale session', body:['If someone leaves the app for more than five minutes and comes back, 86 Chaos returns them to Today Command Center.','This keeps old screens from sitting stale on mobile phones and tablets.','The user is not logged out; they are simply returned to the safest landing screen.'] },
-  { id:'new-1290', title:'What changed in version 12.9.0', group:'Release Notes', keywords:'new update 12.9 admin client users searchable manual backup help update landing page', body:['System Administrator → Clients now opens a full client user drawer with workspace users, admin count, online status, push/GPS diagnostics, billing, modules, support edit, possess, force logout, and delete tools.','The Administrator Manual is now a searchable troubleshooting database that also includes the full app Help Center articles.','Users who leave the app for more than five minutes return to Today Command Center when they come back.','The startup update popup was removed. New version briefs now live inside Help Center and show as a Help Center notification dot.','The Command Deck now includes Last Backup status using system/backupStatus or the latest weekly maintenance stamp.'] },
+  { id:'no-auto-return', title:'Does the app still return users to Today after five minutes?', group:'Navigation', keywords:'landing page today away five minutes background tab phone stale session logout', body:['No. The automatic return-to-Today behavior was removed.','Users stay on the page they were using when they return from another app, lock screen, or browser tab.','Use Log Out when a device should be signed out.'] },
+  { id:'voice-commands', title:'Using 86 Voice commands', group:'Voice Commands', keywords:'voice mic microphone command 86 salmon prep message maintenance burn waste open schedule recipe', body:['Tap the floating microphone button in the lower-left corner. Say one short command, then confirm the suggested action.','Examples: “86 salmon”, “prep 2 pans tomatoes”, “post message cooler is high”, “open Friday schedule”, “open beer cheese recipe”, or “waste 2 pounds chicken breast”.','Destructive actions like setting inventory to zero, posting alerts, maintenance reports, and burn logs require confirmation before the app writes data.','If the browser does not support speech recognition, type the command into the same voice panel.'] },
+  { id:'read-saver', title:'Why some tabs load data only when opened', group:'Performance', keywords:'firebase reads read saver loading data missing old history month current week cost', body:['To reduce Firebase reads, 86 Chaos now loads each tab’s live data only when that tab needs it.','Schedule, punches, sales, messages, prep, and events use smaller date windows instead of loading years of history on login.','If an old record is not visible, use the relevant date range or open the feature tab that owns that data.','This protects multi-location clients from unnecessary Firestore costs.'] },
+  { id:'labor-department-export', title:'Printing timesheets by department', group:'Labor', keywords:'department export print pdf kitchen bar service management whole restaurant labor timesheets payroll', body:['Go to Labor & Timesheets → Export.','Choose Whole Restaurant, Management, Kitchen, Bar, Service, or Other from the department filter.','Choose Time Punch Detail for every punch row or Total Hours Summary for one row per employee, then Download CSV or Print / Save PDF.','Department is based on each user’s role, so make sure Staff Roster roles are accurate.'] },
+  { id:'new-1290', title:'What changed in version 12.9.0', group:'Release Notes', keywords:'new update 12.9 admin client users searchable manual backup help update landing page', body:['System Administrator → Clients now opens a full client user drawer with workspace users, admin count, online status, push/GPS diagnostics, billing, modules, support edit, possess, force logout, and delete tools.','The Administrator Manual is now a searchable troubleshooting database that also includes the full app Help Center articles.','The five-minute return-to-Today behavior was removed so users keep their place when they come back.','The startup update popup was removed. New version briefs now live inside Help Center and show as a Help Center notification dot.','The Command Deck now includes Last Backup status using system/backupStatus or the latest weekly maintenance stamp.'] },
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
