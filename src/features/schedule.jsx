@@ -9,7 +9,7 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', scheduleBuilderProps = null }) => {
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
@@ -18,7 +18,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
-  const [subTab, setSubTab] = useState('my-schedule');
+  const [subTab, setSubTab] = useState(initialSubTab);
 
   useEffect(() => {
     if (!appUser?.id) return;
@@ -239,7 +239,7 @@ const handleOfferSwap = async (shift) => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 pb-24">
+    <div className="max-w-6xl mx-auto space-y-4 pb-24">
       
       <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
         <form onSubmit={finalizeClockOut} className="space-y-4">
@@ -257,12 +257,18 @@ const handleOfferSwap = async (shift) => {
       </Modal>
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
+        {['my-schedule', 'full-schedule', 'month-view', 'time-off', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {tab.replace('-', ' ')}
           </button>
         ))}
       </div>
+
+      {subTab === 'schedule-builder' && scheduleBuilderProps && (
+        <div className="animate-[slideIn_0.2s_ease-out]">
+          <TabScheduleWorkbench {...scheduleBuilderProps} />
+        </div>
+      )}
 
       {subTab === 'my-schedule' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">

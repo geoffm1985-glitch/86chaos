@@ -42,17 +42,15 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   tabs.push({ id: 'today', label: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if (isEnabled('labor') && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'labor', label: 'Labor & Timesheets', icon: <Scale size={18}/> });
+  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
   if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
-  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert });
   if (isEnabled('team') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
-  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
   const isTrueGod = (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin === true;
   if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
@@ -65,8 +63,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     { id: 'help-fix-punch', label: 'Fix a missed punch', tab: 'help', keywords: 'time clock timesheet labor punch clock out forgot' },
     { id: 'help-schedule-template', label: 'Create schedule templates', tab: 'help', keywords: 'copy week schedule template coverage smart fill' },
     { id: 'help-permissions', label: 'Update permissions', tab: 'help', keywords: 'tab access manage user permissions ops labor inventory' },
-    { id: 'go-labor-punch', label: 'Add/Edit Time Punch', tab: 'labor', keywords: 'timesheet labor clock in out edit punch payroll' },
-    { id: 'go-schedule-template', label: 'Schedule Templates', tab: 'schedule', keywords: 'builder copy previous week template smart fill coverage' },
+    { id: 'go-labor-punch', label: 'Add/Edit Time Punch', tab: 'financials', keywords: 'timesheet labor clock in out edit punch payroll financials' },
+    { id: 'go-schedule-template', label: 'Schedule Templates', tab: 'published', keywords: 'schedule builder copy previous week template smart fill coverage' },
     { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' }
   ];
   const q = menuSearch.trim().toLowerCase();
@@ -390,10 +388,10 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (q.includes('prep')) return { intent:'navigate', label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.', safe:true };
       if (q.includes('message')) return { intent:'navigate', label:'Open Messages', tab:'messages', summary:'Open the Message Board.', safe:true };
       if (q.includes('maintenance') || q.includes('repair')) return { intent:'navigate', label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.', safe:true };
-      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet')) return { intent:'navigate', label:'Open Labor', tab:'labor', summary:'Open Labor & Timesheets.', safe:true };
+      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial')) return { intent:'navigate', label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.', safe:true };
       if (q.includes('schedule')) {
         const date = parseNextWeekday(q);
-        return { intent:'navigate_schedule', label:'Open Schedule', tab:'schedule', date, summary: date ? `Open Schedule Builder on ${formatDisplayDate(date)}.` : 'Open Schedule Builder.', safe:true };
+        return { intent:'navigate_schedule', label:'Open Schedule', tab:'published', date, summary: date ? `Open Time Clock & Shifts / Schedule Builder on ${formatDisplayDate(date)}.` : 'Open Time Clock & Shifts / Schedule Builder.', safe:true };
       }
       const recipePhrase = q.replace(/\b(open|go to|show|take me to|recipe)\b/g, ' ').trim();
       const recipe = findVoiceMatch(recipes, recipePhrase);

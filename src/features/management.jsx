@@ -1487,6 +1487,12 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [auditLogs, setAuditLogs] = useState([]);
   const [backupStatus, setBackupStatus] = useState(null);
   const [isBackupRunning, setIsBackupRunning] = useState(false);
+  const [backupRestorePath, setBackupRestorePath] = useState('');
+  const [isBackupRestoring, setIsBackupRestoring] = useState(false);
+  const [backupList, setBackupList] = useState([]);
+  const [isBackupListLoading, setIsBackupListLoading] = useState(false);
+  const [backupListFilter, setBackupListFilter] = useState('all');
+  const [backupListError, setBackupListError] = useState('');
   const [selectedClient, setSelectedClient] = useState(null);
   const [adminManualSearch, setAdminManualSearch] = useState('');
   const [userCounts, setUserCounts] = useState({});
@@ -1624,6 +1630,12 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
     }, () => setBackupStatus(null));
     return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); };
   }, []);
+
+  useEffect(() => {
+    if (subTab === 'forensics' && backupList.length === 0 && !isBackupListLoading) {
+      loadBackupList({ silent: true });
+    }
+  }, [subTab]);
 
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
 
@@ -2508,6 +2520,7 @@ const handleRevokeAccess = async (user) => {
   const backupStatusLabel = backupRunning ? 'Running...' : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported');
   const backupIsStale = !backupRunning && (!lastBackupDate || backupAgeHours > 7 * 24);
   const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp' : 'No backup status doc'));
+  const filteredBackupList = backupList.filter(b => backupListFilter === 'all' || b.mode === backupListFilter);
 
   // --- NEW SAAS HEALTH METRICS ---
 const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length;
@@ -2571,7 +2584,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -2637,7 +2650,11 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Clients tab', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Clients and click the client name or Users button.', 'The client drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and billing state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that client or user sees.'] },
     { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
-    { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic weekly database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
+    { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
+    { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup.'] },
+    { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents.'] },
+    { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Labor & Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
+    { title: 'Schedule Builder location', group: 'Scheduling', keywords: 'schedule builder time clock shifts subtab permissions', body: ['Schedule Builder is now a protected subtab inside Time Clock & Shifts.', 'Users still need schedule permission or admin access.', 'Event Calendar remains separate because it is not the same thing as staff scheduling.', 'Old Schedule Builder links route into the same protected schedule workflow.'] },
     { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Today Command Center after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
     ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
   ];
@@ -2684,6 +2701,38 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   };
 
 
+  const formatBackupBytes = (bytes) => {
+    const n = Number(bytes || 0);
+    if (!n) return 'size unknown';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  };
+
+  const formatBackupTimestamp = (value) => {
+    const d = parseAnyDate(value);
+    return d ? d.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown time';
+  };
+
+  const loadBackupList = async ({ silent = false } = {}) => {
+    if (isBackupListLoading) return;
+    setIsBackupListLoading(true);
+    setBackupListError('');
+    try {
+      const response = await secureFetch('/api/list-backups', { method: 'GET' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Backup list failed with status ${response.status}`);
+      setBackupList(Array.isArray(result.backups) ? result.backups : []);
+      if (!silent) addToast('Backups Loaded', `${result.count ?? result.backups?.length ?? 0} backup file(s) found.`);
+    } catch (err) {
+      const msg = err.message || 'Backup list route failed. Check Vercel logs.';
+      setBackupListError(msg);
+      if (!silent) addToast('Backup List Error', msg);
+    } finally {
+      setIsBackupListLoading(false);
+    }
+  };
+
   const handleRunBackupNow = async () => {
     if (isBackupRunning) return;
     const ok = window.confirm('Run a full Firestore JSON backup now? This can take a minute on large databases.');
@@ -2696,10 +2745,47 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       if (!response.ok || result.ok === false) throw new Error(result.error || `Backup failed with status ${response.status}`);
       addToast('Backup Complete', `${result.documentCount || 0} document(s) saved to Storage.`);
       setSubTab('forensics');
+      loadBackupList({ silent: true });
     } catch (err) {
       addToast('Backup Error', err.message || 'Backup route failed. Check Vercel logs.');
     } finally {
       setIsBackupRunning(false);
+    }
+  };
+
+
+  const handleRestoreFullBackupFromStorage = async (selectedPath = '') => {
+    const storagePath = (selectedPath || backupRestorePath || backupStatus?.storagePath || '').trim();
+    if (!storagePath) return addToast('Missing Backup', 'Select a backup from the Backup Center first.');
+    const selectedBackup = backupList.find(b => b.path === storagePath);
+    const label = selectedBackup ? `${selectedBackup.mode || 'backup'} • ${formatBackupTimestamp(selectedBackup.createdAt || selectedBackup.updatedAt)} • ${formatBackupBytes(selectedBackup.sizeBytes)}` : storagePath;
+    const phrase = window.prompt(`This will restore Firestore documents from:
+
+${label}
+
+Storage path:
+${storagePath}
+
+Type RESTORE to continue.`);
+    if ((phrase || '').trim().toUpperCase() !== 'RESTORE') return addToast('Canceled', 'Full backup restore was not run.');
+    setIsBackupRestoring(true);
+    addToast('Restore Started', 'Reading the backup from Firebase Storage and restoring documents.');
+    try {
+      const response = await secureFetch('/api/firestore-backup?mode=restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storagePath })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Restore failed with status ${response.status}`);
+      addToast('Restore Complete', `${result.restoredDocumentCount || 0} document(s) restored from backup.`);
+      setBackupRestorePath('');
+      setSubTab('forensics');
+      loadBackupList({ silent: true });
+    } catch (err) {
+      addToast('Restore Error', err.message || 'Restore route failed. Check Vercel logs.');
+    } finally {
+      setIsBackupRestoring(false);
     }
   };
 
@@ -3799,6 +3885,43 @@ another@email.com"></textarea>
                 <button onClick={() => setIsRawInspectorOpen(true)} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"><Wrench size={12} /> Inspect Raw JSON</button>
                 <button onClick={handleCopyDiagnostics} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Copy Support Diagnostics</button>
                 <button onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 hover:bg-emerald-900/40 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">{(isBackupRunning || backupRunning) && <Loader2 size={12} className="animate-spin" />} Run Backup Now</button>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Backup Center</div>
+                      <div className="text-[9px] text-slate-500 font-bold">Select a backup instead of pasting a Storage path.</div>
+                    </div>
+                    <button type="button" onClick={() => loadBackupList()} disabled={isBackupListLoading} className="bg-[#1A2126] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] disabled:opacity-50 text-[9px] font-black uppercase tracking-widest px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                      {isBackupListLoading && <Loader2 size={10} className="animate-spin" />} Refresh
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {['all','scheduled','manual'].map(mode => (
+                      <button key={mode} type="button" onClick={() => setBackupListFilter(mode)} className={`text-[9px] font-black uppercase tracking-widest px-2 py-1.5 rounded-lg border transition-colors ${backupListFilter === mode ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-400 border-[#2A353D] hover:text-white'}`}>{mode}</button>
+                    ))}
+                  </div>
+                  {backupListError && <div className="bg-red-900/20 border border-red-900/50 text-red-200 text-[10px] font-bold rounded-lg p-2">{backupListError}</div>}
+                  <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                    {isBackupListLoading && <div className="text-center text-[10px] font-bold text-slate-500 py-4">Loading backup files...</div>}
+                    {!isBackupListLoading && filteredBackupList.length === 0 && <div className="text-center text-[10px] font-bold text-slate-500 py-4">No backup files found. Run Backup Now first.</div>}
+                    {filteredBackupList.map(backup => (
+                      <div key={backup.path} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[10px] font-black text-white truncate">{formatBackupTimestamp(backup.createdAt || backup.updatedAt)}</div>
+                            <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{backup.mode || 'backup'} • {formatBackupBytes(backup.sizeBytes)} • {backup.documentCount || 0} docs</div>
+                          </div>
+                          <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${backup.mode === 'manual' ? 'text-blue-300 border-blue-900/50 bg-blue-900/20' : 'text-emerald-300 border-emerald-900/50 bg-emerald-900/20'}`}>{backup.mode || 'backup'}</span>
+                        </div>
+                        <div className="text-[8px] font-mono text-slate-600 truncate">{backup.path}</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button" onClick={() => backup.signedUrl ? window.open(backup.signedUrl, '_blank', 'noopener,noreferrer') : addToast('No Download Link', 'Could not create a signed download link for this backup.')} className="bg-[#1A2126] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] text-[9px] font-black uppercase tracking-widest px-2 py-1.5 rounded-lg transition-colors">Download</button>
+                          <button type="button" onClick={() => handleRestoreFullBackupFromStorage(backup.path)} disabled={isBackupRestoring} className="bg-red-900/20 text-red-300 border border-red-900/50 hover:bg-red-900/40 disabled:opacity-50 text-[9px] font-black uppercase tracking-widest px-2 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">{isBackupRestoring && <Loader2 size={10} className="animate-spin" />} Restore</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <button onClick={() => jumpToAdminIssue('support')} className="w-full bg-orange-900/20 text-orange-300 border border-orange-900/50 hover:bg-orange-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Open Support Bay</button>
               </div>
               <p className="text-[10px] text-slate-500 font-bold mt-3 leading-snug">Use raw JSON only when normal screens cannot explain the issue. For destructive changes, copy diagnostics first.</p>
@@ -3911,15 +4034,6 @@ another@email.com"></textarea>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
             </div>
 
-            <div className={`${T.card} p-5 border-cyan-900/30 sm:col-span-2`}>
-              <h3 className="font-black text-white mb-1">Emergency Schedule Restore: Cheers July 2026</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Rebuilds the July 2026 published schedule for cheers_chilton_01 from the uploaded PDF. Existing July shifts are backed up to a downloaded JSON file, deleted, then replaced with the clean imported schedule.</p>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <a href="/imports/cheers_chilton_01_july_2026_shifts.json" download className="w-full text-center bg-[#12161A] text-cyan-300 border border-cyan-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-cyan-900/20 transition-colors">Download Import JSON</a>
-                <button onClick={handleRestoreCheersJulySchedule} type="button" className="w-full bg-cyan-900/20 text-cyan-300 border border-cyan-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-cyan-900/40 transition-colors">Restore July Schedule</button>
-              </div>
-            </div>
-            
             <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
               <h3 className="font-black text-white mb-1">Global Lockdown</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly suspends every tenant by triggering the Past Due billing lock. Bypasses your own workspace to prevent self-lockout.</p>
@@ -4337,7 +4451,13 @@ const HELP_ARTICLES = [
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
+  { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste', body:['Open System Administrator → Forensics → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
+  { id:'new-1311', title:'What changed in version 13.1.1', group:'Release Notes', keywords:'new update 13.1.1 backup center restore list download backups', body:['System Administrator → Forensics now has a Backup Center with selectable backups.', 'You no longer need to paste Firebase Storage paths to restore a backup.', 'Backup entries show scheduled/manual type, date, size, document count, Download, and Restore actions.', 'Administrator Manual and Help Center were updated with Backup Center troubleshooting.'] },
   { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
+  { id:'financials-tab', title:'Using Financials', group:'Financials', keywords:'financials labor timesheets daily ledger sales payroll export costs', body:['Financials combines Labor & Timesheets with Daily Ledger so managers do not jump between separate money screens.', 'Use the Labor & Timesheets subtab for punches, payroll exports, role filters, tips, and punch corrections.', 'Use the Daily Ledger subtab for sales, labor cost, food cost, and context notes.', 'Old links for Labor or Daily Ledger still open Financials and land on the matching subtab.'] },
+  { id:'schedule-builder-under-shifts', title:'Finding Schedule Builder', group:'Scheduling', keywords:'schedule builder maker time clock shifts subtab publish template coverage', body:['Schedule Builder now lives inside Time Clock & Shifts as a subtab for users with schedule access.', 'Open Time Clock & Shifts, then choose Schedule Builder from the subtab row.', 'The Schedule Builder is still hidden from staff who do not have schedule permission.', 'Event Calendar remains its own main menu tab.'] },
+  { id:'full-backup-restore', title:'Restoring a full database backup', group:'System Administrator', keywords:'restore backup firestore storage path deleted data database recovery gzip json', body:['Full automatic backups are saved to Firebase Storage as compressed JSON files.', 'To restore one, open System Administrator → Forensics → Backup Center, select a backup, and click Restore.', 'The restore is merge-based: it puts back missing/deleted documents and overwrites damaged documents from the backup, without deleting new documents that are not in the backup.', 'Always run a fresh backup before restoring so there is a current safety copy.'] },
+  { id:'new-1310', title:'What changed in version 13.1.0', group:'Release Notes', keywords:'new update 13.1.0 financials schedule builder restore backup help manual', body:['Schedule Builder moved under Time Clock & Shifts as a protected subtab.', 'Labor & Timesheets and Daily Ledger merged into Financials as separate subtabs.', 'Full backup restore from Firebase Storage was added to System Administrator → Forensics.', 'The one-off Cheers July restore button was removed.', 'Help Center and Administrator Manual were updated for these workflow changes.'] },
   { id:'new-1291', title:'What changed in version 12.9.1', group:'Release Notes', keywords:'new update 12.9.1 backup automatic firestore storage command deck run backup now', body:['Added automatic Firestore JSON backups through a Vercel cron route.','Command Deck and Forensics can now trigger Run Backup Now for super admins.','Backup status writes to system/backupStatus so support can see last backup time, status, document count, and storage path.','Help/Admin Manual now includes searchable backup troubleshooting steps.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
   { id:'low-stock-focus', title:'Finding below-par inventory from alerts', group:'Inventory', keywords:'below par low stock inventory alert highlight command center today', body:['Below-par alerts only count items where current stock is less than par. Items equal to par are not considered low.','Click a low-stock alert from Today or Command Center to open Inventory in Below-Par Focus mode.','Below-Par Focus filters the list to low items and highlights them so managers can update stock, par, or ordering quickly.'] },
@@ -4349,8 +4469,8 @@ const HELP_ARTICLES = [
   { id:'mobile-drag-board', title:'Moving shifts on phones', group:'Scheduling', keywords:'drag board mobile move shift day schedule phone', body:['On desktop, drag shift cards between days in Schedule Builder → Schedule Copilot → Drag Board.','On phones/tablets, use the Move to day dropdown on the shift card. Mobile browsers can be clumsy with drag-and-drop, so the dropdown is the safer touch-friendly option.','Changing the day, employee, start time, or end time saves immediately.'] },
 
   { id:'schedule-publish-backup', title:'Schedule publish creates a backup file', group:'Scheduling', keywords:'schedule publish backup download json restore shifts deleted duplicate', body:['When a manager clicks Publish, the app downloads a JSON backup of the current month shifts and all unpublished shifts before anything is changed.','Keep this file if you are making major schedule edits or publishing a rebuilt month. It can help support restore shifts if something is accidentally deleted.','The backup filename starts with the restaurant name and includes the schedule month and timestamp.'] },
-  { id:'admin-emergency-schedule-restore', title:'Emergency schedule restore from PDF', group:'System Administrator', keywords:'admin restore schedule import shifts july cheers delete duplicates published', body:['Open System Administrator → Operations → Emergency Schedule Restore when support needs to rebuild a damaged schedule from a verified copy.','For the Cheers July 2026 rescue, the import deletes existing July shifts for cheers_chilton_01, downloads a backup of what it replaced, and imports the PDF schedule as published shifts.','The tool matches employees by first name inside the target restaurant. If a user is missing, the import stops before deleting anything.'] },
-  { id:'new-1309', title:'What changed in version 13.0.9', group:'Release Notes', keywords:'new update 13.0.9 schedule restore backup daily firebase reads index import', body:['Schedule Restore now uses an index-safe shift listener so imported shifts do not get replaced by a stale fallback snapshot.','Automatic Firestore backups now run daily through the Vercel cron route.','The restore tool still downloads a replaced-shifts backup before importing and verifies the July shift count afterward.'] },
+
+  { id:'new-1309', title:'What changed in version 13.0.9', group:'Release Notes', keywords:'new update 13.0.9 backup daily firebase reads schedule listener', body:['Schedule loading was hardened so larger schedule months do not get replaced by stale fallback snapshots.','Automatic Firestore backups now run daily through the Vercel cron route.','Backup status continues to update the System Administrator Command Deck.'] },
   { id:'invoice-payload-storage-scan', title:'Invoice scanner: PDF upload too large / payload too large', group:'Inventory', keywords:'invoice pdf scan payload too large 413 Vercel upload firebase storage large file crash scanner', body:['If an invoice scan says payload too large, the app now uploads the original PDF or image directly to Firebase Storage first, then sends only a small file reference to the scanner.','This avoids the Vercel request-size limit that can happen when PDFs are converted to base64 before scanning.','PDFs are still limited by Gemini document processing limits. If a PDF is unusually large, split it into smaller PDFs or scan fewer pages at once.'] },
   { id:'new-1303', title:'What changed in version 13.0.3', group:'Release Notes', keywords:'new update 13.0.3 invoice scanner pdf payload storage scan', body:['Invoice scanning now uses Firebase Storage handoff for PDFs and images instead of sending the whole file through Vercel.','This fixes payload-too-large scanner crashes on normal invoice PDFs and keeps the full original file quality for extraction.'] },
   { id:'new-1302', title:'What changed in version 13.0.2', group:'Release Notes', keywords:'new update 13.0.2 mobile clutter quick action reads client users drawer admin layout', body:['Removed the floating quick-action menu button from the lower-right corner to reduce mobile clutter. The main menu remains in the header and 86 Voice remains available.','Reduced default live listener windows and caps again so Today and dashboard screens pull fewer documents on login.','Rebuilt the System Administrator client-user drawer with a wider responsive layout, cleaner user cards, and easier support diagnostics on desktop and mobile.','Version labels now use numbers only.'] },
@@ -4398,7 +4518,7 @@ const TabHelpCenter = ({ appUser, activeTab, addToast }) => {
   const articles = HELP_ARTICLES.filter(a => group === 'All' || a.group === group).filter(a => !q || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q));
   const selected = HELP_ARTICLES.find(a => a.id === selectedId) || articles[0] || HELP_ARTICLES[0];
   const related = HELP_ARTICLES.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3);
-  const latestRelease = HELP_ARTICLES.find(a => a.id === 'new-1290') || HELP_ARTICLES.find(a => a.group === 'Release Notes');
+  const latestRelease = HELP_ARTICLES.find(a => a.id === `new-${String(CURRENT_VERSION).replace(/\D/g, '')}`) || HELP_ARTICLES.find(a => a.group === 'Release Notes');
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Built-in owner manual</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div>
@@ -4435,4 +4555,28 @@ const TabHelpCenter = ({ appUser, activeTab, addToast }) => {
   );
 };
 
-export { TabTeam, TabMessages, TabSettings, TabAuditLog, TabSales, TabGodMode, ROLE_KEYWORDS, TabLabor, HELP_ARTICLES, TabHelpCenter };
+
+
+const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser, initialSubTab = 'labor' }) => {
+  const [subTab, setSubTab] = useState(initialSubTab);
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+      <div className={`${T.card} p-4 sm:p-5 cockpit-grid`}>
+        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Financials</div>
+        <h2 className="text-2xl font-black text-white tracking-tight">Financials</h2>
+        <p className="text-xs text-slate-400 font-bold mt-1 max-w-3xl">Labor & Timesheets and Daily Ledger now live together here. Labor handles payroll reality; Daily Ledger handles sales, costs, and trend notes.</p>
+      </div>
+      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
+        <button onClick={() => setSubTab('labor')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'labor' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Labor & Timesheets</button>
+        <button onClick={() => setSubTab('ledger')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'ledger' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Daily Ledger</button>
+      </div>
+      {subTab === 'labor' ? (
+        <TabLabor currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={appUser} />
+      ) : (
+        <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={appUser} />
+      )}
+    </div>
+  );
+};
+
+export { TabTeam, TabMessages, TabSettings, TabAuditLog, TabSales, TabFinancials, TabGodMode, ROLE_KEYWORDS, TabLabor, HELP_ARTICLES, TabHelpCenter };

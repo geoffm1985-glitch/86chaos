@@ -49,6 +49,99 @@ function serializeValue(value) {
   return value;
 }
 
+function deserializeValue(value, db) {
+  if (value === null || value === undefined) return value ?? null;
+  if (Array.isArray(value)) return value.map(v => deserializeValue(v, db));
+  if (value && typeof value === 'object') {
+    if (value.__type === 'timestamp' && value.value) {
+      return admin.firestore.Timestamp.fromDate(new Date(value.value));
+    }
+    if (value.__type === 'documentReference' && value.path) {
+      return db.doc(value.path);
+    }
+    if (value.__type === 'geoPoint' && typeof value.latitude === 'number' && typeof value.longitude === 'number') {
+      return new admin.firestore.GeoPoint(value.latitude, value.longitude);
+    }
+    const out = {};
+    Object.entries(value).forEach(([k, v]) => { out[k] = deserializeValue(v, db); });
+    return out;
+  }
+  return value;
+}
+
+async function readJsonBody(req) {
+  if (!req.body) return {};
+  if (typeof req.body === 'object') return req.body;
+  try { return JSON.parse(req.body); } catch (_) { return {}; }
+}
+
+async function restoreBackupFromStorage({ adminApp, db, storagePath, actor }) {
+  if (!storagePath || !String(storagePath).endsWith('.json.gz')) {
+    throw new Error('Provide a valid Firebase Storage backup path ending in .json.gz.');
+  }
+  const bucket = adminApp.storage().bucket();
+  const file = bucket.file(storagePath);
+  const [exists] = await file.exists();
+  if (!exists) throw new Error(`Backup file not found in Storage: ${storagePath}`);
+
+  const [buffer] = await file.download();
+  const unzipped = zlib.gunzipSync(buffer).toString('utf8');
+  const backup = JSON.parse(unzipped);
+  if (!backup?.collections || typeof backup.collections !== 'object') {
+    throw new Error('Backup file is missing the expected collections payload.');
+  }
+
+  const startedAt = new Date();
+  const runId = `restore-${isoSafe(startedAt)}`;
+  let restoredDocumentCount = 0;
+  let skippedDocumentCount = 0;
+  let batch = db.batch();
+  let batchCount = 0;
+
+  const commitBatch = async () => {
+    if (batchCount > 0) {
+      await batch.commit();
+      batch = db.batch();
+      batchCount = 0;
+    }
+  };
+
+  for (const [, payload] of Object.entries(backup.collections)) {
+    const docs = Array.isArray(payload?.docs) ? payload.docs : [];
+    for (const item of docs) {
+      if (!item?.path || !item?.data) continue;
+      // Never roll back backup status history while restoring a backup.
+      if (item.path === 'system/backupStatus' || item.path.startsWith('system/backupStatus/')) {
+        skippedDocumentCount += 1;
+        continue;
+      }
+      const ref = db.doc(item.path);
+      batch.set(ref, deserializeValue(item.data, db), { merge: true });
+      restoredDocumentCount += 1;
+      batchCount += 1;
+      if (batchCount >= 400) await commitBatch();
+    }
+  }
+
+  await commitBatch();
+  const finishedAt = new Date();
+  const result = {
+    status: 'restore-ok',
+    lastRestoreAt: finishedAt.toISOString(),
+    restoreStartedAt: startedAt.toISOString(),
+    restoreFinishedAt: finishedAt.toISOString(),
+    restoreRunId: runId,
+    restoredFromPath: storagePath,
+    restoredDocumentCount,
+    skippedDocumentCount,
+    actor,
+    version: '13.1.1'
+  };
+  await db.collection('system').doc('backupStatus').set(result, { merge: true });
+  await db.collection('system').doc('backupStatus').collection('restores').doc(runId).set(result, { merge: true });
+  return result;
+}
+
 async function authorize(req, adminApp) {
   const authHeader = req.headers.authorization || '';
   const cronSecret = process.env.CRON_SECRET;
@@ -119,8 +212,15 @@ async function handler(req, res) {
     const auth = await authorize(req, adminApp);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
 
+    const requestedMode = req.query.mode || 'manual';
+    if (requestedMode === 'restore') {
+      const body = await readJsonBody(req);
+      const result = await restoreBackupFromStorage({ adminApp, db, storagePath: body.storagePath || body.path, actor: auth.actor });
+      return res.status(200).json({ ok: true, ...result });
+    }
+
     const runId = isoSafe(startedAt);
-    const mode = auth.source === 'vercel-cron' ? 'scheduled' : (req.query.mode || 'manual');
+    const mode = auth.source === 'vercel-cron' ? 'scheduled' : requestedMode;
     const statusRef = db.collection('system').doc('backupStatus');
     await statusRef.set({
       status: 'running',
@@ -130,7 +230,7 @@ async function handler(req, res) {
       lastRunAt: startedAt.toISOString(),
       actor: auth.actor,
       source: auth.source,
-      version: '13.0.9'
+      version: '13.1.1'
     }, { merge: true });
 
     const collections = await db.listCollections();
@@ -138,7 +238,7 @@ async function handler(req, res) {
       metadata: {
         app: '86 Chaos',
         type: 'firestore-json-backup',
-        version: '13.0.9',
+        version: '13.1.1',
         projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount().project_id || loadServiceAccount().projectId || null,
         mode,
         runId,
@@ -197,7 +297,7 @@ async function handler(req, res) {
       compressedBytes: gzipped.length,
       rawBytes: Buffer.byteLength(json, 'utf8'),
       deletedOldBackups,
-      version: '13.0.9'
+      version: '13.1.1'
     };
 
     await statusRef.set(statusPayload, { merge: true });
@@ -214,7 +314,7 @@ async function handler(req, res) {
           lastError: err.message,
           lastErrorAt: failedAt,
           runFinishedAt: failedAt,
-          version: '13.0.9'
+          version: '13.1.1'
         }, { merge: true });
         await db.collection('system').doc('backupStatus').collection('errors').add({
           message: err.message,
