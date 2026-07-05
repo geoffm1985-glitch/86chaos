@@ -1485,6 +1485,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [allUsers, setAllUsers] = useState([]);
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [adminManualSearch, setAdminManualSearch] = useState('');
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0); 
 
@@ -1575,10 +1578,13 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
     });
-    const unsubPricing = onSnapshot(doc(db, 'system', 'pricing'), doc => {
-       if (doc.exists()) setTierPrices(doc.data());
+    const unsubPricing = onSnapshot(doc(db, 'system', 'pricing'), docSnap => {
+       if (docSnap.exists()) setTierPrices(docSnap.data());
     });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); };
+    const unsubBackup = onSnapshot(doc(db, 'system', 'backupStatus'), docSnap => {
+       setBackupStatus(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
+    }, () => setBackupStatus(null));
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); };
   }, []);
 
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
@@ -2447,6 +2453,23 @@ const handleRevokeAccess = async (user) => {
   };
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
+  const parseAnyDate = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (typeof value === 'object' && value.seconds) return new Date(value.seconds * 1000);
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const latestWorkspaceMaintenance = restaurants
+    .map(r => parseAnyDate(r.lastWeeklyMaintenanceAt || r.weeklyMaintenance?.lastRunAt || r.weeklyMaintenance?.lastSuccessfulRunAt))
+    .filter(Boolean)
+    .sort((a,b) => b.getTime() - a.getTime())[0] || null;
+  const lastBackupDate = parseAnyDate(backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastExportAt || backupStatus?.lastRunAt) || latestWorkspaceMaintenance;
+  const backupAgeHours = lastBackupDate ? Math.round((Date.now() - lastBackupDate.getTime()) / 36e5) : null;
+  const backupStatusLabel = lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported';
+  const backupIsStale = !lastBackupDate || backupAgeHours > 7 * 24;
+  const backupDetail = backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp' : 'No backup status doc');
+
   // --- NEW SAAS HEALTH METRICS ---
 const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length;
   const paidWorkspaces = restaurants.filter(r => r.billingStatus === 'Paid').length;
@@ -2481,6 +2504,14 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     const last = getLastActiveMs(u);
     return !!last && (nowMs - last) < 15 * 60 * 1000 && !isOnlineNow(u);
   }).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+
+  const selectedClientUsers = selectedClient ? allUsers
+    .filter(u => u.restaurantId === selectedClient.id)
+    .sort((a,b) => (b.isAdmin === true) - (a.isAdmin === true) || (a.name || a.email || '').localeCompare(b.name || b.email || '')) : [];
+  const selectedClientAdmins = selectedClientUsers.filter(u => u.isAdmin || u.isSuperAdmin);
+  const selectedClientOnline = selectedClientUsers.filter(isOnlineNow);
+  const selectedClientPushEnabled = selectedClientUsers.filter(u => !!u.fcmToken).length;
+  const selectedClientGpsKnown = selectedClientUsers.filter(u => u.gpsPermission || u.deviceDiagnostics?.gpsPermission).length;
 
   const pastDueWorkspaces = restaurants.filter(r => r.billingStatus === 'Past Due');
   const readOnlyWorkspaces = restaurants.filter(r => r.isReadOnly);
@@ -2523,7 +2554,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     `Network users: ${allUsers.length}`,
     `Admins: ${adminUsers.length}`,
     `Crashes 24h: ${crashes24h}`,
-    `Permission denied logs: ${permissionDeniedLogs.length}`,
+    `Last backup/status: ${backupStatusLabel} (${backupDetail})`,
+    `Permission denied logs: ${permissionDeniedLogs.length}`, 
     `Push opt-in: ${pushOptInRate}%`,
     `Users without restaurantId: ${usersWithoutRestaurant.length}`,
     `Missing owner accounts: ${missingOwnerAccounts.length}`,
@@ -2540,7 +2572,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     missingOwnerAccounts.length > 0 ? { tone: 'amber', title: 'Missing owner accounts', detail: `${missingOwnerAccounts.length} restaurant owner email(s) do not match a user profile.`, jump: 'support' } : null,
     usersWithoutRestaurant.length > 0 ? { tone: 'amber', title: 'Users missing restaurantId', detail: `${usersWithoutRestaurant.length} user profile(s) cannot route correctly.`, jump: 'support' } : null,
     duplicateEmailGroups.length > 0 ? { tone: 'red', title: 'Duplicate user emails', detail: `${duplicateEmailGroups.length} duplicate email group(s) found.`, jump: 'support' } : null,
-    pushOptInRate < 30 && allUsers.length > 0 ? { tone: 'amber', title: 'Low push adoption', detail: `${pushOptInRate}% of users have notification tokens.`, jump: 'users' } : null
+    pushOptInRate < 30 && allUsers.length > 0 ? { tone: 'amber', title: 'Low push adoption', detail: `${pushOptInRate}% of users have notification tokens.`, jump: 'users' } : null,
+    backupIsStale ? { tone: 'amber', title: 'Backup status stale', detail: `Last reported backup/maintenance: ${backupStatusLabel}.`, jump: 'support' } : null
   ].filter(Boolean);
   const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
 
@@ -2559,6 +2592,17 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {})).sort((a,b) => b[1] - a[1]).slice(0, 8);
+
+  const adminManualArticles = [
+    { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → Users or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
+    { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
+    { title: 'Client user management from Clients tab', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Clients and click the client name or Users button.', 'The client drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and billing state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that client or user sees.'] },
+    { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export', body: ['The Command Deck reads system/backupStatus when available.', 'If that document does not exist, it falls back to the latest weekly maintenance stamp on restaurants.', 'A stale or missing backup status is a warning to verify your scheduled Firestore export outside the app.', 'Weekly maintenance is not a true database backup; real Firestore export/backup should be configured separately.'] },
+    { title: 'Return-to-landing behavior', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today', body: ['When a user leaves the app for more than five minutes and comes back, the app returns them to Today Command Center.', 'This prevents stale tabs from sitting open on a phone after a shift or break.', 'It does not delete their session; it simply returns them to the safest landing screen.'] },
+    ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
+  ];
+  const adminManualQuery = adminManualSearch.trim().toLowerCase();
+  const filteredAdminManualArticles = adminManualArticles.filter(a => !adminManualQuery || `${a.title} ${a.group} ${a.keywords || ''} ${(a.body || []).join(' ')}`.toLowerCase().includes(adminManualQuery)).slice(0, 80);
 
   const handleCopyPlatformSnapshot = async () => {
     try {
@@ -2586,7 +2630,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       `Users without restaurantId: ${usersWithoutRestaurant.map(u => u.email || u.name || u.id).join(', ') || 'none'}`,
       `Missing owner accounts: ${missingOwnerAccounts.map(r => (r.name || 'Unnamed') + ' <' + (r.ownerEmail || 'no email') + '>').join(', ') || 'none'}`,
       `Duplicate email groups: ${duplicateEmailGroups.map(([email, group]) => email + ' (' + group.length + ')').join(', ') || 'none'}`,
-      `Permission denied logs: ${permissionDeniedLogs.length}`,
+      `Last backup/status: ${backupStatusLabel} (${backupDetail})`,
+      `Permission denied logs: ${permissionDeniedLogs.length}`, 
       '',
       `User agent: ${envReport.userAgent}`
     ].join('\n');
@@ -2684,6 +2729,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                 <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
                 <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('users')} />
                 <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('tenants')} />
+                <CockpitMetric label="Last Backup" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} onClick={() => jumpToAdminIssue('support')} />
               </div>
             </div>
 
@@ -2782,6 +2828,82 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
             {editingGlobalUser.isSuperAdmin && <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">This user has super-admin access. This form will not grant or revoke that. Use Grant Access.</div>}
             <button type="submit" className={`w-full ${T.btn}`}>Save Support Changes</button>
           </form>
+        )}
+      </Modal>
+
+<Modal isOpen={!!selectedClient} onClose={() => setSelectedClient(null)} title={`Client Users: ${selectedClient?.name || ''}`}>
+        {selectedClient && (
+          <div className="space-y-4 max-h-[76vh] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Workspace Snapshot</div>
+                  <h3 className="text-lg font-black text-white">{selectedClient.name}</h3>
+                  <div className="text-[10px] text-slate-400 font-bold mt-1 break-all">ID: {selectedClient.id}</div>
+                  <div className="text-[10px] text-slate-400 font-bold mt-1">Owner: {selectedClient.ownerName || 'Unknown'} • {selectedClient.ownerEmail || 'No owner email'}</div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => { setGhostTenant({ id: selectedClient.id, name: selectedClient.name, mode: 'workspace' }); setSelectedClient(null); setActiveTab('published'); }} className={`${T.btnAlt} text-[10px]`}>Possess Workspace</button>
+                  <button onClick={() => { setEditingRest(selectedClient); setSelectedClient(null); }} className={`${T.btn} text-[10px]`}>Manage Client</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Users</div><div className="text-2xl font-black text-white">{selectedClientUsers.length}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Admins</div><div className="text-2xl font-black text-white">{selectedClientAdmins.length}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Online</div><div className="text-2xl font-black text-emerald-400">{selectedClientOnline.length}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Push Tokens</div><div className="text-2xl font-black text-white">{selectedClientPushEnabled}/{selectedClientUsers.length || 0}</div></div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-2">
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <div className={T.label}>Client Health</div>
+                <div className="text-xs font-bold text-slate-300 leading-relaxed">
+                  Billing: <span className="text-white">{selectedClient.billingStatus || 'Unknown'}</span> • Plan: <span className="text-white">{selectedClient.planType || 'Pro'}</span><br/>
+                  Last active: <span className="text-white">{timeAgo(selectedClient.lastActive)}</span><br/>
+                  GPS/geofence: <span className="text-white">{selectedClient.systemSettings?.geofence ? 'Enabled' : 'Off / Not Set'}</span><br/>
+                  Known GPS permission snapshots: <span className="text-white">{selectedClientGpsKnown}</span>
+                </div>
+              </div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <div className={T.label}>Enabled Modules</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {moduleList.map(feat => <span key={feat} className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border ${selectedClient.features?.[feat] === false ? 'border-red-900/40 text-red-400 bg-red-900/10' : 'border-emerald-900/40 text-emerald-300 bg-emerald-900/10'}`}>{feat}</span>)}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden">
+              <div className="bg-[#0B0E11] border-b border-[#2A353D] p-3 flex items-center justify-between gap-2">
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Users in this workspace</div>
+                <button type="button" onClick={() => { setUserSearch(selectedClient.name || selectedClient.id); setSubTab('users'); setSelectedClient(null); }} className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-white">Open Global Users</button>
+              </div>
+              <div className="divide-y divide-[#2A353D] max-h-[42vh] overflow-y-auto custom-scrollbar">
+                {selectedClientUsers.length === 0 && <div className="p-5 text-center text-xs font-bold text-slate-500">No users are attached to this client yet.</div>}
+                {selectedClientUsers.map(u => (
+                  <div key={u.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-black text-white text-sm truncate">{u.name || 'Unnamed User'} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
+                      <div className="text-[10px] text-slate-400 font-bold truncate">{u.email || 'No email'} • <span className="text-[#D4A381]">{u.role || 'No role'}</span></div>
+                      <div className="text-[9px] text-slate-500 font-black uppercase tracking-widest flex flex-wrap gap-x-2 gap-y-1 mt-1">
+                        {isOnlineNow(u) ? <span className="text-emerald-400">Online now</span> : <span>Ping: {timeAgo(u.lastActive)}</span>}
+                        <span>Push: {u.fcmToken ? 'On' : 'Off'}</span>
+                        <span>GPS: {u.gpsPermission || u.deviceDiagnostics?.gpsPermission || 'Unknown'}</span>
+                        <span>Tab: {u.activeTab || 'Unknown'}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 flex-shrink-0">
+                      <button onClick={() => openSupportUserEditor(u)} className="px-2.5 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40">Support Edit</button>
+                      <button onClick={() => { setGhostTenant({ id: selectedClient.id, name: selectedClient.name, mode: 'user', impersonate: u }); setSelectedClient(null); setActiveTab('published'); }} className="px-2.5 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40">Possess</button>
+                      <button onClick={async () => { if(!window.confirm(`Force ${u.name || u.email} to log out and clear their device cache?`)) return; await updateDoc(doc(db, 'users', u.id), { forceLogout: true }); addToast('Executed', 'Kill signal sent to user device.'); }} className="px-2.5 py-1.5 bg-orange-900/20 border border-orange-900/50 text-orange-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-orange-900/40">Force Logout</button>
+                      <button onClick={() => handleDeleteGlobalUser(u)} className="px-2.5 py-1.5 bg-red-900/20 border border-red-900/50 text-red-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-red-900/40">Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </Modal>
 
@@ -3201,7 +3323,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                 <div key={r.id} className={`${T.row} flex flex-col xl:flex-row justify-between xl:items-center gap-4`}>
                   <div className="flex-1 min-w-0">
                     <div className="font-black text-white text-lg flex items-center gap-2 flex-wrap">
-                      <span className="truncate">{r.name}</span>
+                      <button type="button" onClick={() => setSelectedClient(r)} className="truncate text-left hover:text-[#D4A381] underline-offset-4 hover:underline">{r.name}</button>
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
                       {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
@@ -3232,6 +3354,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
                     <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{onlineUsers.filter(u => u.restaurantId === r.id).length} Online</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
+<button onClick={() => setSelectedClient(r)} className="px-3 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40 transition-colors shadow-sm flex items-center gap-1"><Users size={14} /> Users</button>
 <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-[#D4A381] hover:border-[#D4A381]/50 transition-colors shadow-sm flex items-center gap-1"><Settings size={14} /> Manage</button>
                     <button onClick={() => { setGhostTenant({ id: r.id, name: r.name, mode: 'workspace' }); setActiveTab('published'); }} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
                     <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
@@ -3476,6 +3599,10 @@ another@email.com"></textarea>
             <CockpitMetric label="Ghost Actions" value={ghostAuditLogs.length} detail="Support/possess edits" tone={ghostAuditLogs.length ? 'purple' : 'emerald'} />
             <CockpitMetric label="Destructive" value={destructiveAuditLogs.length} detail="Deletes, nukes, locks" tone={destructiveAuditLogs.length ? 'amber' : 'emerald'} hot={destructiveAuditLogs.length > 0} />
             <CockpitMetric label="Support Edits" value={supportEditLogs.length} detail="User routing/profile edits" tone={supportEditLogs.length ? 'blue' : 'emerald'} />
+            <CockpitMetric label="Access Changes" value={accessAuditLogs.length} detail="Grant/revoke/admin events" tone={accessAuditLogs.length ? 'amber' : 'emerald'} />
+            <CockpitMetric label="Rule Blocks" value={permissionDeniedLogs.length} detail="Permission denied clues" tone={permissionDeniedLogs.length ? 'red' : 'emerald'} hot={permissionDeniedLogs.length > 0} />
+            <CockpitMetric label="Orphan Users" value={usersWithoutRestaurant.length} detail="Missing restaurantId" tone={usersWithoutRestaurant.length ? 'amber' : 'emerald'} />
+            <CockpitMetric label="Backup Status" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
           </div>
 
           <div className="grid lg:grid-cols-3 gap-4">
@@ -3632,23 +3759,41 @@ another@email.com"></textarea>
         <div id="admin-manual" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-5 cockpit-grid`}>
             <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Internal support manual</div>
-            <h2 className="text-2xl font-black text-white">System Administrator Manual</h2>
-            <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Use this as the first draft for anyone you hire to help with 86 Chaos support. It keeps the dangerous tools separated from normal restaurant controls.</p>
+            <h2 className="text-2xl font-black text-white">Administrator Manual + Troubleshooting Database</h2>
+            <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search this before touching a client. It covers administrator workflows and the entire app help library so future support hires can debug from keywords users actually say.</p>
+            <div className="relative mt-4 max-w-3xl">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input value={adminManualSearch} onChange={e => setAdminManualSearch(e.target.value)} placeholder="Search admin manual: permission denied, missing tab, punch, backup, ghost, GPS, schedule..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-10 pr-3 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381]" />
+            </div>
           </div>
-          <div className="grid md:grid-cols-2 gap-4">
-            {[
-              ['Daily support routine', ['Open Dashboard and scan the Command Deck action queue.', 'Check Support for permission-denied errors, duplicates, and missing owner accounts.', 'Open Live Users before contacting a client so you know whether they are active right now.', 'Use Forensics before and after major support actions so the audit trail tells the full story.']],
-              ['Editing a user safely', ['Go to Users and search by email, name, or restaurant.', 'Click Support Edit. Use the restaurant selector to move the user to the correct workspace.', 'Do not grant super-admin here. Use Grant Access only.', 'Add a support note before saving when the change is not obvious.']],
-              ['Ghost/Possess rules', ['Possess Workspace when troubleshooting a restaurant-level issue.', 'Possess User when verifying that one person sees the right tabs and data.', 'Exit Ghost Mode as soon as the support task is complete.', 'Never make billing/security decisions while unsure which workspace is active.']],
-              ['Client controls', ['Use Clients to manage plan type, modules, billing state, read-only mode, and banners.', 'Use Operations for global messages, demo workspaces, force refresh, sweeps, and lockdowns.', 'Avoid global actions unless you have verified the target twice.', 'If a tool affects every restaurant, pause and copy a platform snapshot first.']],
-              ['Forensics checklist', ['Filter mentally by user, target, action, and tenant ID.', 'Look for Ghost Action badges when investigating support edits.', 'Use Raw JSON Inspector only when normal screens do not show enough information.', 'Copy diagnostics before changing rules or deleting data.']],
-              ['Escalation rules', ['If Firebase rules block Ghost Mode, check Support permission-denied logs first.', 'If API routes fail, verify Vercel environment variables and deployment status.', 'If data looks missing, check restaurantId routing before assuming it was deleted.', 'For destructive fixes, export/backup first.']]
-            ].map(([title, lines]) => (
-              <div key={title} className={`${T.card} p-4`}>
-                <h3 className="font-black text-white text-sm mb-3">{title}</h3>
-                <div className="space-y-2">{lines.map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300"><span className="w-5 h-5 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}</div>
-              </div>
-            ))}
+
+          <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-4">
+            <div className={`${T.card} p-4 h-max`}>
+              <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-3">Fast support routine</div>
+              {[
+                'Search the client or user first.',
+                'Confirm restaurantId before editing.',
+                'Check Command Deck action queue.',
+                'Copy diagnostics before risky changes.',
+                'Use Grant Access only for platform admin.',
+                'Possess, verify, fix, then exit Ghost Mode.'
+              ].map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 mb-2"><span className="w-5 h-5 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-[10px] uppercase tracking-widest font-black text-slate-500">{filteredAdminManualArticles.length} searchable result(s)</div>
+              {filteredAdminManualArticles.length === 0 && <div className={`${T.card} p-6 text-center text-xs font-bold text-slate-500`}>No manual results. Try a simpler word like “tab”, “punch”, “backup”, “delete”, “GPS”, or “permission”.</div>}
+              {filteredAdminManualArticles.map((article, idx) => (
+                <div key={`${article.title}-${idx}`} className={`${T.card} p-4`}>
+                  <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{article.group}</div>
+                  <h3 className="font-black text-white text-base mb-3">{article.title}</h3>
+                  <div className="space-y-2">
+                    {(article.body || []).map((line, i) => <div key={i} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-[#12161A] border border-[#2A353D] text-[#D4A381] flex items-center justify-center text-[10px] font-black flex-shrink-0">{i+1}</span><span>{line}</span></div>)}
+                  </div>
+                  <div className="mt-3 text-[9px] font-mono text-slate-600 break-words">Search terms: {article.keywords || 'manual support'}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -3973,6 +4118,10 @@ const HELP_ARTICLES = [
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → Users and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Grant Access only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
   { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Grant Access for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },
+  { id:'admin-client-users', title:'Viewing and managing users from a client', group:'System Administrator', keywords:'client users restaurant users support edit possess force logout delete notifications gps billing modules', body:['Open System Administrator → Clients and click the client name or Users button.','The client drawer shows all users in that workspace, admin count, online users, push token count, GPS permission snapshots, billing state, and enabled modules.','Use Support Edit from the client drawer to move a user, update their role/status, force password change, or correct workspace routing.','Use Possess from the client drawer to troubleshoot exactly what a client user sees.'] },
+  { id:'admin-backup-status', title:'Checking database backup status', group:'System Administrator', keywords:'database backup last backup status command deck weekly maintenance firestore export', body:['The System Administrator Command Deck includes Last Backup.','The app reads system/backupStatus when your backup job writes it. If that document is missing, it falls back to the latest weekly maintenance stamp.','A stale backup warning means you should verify your real Firestore scheduled export/backup outside the app. Weekly maintenance is housekeeping, not a full backup.','Copy Platform Snapshot before making risky data changes.'] },
+  { id:'landing-after-away', title:'Why did the app return to Today?', group:'Navigation', keywords:'landing page today away five minutes background tab phone stale session', body:['If someone leaves the app for more than five minutes and comes back, 86 Chaos returns them to Today Command Center.','This keeps old screens from sitting stale on mobile phones and tablets.','The user is not logged out; they are simply returned to the safest landing screen.'] },
+  { id:'new-1290', title:'What changed in version 12.9.0', group:'Release Notes', keywords:'new update 12.9 admin client users searchable manual backup help update landing page', body:['System Administrator → Clients now opens a full client user drawer with workspace users, admin count, online status, push/GPS diagnostics, billing, modules, support edit, possess, force logout, and delete tools.','The Administrator Manual is now a searchable troubleshooting database that also includes the full app Help Center articles.','Users who leave the app for more than five minutes return to Today Command Center when they come back.','The startup update popup was removed. New version briefs now live inside Help Center and show as a Help Center notification dot.','The Command Deck now includes Last Backup status using system/backupStatus or the latest weekly maintenance stamp.'] },
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
@@ -4028,9 +4177,11 @@ const TabHelpCenter = ({ appUser, activeTab, addToast }) => {
   const articles = HELP_ARTICLES.filter(a => group === 'All' || a.group === group).filter(a => !q || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q));
   const selected = HELP_ARTICLES.find(a => a.id === selectedId) || articles[0] || HELP_ARTICLES[0];
   const related = HELP_ARTICLES.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3);
+  const latestRelease = HELP_ARTICLES.find(a => a.id === 'new-1290') || HELP_ARTICLES.find(a => a.group === 'Release Notes');
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Built-in owner manual</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div>
+      {latestRelease && <button type="button" onClick={() => { setSelectedId(latestRelease.id); setGroup('Release Notes'); }} className="w-full text-left bg-blue-900/15 border border-blue-500/40 rounded-xl p-4 hover:bg-blue-900/25 transition-colors"><div className="text-[10px] uppercase tracking-widest font-black text-blue-300 mb-1">Latest update brief</div><div className="font-black text-white">{latestRelease.title}</div><div className="text-xs text-slate-300 font-bold mt-1 line-clamp-2">{latestRelease.body?.[0]}</div></button>}
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-1 space-y-3">
           <div className={`${T.card} p-3`}><div className="relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search help: punch, schedule, password..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-10 pr-3 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381]"/></div><select value={group} onChange={e=>setGroup(e.target.value)} className={`${T.input} mt-2`}>{groups.map(g=><option key={g}>{g}</option>)}</select></div>
