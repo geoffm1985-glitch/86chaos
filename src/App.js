@@ -4,7 +4,7 @@ import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
-import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, ChangeLogModal, UndoBar, QuickActionDock } from './components/common';
+import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, QuickActionDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabSales, TabLabor, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
 export default function App() {
@@ -32,6 +32,7 @@ export default function App() {
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [hasHelpUpdate, setHasHelpUpdate] = useState(() => localStorage.getItem(`helpBriefSeen_${CURRENT_VERSION}`) !== 'true');
 
   useEffect(() => {
     const checkAppVersion = async () => {
@@ -169,7 +170,8 @@ if (liveAppUser && clientData) {
      liveAppUser = { 
        ...liveAppUser, 
        systemSettings: clientData.systemSettings || {},
-       planType: clientData.planType || 'Pro'
+       planType: clientData.planType || 'Pro',
+       restaurantName: liveAppUser.restaurantName || clientData.name || clientData.businessName || clientData.restaurantName || '86 Chaos'
      };
   }
   setActiveTimeFormat(liveAppUser?.preferences?.timeFormat || '12h');
@@ -207,9 +209,33 @@ if (liveAppUser && clientData) {
         sessionStorage.setItem('chaosSessionId', sessionId);
       }
 
-      const sendHeartbeat = (state = 'online') => {
+      const collectDeviceDiagnostics = async () => {
+        const diag = {
+          notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+          geolocation: navigator.geolocation ? 'supported' : 'unsupported',
+          gpsPermission: 'unknown',
+          serviceWorker: 'serviceWorker' in navigator,
+          indexedDb: 'indexedDB' in window,
+          language: navigator.language || 'unknown',
+          platform: navigator.platform || 'unknown',
+          screen: `${window.innerWidth}x${window.innerHeight}`,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'
+        };
+        try {
+          if (navigator.permissions?.query && navigator.geolocation) {
+            const gps = await navigator.permissions.query({ name: 'geolocation' });
+            diag.gpsPermission = gps.state || 'unknown';
+          }
+        } catch (err) {
+          diag.gpsPermission = 'unknown';
+        }
+        return diag;
+      };
+
+      const sendHeartbeat = async (state = 'online') => {
         const stamp = new Date().toISOString();
         const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
+        const deviceDiagnostics = await collectDeviceDiagnostics();
         updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp }).catch(()=>{});
         updateDoc(doc(db, 'users', appUser.id), {
           lastActive: stamp,
@@ -218,7 +244,10 @@ if (liveAppUser && clientData) {
           activeTab: activeTabState,
           activeSessionId: sessionId,
           activeDevice: device,
-          activeHost: window.location.hostname
+          activeHost: window.location.hostname,
+          notificationPermission: deviceDiagnostics.notifications,
+          gpsPermission: deviceDiagnostics.gpsPermission,
+          deviceDiagnostics
         }).catch(()=>{});
       };
 
@@ -276,32 +305,45 @@ useEffect(() => {
     }
   }, [appUser]);
 
-  // --- AUTO-LOGOUT INACTIVITY TIMER (30 MINUTES) ---
+  // --- RETURN-TO-LANDING AFTER LEAVING APP (5 MINUTES) ---
   useEffect(() => {
     if (!appUser) return;
-    let timeoutId;
-    
-    const logoutUser = () => {
-      setAppUser(null);
-      alert("You have been automatically logged out due to inactivity.");
+    const key = `chaosLeftAt_${appUser.id}`;
+    const FIVE_MINUTES = 5 * 60 * 1000;
+
+    const sendToLandingIfStale = () => {
+      const leftAt = parseInt(localStorage.getItem(key) || '0', 10);
+      if (leftAt && Date.now() - leftAt > FIVE_MINUTES) {
+        localStorage.removeItem(key);
+        setActiveTab('today');
+        addToast('Welcome Back', 'You were away for more than five minutes, so 86 Chaos returned to the landing page.');
+      }
     };
-    
-    const resetTimer = () => {
-      clearTimeout(timeoutId);
-      // Change the 30 below to whatever minute threshold you prefer
-      timeoutId = setTimeout(logoutUser, 30 * 60 * 1000); 
+
+    const markLeftOrReturned = () => {
+      if (document.hidden) localStorage.setItem(key, Date.now().toString());
+      else sendToLandingIfStale();
     };
-    
-    // Listen for any kind of interaction
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
-    events.forEach(e => document.addEventListener(e, resetTimer));
-    resetTimer();
-    
+
+    sendToLandingIfStale();
+    document.addEventListener('visibilitychange', markLeftOrReturned);
+    window.addEventListener('focus', sendToLandingIfStale);
+    window.addEventListener('pageshow', sendToLandingIfStale);
+    window.addEventListener('beforeunload', () => localStorage.setItem(key, Date.now().toString()));
+
     return () => {
-      clearTimeout(timeoutId);
-      events.forEach(e => document.removeEventListener(e, resetTimer));
+      document.removeEventListener('visibilitychange', markLeftOrReturned);
+      window.removeEventListener('focus', sendToLandingIfStale);
+      window.removeEventListener('pageshow', sendToLandingIfStale);
     };
-  }, [appUser]);
+  }, [appUser?.id]);
+
+  useEffect(() => {
+    if (activeTabState === 'help' && hasHelpUpdate) {
+      localStorage.setItem(`helpBriefSeen_${CURRENT_VERSION}`, 'true');
+      setHasHelpUpdate(false);
+    }
+  }, [activeTabState, hasHelpUpdate]);
   
 
   const [currentDate, setCurrentDate] = useState(getToday());
@@ -310,7 +352,6 @@ useEffect(() => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isKitchenTVOpen, setIsKitchenTVOpen] = useState(false);
   const [undoItem, setUndoItem] = useState(null);
-  const [showChangeLog, setShowChangeLog] = useState(() => localStorage.getItem(`seen_${CURRENT_VERSION}`) !== 'true');
   const registerUndo = (item) => { setUndoItem(item); setTimeout(() => setUndoItem(prev => prev === item ? null : prev), 12000); };
 
 
@@ -540,10 +581,9 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} clientFeatures={clientFeatures} addToast={addToast} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={clientFeatures} addToast={addToast} />
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={users} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
-      <ChangeLogModal isOpen={showChangeLog} onClose={() => { localStorage.setItem(`seen_${CURRENT_VERSION}`, 'true'); setShowChangeLog(false); }} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
       <QuickActionDock appUser={liveAppUser} setActiveTab={setActiveTab} openSearch={() => setIsGlobalSearchOpen(true)} openTV={() => setIsKitchenTVOpen(true)} addToast={addToast} />    
 
@@ -627,7 +667,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.5.3</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Beta Version 12.9.0</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>

@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
@@ -472,6 +472,9 @@ const [searchTerm, setSearchTerm] = useState('');
   const [wItemId, setWItemId] = useState(''); 
   const [wQty, setWQty] = useState(''); 
   const [wReason, setWReason] = useState('Dropped / Spilled');
+  const [wMode, setWMode] = useState('count');
+  const [wWeightPerStockUnit, setWWeightPerStockUnit] = useState('');
+  const [wUnitLabel, setWUnitLabel] = useState('unit');
   const [editWaste, setEditWaste] = useState(null);
   const [wSearchTerm, setWSearchTerm] = useState(''); // Search filter for selecting items to burn
   const [wasteSearch, setWasteSearch] = useState(''); // Search filter for looking up past burn logs
@@ -485,13 +488,136 @@ const [searchTerm, setSearchTerm] = useState('');
 
   // --- LOGIC ---
   const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
-  const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category || 'Other', pfgCode: (editItem.pfgCode || '').trim(), supplierId: editItem.supplierId, packSize: editItem.packSize, yieldQty: parseInt(editItem.yieldQty) || 1, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
+  const handleSaveEdit = async (e) => { 
+    e.preventDefault(); 
+    await updateDoc(doc(db, "inventoryItems", editItem.id), { 
+      name: editItem.name.trim(), 
+      category: editItem.category || 'Other', 
+      pfgCode: (editItem.pfgCode || '').trim(), 
+      supplierId: editItem.supplierId, 
+      packSize: editItem.packSize || '', 
+      yieldQty: parseFloat(editItem.yieldQty) || 1, 
+      weightPerStockUnit: parseFloat(editItem.weightPerStockUnit) || 0,
+      burnDefaultMode: editItem.burnDefaultMode || 'count',
+      burnUnitLabel: editItem.burnUnitLabel || 'unit',
+      price: parseFloat(editItem.price) || 0 
+    }); 
+    setEditItem(null); 
+    addToast('Item Updated', 'Master file overwritten.'); 
+  };
   const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseFloat(newStock) || 0) });
   const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseFloat(newPar) || 0) });
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
   
   const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
 const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
+
+const cleanNumber = (value) => {
+    const n = parseFloat(String(value ?? '').replace(/[^0-9.\-]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+const parsePackProfile = (packValue = '') => {
+    const pack = String(packValue || '').toLowerCase().replace(/#/g, ' lb ').replace(/\s+/g, ' ').trim();
+    const result = { count: 0, weightLbs: 0, notes: [] };
+    if (!pack) return result;
+
+    // Count patterns: 24 ct, 24 each, 12/1 ct, 2 x 5 lb, 2/5 lb, 4-10 lb, etc.
+    const countMatch = pack.match(/(\d+(?:\.\d+)?)\s*(ct|count|ea|each|pc|pcs|piece|pieces|portion|portions|patty|patties|bottle|bottles|can|cans|bag|bags|pack|pk)\b/i);
+    if (countMatch) {
+      result.count = Math.max(0, parseFloat(countMatch[1]) || 0);
+      result.notes.push(`Count detected: ${result.count}`);
+    }
+
+    // Catch-weight style: 2/5 lb, 2 x 5 lb, 4-10 lb, 6 10 oz.
+    const comboWeight = pack.match(/(\d+(?:\.\d+)?)\s*(?:\/|x|×|-|by)\s*(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds|oz|ounce|ounces)\b/i);
+    if (comboWeight) {
+      const a = parseFloat(comboWeight[1]) || 0;
+      const b = parseFloat(comboWeight[2]) || 0;
+      const unit = comboWeight[3] || 'lb';
+      const lbs = unit.startsWith('oz') || unit.startsWith('ounce') ? (a * b) / 16 : a * b;
+      result.weightLbs = Math.max(result.weightLbs, lbs);
+      result.notes.push(`Weight detected: ${lbs.toFixed(2)} lb per stock unit`);
+    }
+
+    const singleWeight = pack.match(/(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds|oz|ounce|ounces)\b/i);
+    if (!result.weightLbs && singleWeight) {
+      const n = parseFloat(singleWeight[1]) || 0;
+      const unit = singleWeight[2] || 'lb';
+      const lbs = unit.startsWith('oz') || unit.startsWith('ounce') ? n / 16 : n;
+      result.weightLbs = Math.max(0, lbs);
+      result.notes.push(`Weight detected: ${lbs.toFixed(2)} lb per stock unit`);
+    }
+
+    // Pattern like 12 ct / 8 oz each = 6 lbs total
+    const countWeightEach = pack.match(/(\d+(?:\.\d+)?)\s*(ct|count|ea|each).*?(\d+(?:\.\d+)?)\s*(oz|ounce|ounces|lb|lbs)\b/i);
+    if (countWeightEach) {
+      const c = parseFloat(countWeightEach[1]) || 0;
+      const w = parseFloat(countWeightEach[3]) || 0;
+      const u = countWeightEach[4] || 'oz';
+      const lbs = u.startsWith('oz') || u.startsWith('ounce') ? (c * w) / 16 : c * w;
+      if (lbs > result.weightLbs) result.weightLbs = lbs;
+      if (!result.count) result.count = c;
+      result.notes.push(`Each weight detected: ${c} x ${w} ${u}`);
+    }
+
+    return result;
+  };
+
+const getBurnUnitsPerStockUnit = (item) => {
+    const explicitYield = parseFloat(item?.yieldQty);
+    if (Number.isFinite(explicitYield) && explicitYield > 0) return explicitYield;
+    const packProfile = parsePackProfile(item?.packSize);
+    if (packProfile.count > 0) return packProfile.count;
+    return 1;
+  };
+
+const getBurnWeightPerStockUnit = (item) => {
+    const explicitWeight = parseFloat(item?.weightPerStockUnit);
+    if (Number.isFinite(explicitWeight) && explicitWeight > 0) return explicitWeight;
+    const packProfile = parsePackProfile(item?.packSize);
+    if (packProfile.weightLbs > 0) return packProfile.weightLbs;
+    return 0;
+  };
+
+const inferBurnModeForItem = (item) => {
+    if (!item) return { mode: 'count', unitLabel: 'unit', weightPerStockUnit: '', unitsPerStockUnit: 1, notes: [] };
+    const profile = parsePackProfile(item.packSize);
+    const explicitMode = item.burnDefaultMode;
+    const weight = getBurnWeightPerStockUnit(item);
+    const units = getBurnUnitsPerStockUnit(item);
+    let mode = explicitMode || 'count';
+    if (!explicitMode && weight > 0 && units <= 1) mode = 'weight';
+    return {
+      mode,
+      unitLabel: item.burnUnitLabel || (mode === 'weight' ? 'lb' : 'unit'),
+      weightPerStockUnit: weight || '',
+      unitsPerStockUnit: units,
+      notes: profile.notes || []
+    };
+  };
+
+const getBurnStockDeduction = (qty, item, options = {}) => {
+    const amount = Math.max(0, parseFloat(qty) || 0);
+    const mode = options.mode || item?.burnDefaultMode || 'count';
+    if (mode === 'recordOnly') return 0;
+    if (mode === 'stock') return amount;
+    if (mode === 'weight') {
+      const weightPerStockUnit = Math.max(0, parseFloat(options.weightPerStockUnit) || getBurnWeightPerStockUnit(item));
+      return weightPerStockUnit > 0 ? amount / weightPerStockUnit : amount;
+    }
+    const unitsPerStockUnit = Math.max(1, parseFloat(options.unitsPerStockUnit) || getBurnUnitsPerStockUnit(item));
+    return amount / unitsPerStockUnit;
+  };
+
+const handleWasteItemSelect = (itemId) => {
+    setWItemId(itemId);
+    const item = inventoryItems.find(i => i.id === itemId);
+    const inferred = inferBurnModeForItem(item);
+    setWMode(inferred.mode || 'count');
+    setWWeightPerStockUnit(inferred.weightPerStockUnit ? String(inferred.weightPerStockUnit) : '');
+    setWUnitLabel(inferred.unitLabel || 'unit');
+  };
 
 const handleLogWaste = async (e) => {
     e.preventDefault(); 
@@ -500,24 +626,31 @@ const handleLogWaste = async (e) => {
     const item = inventoryItems.find(i => i.id === wItemId); 
     if(!item) return;
 
-    // 1. Get the raw inputs
-    const unitsWasted = parseFloat(wQty); 
-    const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1; 
-    const pricePerCase = parseFloat(item.price) || 0;
+    const burnAmount = Math.max(0, parseFloat(wQty) || 0); 
+    if (burnAmount <= 0) return addToast('Missing Qty', 'Enter how much was wasted.');
 
-    // 2. Calculate individual unit metrics
-    const pricePerUnit = pricePerCase / yieldPerCase;
-    const totalCostLost = pricePerUnit * unitsWasted;
-    
-    // 3. Calculate how much of a case to deduct from the main stock
-    const stockDeduction = unitsWasted / yieldPerCase; 
+    const mode = wMode || 'count';
+    const unitsPerStockUnit = getBurnUnitsPerStockUnit(item);
+    const weightPerStockUnit = mode === 'weight' ? Math.max(0, parseFloat(wWeightPerStockUnit) || getBurnWeightPerStockUnit(item)) : getBurnWeightPerStockUnit(item);
+    if (mode === 'weight' && weightPerStockUnit <= 0) return addToast('Weight Needed', 'Enter how many pounds are in one stock unit/case before logging a weight burn.');
 
-    // 4. Save to Database
+    const stockDeduction = getBurnStockDeduction(burnAmount, item, { mode, unitsPerStockUnit, weightPerStockUnit }); 
+    const pricePerStockUnit = parseFloat(item.price) || 0;
+    const totalCostLost = pricePerStockUnit * stockDeduction;
+    const unitLabel = mode === 'weight' ? 'lb' : mode === 'stock' ? 'stock unit' : (wUnitLabel || item.burnUnitLabel || 'unit');
+
     await addDoc(collection(db, "wasteLogs"), { 
       itemId: item.id, 
       itemName: item.name, 
-      qty: unitsWasted, 
-      costLost: totalCostLost, 
+      qty: burnAmount, 
+      burnAmount,
+      burnUnitLabel: unitLabel,
+      burnMode: mode,
+      costLost: totalCostLost,
+      stockDeducted: stockDeduction,
+      unitsPerStockUnit,
+      weightPerStockUnit,
+      burnQtyMode: mode === 'count' ? 'individual_units' : mode, 
       reason: wReason, 
       loggedBy: appUser.name, 
       date: getToday(), 
@@ -525,21 +658,25 @@ const handleLogWaste = async (e) => {
       restaurantId: appUser.restaurantId 
     });
 
-    await updateDoc(doc(db, "inventoryItems", item.id), { 
-      currentStock: Math.max(0, (item.currentStock || 0) - stockDeduction) 
-    });
+    if (stockDeduction > 0) {
+      await updateDoc(doc(db, "inventoryItems", item.id), { 
+        currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeduction),
+        ...(mode === 'weight' && weightPerStockUnit > 0 ? { weightPerStockUnit } : {}),
+        ...(mode ? { burnDefaultMode: mode } : {})
+      });
+    }
 
-    setWItemId(''); setWQty(''); setWSearchTerm(''); 
-    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} (${unitsWasted} units) deducted from stock.`);
+    setWItemId(''); setWQty(''); setWSearchTerm(''); setWMode('count'); setWWeightPerStockUnit(''); setWUnitLabel('unit');
+    const deductedText = stockDeduction > 0 ? `${stockDeduction.toFixed(3).replace(/0+$/,'').replace(/\.$/,'')} stock unit${stockDeduction === 1 ? '' : 's'}` : 'no stock';
+    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} logged. ${burnAmount} ${unitLabel}${burnAmount === 1 ? '' : 's'} deducted as ${deductedText}.`);
   };
 
   const handleDeleteWaste = async (log) => {
     if (!window.confirm(`Delete burn log for ${log.itemName} and restore stock?`)) return;
     const item = inventoryItems.find(i => i.id === log.itemId);
     if (item) {
-       const yieldDivider = parseFloat(item.yieldQty) || 1;
-       const stockRestoration = (parseFloat(log.qty) || 0) / yieldDivider;
-       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (item.currentStock||0) + stockRestoration) });
+       const stockRestoration = parseFloat(log.stockDeducted) || getBurnStockDeduction(log.qty, item, { mode: log.burnMode, weightPerStockUnit: log.weightPerStockUnit, unitsPerStockUnit: log.unitsPerStockUnit });
+       if (stockRestoration > 0) await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (parseFloat(item.currentStock)||0) + stockRestoration) });
     }
     await deleteDoc(doc(db, "wasteLogs", log.id));
     addToast('Log Deleted', 'Stock restored successfully.');
@@ -554,21 +691,28 @@ const handleLogWaste = async (e) => {
        const originalLog = wasteLogs.find(w => w.id === log.id);
        const oldQty = parseFloat(originalLog.qty) || 0;
        const newQty = parseFloat(log.qty) || 0;
-       
-       const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1;
-       const pricePerCase = parseFloat(item.price) || 0;
-       const pricePerUnit = pricePerCase / yieldPerCase;
+       const mode = originalLog?.burnMode || log.burnMode || 'count';
+       const unitsPerStockUnit = parseFloat(originalLog?.unitsPerStockUnit) || getBurnUnitsPerStockUnit(item);
+       const weightPerStockUnit = parseFloat(originalLog?.weightPerStockUnit) || getBurnWeightPerStockUnit(item);
 
-       const stockDifference = (newQty - oldQty) / yieldPerCase; 
-       const newCostLost = pricePerUnit * newQty;
+       const oldDeduction = parseFloat(originalLog?.stockDeducted) || getBurnStockDeduction(oldQty, item, { mode, unitsPerStockUnit, weightPerStockUnit });
+       const newDeduction = getBurnStockDeduction(newQty, item, { mode, unitsPerStockUnit, weightPerStockUnit });
+       const stockDifference = newDeduction - oldDeduction; 
+       const newCostLost = (parseFloat(item.price) || 0) * newDeduction;
 
-       await updateDoc(doc(db, "inventoryItems", item.id), { 
-         currentStock: Math.max(0, (item.currentStock || 0) - stockDifference) 
+       if (stockDifference !== 0) await updateDoc(doc(db, "inventoryItems", item.id), { 
+         currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDifference) 
        });
        await updateDoc(doc(db, "wasteLogs", log.id), { 
          qty: newQty, 
+         burnAmount: newQty,
          reason: log.reason, 
-         costLost: newCostLost 
+         costLost: newCostLost,
+         stockDeducted: newDeduction,
+         unitsPerStockUnit,
+         weightPerStockUnit,
+         burnMode: mode,
+         burnQtyMode: mode === 'count' ? 'individual_units' : mode 
        });
     } else {
        await updateDoc(doc(db, "wasteLogs", log.id), { qty: log.qty, reason: log.reason });
@@ -598,13 +742,14 @@ const executeOrder = async (method) => {
     try { await navigator.clipboard.writeText(decodeURIComponent(fullText)); } catch (e) { console.log(e); }
 
     if (method === 'csv') {
-      let csvContent = "data:text/csv;charset=utf-8,Qty,Code,Name,Pack Size\n" + items.map(i => `${i.orderQty},"${i.pfgCode||''}","${i.name}","${i.packSize||''}"`).join("\n");
-      const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", `Order_${(vendor?.name||'Vendor').replace(/\s+/g,'_')}_${getToday()}.csv`);
-      document.body.appendChild(link); link.click(); document.body.removeChild(link);
-      addToast('Exported', 'Order downloaded as Spreadsheet.');
+      const rows = [['Qty','Code','Name','Pack Size'], ...items.map(i => [i.orderQty, i.pfgCode || '', i.name, i.packSize || ''])];
+      const filename = `${getRestaurantExportPrefix(appUser)}-Order-${safeFilenamePart(vendor?.name || 'Vendor')}-${getToday()}.csv`;
+      downloadCsvRows(filename, rows);
+      addToast('Exported', 'Order downloaded with the restaurant name in the filename.');
     } else if (method === 'email') {
-      const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
-      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
+      const subject = `${appUser?.restaurantName || 'Restaurant'} Order`;
+      const emailUrl = `mailto:${vendor?.email||''}?subject=${encodeURIComponent(subject)}&body=${fullText}`;
+      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=${encodeURIComponent(subject + ' (Paste From Clipboard)')}`; } 
       else { window.location.href = emailUrl; }
     } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
@@ -716,67 +861,123 @@ const executeOrder = async (method) => {
     e.target.value = ''; 
   };
 
-// --- INVOICE SCANNER (NOW WITH COMPRESSION) ---
+// --- INVOICE SCANNER (PDF + HIGH-DETAIL IMAGE SCAN) ---
+  const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const compressImageForScan = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let maxWidth = 2400;
+        let quality = 0.92;
+        const draw = () => {
+          const scaleSize = img.width > maxWidth ? maxWidth / img.width : 1;
+          canvas.width = Math.round(img.width * scaleSize);
+          canvas.height = Math.round(img.height * scaleSize);
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL('image/jpeg', quality).split(',')[1];
+        };
+        let base64 = draw();
+        // Stay under Vercel's practical JSON body limit while keeping enough detail for line-item OCR.
+        while (base64.length > 3_700_000 && (quality > 0.62 || maxWidth > 1500)) {
+          if (quality > 0.62) quality -= 0.08;
+          else maxWidth -= 250;
+          base64 = draw();
+        }
+        resolve({ base64, mimeType: 'image/jpeg', scanDetail: { maxWidth, quality: Number(quality.toFixed(2)) } });
+      };
+      img.onerror = () => reject(new Error('Could not read image. Try a clearer photo or PDF.'));
+      img.src = event.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const normalizeSku = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizeName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
   const handleScanInvoice = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setIsScanningInvoice(true);
-    addToast('Scanning Invoice', 'Compressing image and extracting data...');
+    addToast('Scanning Invoice', file.type === 'application/pdf' ? 'Reading PDF and extracting every visible row...' : 'Optimizing image and extracting every visible row...');
 
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = async () => {
-        // Force compression so Vercel doesn't crash on payloads > 4.5MB
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        let scaleSize = 1;
-        if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
-        canvas.width = img.width * scaleSize;
-        canvas.height = img.height * scaleSize;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    try {
+      let payload;
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        const base64 = await readFileAsBase64(file);
+        if (base64.length > 4_100_000) throw new Error('PDF is too large for direct scan. Try a smaller PDF or export the invoice page as an image.');
+        payload = { fileBase64: base64, mimeType: 'application/pdf', fileName: file.name };
+      } else {
+        const imagePayload = await compressImageForScan(file);
+        payload = { fileBase64: imagePayload.base64, mimeType: imagePayload.mimeType, fileName: file.name, scanDetail: imagePayload.scanDetail };
+      }
 
-        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
-        const base64Data = base64Compressed.split(',')[1];
+      const response = await secureFetch('/api/scan-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-        try {
-          const response = await secureFetch('/api/scan-invoice', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileBase64: base64Data, mimeType: 'image/jpeg' })
-          });
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+         throw new Error("Vercel Server Error: invoice scanner crashed or payload was too large.");
+      }
 
-          // Prevent the "Unexpected token A" HTML crash
-          const contentType = response.headers.get("content-type");
-          if (!contentType || !contentType.includes("application/json")) {
-             throw new Error("Vercel Server Error: Payload too large or backend crashed.");
-          }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to scan invoice.');
 
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Failed to scan invoice.');
-          
-          const reconciledItems = (data.lineItems || []).map(item => {
-             const match = inventoryItems.find(inv => 
-                inv.name.toLowerCase() === item.itemName.toLowerCase() || 
-                (inv.pfgCode && item.itemName.includes(inv.pfgCode))
-             );
-             return { ...item, matchedItemId: match ? match.id : "" };
-          });
+      const allRows = data.allExtractedRows || data.invoiceRows || data.lineItems || [];
+      const normalizedLineItems = allRows.map((item, rowIndex) => {
+         const itemName = item.itemName || item.description || item.name || item.rawText || `Invoice Row ${rowIndex + 1}`;
+         const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
+         const skuKey = normalizeSku(incomingCode);
+         const nameKey = normalizeName(itemName);
+         const rowType = String(item.rowType || item.lineType || item.type || 'item').toLowerCase();
+         const isInventoryLine = !/(subtotal|total|tax|fee|charge|deposit|payment|balance|discount|credit|shipping|delivery)/i.test(rowType + ' ' + itemName);
+         const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
+         const matchByName = inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name))));
+         const match = matchByCode || matchByName;
+         return { 
+           ...item, 
+           itemName,
+           productCode: incomingCode,
+           quantity: item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? '',
+           packSize: item.packSize || item.pack || item.size || item.uom || '',
+           unitPrice: item.unitPrice ?? item.priceEach ?? item.casePrice ?? '',
+           totalPrice: item.totalPrice ?? item.extendedPrice ?? item.lineTotal ?? '',
+           rowType,
+           isInventoryLine,
+           matchedItemId: isInventoryLine && match ? match.id : ""
+         };
+      });
 
-          setScannedInvoice({ ...data, lineItems: reconciledItems });
-          addToast('Success', 'Invoice extracted! Please verify matched items.');
-        } catch (err) {
-          addToast('Error', err.message);
-        } finally {
-          setIsScanningInvoice(false);
-        }
-      };
-    };
-    e.target.value = '';
+      setScannedInvoice({ 
+        ...data, 
+        allExtractedRows: normalizedLineItems,
+        lineItems: normalizedLineItems,
+        scanFileName: file.name,
+        scanMimeType: payload.mimeType,
+        scannedAt: new Date().toISOString()
+      });
+      addToast('Success', `Extracted ${normalizedLineItems.length} invoice row${normalizedLineItems.length === 1 ? '' : 's'}. Please verify before approving.`);
+    } catch (err) {
+      addToast('Error', err.message);
+    } finally {
+      setIsScanningInvoice(false);
+      e.target.value = '';
+    }
   };
 
   const handleApproveInvoice = async () => {
@@ -811,6 +1012,7 @@ const executeOrder = async (method) => {
 for (const item of scannedInvoice.lineItems) {
           // Catch every possible key name the AI might use for the SKU/Product Code
           const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
+          if (!item.isInventoryLine && item.matchedItemId !== 'CREATE_NEW') continue;
 
 if (item.matchedItemId === 'CREATE_NEW') {
              // Smart Auto-Categorizer
@@ -825,26 +1027,31 @@ if (item.matchedItemId === 'CREATE_NEW') {
              else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
              else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
 
+             const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
              await addDoc(collection(db, "inventoryItems"), {
                 name: item.itemName,
                 category: autoCat, 
                 pfgCode: incomingCode, 
                 supplierId: vId,
-                packSize: item.packSize || '1 CS',
-                yieldQty: 1, 
-                price: parseFloat(item.unitPrice) || 0,
+                packSize: item.packSize || item.uom || item.size || '1 CS',
+                yieldQty: parseFloat(item.unitsPerCase || item.casePackCount || item.caseCount || packProfile.count) || 1, 
+                weightPerStockUnit: parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0,
+                burnDefaultMode: (parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0) > 0 ? 'weight' : 'count',
+                burnUnitLabel: (parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0) > 0 ? 'lb' : 'unit',
+                price: parseFloat(item.unitPrice || item.casePrice) || 0,
                 parLevel: 0,
-                currentStock: parseFloat(item.quantity) || 0,
+                currentStock: parseFloat(item.quantity || item.shippedQty || item.receivedQty) || 0,
                 pendingQty: 0,
                 isStarred: false,
                 lastOrderedDate: null,
+                lastInvoiceRaw: item,
                 restaurantId: appUser.restaurantId
              });
              newCount++;
           } else if (item.matchedItemId) {
              const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
              if (invItem) {
-                const addedStock = parseFloat(item.quantity) || 0;
+                const addedStock = parseFloat(item.quantity || item.shippedQty || item.receivedQty) || 0;
                 const updates = { 
                    currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
                 };
@@ -853,6 +1060,10 @@ if (item.matchedItemId === 'CREATE_NEW') {
                 if (!invItem.pfgCode && incomingCode) {
                    updates.pfgCode = incomingCode;
                 }
+                const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
+                if (!invItem.weightPerStockUnit && packProfile.weightLbs > 0) updates.weightPerStockUnit = packProfile.weightLbs;
+                if ((!invItem.yieldQty || Number(invItem.yieldQty) <= 1) && packProfile.count > 1) updates.yieldQty = packProfile.count;
+                updates.lastInvoiceRaw = item;
 
                 await updateDoc(doc(db, "inventoryItems", invItem.id), updates);
                 updateCount++;
@@ -869,6 +1080,11 @@ if (item.matchedItemId === 'CREATE_NEW') {
 
 const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
 const belowParItems = inventoryItems.filter(isBelowPar);
+const selectedWasteItem = inventoryItems.find(i => i.id === wItemId) || null;
+const selectedWasteUnitsPerStock = selectedWasteItem ? getBurnUnitsPerStockUnit(selectedWasteItem) : 1;
+const selectedWasteWeightPerStock = selectedWasteItem ? (parseFloat(wWeightPerStockUnit) || getBurnWeightPerStockUnit(selectedWasteItem)) : 0;
+const selectedWasteDeductionPreview = selectedWasteItem && wQty ? getBurnStockDeduction(wQty, selectedWasteItem, { mode: wMode, weightPerStockUnit: selectedWasteWeightPerStock, unitsPerStockUnit: selectedWasteUnitsPerStock }) : 0;
+const selectedWastePackProfile = selectedWasteItem ? parsePackProfile(selectedWasteItem.packSize) : { notes: [] };
 const groupedItems = inventoryItems
   .filter(i => !focusBelowPar || isBelowPar(i))
   .filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)))
@@ -887,11 +1103,28 @@ const groupedItems = inventoryItems
           <div className="space-y-4">
             <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
               <div>
-                <div className="font-black text-white text-lg">{scannedInvoice.vendorName}</div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate}</div>
+                <div className="font-black text-white text-lg">{scannedInvoice.vendorName || 'Unknown Vendor'}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate || 'No date found'} {scannedInvoice.invoiceNumber ? ` • Inv #${scannedInvoice.invoiceNumber}` : ''}</div>
+                {scannedInvoice.scanFileName && <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">File: {scannedInvoice.scanFileName}</div>}
               </div>
-<div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
+<div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || scannedInvoice.grandTotal || 0).toFixed(2)}</div>
             </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Rows Found</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Charges</div><div className="text-lg font-black text-white">{(scannedInvoice.charges || scannedInvoice.fees || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Confidence</div><div className="text-lg font-black text-[#D4A381]">{scannedInvoice.confidence || 'Review'}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Terms</div><div className="text-xs font-black text-white truncate">{scannedInvoice.paymentTerms || scannedInvoice.terms || '—'}</div></div>
+            </div>
+
+            {(scannedInvoice.extractionWarnings || scannedInvoice.extractionNotes || scannedInvoice.rawTranscription) && (
+              <details className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                <summary className="cursor-pointer text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Full Extraction Audit / Raw Text</summary>
+                {scannedInvoice.extractionWarnings && <div className="mt-2 text-[10px] text-orange-300 font-bold">Warnings: {Array.isArray(scannedInvoice.extractionWarnings) ? scannedInvoice.extractionWarnings.join(' • ') : scannedInvoice.extractionWarnings}</div>}
+                {scannedInvoice.extractionNotes && <div className="mt-2 text-[10px] text-slate-300 font-bold">Notes: {Array.isArray(scannedInvoice.extractionNotes) ? scannedInvoice.extractionNotes.join(' • ') : scannedInvoice.extractionNotes}</div>}
+                {scannedInvoice.rawTranscription && <pre className="mt-2 max-h-36 overflow-auto text-[10px] whitespace-pre-wrap text-slate-400 bg-black/20 p-2 rounded-lg border border-[#2A353D]">{scannedInvoice.rawTranscription}</pre>}
+              </details>
+            )}
             
             <div className="flex justify-between items-center mt-2 mb-1">
               <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest pl-1">Stock Matcher</p>
@@ -913,11 +1146,15 @@ const groupedItems = inventoryItems
 <div className="font-bold text-white text-sm flex items-center gap-1.5">
   {item.productCode && <span className="text-[#D4A381] font-black">[{item.productCode}]</span>}
   {item.itemName}
+  {!item.isInventoryLine && <span className="text-[8px] bg-slate-800 text-slate-400 border border-[#2A353D] px-1.5 py-0.5 rounded uppercase">{item.rowType || 'non-stock'}</span>}
 </div>                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
-                        {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
+                        Qty: {item.quantity || item.shippedQty || '—'} {item.packSize || item.uom || ''} • Unit: ${Number(item.unitPrice || item.casePrice || 0).toFixed(2)} • Total: ${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}
                       </div>
+                      {(item.orderedQty || item.shippedQty || item.weight || item.tax || item.discount || item.rawText) && <div className="text-[9px] text-slate-500 font-bold mt-1 leading-snug">
+                        {item.orderedQty ? `Ordered: ${item.orderedQty} ` : ''}{item.shippedQty ? `Shipped: ${item.shippedQty} ` : ''}{item.weight ? `Weight: ${item.weight} ` : ''}{item.tax ? `Tax: ${item.tax} ` : ''}{item.discount ? `Discount: ${item.discount} ` : ''}{item.rawText ? `Raw: ${item.rawText}` : ''}
+                      </div>}
                     </div>
-                    <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
+                    <div className="font-black text-slate-300 text-right">${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}</div>
                   </div>
                   
                   {/* RECONCILIATION DROPDOWN */}
@@ -930,8 +1167,8 @@ const groupedItems = inventoryItems
                     }}
                     className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
                   >
-                    <option value="">-- Do Not Import / Skip --</option>
-                    <option value="CREATE_NEW">➕ Add as New Item</option>
+                    <option value="">{item.isInventoryLine ? '-- Do Not Import / Skip --' : '-- Non-inventory row saved to invoice only --'}</option>
+                    {item.isInventoryLine && <option value="CREATE_NEW">➕ Add as New Item</option>}
                     {inventoryItems.map(inv => (
                       <option key={inv.id} value={inv.id}>{inv.name}</option>
                     ))}
@@ -1155,8 +1392,30 @@ const groupedItems = inventoryItems
                      <input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} />
                    </div>
                    <div>
-                     <label className={T.label}>Units per Case (Yield)</label>
-                     <input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required />
+                     <label className={T.label}>Units per Case / Yield</label>
+                     <input type="number" min="0" step="any" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required />
+                   </div>
+                 </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                   <div>
+                     <label className={T.label}>Default Burn Mode</label>
+                     <select value={editItem.burnDefaultMode || 'count'} onChange={e => setEditItem({...editItem, burnDefaultMode: e.target.value})} className={T.input}>
+                       <option value="count">Count / each</option>
+                       <option value="weight">Weight / lbs</option>
+                       <option value="stock">Whole case/stock unit</option>
+                       <option value="recordOnly">Record only</option>
+                     </select>
+                   </div>
+                   <div>
+                     <label className={T.label}>Weight per Stock Unit (lbs)</label>
+                     <input type="number" min="0" step="any" value={editItem.weightPerStockUnit || ''} onChange={e => setEditItem({...editItem, weightPerStockUnit: e.target.value})} className={T.input} placeholder="Ex: 5" />
+                   </div>
+                   <div>
+                     <label className={T.label}>Burn Unit Label</label>
+                     <input type="text" value={editItem.burnUnitLabel || ''} onChange={e => setEditItem({...editItem, burnUnitLabel: e.target.value})} className={T.input} placeholder="breast, patty, lb..." />
+                   </div>
+                   <div className="sm:col-span-3 text-[10px] text-slate-400 font-bold leading-snug">
+                     Burn setup controls how waste deducts stock. For 2/5 lb chicken, set Weight per Stock Unit to 5 and use Weight mode when logging pounds. For 24-count cases, set yield to 24 and use Count mode.
                    </div>
                  </div>
                  <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
@@ -1281,7 +1540,7 @@ const groupedItems = inventoryItems
               {/* THE FILTERABLE DROPDOWN */}
               <div className="space-y-2">
                 <input type="text" placeholder="Type to filter inventory..." value={wSearchTerm} onChange={e=>setWSearchTerm(e.target.value)} className={`${T.input} py-2 text-xs border-red-900/30 focus:border-red-500`} />
-                <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required>
+                <select value={wItemId} onChange={e=>handleWasteItemSelect(e.target.value)} className={T.input} required>
                   <option value="">Select Item to Burn...</option>
                   {inventoryItems
                     .filter(i => (i.name||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()) || (i.pfgCode||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()))
@@ -1289,17 +1548,38 @@ const groupedItems = inventoryItems
                 </select>
               </div>
 
-              <div>
-                <input type="number" min="0" step="any" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
-                <span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span>
+              <div className="space-y-2">
+                <select value={wMode} onChange={e=>setWMode(e.target.value)} className={`${T.input} text-xs`}>
+                  <option value="count">Count / each / portion</option>
+                  <option value="weight">Weight in pounds</option>
+                  <option value="stock">Whole stock units / cases</option>
+                  <option value="recordOnly">Record only, do not deduct stock</option>
+                </select>
+                <input type="number" min="0" step="any" placeholder={wMode === 'weight' ? 'Pounds wasted...' : wMode === 'stock' ? 'Cases/stock units wasted...' : 'Items/portions wasted...'} value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
+                {wMode === 'weight' && <input type="number" min="0" step="any" placeholder="Lbs in one stock unit/case..." value={wWeightPerStockUnit} onChange={e=>setWWeightPerStockUnit(e.target.value)} className={`${T.input} text-xs border-red-900/40`} required/>}
+                {wMode === 'count' && <input type="text" placeholder="Unit label, ex: breast, patty, bottle..." value={wUnitLabel} onChange={e=>setWUnitLabel(e.target.value)} className={`${T.input} text-xs border-red-900/40`}/>} 
+                {selectedWasteItem && <div className="mt-2 rounded-lg border border-red-900/40 bg-red-950/10 p-2 text-[10px] font-bold text-red-100 leading-snug space-y-1">
+                  <div>{selectedWasteItem.name}</div>
+                  {wMode === 'count' && <div>{selectedWasteUnitsPerStock > 1 ? `1 stock unit = ${selectedWasteUnitsPerStock} ${wUnitLabel || 'units'}` : '1 stock unit = 1 unit unless you set a yield on the item.'}</div>}
+                  {wMode === 'weight' && <div>1 stock unit = {selectedWasteWeightPerStock || '___'} lb. Example: 2 lb burned from a 5 lb pack deducts 0.4 stock units.</div>}
+                  {selectedWastePackProfile.notes?.length > 0 && <div className="text-slate-400">Auto-read: {selectedWastePackProfile.notes.join(' • ')}</div>}
+                  {wQty && <div className="text-red-300">This burn will deduct {selectedWasteDeductionPreview.toFixed(3).replace(/0+$/,'').replace(/\.$/,'')} from stock.</div>}
+                </div>}
               </div>
               
-              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}>
-                <option>Dropped / Spilled</option>
-                <option>Expired / Bad Quality</option>
-                <option>Cooked Incorrectly</option>
-                <option>Comped</option>
-              </select>
+              <div className="space-y-2">
+                <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}>
+                  <option>Dropped / Spilled</option>
+                  <option>Expired / Bad Quality</option>
+                  <option>Cooked Incorrectly</option>
+                  <option>Comped</option>
+                  <option>Trim Loss / Waste</option>
+                  <option>No Quantity / Note Only</option>
+                </select>
+                <div className="text-[10px] text-slate-500 font-bold leading-snug border border-[#2A353D] rounded-lg p-2 bg-[#12161A]">
+                  Use <b>Count</b> for bottles, burgers, portions, breasts when the item has a yield. Use <b>Weight</b> for catch-weight items like chicken, beef, cheese, and produce. Use <b>Record only</b> when it should not affect inventory.
+                </div>
+              </div>
             </div>
             <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors mt-2`}>
               Log Waste & Deduct Stock
@@ -1317,8 +1597,8 @@ const groupedItems = inventoryItems
             {wasteLogs.filter(w => wasteSearch ? (w.itemName+w.reason+w.loggedBy+w.date).toLowerCase().includes(wasteSearch.toLowerCase()) : w.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).map(w => (
               <div key={w.id} className={`${T.row} flex justify-between items-center`}>
                 <div className="flex-1"> 
-                  <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span>
-                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.date} • {w.reason}   By {w.loggedBy}</span>
+                  <span className="font-bold text-white text-sm block">{w.qty} {w.burnUnitLabel || (w.burnMode === 'weight' ? 'lb' : 'x')} {w.itemName}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.date} • {w.reason} • Stock -{Number(w.stockDeducted || 0).toFixed(3).replace(/0+$/,'').replace(/\.$/,'')}   By {w.loggedBy}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div>
