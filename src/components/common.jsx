@@ -41,7 +41,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
   tabs.push({ id: 'today', label: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
-  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
   if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
   if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
@@ -253,7 +253,7 @@ const PunchTable = ({ rows, openEditPunch, forceOut, approvePunch, deletePunch }
     <div className="divide-y divide-[#2A353D]">
       {rows.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-500">No punches match this filter.</div>}
       {rows.map(({ punch:p, emp, hours, pay, tips, issue }) => <div key={p.id} className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-[#12161A]/50">
-        <div><div className="font-black text-white text-sm">{emp.name || p.employeeName || 'Unknown'} {issue && <span className="ml-2 text-[8px] bg-amber-500 text-slate-900 px-1.5 py-0.5 rounded uppercase tracking-widest">{issue}</span>}</div><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{p.date ? formatDisplayDate(p.date) : 'No date'} • {emp.role || 'No role'}</div></div>
+        <div><div className="font-black text-white text-sm">{emp.name || p.employeeName || 'Unknown'} {issue && <span className="ml-2 text-[8px] bg-amber-500 text-slate-900 px-1.5 py-0.5 rounded uppercase tracking-widest">{issue}</span>} {p.needsManagerReview && <span className="ml-2 text-[8px] bg-red-500 text-white px-1.5 py-0.5 rounded uppercase tracking-widest">Review</span>}</div><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{p.date ? formatDisplayDate(p.date) : 'No date'} • {emp.role || 'No role'}</div>{p.managerNote && <div className="mt-1 text-[10px] font-bold text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-lg px-2 py-1">{p.managerNote}</div>}</div>
         <div className="flex flex-wrap md:flex-nowrap items-center gap-3 text-xs font-mono"><span className="text-emerald-400">IN {formatClockTime(p.clockInTime) || '—'}</span><span className="text-red-400">OUT {formatClockTime(p.clockOutTime) || '—'}</span><span className="text-white">{Math.max(0,hours).toFixed(2)}h</span><span className="text-[#D4A381]">${pay.toFixed(2)}</span><span className="text-slate-400">Tips ${tips.toFixed(2)}</span></div>
         <div className="flex gap-2"><button onClick={() => openEditPunch(p)} className="p-2 bg-[#12161A] border border-[#2A353D] rounded-lg text-slate-400 hover:text-[#D4A381]"><Edit size={14}/></button>{['clocked_in','on_break'].includes(p.status) && <button onClick={() => forceOut(p)} className="px-2 bg-red-900/20 border border-red-900/50 rounded-lg text-[10px] font-black text-red-300">Out</button>}{p.isUnscheduled && !p.isApproved && <button onClick={() => approvePunch(p)} className="px-2 bg-amber-900/20 border border-amber-900/50 rounded-lg text-[10px] font-black text-amber-300">Approve</button>}<button onClick={() => deletePunch(p)} className="p-2 bg-[#12161A] border border-[#2A353D] rounded-lg text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>
       </div>)}
@@ -365,7 +365,7 @@ const getVoiceWeightPerStockUnit = (item = {}) => {
 const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], setActiveTab, setCurrentDate, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
-  const [heardText, setHeardText] = useState('');
+  const [commandText, setHeardText] = useState('');
   const [manualText, setManualText] = useState('');
   const [pending, setPending] = useState(null);
   const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
@@ -384,14 +384,14 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
     // Navigation commands first because they are safe and fast.
     if (/\b(open|go to|show|take me to)\b/.test(q)) {
-      if (q.includes('inventory')) return { intent:'navigate', label:'Open Inventory', tab:'inventory', summary:'Open the Inventory tab.', safe:true };
-      if (q.includes('prep')) return { intent:'navigate', label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.', safe:true };
-      if (q.includes('message')) return { intent:'navigate', label:'Open Messages', tab:'messages', summary:'Open the Message Board.', safe:true };
-      if (q.includes('maintenance') || q.includes('repair')) return { intent:'navigate', label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.', safe:true };
-      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial')) return { intent:'navigate', label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.', safe:true };
+      if (q.includes('inventory')) return { intent:'navigate', label:'Open Inventory', tab:'inventory', summary:'Open the Inventory tab.', safe:true, autoExecute:true };
+      if (q.includes('prep')) return { intent:'navigate', label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.', safe:true, autoExecute:true };
+      if (q.includes('message')) return { intent:'navigate', label:'Open Messages', tab:'messages', summary:'Open the Message Board.', safe:true, autoExecute:true };
+      if (q.includes('maintenance') || q.includes('repair')) return { intent:'navigate', label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.', safe:true, autoExecute:true };
+      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial')) return { intent:'navigate', label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.', safe:true, autoExecute:true };
       if (q.includes('schedule')) {
         const date = parseNextWeekday(q);
-        return { intent:'navigate_schedule', label:'Open Schedule', tab:'published', date, summary: date ? `Open Time Clock & Shifts / Schedule Builder on ${formatDisplayDate(date)}.` : 'Open Time Clock & Shifts / Schedule Builder.', safe:true };
+        return { intent:'navigate_schedule', label:'Show Full Schedule', tab:'published', date, summary: date ? `Show the Full Schedule on ${formatDisplayDate(date)}.` : 'Show the Full Schedule.', safe:true, autoExecute:true };
       }
       const recipePhrase = q.replace(/\b(open|go to|show|take me to|recipe)\b/g, ' ').trim();
       const recipe = findVoiceMatch(recipes, recipePhrase);
@@ -419,8 +419,13 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       const amount = parseVoiceAmount(q);
       const unitMatch = q.match(/\b(pan|pans|quart|quarts|gallon|gallons|lb|lbs|pound|pounds|case|cases|batch|batches|thing|things|tray|trays)\b/);
       const unit = unitMatch ? unitMatch[1] : 'item';
-      const itemText = cleanVoiceItemName(phrase.replace(/\b\d+(?:\.\d+)?\b/g, '').replace(new RegExp(`\\b${unit}\\b`, 'gi'), '')) || phrase || 'prep task';
-      return { intent:'create_prep', label:'Create prep task', amount, unit, itemText, summary:`Add prep task: ${amount} ${unit} ${itemText}.`, needsConfirmation:false };
+      const itemText = cleanVoiceItemName(
+        phrase
+          .replace(/\b\d+(?:\.\d+)?\b/g, ' ')
+          .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g, ' ')
+          .replace(new RegExp(`\b${unit}\b`, 'gi'), ' ')
+      ) || 'prep task';
+      return { intent:'create_prep', label:'Add to Prep List', amount, unit, itemText, summary:`Add prep task: ${amount} ${unit} ${itemText}.`, needsConfirmation:false, autoExecute:true };
     }
 
     // Message board posts.
@@ -477,8 +482,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     setPending(action);
-    if (action.safe && !action.needsConfirmation) {
-      // Keep safe actions visible for review instead of surprising users.
+    if (action.autoExecute && !action.needsConfirmation) {
+      await executePending(action, text);
     }
   };
 
@@ -505,55 +510,58 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     }
   };
 
-  const executePending = async () => {
-    if (!pending || !appUser?.restaurantId) return;
+  const executePending = async (overrideAction = null, overrideHeardText = null) => {
+    const action = overrideAction || pending;
+    const commandText = overrideHeardText || rawHeard;
+    if (!action || !appUser?.restaurantId) return;
     try {
-      if (pending.intent === 'navigate') {
-        setActiveTab(pending.tab || 'today');
+      if (action.intent === 'navigate') {
+        setActiveTab(action.tab || 'today');
         setOpen(false); return;
       }
-      if (pending.intent === 'navigate_schedule') {
-        if (pending.date && setCurrentDate) setCurrentDate(pending.date);
-        setActiveTab(pending.tab || 'schedule'); setOpen(false); return;
+      if (action.intent === 'navigate_schedule') {
+        if (action.date && setCurrentDate) setCurrentDate(action.date);
+        try { sessionStorage.setItem('86voice_schedule_subtab', 'full-schedule'); } catch(e) {}
+        setActiveTab('published'); setOpen(false); return;
       }
-      if (pending.intent === 'inventory_zero') {
-        await updateDoc(doc(db, 'inventoryItems', pending.item.id), { currentStock: 0, updatedAt: new Date().toISOString(), lastVoiceCommand: heardText });
-        await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'86 Alert', title:`86 ${pending.item.name}`, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:true, replies:[], voiceCommand: heardText, createdAt:new Date().toISOString() });
-        await logAudit(appUser, 'VOICE_86_ITEM', pending.item.name, heardText);
-        addToast('86 Posted', `${pending.item.name} set to 0 and posted to Message Board.`);
+      if (action.intent === 'inventory_zero') {
+        await updateDoc(doc(db, 'inventoryItems', action.item.id), { currentStock: 0, updatedAt: new Date().toISOString(), lastVoiceCommand: commandText });
+        await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'86 Alert', title:`86 ${action.item.name}`, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:true, replies:[], voiceCommand: commandText, createdAt:new Date().toISOString() });
+        await logAudit(appUser, 'VOICE_86_ITEM', action.item.name, commandText);
+        addToast('86 Posted', `${action.item.name} set to 0 and posted to Message Board.`);
         setActiveTab('inventory'); setOpen(false); return;
       }
-      if (pending.intent === 'create_prep') {
-        const text = `${pending.amount || 1} ${pending.unit || 'item'} ${pending.itemText || 'prep task'}`.replace(/\s+/g,' ').trim();
-        await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date:getToday(), text, station:'Voice', isCompleted:false, qty: pending.amount || 1, createdAt:new Date().toISOString(), createdBy: appUser.name || appUser.email || 'Voice Command', voiceCommand: heardText });
-        await logAudit(appUser, 'VOICE_PREP_TASK', text, heardText);
+      if (action.intent === 'create_prep') {
+        const text = `${action.itemText || 'prep task'}`.replace(/\s+/g,' ').trim();
+        await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date:getToday(), text, station:'Voice', isCompleted:false, qty: action.amount || 1, unit: action.unit || 'item', createdAt:new Date().toISOString(), createdBy: appUser.name || appUser.email || 'Voice Command', voiceCommand: commandText });
+        await logAudit(appUser, 'VOICE_PREP_TASK', text, commandText);
         addToast('Prep Added', text);
         setActiveTab('prep'); setOpen(false); return;
       }
-      if (pending.intent === 'post_message') {
-        await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'Announcement', title: pending.messageText, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:false, replies:[], voiceCommand: heardText, createdAt:new Date().toISOString() });
-        await logAudit(appUser, 'VOICE_MESSAGE', 'Message Board', pending.messageText);
-        addToast('Message Posted', pending.messageText);
+      if (action.intent === 'post_message') {
+        await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'Announcement', title: action.messageText, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:false, replies:[], voiceCommand: commandText, createdAt:new Date().toISOString() });
+        await logAudit(appUser, 'VOICE_MESSAGE', 'Message Board', action.messageText);
+        addToast('Message Posted', action.messageText);
         setActiveTab('messages'); setOpen(false); return;
       }
-      if (pending.intent === 'maintenance') {
-        await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment:'Voice Report', issue: pending.issue, status:'Open', priority:'Medium', reportedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), createdAt:new Date().toISOString(), voiceCommand: heardText });
-        await logAudit(appUser, 'VOICE_MAINTENANCE', 'Maintenance', pending.issue);
-        addToast('Maintenance Added', pending.issue);
+      if (action.intent === 'maintenance') {
+        await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment:'Voice Report', issue: action.issue, status:'Open', priority:'Medium', reportedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), createdAt:new Date().toISOString(), voiceCommand: commandText });
+        await logAudit(appUser, 'VOICE_MAINTENANCE', 'Maintenance', action.issue);
+        addToast('Maintenance Added', action.issue);
         setActiveTab('maintenance'); setOpen(false); return;
       }
-      if (pending.intent === 'burn_log') {
-        if (pending.needsSetup) { setActiveTab('inventory'); setOpen(false); return; }
-        const item = pending.item;
-        const stockDeducted = Math.max(0, Number(pending.stockDeducted || 0));
+      if (action.intent === 'burn_log') {
+        if (action.needsSetup) { setActiveTab('inventory'); setOpen(false); return; }
+        const item = action.item;
+        const stockDeducted = Math.max(0, Number(action.stockDeducted || 0));
         const costLost = (parseFloat(item.price || 0) || 0) * stockDeducted;
-        await addDoc(collection(db, 'wasteLogs'), { restaurantId: appUser.restaurantId, itemId:item.id, itemName:item.name, qty:pending.amount, burnAmount:pending.amount, burnUnitLabel:pending.labelUnit, burnMode:pending.mode, stockDeducted, costLost, reason:'Voice command', loggedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), timestamp:new Date().toISOString(), voiceCommand: heardText });
+        await addDoc(collection(db, 'wasteLogs'), { restaurantId: appUser.restaurantId, itemId:item.id, itemName:item.name, qty:action.amount, burnAmount:action.amount, burnUnitLabel:action.labelUnit, burnMode:action.mode, stockDeducted, costLost, reason:'Voice command', loggedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), timestamp:new Date().toISOString(), voiceCommand: commandText });
         if (stockDeducted > 0) await updateDoc(doc(db, 'inventoryItems', item.id), { currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeducted), updatedAt:new Date().toISOString() });
-        await logAudit(appUser, 'VOICE_BURN_LOG', item.name, heardText);
-        addToast('Burn Logged', `${pending.amount} ${pending.labelUnit} ${item.name}.`);
+        await logAudit(appUser, 'VOICE_BURN_LOG', item.name, commandText);
+        addToast('Burn Logged', `${action.amount} ${action.labelUnit} ${item.name}.`);
         setActiveTab('inventory'); setOpen(false); return;
       }
-      setActiveTab(pending.tab || 'help'); setOpen(false);
+      setActiveTab(action.tab || 'help'); setOpen(false);
     } catch(err) {
       addToast('Voice Command Error', err.message || 'Could not complete the command.');
     }
@@ -562,7 +570,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   return <div className="fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
     {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
       <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
-        <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap, speak one command, confirm.</div></div>
+        <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap, speak one command. Safe commands run right away.</div></div>
         <button onClick={() => setOpen(false)} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
       </div>
       <div className="space-y-2">
@@ -570,18 +578,18 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
         <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "post message cooler is high", "open Friday schedule"' />
-        <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
-        {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
+        <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Run Typed Command</button>
+        {rawHeard && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{rawHeard}</div></div>}
         {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
           <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Suggested Action</div>
           <div className="text-sm font-black text-white mt-1">{pending.label || pending.intent}</div>
           <div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{pending.summary}</div>
-          <div className="flex gap-2 mt-3"><button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button><button onClick={() => setPending(null)} className={T.btnAlt}>Cancel</button></div>
+          <div className="flex gap-2 mt-3"><button onClick={() => executePending()} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button><button onClick={() => setPending(null)} className={T.btnAlt}>Cancel</button></div>
         </div>}
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
     </div>}
-    <button onClick={open ? () => setOpen(false) : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice"><Mic size={24}/></button>
+    <button onClick={open ? () => setOpen(false) : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice"><div className="relative"><Mic size={24}/><span className="absolute -top-3 -right-4 bg-amber-400 text-slate-900 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-[#0B0E11]">BETA</span></div></button>
   </div>;
 };
 
@@ -606,7 +614,7 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>New manager workflow tools: Labor & Timesheets is now its own tab, the side menu has a search box, Schedule Builder has editable templates, coverage targets, Smart Fill, Drag Board, Copy Previous Week, and Publish Preview, and Help Center now includes searchable instructions for every new tool.</p>
+    <p>New manager workflow tools: Financials → Timesheets is now its own tab, the side menu has a search box, Schedule Builder has editable templates, coverage targets, Smart Fill, Drag Board, Copy Previous Week, and Publish Preview, and Help Center now includes searchable instructions for every new tool.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
       {['Labor tab','Punch Fixer','Menu search','Help Center','Schedule templates','Coverage targets','Smart Fill','Drag Board','Copy week','Publish preview','Payroll CSV','Support articles'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>

@@ -46,35 +46,39 @@ service firebase.storage {
         );
     }
 
+    // Restaurant-scoped profile photos.
     match /{restaurantId}/profilePhotos/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
       allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
     }
 
+    // Restaurant-scoped message attachments.
     match /{restaurantId}/messageAttachments/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
       allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedDocument();
     }
 
+    // Restaurant-scoped maintenance photos.
     match /{restaurantId}/maintenancePhotos/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
       allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
     }
 
+    // Restaurant-scoped invoice scans.
     match /{restaurantId}/invoices/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
       allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedInvoiceScan();
     }
 
+    // Backups are Super Admin only. No regular signed-in user can read or write backups.
     match /backups/{allPaths=**} {
       allow read, write: if isSuperAdmin();
     }
 
-    // Compatibility fallback for older app uploads while you migrate paths.
+    // Locked production fallback. Anything not explicitly allowed above is denied.
+    // Do not replace this with signed-in read/write access.
     match /{allPaths=**} {
-      allow read, write: if isSuperAdmin();
-      allow write: if signedIn() && isAllowedDocument();
-      allow read: if signedIn();
+      allow read, write: if false;
     }
   }
 }

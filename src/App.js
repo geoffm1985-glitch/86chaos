@@ -26,13 +26,15 @@ export default function App() {
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const [activeTabState, setActiveTabState] = useState(() => appUser?.preferences?.defaultTab || 'today');
   const [clientData, setClientData] = useState(null);
-  const clientFeatures = clientData?.features || {};
+  const baseClientFeatures = clientData?.features || {};
+  const clientFeatures = ghostTenant?.demoMode ? (ghostTenant.demoFeatures || {}) : baseClientFeatures;
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [hasHelpUpdate, setHasHelpUpdate] = useState(() => localStorage.getItem(`helpBriefSeen_${CURRENT_VERSION}`) !== 'true');
+  const [showQuickStartTour, setShowQuickStartTour] = useState(false);
 
   useEffect(() => {
     const checkAppVersion = async () => {
@@ -54,6 +56,16 @@ export default function App() {
     return () => clearInterval(versionInterval);
   }, []);
 
+  useEffect(() => {
+    if (!appUser?.id) return;
+    const key = `quickStartSeen_${appUser.id}_${CURRENT_VERSION}`;
+    setShowQuickStartTour(localStorage.getItem(key) !== 'true');
+  }, [appUser?.id]);
+
+  const finishQuickStartTour = () => {
+    if (appUser?.id) localStorage.setItem(`quickStartSeen_${appUser.id}_${CURRENT_VERSION}`, 'true');
+    setShowQuickStartTour(false);
+  };
 
 
   
@@ -142,7 +154,28 @@ const [currentDate, setCurrentDate] = useState(getToday());
     const ghostWorkspaceId = ghostTenant.id || ghostTenant.restaurantId;
     const realName = realAppUser.name || realAppUser.email || 'System Admin';
 
-    if (ghostTenant.impersonate) {
+    if (ghostTenant.demoMode) {
+       const employeeDemo = ghostTenant.demoRole === 'employee';
+       liveAppUser = {
+         id: employeeDemo ? 'demo-employee-view' : 'demo-manager-view',
+         name: employeeDemo ? 'Demo Employee' : 'Demo Manager',
+         email: 'demo.hidden@86chaos.local',
+         phone: '',
+         restaurantId: ghostWorkspaceId,
+         restaurantName: ghostTenant.name,
+         isAdmin: !employeeDemo,
+         isSuperAdmin: false,
+         role: employeeDemo ? 'Employee Demo' : 'Manager Demo',
+         permissions: employeeDemo ? { schedule:false, events:false, ops:false, inventory:false, prep:false, sales:false, team:false, labor:false } : { ...fullGhostPermissions, ...(ghostTenant.demoFeatures || {}) },
+         isGhost: true,
+         isDemoMode: true,
+         demoTier: ghostTenant.demoTier || 'Pro',
+         ghostMode: 'demo',
+         ghostRealUserId: realAppUser.id,
+         ghostRealUserName: realName,
+         ghostWorkspaceName: ghostTenant.name
+       };
+    } else if (ghostTenant.impersonate) {
        // USER POSSESSION MODE:
        // Show the target user's "My Schedule" and profile identity, but keep your support/admin powers
        // so Schedule Builder, Team, Settings, Sales, Inventory, etc. still load for that workspace.
@@ -198,7 +231,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   // --- GLOBAL WORKSPACE & HEALTH PING ---
 
   // Safety net: if System Admin disables a module while a user still has that tab open,
-  // send them back to the main Time Clock/Shifts screen instead of showing a blank page.
+  // send them back to the main Time Clock & Schedule screen instead of showing a blank page.
   useEffect(() => {
     const gatedTabs = ['ops', 'events', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'schedule', 'labor'];
     if (gatedTabs.includes(activeTabState) && clientFeatures?.[activeTabState] === false) {
@@ -211,11 +244,15 @@ if (liveAppUser && clientData) {
      liveAppUser = { 
        ...liveAppUser, 
        systemSettings: clientData.systemSettings || {},
-       planType: clientData.planType || 'Pro',
+       planType: liveAppUser.isDemoMode ? (liveAppUser.demoTier || 'Pro') : (clientData.planType || 'Pro'),
        restaurantName: liveAppUser.restaurantName || clientData.name || clientData.businessName || clientData.restaurantName || '86 Chaos'
      };
   }
   setActiveTimeFormat(liveAppUser?.preferences?.timeFormat || '12h');
+
+  const demoUsers = ghostTenant?.demoMode
+    ? (users || []).map((u, idx) => ({ ...u, name: u.name || `Demo Staff ${idx + 1}`, email: 'hidden@demo.local', phone: 'Hidden', address: '', wage: 0, emergencyContact: '', photoURL: '' }))
+    : users;
 
   useEffect(() => {
     if (!rId) return;
@@ -403,6 +440,26 @@ useEffect(() => {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
 
+
+  const guardDemoWrite = (e) => {
+    if (!liveAppUser?.isDemoMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    addToast('Demo Mode', 'Changes are blocked in demo mode. You can click around without saving real data.');
+  };
+
+  const guardDemoClick = (e) => {
+    if (!liveAppUser?.isDemoMode) return;
+    const btn = e.target?.closest?.('button');
+    if (!btn) return;
+    const text = (btn.textContent || '').toLowerCase();
+    if (/save|add|delete|remove|publish|restore|clock|submit|update|create|send|assign|approve|deny|copy schedule|apply|finish/.test(text)) {
+      e.preventDefault();
+      e.stopPropagation();
+      addToast('Demo Mode', 'That action is blocked so nothing is saved during the demo.');
+    }
+  };
+
 // --- AUTO-ASK FOR NOTIFICATIONS ON LOGIN ---
   useEffect(() => {
     if (liveAppUser && !ghostTenant && typeof window !== 'undefined' && 'Notification' in window) {
@@ -460,23 +517,23 @@ useEffect(() => {
 
   if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
 
-  if (!liveAppUser) return <LoginScreen users={users} setAppUser={setAppUser} addToast={addToast} />;
+  if (!liveAppUser) return <LoginScreen users={demoUsers} setAppUser={setAppUser} addToast={addToast} />;
 
 
   const renderMainContent = () => {
-    if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} clientData={clientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" scheduleBuilderProps={{ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser }} />;
-    if (activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} scheduleBuilderProps={{ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser }} />;
-    if (activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={users} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} />;
-    if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'labor'} />;
-    if (activeTabState === 'messages') return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={users} addToast={addToast} />;
+    if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={demoUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} clientData={clientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
+    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={demoUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" scheduleBuilderProps={{ currentDate, users: demoUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser }} />;
+    if (activeTabState === 'events' && clientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={demoUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab="events" hideSubTabs />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={demoUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} scheduleBuilderProps={{ currentDate, users: demoUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser }} />;
+    if (activeTabState === 'ops' && clientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={demoUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} />;
+    if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={demoUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'labor'} />;
+    if (activeTabState === 'messages') return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={demoUsers} addToast={addToast} />;
     if (activeTabState === 'prep') return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes') return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'inventory' && clientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
-    if (activeTabState === 'team' && clientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={users} addToast={addToast} />;
+    if (activeTabState === 'team' && clientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={demoUsers} addToast={addToast} />;
     if (activeTabState === 'maintenance' && clientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
-    if (activeTabState === 'settings') return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={users} />;
+    if (activeTabState === 'settings') return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={clientData} users={demoUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} addToast={addToast} />;
     if (activeTabState === 'godmode' && ((liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin === true)) return <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
     if (activeTabState === 'audit' && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin)) return <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />;
@@ -513,19 +570,33 @@ useEffect(() => {
   }
 
 return (
-    <div className={`ui-v13-polished ui-v12-compact cockpit-shell ui-density-${liveAppUser?.preferences?.uiDensity || clientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || clientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || clientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div onSubmitCapture={guardDemoWrite} onClickCapture={guardDemoClick} className={`ui-v13-polished ui-v12-compact cockpit-shell ui-density-${liveAppUser?.preferences?.uiDensity || clientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || clientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || clientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST MODE BANNER */}
       {ghostTenant && (
         <div className="bg-gradient-to-r from-purple-900 to-fuchsia-900 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[99999] shadow-2xl uppercase tracking-wider border-b border-fuchsia-500/50">
           <div className="flex items-center gap-2 min-w-0">
             <Moon size={16} className="flex-shrink-0 animate-pulse text-fuchsia-300" />
-            <span className="truncate">GHOST MODE OVERRIDE: {ghostTenant.impersonate ? `${ghostTenant.impersonate.name || ghostTenant.impersonate.email} @ ${ghostTenant.name}` : ghostTenant.name}</span>
+            <span className="truncate">{ghostTenant.demoMode ? `DEMO MODE: ${ghostTenant.demoRole || 'manager'} view @ ${ghostTenant.name}` : `GHOST MODE OVERRIDE: ${ghostTenant.impersonate ? `${ghostTenant.impersonate.name || ghostTenant.impersonate.email} @ ${ghostTenant.name}` : ghostTenant.name}`}</span>
           </div>
           <button onClick={() => { setGhostTenant(null); window.history.pushState({ tab: 'godmode' }, '', '?tab=godmode'); setActiveTabState('godmode'); }} className="bg-white text-purple-900 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3">
-            EXIT GHOST MODE
+            {ghostTenant?.demoMode ? 'EXIT DEMO MODE' : 'EXIT GHOST MODE'}
           </button>
         </div>
+      )}
+      
+      {showQuickStartTour && liveAppUser && !ghostTenant && (
+        <Modal isOpen={showQuickStartTour} onClose={finishQuickStartTour} title={liveAppUser?.isAdmin ? 'Manager Quick Start' : 'Employee Quick Start'} sizeClass="max-w-lg">
+          <div className="space-y-3 text-sm font-bold text-slate-200">
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+              <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Step 1</div>
+              <p>Add 86 Chaos to your home screen. Android: Chrome ⋮ → Add to Home Screen. iPhone: Safari Share → Add to Home Screen. PC: Chrome/Edge install icon near the address bar.</p>
+            </div>
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Step 2</div><p>{liveAppUser?.isAdmin ? 'Add employees from Staff Roster and copy or print their one-time login popup.' : 'Use Time Clock & Schedule to clock in/out and view your shifts.'}</p></div>
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Step 3</div><p>{liveAppUser?.isAdmin ? 'Set permissions, clock rules, and coverage targets before using Schedule Builder.' : 'Open Messages for manager alerts and Help Center whenever you need the guide again.'}</p></div>
+            <button type="button" onClick={finishQuickStartTour} className={`w-full ${T.btn}`}>Finish Quick Start</button>
+          </div>
+        </Modal>
       )}
       
       <style>{`
@@ -627,10 +698,10 @@ return (
       )}
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={clientFeatures} addToast={addToast} />
-      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={users} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
+      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={demoUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
-      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={users} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} addToast={addToast} />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={demoUsers} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} addToast={addToast} />
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
