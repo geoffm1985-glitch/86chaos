@@ -1477,6 +1477,7 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 };
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
+  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(true);
   
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
@@ -1495,6 +1496,8 @@ const [editingRest, setEditingRest] = useState(null);
   const [userSearch, setUserSearch] = useState('');
   const [bulkDeleteEmails, setBulkDeleteEmails] = useState('');
   const [isBulkDeletingUsers, setIsBulkDeletingUsers] = useState(false);
+  const [editingGlobalUser, setEditingGlobalUser] = useState(null);
+  const [supportUserForm, setSupportUserForm] = useState({});
 
 // Pricing & MRR States
   const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
@@ -1967,6 +1970,91 @@ Type DELETE USERS to continue.`);
     setSubTab('users');
     setBulkDeleteEmails(duplicateEmailGroups.map(([email]) => email).join('\n'));
     addToast('Loaded', 'Duplicate email groups loaded into the bulk delete box. Review before deleting.');
+  };
+
+
+  const openSupportUserEditor = (u) => {
+    setEditingGlobalUser(u);
+    setSupportUserForm({
+      name: u.name || '',
+      email: u.email || '',
+      phone: u.phone || '',
+      role: u.role || '',
+      wage: u.wage ?? '',
+      restaurantId: u.restaurantId || '',
+      isAdmin: !!u.isAdmin,
+      isActive: u.isActive !== false,
+      forcePasswordChange: !!u.forcePasswordChange,
+      permissions: {
+        schedule: !!u.permissions?.schedule,
+        events: !!u.permissions?.events,
+        ops: !!u.permissions?.ops,
+        inventory: !!u.permissions?.inventory,
+        prep: !!u.permissions?.prep,
+        sales: !!u.permissions?.sales,
+        team: !!u.permissions?.team,
+        labor: !!u.permissions?.labor
+      },
+      supportNote: ''
+    });
+  };
+
+  const updateSupportUserPermission = (key, value) => {
+    setSupportUserForm(prev => ({ ...prev, permissions: { ...(prev.permissions || {}), [key]: value } }));
+  };
+
+  const handleSupportUserUpdate = async (e) => {
+    e.preventDefault();
+    if (!editingGlobalUser?.id) return;
+    if (!supportUserForm.name?.trim()) return addToast('Missing Name', 'User name is required.');
+    if (!supportUserForm.restaurantId) return addToast('Missing Restaurant', 'Choose the restaurant/workspace this user belongs to.');
+    const selectedRestaurant = restaurants.find(r => r.id === supportUserForm.restaurantId);
+    if (!selectedRestaurant) return addToast('Invalid Restaurant', 'That workspace could not be found.');
+
+    const protectedEmail = (editingGlobalUser.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+    const movingSelf = editingGlobalUser.id === appUser?.id && supportUserForm.restaurantId !== editingGlobalUser.restaurantId;
+    if (protectedEmail && supportUserForm.restaurantId !== editingGlobalUser.restaurantId) {
+      return addToast('Protected', 'The master admin account cannot be moved from this support editor.');
+    }
+    if (movingSelf && !window.confirm('You are changing your own workspace routing. Continue?')) return;
+
+    try {
+      const updates = {
+        name: supportUserForm.name.trim(),
+        phone: (supportUserForm.phone || '').trim(),
+        role: (supportUserForm.role || '').trim() || 'Staff',
+        wage: parseFloat(supportUserForm.wage) || 0,
+        restaurantId: supportUserForm.restaurantId,
+        restaurantName: selectedRestaurant.name || supportUserForm.restaurantId,
+        isAdmin: !!supportUserForm.isAdmin,
+        isActive: !!supportUserForm.isActive,
+        forcePasswordChange: !!supportUserForm.forcePasswordChange,
+        permissions: supportUserForm.permissions || {},
+        supportEditedAt: new Date().toISOString(),
+        supportEditedBy: appUser?.email || appUser?.name || 'System Administrator'
+      };
+
+      // Keep email visible but do not change Firebase Auth email from the browser.
+      // Auth email changes should go through a secured backend route if needed later.
+      if ((supportUserForm.email || '').trim()) updates.email = supportUserForm.email.toLowerCase().trim();
+
+      await updateDoc(doc(db, 'users', editingGlobalUser.id), updates);
+      await addDoc(collection(db, 'auditLogs'), {
+        userId: appUser?.id || 'system',
+        userName: appUser?.name || 'System Administrator',
+        action: 'SUPPORT_USER_EDIT',
+        target: `users/${editingGlobalUser.id}`,
+        details: `Support edited ${updates.email || editingGlobalUser.email || editingGlobalUser.id}; workspace=${updates.restaurantName}; role=${updates.role}; admin=${updates.isAdmin}; active=${updates.isActive}; note=${supportUserForm.supportNote || 'none'}`,
+        timestamp: new Date().toISOString(),
+        restaurantId: updates.restaurantId || appUser?.restaurantId || 'system',
+        isGhost: appUser?.isGhost || false
+      }).catch(()=>{});
+      addToast('User Updated', `${updates.name} now belongs to ${updates.restaurantName}.`);
+      setEditingGlobalUser(null);
+      setSupportUserForm({});
+    } catch (err) {
+      addToast('Update Failed', err.message);
+    }
   };
 
   // --- OBLITERATION ENGINE ---
@@ -2457,6 +2545,22 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   ].filter(Boolean);
   const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
 
+
+  const ghostAuditLogs = auditLogs.filter(log => log.isGhost);
+  const destructiveAuditLogs = auditLogs.filter(log => /(delete|nuke|lock|revoke|bulk|sweep)/i.test(`${log.action || ''} ${log.details || ''}`));
+  const accessAuditLogs = auditLogs.filter(log => /(grant|revoke|access|admin)/i.test(`${log.action || ''} ${log.details || ''}`));
+  const supportEditLogs = auditLogs.filter(log => log.action === 'SUPPORT_USER_EDIT');
+  const auditActors = Object.entries(auditLogs.reduce((acc, log) => {
+    const key = log.userName || log.userId || 'Unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {})).sort((a,b) => b[1] - a[1]).slice(0, 8);
+  const auditActions = Object.entries(auditLogs.reduce((acc, log) => {
+    const key = log.action || 'UNKNOWN';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {})).sort((a,b) => b[1] - a[1]).slice(0, 8);
+
   const handleCopyPlatformSnapshot = async () => {
     try {
       await navigator.clipboard.writeText(platformSnapshot);
@@ -2508,93 +2612,157 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'quiet'} ${colors.split(' ')[1]}`}></span>{label}</span>;
   };
 
-  const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false }) => (
-    <div className="cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
-        <SignalPip tone={tone} label={hot ? 'HOT' : 'SYNC'} hot={hot} />
-      </div>
-      <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
-      <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
-    </div>
-  );
+  const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false, onClick }) => {
+    const Wrapper = onClick ? 'button' : 'div';
+    return (
+      <Wrapper type={onClick ? 'button' : undefined} onClick={onClick} className={`w-full text-left cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between ${onClick ? 'hover:border-[#D4A381]/50 hover:bg-[#12161A]/70 transition-all cursor-pointer' : ''}`}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
+          <SignalPip tone={tone} label={hot ? 'HOT' : 'SYNC'} hot={hot} />
+        </div>
+        <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
+        <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
+      </Wrapper>
+    );
+  };
+
+  const adminTabs = [
+    {id:'overview', label:'Dashboard'}, {id:'live', label:'Live Users'}, {id:'tenants', label:'Clients'},
+    {id:'users', label:'Users'}, {id:'admins', label:'Grant Access'}, {id:'support', label:'Support'},
+    {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'manual', label:'Admin Manual'}
+  ];
+
+  const jumpToAdminIssue = (target) => {
+    setSubTab(target || 'overview');
+    setTimeout(() => document.getElementById(`admin-${target || 'overview'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5 pb-24 animate-[slideIn_0.2s_ease-out]">
-      {/* 747 COCKPIT COMMAND STRIP */}
+    <div className="max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      {/* ADMIN TOP BAR */}
       <div className="cockpit-panel rounded-2xl p-4 overflow-hidden relative">
-        <div className="absolute inset-0 cockpit-grid opacity-60 pointer-events-none"></div>
+        <div className="absolute inset-0 cockpit-grid opacity-35 pointer-events-none"></div>
         <div className="relative flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-4">
           <div>
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <SignalPip tone="emerald" label="PLATFORM LIVE" hot />
-              <SignalPip tone={crashes24h > 0 ? 'amber' : 'emerald'} label={crashes24h > 0 ? 'WATCH' : 'CLEAN'} />
+              <SignalPip tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} label={platformStatus} hot={platformStatus === 'Needs Attention'} />
               <SignalPip tone="blue" label="FIREBASE" />
               <SignalPip tone="purple" label="GHOST READY" />
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">System Administrator Command Deck</h1>
-            <p className="text-xs text-slate-400 font-bold mt-1">Live platform telemetry, client control, user presence, safety locks, and support tools.</p>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">System Administrator</h1>
+            <p className="text-xs text-slate-400 font-bold mt-1">Support cockpit, client control, user rescue tools, diagnostics, and operations.</p>
           </div>
-          <div className="flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-widest">
-            {[
-              ['AUTH', 'emerald'],
-              ['DB', 'emerald'],
-              ['RULES', permissionDeniedLogs.length ? 'amber' : 'emerald'],
-              ['API', apiConnectedCount ? 'blue' : 'emerald'],
-              ['GHOST', 'purple'],
-              ['CRASH', crashes24h ? 'amber' : 'emerald']
-            ].map(([lamp, tone]) => (
-              <span key={lamp} className="bg-[#0B0E11] border border-[#2A353D] rounded-md px-2 py-1 text-slate-300 flex items-center gap-1.5">
-                <span className={`cockpit-light quiet ${tone === 'amber' ? 'bg-amber-400 text-amber-400' : tone === 'blue' ? 'bg-blue-400 text-blue-400' : tone === 'purple' ? 'bg-fuchsia-400 text-fuchsia-400' : 'bg-emerald-400 text-emerald-400'}`}></span>{lamp}
-              </span>
-            ))}
-          </div>
+          <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">
+            {isCommandDeckOpen ? 'Hide Command Deck' : 'Show Command Deck'}
+          </button>
         </div>
-        <div className="relative grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-          <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} item(s) in action queue`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} />
-          <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} active workspaces`} tone="emerald" />
-          <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" />
-          <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Needs eyes' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} />
-          <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} />
-          <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} />
+
+        {/* MASTER NAVIGATION MOVED TO TOP */}
+        <div className="relative grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
+          {adminTabs.map((t) => (
+            <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
+          ))}
         </div>
       </div>
 
-      {/* MASTER NAVIGATION */}
-      <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Dashboard'}, {id:'live', label:'Live Users'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Users'}, {id:'admins', label:'Grant Access'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'forge', label:'Forge'}].map((t) => (
-          <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
-        ))}
-      </div>
-
-      {/* ADMIN QUICK CONTROL SWITCHBOARD */}
-      <div className="cockpit-panel rounded-xl p-3 overflow-hidden relative">
-        <div className="absolute inset-0 cockpit-grid opacity-35 pointer-events-none"></div>
-        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-              <SignalPip tone="emerald" label="CONTROL TOWER" hot />
-              <SignalPip tone={pastDueWorkspaces.length ? 'amber' : 'emerald'} label={`${pastDueWorkspaces.length} PAST DUE`} hot={pastDueWorkspaces.length > 0} />
-              <SignalPip tone={readOnlyWorkspaces.length ? 'blue' : 'emerald'} label={`${readOnlyWorkspaces.length} READ ONLY`} />
-              <SignalPip tone="purple" label={`${adminUsers.length} ADMINS`} />
+      <div className={`grid gap-4 ${isCommandDeckOpen ? 'lg:grid-cols-[300px_minmax(0,1fr)]' : 'lg:grid-cols-1'}`}>
+        {isCommandDeckOpen && (
+          <aside className="lg:sticky lg:top-4 h-max space-y-3" id="admin-command-deck">
+            <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative">
+              <div className="absolute inset-0 cockpit-grid opacity-40 pointer-events-none"></div>
+              <div className="relative flex items-center justify-between gap-2 mb-3">
+                <div>
+                  <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Command Deck</div>
+                  <div className="text-sm font-black text-white">Clickable Signal Board</div>
+                </div>
+                <button type="button" onClick={() => setIsCommandDeckOpen(false)} className="text-slate-500 hover:text-white border border-[#2A353D] rounded-lg px-2 py-1 text-[9px] font-black uppercase">Hide</button>
+              </div>
+              <div className="relative space-y-2">
+                <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} action item(s)`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} onClick={() => jumpToAdminIssue('overview')} />
+                <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} workspaces`} tone="emerald" onClick={() => jumpToAdminIssue('live')} />
+                <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" onClick={() => jumpToAdminIssue('tenants')} />
+                <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
+                <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('users')} />
+                <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('tenants')} />
+              </div>
             </div>
-            <div className="text-sm font-black text-white">Quick Control Switchboard</div>
-            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest truncate">Snapshot, banners, live radar, client controls, and support jump points.</div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full lg:w-auto">
-            <button type="button" onClick={handleCopyPlatformSnapshot} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] hover:border-[#D4A381]/50 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Copy Snapshot</button>
-            <button type="button" onClick={handleClearAllBanners} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-red-300 hover:border-red-500/50 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Clear Banners</button>
-            <button type="button" onClick={() => setSubTab('live')} className="bg-emerald-900/15 border border-emerald-900/50 text-emerald-300 hover:bg-emerald-900/30 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Live Radar</button>
-            <button type="button" onClick={() => setSubTab('tenants')} className="bg-purple-900/15 border border-purple-900/50 text-purple-300 hover:bg-purple-900/30 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest">Clients</button>
-          </div>
-        </div>
-        <div className="relative mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Trials</div><div className="text-xl font-black text-white">{trialWorkspaces.length}</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Inactive Users</div><div className="text-xl font-black text-white">{inactiveUsers.length}</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Modules Live</div><div className="text-xl font-black text-white">{featureAdoption.filter(f => f.count > 0).length}/{moduleList.length}</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Version</div><div className="text-xl font-black text-white">{CURRENT_VERSION}</div></div>
-        </div>
-      </div>
+
+            <div className="cockpit-panel rounded-2xl p-3 space-y-2">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Action Queue</div>
+              {adminRiskQueue.length === 0 && <button type="button" onClick={() => jumpToAdminIssue('overview')} className="w-full text-left bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3"><SignalPip tone="emerald" label="CLEAN"/><div className="text-xs font-bold text-slate-300 mt-2">No urgent platform issues.</div></button>}
+              {adminRiskQueue.map((item, idx) => (
+                <button key={`${item.title}-${idx}`} type="button" onClick={() => jumpToAdminIssue(item.jump)} className="w-full text-left bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381]/50 rounded-xl p-3 transition-colors">
+                  <SignalPip tone={item.tone} label={item.title} hot={item.tone === 'red'} />
+                  <div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{item.detail}</div>
+                </button>
+              ))}
+            </div>
+
+            <div className="cockpit-panel rounded-2xl p-3">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Quick Controls</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={handleCopyPlatformSnapshot} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Copy Snapshot</button>
+                <button type="button" onClick={handleClearAllBanners} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-red-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clear Banners</button>
+                <button type="button" onClick={() => jumpToAdminIssue('live')} className="bg-emerald-900/15 border border-emerald-900/50 text-emerald-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Live Radar</button>
+                <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-purple-900/15 border border-purple-900/50 text-purple-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clients</button>
+              </div>
+            </div>
+
+            <div className="cockpit-panel rounded-2xl p-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Trials</div><div className="text-xl font-black text-white">{trialWorkspaces.length}</div></button>
+              <button type="button" onClick={() => jumpToAdminIssue('users')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Inactive Users</div><div className="text-xl font-black text-white">{inactiveUsers.length}</div></button>
+              <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Modules Live</div><div className="text-xl font-black text-white">{featureAdoption.filter(f => f.count > 0).length}/{moduleList.length}</div></button>
+              <button type="button" onClick={() => jumpToAdminIssue('manual')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Version</div><div className="text-sm font-black text-white truncate">{CURRENT_VERSION}</div></button>
+            </div>
+          </aside>
+        )}
+
+        <div className="min-w-0 space-y-6">
+          {!isCommandDeckOpen && (
+            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Show Command Deck</button>
+          )}
+<Modal isOpen={!!editingGlobalUser} onClose={() => { setEditingGlobalUser(null); setSupportUserForm({}); }} title={`Support Edit User: ${editingGlobalUser?.name || editingGlobalUser?.email || ''}`}>
+        {editingGlobalUser && (
+          <form onSubmit={handleSupportUserUpdate} className="space-y-4 max-h-[72vh] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+              <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Support safety note</div>
+              <p className="text-xs text-slate-300 font-bold leading-relaxed">This editor changes the Firestore user profile, including which restaurant/workspace they belong to. It does not grant super-admin access. Use the Grant Access tab for that.</p>
+              <div className="text-[9px] font-mono text-slate-500 mt-2 break-all">UID: {editingGlobalUser.id}</div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><label className={T.label}>Name</label><input value={supportUserForm.name || ''} onChange={e=>setSupportUserForm(prev=>({...prev, name:e.target.value}))} className={T.input} required /></div>
+              <div><label className={T.label}>Email / Login</label><input value={supportUserForm.email || ''} onChange={e=>setSupportUserForm(prev=>({...prev, email:e.target.value}))} className={T.input} /></div>
+              <div><label className={T.label}>Phone</label><input value={supportUserForm.phone || ''} onChange={e=>setSupportUserForm(prev=>({...prev, phone:e.target.value}))} className={T.input} /></div>
+              <div><label className={T.label}>Role</label><input value={supportUserForm.role || ''} onChange={e=>setSupportUserForm(prev=>({...prev, role:e.target.value}))} className={T.input} placeholder="Manager, Cook, Server..." /></div>
+              <div><label className={T.label}>Hourly Wage</label><input type="number" step="0.01" value={supportUserForm.wage ?? ''} onChange={e=>setSupportUserForm(prev=>({...prev, wage:e.target.value}))} className={T.input} /></div>
+              <div><label className={T.label}>Restaurant / Workspace</label><select value={supportUserForm.restaurantId || ''} onChange={e=>setSupportUserForm(prev=>({...prev, restaurantId:e.target.value}))} className={T.input} required><option value="">Choose workspace...</option>{[...restaurants].sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
+            </div>
+
+            <div className="grid sm:grid-cols-3 gap-2">
+              <label className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex items-center gap-2 text-xs font-bold text-slate-300"><input type="checkbox" checked={!!supportUserForm.isAdmin} onChange={e=>setSupportUserForm(prev=>({...prev, isAdmin:e.target.checked}))} className="accent-[#D4A381]"/> Restaurant Admin</label>
+              <label className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex items-center gap-2 text-xs font-bold text-slate-300"><input type="checkbox" checked={!!supportUserForm.isActive} onChange={e=>setSupportUserForm(prev=>({...prev, isActive:e.target.checked}))} className="accent-[#D4A381]"/> Active User</label>
+              <label className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex items-center gap-2 text-xs font-bold text-slate-300"><input type="checkbox" checked={!!supportUserForm.forcePasswordChange} onChange={e=>setSupportUserForm(prev=>({...prev, forcePasswordChange:e.target.checked}))} className="accent-[#D4A381]"/> Force Password Change</label>
+            </div>
+
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+              <div className={T.label}>Feature Permissions</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {['schedule','events','ops','inventory','prep','sales','team','labor'].map(key => (
+                  <label key={key} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-300 bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">
+                    <input type="checkbox" checked={!!supportUserForm.permissions?.[key]} onChange={e=>updateSupportUserPermission(key, e.target.checked)} className="accent-[#D4A381]"/>{key}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div><label className={T.label}>Support Note</label><textarea value={supportUserForm.supportNote || ''} onChange={e=>setSupportUserForm(prev=>({...prev, supportNote:e.target.value}))} className={T.input} rows="3" placeholder="Why are you moving/editing this user? This goes into the audit trail."></textarea></div>
+            {editingGlobalUser.isSuperAdmin && <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">This user has super-admin access. This form will not grant or revoke that. Use Grant Access.</div>}
+            <button type="submit" className={`w-full ${T.btn}`}>Save Support Changes</button>
+          </form>
+        )}
+      </Modal>
 
 <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
@@ -3095,6 +3263,7 @@ another@email.com"></textarea>
                     <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">{restName}<span>|</span>{isOnlineNow(u) ? <span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span>Online Now</span> : <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span>}</div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={() => openSupportUserEditor(u)} className="px-3 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40 transition-colors shadow-sm flex items-center gap-1"><Edit size={14} /> Support Edit</button>
 <button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, mode: 'user', impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
                     <button onClick={() => handleBackupEmployee(u)} className="p-1.5 bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-emerald-400 rounded-lg transition-colors shadow-sm" title="Download User Data JSON">
                       💾
@@ -3280,29 +3449,63 @@ another@email.com"></textarea>
         </div>
       </Modal>
       {subTab === 'forensics' && (
-        <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-<div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-            <h3 className="font-black text-sm text-white flex items-center gap-2"><Search className="text-blue-500" size={18}/> Global Forensics & Ghost Audit</h3>
-            <button onClick={() => setIsRawInspectorOpen(true)} className="bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
-              <Wrench size={12} /> Inspect Raw JSON
-            </button>
-          </div>          <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-            {auditLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No forensic data logged yet.</div>}
-            {auditLogs.map(log => (
-              <div key={log.id} className={`${T.row} flex flex-col gap-1`}>
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white text-sm">{log.userName}</span>
-                    {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">👻 Ghost Action</span>}
-                    <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{log.action}</span>
-                  </div>
-                  <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{formatClockDateTime(log.timestamp)}</span>
-                </div>
-       <div className="text-xs text-slate-300 font-medium mt-1 break-words whitespace-pre-wrap">
-                  {log.details} <span className="text-slate-500 ml-1">Target: [{log.target}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {log.restaurantId}</span>
-                </div>
+        <div id="admin-forensics" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <CockpitMetric label="Audit Logs" value={auditLogs.length} detail="Recent global records" tone="blue" />
+            <CockpitMetric label="Ghost Actions" value={ghostAuditLogs.length} detail="Support/possess edits" tone={ghostAuditLogs.length ? 'purple' : 'emerald'} />
+            <CockpitMetric label="Destructive" value={destructiveAuditLogs.length} detail="Deletes, nukes, locks" tone={destructiveAuditLogs.length ? 'amber' : 'emerald'} hot={destructiveAuditLogs.length > 0} />
+            <CockpitMetric label="Support Edits" value={supportEditLogs.length} detail="User routing/profile edits" tone={supportEditLogs.length ? 'blue' : 'emerald'} />
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-4">
+            <div className={`${T.card} p-4`}>
+              <h3 className="font-black text-white text-sm mb-3">Top Audit Actors</h3>
+              <div className="space-y-2">{auditActors.length === 0 && <div className="text-xs font-bold text-slate-500">No actors yet.</div>}{auditActors.map(([actor, count]) => <div key={actor} className="flex justify-between gap-3 bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><span className="text-xs font-bold text-slate-300 truncate">{actor}</span><span className="text-xs font-black text-[#D4A381]">{count}</span></div>)}</div>
+            </div>
+            <div className={`${T.card} p-4`}>
+              <h3 className="font-black text-white text-sm mb-3">Top Actions</h3>
+              <div className="space-y-2">{auditActions.length === 0 && <div className="text-xs font-bold text-slate-500">No actions yet.</div>}{auditActions.map(([action, count]) => <div key={action} className="flex justify-between gap-3 bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><span className="text-xs font-bold text-slate-300 truncate">{action}</span><span className="text-xs font-black text-[#D4A381]">{count}</span></div>)}</div>
+            </div>
+            <div className={`${T.card} p-4`}>
+              <h3 className="font-black text-white text-sm mb-3">Investigation Tools</h3>
+              <div className="space-y-2">
+                <button onClick={() => setIsRawInspectorOpen(true)} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"><Wrench size={12} /> Inspect Raw JSON</button>
+                <button onClick={handleCopyDiagnostics} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Copy Support Diagnostics</button>
+                <button onClick={() => jumpToAdminIssue('support')} className="w-full bg-orange-900/20 text-orange-300 border border-orange-900/50 hover:bg-orange-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Open Support Bay</button>
               </div>
-            ))}
+              <p className="text-[10px] text-slate-500 font-bold mt-3 leading-snug">Use raw JSON only when normal screens cannot explain the issue. For destructive changes, copy diagnostics first.</p>
+            </div>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
+              <div>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><Search className="text-blue-500" size={18}/> Global Forensics & Ghost Audit</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Audit trail, ghost actions, access changes, support edits, and destructive operations.</p>
+              </div>
+              <button onClick={() => setIsRawInspectorOpen(true)} className="bg-blue-900/20 text-blue-400 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
+                <Wrench size={12} /> Inspect Raw JSON
+              </button>
+            </div>
+            <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+              {auditLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No forensic data logged yet.</div>}
+              {auditLogs.map(log => (
+                <div key={log.id} className={`${T.row} flex flex-col gap-1`}>
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-white text-sm">{log.userName || 'Unknown'}</span>
+                      {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">👻 Ghost Action</span>}
+                      {/(delete|nuke|lock|revoke|bulk|sweep)/i.test(`${log.action || ''} ${log.details || ''}`) && <span className="bg-red-900/20 text-red-400 border border-red-900/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Destructive</span>}
+                      <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{log.action || 'UNKNOWN'}</span>
+                    </div>
+                    <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{formatClockDateTime(log.timestamp)}</span>
+                  </div>
+                  <div className="text-xs text-slate-300 font-medium mt-1 break-words whitespace-pre-wrap">
+                    {log.details || 'No details'} <span className="text-slate-500 ml-1">Target: [{log.target || 'none'}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {log.restaurantId || 'unknown'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -3395,7 +3598,7 @@ another@email.com"></textarea>
 
       {/* --- TAB: ACCESS CONTROL --- */}
       {subTab === 'admins' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+        <div id="admin-admins" className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <form onSubmit={handleGrantAccess} className={`${T.card} p-5`}>
             <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white">Grant Administrator Access</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Add a user's exact email address to grant full system control.</p></div>
             <div className="flex flex-col sm:flex-row gap-3"><input type="email" placeholder="User's exact email..." value={adminEmail} onChange={e=>setAdminEmail(e.target.value)} className={T.input} required /><button type="submit" className={`${T.btn} px-8`}>Grant Access</button></div>
@@ -3403,6 +3606,33 @@ another@email.com"></textarea>
           <div className={`${T.card} overflow-hidden`}><div className={`bg-[#12161A] p-4 border-b ${T.border}`}><h3 className="font-black text-sm text-white">Platform Administrators</h3></div><div className={`divide-y ${T.border}`}>{superAdmins.map(admin => (<div key={admin.id} className={`${T.row} flex justify-between items-center`}><div><div className="font-black text-white">{admin.name}</div><div className="text-[10px] font-bold text-slate-400">{admin.email}</div></div><button onClick={() => handleRevokeAccess(admin)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-[#1A2126] transition-colors">Revoke</button></div>))}</div></div>
         </div>
       )}
+
+      {subTab === 'manual' && (
+        <div id="admin-manual" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5 cockpit-grid`}>
+            <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Internal support manual</div>
+            <h2 className="text-2xl font-black text-white">System Administrator Manual</h2>
+            <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Use this as the first draft for anyone you hire to help with 86 Chaos support. It keeps the dangerous tools separated from normal restaurant controls.</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            {[
+              ['Daily support routine', ['Open Dashboard and scan the Command Deck action queue.', 'Check Support for permission-denied errors, duplicates, and missing owner accounts.', 'Open Live Users before contacting a client so you know whether they are active right now.', 'Use Forensics before and after major support actions so the audit trail tells the full story.']],
+              ['Editing a user safely', ['Go to Users and search by email, name, or restaurant.', 'Click Support Edit. Use the restaurant selector to move the user to the correct workspace.', 'Do not grant super-admin here. Use Grant Access only.', 'Add a support note before saving when the change is not obvious.']],
+              ['Ghost/Possess rules', ['Possess Workspace when troubleshooting a restaurant-level issue.', 'Possess User when verifying that one person sees the right tabs and data.', 'Exit Ghost Mode as soon as the support task is complete.', 'Never make billing/security decisions while unsure which workspace is active.']],
+              ['Client controls', ['Use Clients to manage plan type, modules, billing state, read-only mode, and banners.', 'Use Operations for global messages, demo workspaces, force refresh, sweeps, and lockdowns.', 'Avoid global actions unless you have verified the target twice.', 'If a tool affects every restaurant, pause and copy a platform snapshot first.']],
+              ['Forensics checklist', ['Filter mentally by user, target, action, and tenant ID.', 'Look for Ghost Action badges when investigating support edits.', 'Use Raw JSON Inspector only when normal screens do not show enough information.', 'Copy diagnostics before changing rules or deleting data.']],
+              ['Escalation rules', ['If Firebase rules block Ghost Mode, check Support permission-denied logs first.', 'If API routes fail, verify Vercel environment variables and deployment status.', 'If data looks missing, check restaurantId routing before assuming it was deleted.', 'For destructive fixes, export/backup first.']]
+            ].map(([title, lines]) => (
+              <div key={title} className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-sm mb-3">{title}</h3>
+                <div className="space-y-2">{lines.map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300"><span className="w-5 h-5 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -3718,6 +3948,11 @@ const HELP_ARTICLES = [
   { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Ops Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
+  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit', body:['Open System Administrator. The tab buttons are at the top. The Command Deck is the vertical panel on the left.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Users, MRR and stale clients open Clients, and push adoption opens Users.','Use the Hide Command Deck button when you need more screen space. Use Show Command Deck to bring it back.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
+  { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId permissions', body:['Open System Administrator → Users and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change the user profile, restaurant/workspace assignment, role, wage, active status, admin flag, force password change, or normal permissions.','Super-admin access is intentionally not in this editor. Use Grant Access only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
+  { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
+  { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Grant Access for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },
+  { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
   { id:'weekly-maintenance', title:'Weekly database maintenance', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh', body:['86 Chaos does not magically update production databases from the browser. Weekly automatic maintenance requires a scheduled server job.','The weekly maintenance route can stamp each client account with the latest maintenance run and log the result for support.','True Firestore backups are a separate Google Cloud scheduled export, not something the React app should do from a user phone.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
   { id:'low-stock-focus', title:'Finding below-par inventory from alerts', group:'Inventory', keywords:'below par low stock inventory alert highlight command center today', body:['Below-par alerts only count items where current stock is less than par. Items equal to par are not considered low.','Click a low-stock alert from Today or Command Center to open Inventory in Below-Par Focus mode.','Below-Par Focus filters the list to low items and highlights them so managers can update stock, par, or ordering quickly.'] },
