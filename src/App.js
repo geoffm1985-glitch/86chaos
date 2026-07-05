@@ -208,9 +208,33 @@ if (liveAppUser && clientData) {
         sessionStorage.setItem('chaosSessionId', sessionId);
       }
 
-      const sendHeartbeat = (state = 'online') => {
+      const collectDeviceDiagnostics = async () => {
+        const diag = {
+          notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+          geolocation: navigator.geolocation ? 'supported' : 'unsupported',
+          gpsPermission: 'unknown',
+          serviceWorker: 'serviceWorker' in navigator,
+          indexedDb: 'indexedDB' in window,
+          language: navigator.language || 'unknown',
+          platform: navigator.platform || 'unknown',
+          screen: `${window.innerWidth}x${window.innerHeight}`,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown'
+        };
+        try {
+          if (navigator.permissions?.query && navigator.geolocation) {
+            const gps = await navigator.permissions.query({ name: 'geolocation' });
+            diag.gpsPermission = gps.state || 'unknown';
+          }
+        } catch (err) {
+          diag.gpsPermission = 'unknown';
+        }
+        return diag;
+      };
+
+      const sendHeartbeat = async (state = 'online') => {
         const stamp = new Date().toISOString();
         const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
+        const deviceDiagnostics = await collectDeviceDiagnostics();
         updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp }).catch(()=>{});
         updateDoc(doc(db, 'users', appUser.id), {
           lastActive: stamp,
@@ -219,7 +243,10 @@ if (liveAppUser && clientData) {
           activeTab: activeTabState,
           activeSessionId: sessionId,
           activeDevice: device,
-          activeHost: window.location.hostname
+          activeHost: window.location.hostname,
+          notificationPermission: deviceDiagnostics.notifications,
+          gpsPermission: deviceDiagnostics.gpsPermission,
+          deviceDiagnostics
         }).catch(()=>{});
       };
 

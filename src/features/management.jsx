@@ -1896,11 +1896,11 @@ const handleDeleteGlobalUser = async (u) => {
       return acc;
     }, {})).map(([email, count]) => `${email} (${count})`).join(', ');
 
-    const confirmText = prompt(`This will delete ${targets.length} user profile(s) matching:
+    const confirmText = (prompt(`This will delete ${targets.length} user profile(s) matching:
 ${duplicateSummary}
 
-Type DELETE USERS to continue.`);
-    if (confirmText !== 'DELETE USERS') return addToast('Aborted', 'Bulk deletion canceled.');
+Type DELETE to continue.`) || '').trim().toUpperCase();
+    if (!['DELETE', 'DELETE USERS'].includes(confirmText)) return addToast('Aborted', 'Bulk deletion canceled.');
 
     setIsBulkDeletingUsers(true);
     let authDeleted = 0;
@@ -2029,7 +2029,6 @@ Type DELETE USERS to continue.`);
         isAdmin: !!supportUserForm.isAdmin,
         isActive: !!supportUserForm.isActive,
         forcePasswordChange: !!supportUserForm.forcePasswordChange,
-        permissions: supportUserForm.permissions || {},
         supportEditedAt: new Date().toISOString(),
         supportEditedBy: appUser?.email || appUser?.name || 'System Administrator'
       };
@@ -2746,14 +2745,36 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
               <label className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex items-center gap-2 text-xs font-bold text-slate-300"><input type="checkbox" checked={!!supportUserForm.forcePasswordChange} onChange={e=>setSupportUserForm(prev=>({...prev, forcePasswordChange:e.target.checked}))} className="accent-[#D4A381]"/> Force Password Change</label>
             </div>
 
-            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
-              <div className={T.label}>Feature Permissions</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['schedule','events','ops','inventory','prep','sales','team','labor'].map(key => (
-                  <label key={key} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-300 bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">
-                    <input type="checkbox" checked={!!supportUserForm.permissions?.[key]} onChange={e=>updateSupportUserPermission(key, e.target.checked)} className="accent-[#D4A381]"/>{key}
-                  </label>
-                ))}
+            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-3">
+              <div>
+                <div className={T.label}>Support Diagnostics</div>
+                <p className="text-[10px] font-bold text-slate-500 leading-snug">Read-only device/access snapshot. Use Staff Roster inside the restaurant workspace to change normal feature permissions.</p>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-2">
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Push Token</div><div className={`text-xs font-black ${editingGlobalUser.fcmToken ? 'text-emerald-400' : 'text-red-300'}`}>{editingGlobalUser.fcmToken ? 'Enabled' : 'No Token'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Browser Notifications</div><div className="text-xs font-black text-white">{editingGlobalUser.notificationPermission || editingGlobalUser.deviceDiagnostics?.notifications || 'Unknown'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">GPS Permission</div><div className="text-xs font-black text-white">{editingGlobalUser.gpsPermission || editingGlobalUser.deviceDiagnostics?.gpsPermission || 'Unknown'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">GPS Support</div><div className="text-xs font-black text-white">{editingGlobalUser.deviceDiagnostics?.geolocation || 'Unknown'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Workspace Geofence</div><div className="text-xs font-black text-white">{restaurants.find(r => r.id === (supportUserForm.restaurantId || editingGlobalUser.restaurantId))?.systemSettings?.geofence ? 'Enabled' : 'Disabled / Not Set'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Last Active</div><div className="text-xs font-black text-white">{editingGlobalUser.lastActive ? formatClockDateTime(editingGlobalUser.lastActive, appUser) : 'Never'}</div></div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Session</div><div className="text-[10px] font-bold text-slate-300 leading-snug">State: {editingGlobalUser.onlineState || 'unknown'} • Tab: {editingGlobalUser.activeTab || 'unknown'} • Host: {editingGlobalUser.activeHost || 'unknown'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Device</div><div className="text-[10px] font-bold text-slate-300 leading-snug break-words">{editingGlobalUser.activeDevice || 'Unknown device'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Screen / Time Zone</div><div className="text-[10px] font-bold text-slate-300 leading-snug">{editingGlobalUser.deviceDiagnostics?.screen || 'Unknown'} • {editingGlobalUser.deviceDiagnostics?.timezone || 'Unknown'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Device Services</div><div className="text-[10px] font-bold text-slate-300 leading-snug">Service Worker: {editingGlobalUser.deviceDiagnostics?.serviceWorker ? 'Yes' : 'Unknown/No'} • IndexedDB: {editingGlobalUser.deviceDiagnostics?.indexedDb ? 'Yes' : 'Unknown/No'}</div></div>
+              </div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">
+                <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-2">Notification Preferences</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-[9px] font-black uppercase tracking-widest">
+                  {[['Schedule', editingGlobalUser.preferences?.notifSchedule], ['Messages', editingGlobalUser.preferences?.notifMessages], ['Trades', editingGlobalUser.preferences?.notifTrades], ['Reminders', editingGlobalUser.preferences?.notifReminders], ['Mute Days Off', editingGlobalUser.preferences?.muteOnDaysOff], ['DND', editingGlobalUser.preferences?.dndEnabled], ['Level', editingGlobalUser.preferences?.notifLevel || 'default'], ['Keywords', editingGlobalUser.preferences?.keywords ? 'set' : 'none']].map(([label, value]) => <div key={label} className="bg-[#12161A] border border-[#2A353D] rounded p-1.5 text-slate-400"><span className="text-slate-500">{label}:</span> <span className="text-white">{value === true ? 'On' : value === false ? 'Off' : value}</span></div>)}
+                </div>
+              </div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">
+                <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-2">Current Feature Access (Read Only)</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-[9px] font-black uppercase tracking-widest">
+                  {['schedule','events','ops','inventory','prep','sales','team','labor'].map(key => <div key={key} className={`rounded p-1.5 border ${editingGlobalUser.permissions?.[key] ? 'bg-emerald-900/10 border-emerald-900/40 text-emerald-300' : 'bg-[#12161A] border-[#2A353D] text-slate-500'}`}>{key}: {editingGlobalUser.permissions?.[key] ? 'On' : 'Off'}</div>)}
+                </div>
               </div>
             </div>
 
@@ -3949,9 +3970,11 @@ const HELP_ARTICLES = [
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit', body:['Open System Administrator. The tab buttons are at the top. The Command Deck is the vertical panel on the left.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Users, MRR and stale clients open Clients, and push adoption opens Users.','Use the Hide Command Deck button when you need more screen space. Use Show Command Deck to bring it back.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
-  { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId permissions', body:['Open System Administrator → Users and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change the user profile, restaurant/workspace assignment, role, wage, active status, admin flag, force password change, or normal permissions.','Super-admin access is intentionally not in this editor. Use Grant Access only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
+  { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → Users and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Grant Access only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
   { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Grant Access for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },
+  { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
+  { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
   { id:'weekly-maintenance', title:'Weekly database maintenance', group:'Support', keywords:'database update weekly maintenance backup cron automatic refresh', body:['86 Chaos does not magically update production databases from the browser. Weekly automatic maintenance requires a scheduled server job.','The weekly maintenance route can stamp each client account with the latest maintenance run and log the result for support.','True Firestore backups are a separate Google Cloud scheduled export, not something the React app should do from a user phone.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Labor & Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
