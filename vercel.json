@@ -14,7 +14,7 @@
   "crons": [
     {
       "path": "/api/firestore-backup",
-      "schedule": "0 9 * * 1"
+      "schedule": "0 9 * * *"
     },
     {
       "path": "/api/weekly-maintenance",

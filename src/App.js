@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -92,9 +92,10 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const lightPunchWindowStart = addDays(getToday(), -1);
   const lightPunchWindowEnd = addDays(getToday(), 1);
 
-  // --- DATABASE IMPORTS (Aggressive Read Saver) ---
-  // Each tab now asks for only the date window and collections it actually needs.
-  // If a Firestore index is missing, useLiveCollection falls back to a small capped listener instead of blanking the app.
+  // --- DATABASE IMPORTS (Read Saver + Schedule Restore Safe Mode) ---
+  // Schedule shifts are loaded with a single tenant query and filtered in the app.
+  // That avoids the missing Firestore composite-index fallback that could briefly show restored shifts
+  // and then replace them with a tiny, stale capped snapshot. Other tabs still use tighter windows.
   const wantsToday = activeTabState === 'today';
   const wantsScheduleScreen = ['schedule', 'events', 'published'].includes(activeTabState);
   const wantsScheduleData = wantsToday || wantsScheduleScreen || ['labor', 'ops'].includes(activeTabState);
@@ -110,7 +111,17 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
-  const shifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', shiftRangeStart], ['date','<=', shiftRangeEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: wantsScheduleScreen ? 260 : 70, fallbackLimitCount: 45 });
+  const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
+  const shifts = useMemo(() => {
+    const start = shiftRangeStart;
+    const end = shiftRangeEnd;
+    return (rawShifts || [])
+      .filter(s => {
+        const d = String(s.date || '');
+        return !d || (d >= start && d <= end);
+      })
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.employeeName || '').localeCompare(String(b.employeeName || '')));
+  }, [rawShifts, shiftRangeStart, shiftRangeEnd]);
   const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 50, fallbackLimitCount: 25 });
   const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || isGlobalSearchOpen), whereClauses: [['date','>=', messageRangeStart]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'messages' ? 90 : 35, fallbackLimitCount: 25 });
   const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
@@ -686,7 +697,7 @@ return (
       
       <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version 13.0.8</span>
+        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version 13.0.4</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
       </div>
     </div>
