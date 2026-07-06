@@ -11,7 +11,9 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
   const accountEmail = (appUser?.email || '').toLowerCase().trim();
   const ownerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
   const isAccountOwner = !!ownerEmail && accountEmail === ownerEmail;
-  const settingsTabs = ['profile', 'preferences', 'alerts'].concat(isAccountOwner ? ['workspace'] : []);
+  const isMasterAdmin = accountEmail === MASTER_ADMIN_EMAIL || appUser?.isSuperAdmin === true || appUser?.systemAccess === 'superAdmin';
+  const canAccessWorkspaceSettings = isAccountOwner || isMasterAdmin;
+  const settingsTabs = ['profile', 'preferences', 'alerts'].concat(canAccessWorkspaceSettings ? ['workspace'] : []);
 
   // --- Profile State ---
   const [name, setName] = useState(appUser?.name || '');
@@ -101,7 +103,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
 
   const handleSaveSystem = async (e) => {
     e.preventDefault();
-    if (!isAccountOwner) return addToast('Owner Only', 'Only the account owner can change workspace settings.');
+    if (!canAccessWorkspaceSettings) return addToast('Owner Only', 'Only the account owner or platform Super Admin can change workspace settings.');
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
       await setDoc(doc(db, "restaurants", targetId), {
@@ -374,7 +376,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
         </form>
       )}
 
-      {subTab === 'workspace' && isAccountOwner && (
+      {subTab === 'workspace' && canAccessWorkspaceSettings && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
@@ -421,7 +423,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
       )}
 
       {/* --- TRANSFER OWNERSHIP ZONE --- */}
-      {subTab === 'workspace' && isAccountOwner && (
+      {subTab === 'workspace' && canAccessWorkspaceSettings && (
         <form onSubmit={async (e) => {
           e.preventDefault();
           if (!newOwnerId) return addToast('Error', 'Select a new owner.');

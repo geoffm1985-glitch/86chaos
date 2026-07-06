@@ -3,7 +3,7 @@ import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getActiveVapidKey, getPushTokenKey, getPushDeviceSnapshot } from './core/appCore';
+import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getActiveVapidKey, getPushTokenKey, getPushDeviceSnapshot, getPushDeviceId } from './core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
@@ -599,12 +599,14 @@ useEffect(() => {
         let swRegistration = null;
         if ('serviceWorker' in navigator) {
           swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' }).catch(() => null);
+          if (swRegistration?.update) await swRegistration.update().catch(() => null);
           if (!swRegistration) swRegistration = await navigator.serviceWorker.ready.catch(() => null);
         }
         const currentToken = await getToken(messaging, { vapidKey: activeVapidKey, serviceWorkerRegistration: swRegistration || undefined });
         if (!currentToken || canceled) return;
         const tokenKey = getPushTokenKey(currentToken);
         const deviceSnapshot = getPushDeviceSnapshot();
+        const pushDeviceId = getPushDeviceId();
         const nowIso = new Date().toISOString();
         await updateDoc(doc(db, 'users', liveAppUser.id), {
           fcmToken: currentToken,
@@ -613,8 +615,11 @@ useEffect(() => {
           notificationPermission: permission,
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
+          pushDeviceId,
+          fcmTokenDeviceId: pushDeviceId,
           [`fcmTokens.${tokenKey}`]: {
             token: currentToken,
+            deviceId: pushDeviceId,
             permission,
             updatedAt: nowIso,
             ...deviceSnapshot

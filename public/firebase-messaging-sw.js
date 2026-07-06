@@ -22,7 +22,10 @@ const prodConfig = {
   measurementId: "G-JFZ6EZB0E3"
 };
 
-const firebaseConfig = self.location.hostname === 'app.86chaos.com' ? prodConfig : testConfig;
+const swHostname = self.location.hostname || '';
+const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(swHostname) || swHostname.endsWith('.local');
+const isSandboxHost = /(^|[.-])(test|sandbox|staging|preview)([.-]|$)/i.test(swHostname);
+const firebaseConfig = (isLocalHost || isSandboxHost) ? testConfig : prodConfig;
 
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();

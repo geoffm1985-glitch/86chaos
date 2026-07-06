@@ -71,7 +71,7 @@ service cloud.firestore {
         'name', 'phone', 'photoURL', 'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt',
         'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
         'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
-        'fcmToken', 'fcmTokens', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission', 'lastPushFailureAt', 'lastPushFailureCode',
+        'fcmToken', 'fcmTokens', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission', 'pushDeviceId', 'fcmTokenDeviceId', 'lastPushFailureAt', 'lastPushFailureCode',
         'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs',
         'forcePasswordChange', 'passwordPurgedAt', 'passwordStored'
       ]) &&

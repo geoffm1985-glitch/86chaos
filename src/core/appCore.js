@@ -55,8 +55,13 @@ export const prodConfig = {
   measurementId: "G-JFZ6EZB0E3"
 };
 
-// 3. THE SWITCHER (Automatically routes the database based on the URL)
-export const firebaseConfig = window.location.hostname === 'app.86chaos.com' ? prodConfig : testConfig;
+// 3. THE SWITCHER (Automatically routes Firebase based on the URL)
+// Local/staging hosts use the sandbox. Deployed Vercel/custom domains use production so
+// Firestore, FCM tokens, and Vercel Firebase Admin credentials stay in the same project.
+const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname) || hostname.endsWith('.local');
+const isSandboxHost = /(^|[.-])(test|sandbox|staging|preview)([.-]|$)/i.test(hostname);
+export const firebaseConfig = (isLocalHost || isSandboxHost) ? testConfig : prodConfig;
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
@@ -128,16 +133,34 @@ export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live
 // --- Push Notification Helpers ---
 export const getActiveVapidKey = () => {
   if (typeof window === 'undefined') return '';
-  return window.location.hostname === 'app.86chaos.com'
+  return firebaseConfig.projectId === prodConfig.projectId
     ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
     : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
 };
 
-export const getPushTokenKey = (token = '') => {
+export const getPushDeviceId = () => {
+  if (typeof window === 'undefined') return 'server';
   try {
-    return btoa(token).replace(/[^a-zA-Z0-9]/g, '').slice(-40) || `token_${Date.now()}`;
+    const key = 'chaosPushDeviceId';
+    let id = window.localStorage?.getItem(key);
+    if (!id) {
+      const randomPart = (window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`);
+      id = `dev_${String(randomPart).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64)}`;
+      window.localStorage?.setItem(key, id);
+    }
+    return id;
   } catch (_) {
-    return `token_${Date.now()}`;
+    return `dev_${Date.now()}`;
+  }
+};
+
+export const getPushTokenKey = (token = '') => {
+  const deviceId = getPushDeviceId();
+  try {
+    const tokenPart = btoa(token).replace(/[^a-zA-Z0-9]/g, '').slice(-16) || `${Date.now()}`;
+    return `${deviceId}_${tokenPart}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
+  } catch (_) {
+    return `${deviceId}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
   }
 };
 
@@ -154,7 +177,7 @@ export const getPushDeviceSnapshot = () => {
 };
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '13.1.23';
+export const CURRENT_VERSION = '13.1.24';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
