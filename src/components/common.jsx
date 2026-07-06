@@ -699,9 +699,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>Fixed stability issues, improved reliability, polished system operations, and updated the in-app privacy policy.</p>
+    <p>Fixed stability issues, improved live status reliability, and polished internal instructions.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Backup countdown','Diagnostics','Forensic bundle','Client CSV','Ops review','Privacy update','Help Center','Security polish','Invoice filtering','Message likes','Voice help search','Schedule roles'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Live status','Admin instructions','Reliability','Help Center','Security polish','Invoice filtering','Message likes','Voice help search','Schedule roles','Backup countdown','Privacy policy','Diagnostics'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>

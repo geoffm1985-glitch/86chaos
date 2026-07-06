@@ -427,10 +427,11 @@ if (liveAppUser && clientData) {
         const stamp = new Date().toISOString();
         const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
         const deviceDiagnostics = await collectDeviceDiagnostics();
-        updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp }).catch(()=>{});
-        updateDoc(doc(db, 'users', appUser.id), {
+        const presencePayload = {
           lastActive: stamp,
           lastSeen: stamp,
+          lastHeartbeatAt: stamp,
+          presenceUpdatedAt: stamp,
           onlineState: state,
           activeTab: activeTabState,
           activeSessionId: sessionId,
@@ -439,22 +440,36 @@ if (liveAppUser && clientData) {
           notificationPermission: deviceDiagnostics.notifications,
           gpsPermission: deviceDiagnostics.gpsPermission,
           deviceDiagnostics
-        }).catch(()=>{});
+        };
+        updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: appUser.id }).catch(()=>{});
+        updateDoc(doc(db, 'users', appUser.id), presencePayload).catch((err)=>{
+          console.warn('86 Chaos presence heartbeat blocked or delayed:', err?.message || err);
+        });
       };
 
       sendHeartbeat(document.hidden ? 'away' : 'online');
-      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 60000);
+      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 25000);
       handleVisibility = () => sendHeartbeat(document.hidden ? 'away' : 'online');
       handleBeforeUnload = () => sendHeartbeat('offline');
       document.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('focus', handleVisibility);
+      window.addEventListener('online', handleVisibility);
+      window.addEventListener('pagehide', handleBeforeUnload);
       window.addEventListener('beforeunload', handleBeforeUnload);
     }
 
     return () => {
       unsub();
       if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (handleVisibility) document.removeEventListener('visibilitychange', handleVisibility);
-      if (handleBeforeUnload) window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (handleVisibility) {
+        document.removeEventListener('visibilitychange', handleVisibility);
+        window.removeEventListener('focus', handleVisibility);
+        window.removeEventListener('online', handleVisibility);
+      }
+      if (handleBeforeUnload) {
+        window.removeEventListener('pagehide', handleBeforeUnload);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      }
     };
   }, [rId, ghostTenant, appUser?.id, activeTabState]);
 

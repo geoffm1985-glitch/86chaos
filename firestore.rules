@@ -67,7 +67,9 @@ service cloud.firestore {
 
     function userSafeSelfUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'name', 'phone', 'photoURL', 'lastActive', 'onlineState', 'activeTab',
+        'name', 'phone', 'photoURL', 'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt',
+        'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
+        'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
         'device', 'host', 'theme', 'settings', 'notificationPrefs',
         'forcePasswordChange', 'passwordPurgedAt', 'passwordStored'
       ]) &&
