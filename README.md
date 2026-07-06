@@ -1,19 +1,12 @@
 # 86 Chaos
 
-Current build: 13.1.18
+Current build: 13.1.19
 
-## 13.1.18 focus
-- Fixed live user presence so online users can reliably appear in System Administrator → Live Users.
-- Updated Firestore rules to allow safe self-updates for presence heartbeat fields only.
-- Added stronger last-seen parsing for string dates and Firestore timestamp values.
-- Expanded Administrator Manual instructions so every System Administrator section explains what it does and when to use it.
-- Help Center release notes stay generic and do not expose administrator implementation details.
-
-## Notes carried forward
-- 13.1.17 admin operations, backup countdown, diagnostics, and privacy policy updates remain in place.
-- 13.1.16 schedule rescue rows remain editable in Schedule Builder before republishing.
-- 13.1.10 invoice scanner filtering remains in place: only purchased product rows can be imported into inventory.
-- The large-document scanner path, Firebase upload progress bar, and longer invoice timeout from 13.1.9 remain in place.
-- Message Board newest-first sort and like button from 13.1.7 remain in place.
-- Voice navigation/help search from 13.1.6 remains in place.
-- Schedule Copilot/Builder role linking from 13.1.5 remains in place.
+## 13.1.19 focus
+- Reorganized the System Administrator tab into cleaner professional groups: Overview, Customer Operations, Support & Safety, and Reference.
+- Fixed Live Activity / Recent Activity visibility by tightening heartbeat display logic and adding clearer Firestore-rule error feedback.
+- Repaired push-notification enrollment so already-approved browsers resync their FCM token on login.
+- Updated Firestore rules so users can safely save their own presence and push-token fields, while protected admin fields stay locked down.
+- Changed microphone phrases like “86 ranch” and “we’re out of fries” to send an important 86 alert instead of editing inventory.
+- Split review stamp wording so creating a stamp and viewing stamps are no longer confused.
+- Changed full-system lockout wording to show a maintenance screen instead of subscription language.

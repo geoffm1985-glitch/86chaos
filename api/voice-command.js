@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
     const { text = '' } = req.body || {};
     if (!apiKey || !String(text).trim()) return res.status(200).json({ intent: 'unknown' });
 
-    const prompt = `You are a safe command parser for a restaurant management app. Parse the user's voice command into JSON only. Supported intents: inventory_zero, create_prep, post_message, maintenance, burn_log, navigate, navigate_schedule, help, unknown. Never execute actions. Include summary and needsConfirmation. User command: ${JSON.stringify(text)}`;
+    const prompt = `You are a safe command parser for a restaurant management app. Parse the user's voice command into JSON only. Supported intents: eighty_six_alert, create_prep, post_message, maintenance, burn_log, navigate, navigate_schedule, help, unknown. The phrase “86 item” or “we are out of item” must be eighty_six_alert, never an inventory edit. Never execute actions. Include summary and needsConfirmation. User command: ${JSON.stringify(text)}`;
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

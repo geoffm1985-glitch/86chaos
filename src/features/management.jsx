@@ -1527,6 +1527,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [backupStatus, setBackupStatus] = useState(null);
+  const [operationsReview, setOperationsReview] = useState(null);
+  const [adminDataErrors, setAdminDataErrors] = useState({});
   const [backupCountdownTick, setBackupCountdownTick] = useState(Date.now());
   const [isBackupRunning, setIsBackupRunning] = useState(false);
   const [backupRestorePath, setBackupRestorePath] = useState('');
@@ -1667,27 +1669,45 @@ const CHEERS_JULY_2026_SCHEDULE = [
 
   // Fetch Global Intelligence
   useEffect(() => {
-    const unsubRests = onSnapshot(collection(db, 'restaurants'), snap => setRestaurants(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubAdmins = onSnapshot(query(collection(db, 'users'), where('isSuperAdmin', '==', true)), snap => setSuperAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const noteLoadError = (key, err) => {
+      console.warn(`System Administrator data load failed: ${key}`, err?.message || err);
+      setAdminDataErrors(prev => ({ ...prev, [key]: err?.message || 'Permission denied or network blocked.' }));
+    };
+    const clearLoadError = (key) => setAdminDataErrors(prev => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    const unsubRests = onSnapshot(collection(db, 'restaurants'), snap => { clearLoadError('restaurants'); setRestaurants(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('restaurants', err));
+    const unsubAdmins = onSnapshot(query(collection(db, 'users'), where('isSuperAdmin', '==', true)), snap => { clearLoadError('superAdmins'); setSuperAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('superAdmins', err));
     const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
+      clearLoadError('users');
       const uList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setAllUsers(uList);
       const counts = {}; uList.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
       setUserCounts(counts);
-    });
-    const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)));
+    }, err => noteLoadError('users', err));
+    const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => { clearLoadError('crashReports'); setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)); }, err => noteLoadError('crashReports', err));
 const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
+       clearLoadError('auditLogs');
        const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
        setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
-    });
+    }, err => noteLoadError('auditLogs', err));
     const unsubPricing = onSnapshot(doc(db, 'system', 'pricing'), docSnap => {
+       clearLoadError('pricing');
        if (docSnap.exists()) setTierPrices(docSnap.data());
-    });
+    }, err => noteLoadError('pricing', err));
     const unsubBackup = onSnapshot(doc(db, 'system', 'backupStatus'), docSnap => {
+       clearLoadError('backupStatus');
        setBackupStatus(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
-    }, () => setBackupStatus(null));
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); };
+    }, err => { setBackupStatus(null); noteLoadError('backupStatus', err); });
+    const unsubOpsReview = onSnapshot(doc(db, 'system', 'operationsReview'), docSnap => {
+       clearLoadError('operationsReview');
+       setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
+    }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubOpsReview(); };
   }, []);
 
   useEffect(() => {
@@ -2478,7 +2498,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
 
   const handleGlobalLockdown = async (lock) => {
     if (lock) {
-        if (prompt('CRITICAL: This will instantly lock out EVERY client workspace (except yours) by triggering the billing lock screen. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
+        if (prompt('CRITICAL: This will instantly lock out EVERY client workspace (except yours) by triggering the maintenance lock screen. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
         addToast('Executing', 'Initiating global lockdown...');
     } else {
         if (!window.confirm('Restore access to all suspended workspaces?')) return;
@@ -2491,7 +2511,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         try { await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); count++; } catch(e){}
       }
     }
-    addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'suspended' : 'restored'}.`);
+    addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'placed into maintenance mode' : 'restored'}.`);
   };
 
 const handleGrantAccess = async (e) => {
@@ -2713,7 +2733,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const adminRiskQueue = [
     crashes24h > 0 ? { tone: crashes24h > 10 ? 'red' : 'amber', title: 'Fresh crash reports', detail: `${crashes24h} crash/bug log(s) in the last 24 hours.`, jump: 'support' } : null,
     permissionDeniedLogs.length > 0 ? { tone: 'red', title: 'Permission denied errors', detail: `${permissionDeniedLogs.length} log(s) look like Firestore rule blocks.`, jump: 'support' } : null,
-    pastDueWorkspaces.length > 0 ? { tone: 'amber', title: 'Past due workspaces', detail: `${pastDueWorkspaces.length} workspace(s) are locked or billing-risk.`, jump: 'tenants' } : null,
+    pastDueWorkspaces.length > 0 ? { tone: 'amber', title: 'Maintenance-locked workspaces', detail: `${pastDueWorkspaces.length} workspace(s) are currently locked behind the maintenance screen.`, jump: 'tenants' } : null,
     missingOwnerAccounts.length > 0 ? { tone: 'amber', title: 'Missing owner accounts', detail: `${missingOwnerAccounts.length} restaurant owner email(s) do not match a user profile.`, jump: 'support' } : null,
     usersWithoutRestaurant.length > 0 ? { tone: 'amber', title: 'Users missing restaurantId', detail: `${usersWithoutRestaurant.length} user profile(s) cannot route correctly.`, jump: 'support' } : null,
     duplicateEmailGroups.length > 0 ? { tone: 'red', title: 'Duplicate user emails', detail: `${duplicateEmailGroups.length} duplicate email group(s) found.`, jump: 'support' } : null,
@@ -2727,6 +2747,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const destructiveAuditLogs = auditLogs.filter(log => /(delete|nuke|lock|revoke|bulk|sweep)/i.test(`${log.action || ''} ${log.details || ''}`));
   const accessAuditLogs = auditLogs.filter(log => /(grant|revoke|access|admin)/i.test(`${log.action || ''} ${log.details || ''}`));
   const supportEditLogs = auditLogs.filter(log => log.action === 'SUPPORT_USER_EDIT');
+  const reviewStampLogs = auditLogs.filter(log => log.action === 'SYSTEM_OPERATIONS_REVIEW_STAMP');
   const auditActors = Object.entries(auditLogs.reduce((acc, log) => {
     const key = log.userName || log.userId || 'Unknown';
     acc[key] = (acc[key] || 0) + 1;
@@ -2739,22 +2760,22 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b[1] - a[1]).slice(0, 8);
 
   const adminManualArticles = [
-    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Users shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Clients is the workspace/customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'Users is the global people list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Grant Access controls who has platform administrator access. Use it sparingly because it grants system-wide control.', 'Support is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics is for audit logs, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
-    { title: 'Live Users: why online users may not appear', group: 'Admin Tab Guide', keywords: 'live users online heartbeat presence last active last seen firestore rules gps notification active tab', body: ['A live user appears when their browser writes a presence heartbeat to their user profile. The app writes lastActive, lastSeen, lastHeartbeatAt, onlineState, activeTab, activeDevice, notificationPermission, GPS permission, and device diagnostics.', 'If the Live Users panel is empty while people are online, first confirm the deployed Firestore rules include the presence fields in userSafeSelfUpdate.', 'Open the app as a normal employee, wait about 25 seconds, then check System Administrator → Live Users. The user should appear within the three-minute live window.', 'If they appear under Recent Activity but not Live Users, their heartbeat is stale, the tab is hidden, or their browser/device went offline.', 'If no profile updates occur at all, check browser console for permission-denied and confirm the logged-in Firebase Auth UID matches the users document ID.'] },
+    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'Live Activity: why online users may not appear', group: 'Admin Tab Guide', keywords: 'live users online heartbeat presence last active last seen firestore rules gps notification active tab', body: ['A live user appears when their browser writes a presence heartbeat to their user profile. The app writes lastActive, lastSeen, lastHeartbeatAt, onlineState, activeTab, activeDevice, notificationPermission, GPS permission, and device diagnostics.', 'If the Live Activity panel is empty while people are online, first confirm the deployed Firestore rules include the presence fields in userSafeSelfUpdate.', 'Open the app as a normal employee, wait about 25 seconds, then check System Administrator → Live Activity. The user should appear within the three-minute live window.', 'If they appear under Recent Activity but not Live Activity, their heartbeat is stale, the tab is hidden, or their browser/device went offline.', 'If no profile updates occur at all, check browser console for permission-denied and confirm the logged-in Firebase Auth UID matches the users document ID.'] },
     { title: 'Dashboard / Command Deck: what the numbers mean', group: 'Admin Tab Guide', keywords: 'dashboard command deck metrics backup countdown action queue mrr crashes stale clients push adoption', body: ['Online Now counts users with a fresh heartbeat in the last few minutes.', 'Crashes shows recent crash reports and should be used with Support before editing code or rules.', 'Backup info shows the last backup and the countdown to the next automatic backup.', 'MRR, trial, stale client, push opt-in, and sticky-rate cards are operating signals, not accounting books. Use them to spot accounts that need attention.', 'The Administrator Action Queue is the shortest path to urgent problems. Click a card to jump to the relevant admin section.'] },
-    { title: 'Clients: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Clients to manage restaurant workspaces, not individual shifts or menu work.', 'The client drawer shows workspace users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/billing state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
-    { title: 'Users: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
+    { title: 'Workspaces: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Workspaces to manage restaurant/customer environments, not individual shifts or menu work.', 'The workspace drawer shows users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/status state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
+    { title: 'People: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
     { title: 'Support: what each support tool means', group: 'Admin Tab Guide', keywords: 'support crashes permission denied raw inspector broadcast banner diagnostics user action telemetry', body: ['Crash reports show errors collected from the app and may include screen size, user agent, breadcrumbs, and stack details.', 'Permission-denied clues usually point to Firestore or Storage rule blocks. Check rules before assuming the UI is broken.', 'Raw Database Inspector lets a platform admin view a specific document by collection and document ID. Use it carefully and copy diagnostics before edits.', 'Broadcast Message sends a one-time message-style alert. Top-of-App Banner pins persistent text below the main header for selected workspaces or all workspaces.', 'Support should be used to diagnose and confirm before making risky changes in Operations or Forensics.'] },
-    { title: 'Forensics and Backup Center: what to use it for', group: 'Admin Tab Guide', keywords: 'forensics backup center restore audit logs diagnostic json client csv backup countdown schedule rescue evidence trail', body: ['Forensics is the evidence cabinet. Use it when you need audit history, backup state, restore options, or downloadable diagnostic bundles.', 'Backup Center lists Firebase Storage backups and allows Download or Restore. Restore requires typing RESTORE and is merge-based, so it does not automatically delete documents that are newer than the backup.', 'Forensic JSON exports a support bundle with platform counts, recent sensitive actions, backup state, watchlists, and runtime clues.', 'Client CSV exports workspace IDs, plan/billing state, modules, user counts, and online counts for operations review.', 'Emergency rescue tools should only be used when a normal app workflow cannot repair data. Always verify the target restaurant and month first.'] },
-    { title: 'Operations: what each operation does', group: 'Admin Tab Guide', keywords: 'operations demo workspace push notifications global refresh orphan sweep forensic bundle client csv stamp review cache lockdown', body: ['Deploy Demo Workspace creates a fake showcase restaurant for sales/demo purposes.', 'Test Push Notifications sends a live notification through the Vercel/Firebase Admin path to verify tokens and credentials.', 'Global Force Refresh tells active browsers to hard reload after a deployment or urgent system change.', 'Orphan Data Sweeper looks for shifts assigned to deleted users and removes those orphan records.', 'Forensic Bundle and Client Directory Export download support files without changing restaurant data.', 'Ops Review Stamp records a platform review snapshot with backup, crash, permission, and integrity counts.', 'Clear This Cache only clears temporary cache on the current browser. It does not delete restaurant data.', 'Global Lockdown sets workspaces into billing/past-due lock mode. Use only for serious platform or billing emergencies.'] },
-    { title: 'Grant Access: platform admin safety', group: 'Admin Tab Guide', keywords: 'grant access revoke super admin platform admin master admin security', body: ['Grant Access is for platform administrators only, not normal restaurant managers.', 'Granting access gives broad system control, including clients, users, operations, forensics, backups, and support tools.', 'Use exact email addresses and revoke access when it is no longer needed.', 'If access does not work, confirm the user exists, confirm Firebase Auth email, confirm Firestore user document, then check custom claims/rules.'] },
-    { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → Users or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
+    { title: 'Forensics & Backups: what to use it for', group: 'Admin Tab Guide', keywords: 'forensics backup center restore audit logs diagnostic json client csv backup countdown schedule rescue evidence trail', body: ['Forensics is the evidence cabinet. Use it when you need audit history, backup state, restore options, or downloadable diagnostic bundles.', 'Backup Center lists Firebase Storage backups and allows Download or Restore. Restore requires typing RESTORE and is merge-based, so it does not automatically delete documents that are newer than the backup.', 'Forensic JSON exports a support bundle with platform counts, recent sensitive actions, backup state, watchlists, and runtime clues.', 'Client CSV exports workspace IDs, plan/billing state, modules, user counts, and online counts for operations review.', 'Emergency rescue tools should only be used when a normal app workflow cannot repair data. Always verify the target restaurant and month first.'] },
+    { title: 'Platform Operations: what each operation does', group: 'Admin Tab Guide', keywords: 'operations demo workspace push notifications global refresh orphan sweep forensic bundle client csv review stamp cache lockdown', body: ['Deploy Demo Workspace creates a fake showcase restaurant for sales/demo purposes.', 'Test Push Notifications sends a live notification through the Vercel/Firebase Admin path to verify tokens and credentials.', 'Global Force Refresh tells active browsers to hard reload after a deployment or urgent system change.', 'Orphan Data Sweeper looks for shifts assigned to deleted users and removes those orphan records.', 'Forensic Bundle and Client Directory Export download support files without changing restaurant data.', 'Create Review Stamp records a platform review snapshot with backup, crash, permission, and integrity counts.', 'Clear This Cache only clears temporary cache on the current browser. It does not delete restaurant data.', 'Global Lockdown sets workspaces into maintenance lock mode. Use only for serious platform emergencies.'] },
+    { title: 'Access Control: platform admin safety', group: 'Admin Tab Guide', keywords: 'grant access revoke super admin platform admin master admin security', body: ['Access Control is for platform administrators only, not normal restaurant managers.', 'Granting access gives broad system control, including workspaces, people, platform operations, forensics, backups, and support tools.', 'Use exact email addresses and revoke access when it is no longer needed.', 'If access does not work, confirm the user exists, confirm Firebase Auth email, confirm Firestore user document, then check custom claims/rules.'] },
+    { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → People or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
-    { title: 'Client user management from Clients tab', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Clients and click the client name or Users button.', 'The client drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and billing state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that client or user sees.'] },
+    { title: 'Client user management from Workspaces', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Workspaces and click the workspace name or People button.', 'The workspace drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and status state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that workspace or user sees.'] },
     { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
-    { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
-    { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents. If restored schedule data mixes with old/current schedule records, run the Emergency Schedule Rescue for that month so the month is hard-replaced.'] },
+    { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
+    { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics & Backups.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents. If restored schedule data mixes with old/current schedule records, run the Emergency Schedule Rescue for that month so the month is hard-replaced.'] },
     { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Labor & Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
     { title: 'Schedule Builder location', group: 'Scheduling', keywords: 'schedule builder time clock shifts subtab permissions', body: ['Schedule Builder is now a protected subtab inside Time Clock & Schedule.', 'Users still need schedule permission or admin access.', 'Event Calendar remains separate because it is not the same thing as staff scheduling.', 'Old Schedule Builder links route into the same protected schedule workflow.'] },
     { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Today Command Center after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
@@ -2872,7 +2893,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   };
 
   const handleStampOpsReview = async () => {
-    const ok = window.confirm('Stamp a system operations review record with the current health counts? This does not change client data.');
+    const ok = window.confirm('Create a new system operations review stamp with the current health counts? This does not change client data.');
     if (!ok) return;
     const stamp = new Date().toISOString();
     const payload = {
@@ -2903,7 +2924,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
         timestamp: stamp,
         isGhost: appUser?.isGhost || false
       }).catch(() => {});
-      addToast('Ops Review Saved', 'System operations review stamp updated.');
+      addToast('Review Stamp Created', 'System operations review stamp updated. View it under Forensics & Backups.');
     } catch (err) {
       addToast('Ops Review Error', err.message || 'Could not write operations review.');
     }
@@ -3085,11 +3106,26 @@ Type RESTORE to continue.`);
     );
   };
 
-  const adminTabs = [
-    {id:'overview', label:'Dashboard'}, {id:'live', label:'Live Users'}, {id:'tenants', label:'Clients'},
-    {id:'users', label:'Users'}, {id:'admins', label:'Grant Access'}, {id:'support', label:'Support'},
-    {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'manual', label:'Admin Manual'}
+  const adminTabGroups = [
+    { title:'Overview', tabs:[
+      {id:'overview', label:'Dashboard'},
+      {id:'live', label:'Live Activity'}
+    ]},
+    { title:'Customer Operations', tabs:[
+      {id:'tenants', label:'Workspaces'},
+      {id:'users', label:'People'},
+      {id:'admins', label:'Access Control'}
+    ]},
+    { title:'Support & Safety', tabs:[
+      {id:'support', label:'Support Desk'},
+      {id:'forensics', label:'Forensics & Backups'},
+      {id:'ops', label:'Platform Operations'}
+    ]},
+    { title:'Reference', tabs:[
+      {id:'manual', label:'Admin Manual'}
+    ]}
   ];
+  const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title })));
 
   const jumpToAdminIssue = (target) => {
     setSubTab(target || 'overview');
@@ -3122,21 +3158,29 @@ Type RESTORE to continue.`);
               <SignalPip tone="purple" label="GHOST READY" />
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">System Administrator</h1>
-            <p className="text-xs text-slate-400 font-bold mt-1">Support cockpit, client control, user rescue tools, diagnostics, and operations.</p>
+            <p className="text-xs text-slate-400 font-bold mt-1">Professional control center for workspaces, people, support, backups, review stamps, and platform operations.</p>
           </div>
           <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">
             {isCommandDeckOpen ? 'Hide Command Deck' : 'Show Command Deck'}
           </button>
         </div>
 
-        {/* MASTER NAVIGATION MOVED TO TOP */}
-        <div className="relative grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
-          {adminTabs.map((t) => (
-            <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
+        {/* ORGANIZED ADMIN NAVIGATION */}
+        <div className="relative grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {adminTabGroups.map(group => (
+            <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
+              <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-1.5">{group.title}</div>
+              <div className="grid grid-cols-1 gap-1.5">
+                {group.tabs.map((t) => (
+                  <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-3 py-2.5 text-left text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all border ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>
-
       <div className={`grid gap-4 ${isCommandDeckOpen ? 'lg:grid-cols-[300px_minmax(0,1fr)]' : 'lg:grid-cols-1'}`}>
         {isCommandDeckOpen && (
           <aside className="lg:sticky lg:top-4 h-max space-y-3" id="admin-command-deck">
@@ -3210,7 +3254,7 @@ Type RESTORE to continue.`);
           <form onSubmit={handleSupportUserUpdate} className="space-y-4 max-h-[72vh] overflow-y-auto pr-2 custom-scrollbar">
             <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
               <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Support safety note</div>
-              <p className="text-xs text-slate-300 font-bold leading-relaxed">This editor changes the Firestore user profile, including which restaurant/workspace they belong to. It does not grant super-admin access. Use the Grant Access tab for that.</p>
+              <p className="text-xs text-slate-300 font-bold leading-relaxed">This editor changes the Firestore user profile, including which restaurant/workspace they belong to. It does not grant super-admin access. Use Access Control for that.</p>
               <div className="text-[9px] font-mono text-slate-500 mt-2 break-all">UID: {editingGlobalUser.id}</div>
             </div>
 
@@ -3263,7 +3307,7 @@ Type RESTORE to continue.`);
             </div>
 
             <div><label className={T.label}>Support Note</label><textarea value={supportUserForm.supportNote || ''} onChange={e=>setSupportUserForm(prev=>({...prev, supportNote:e.target.value}))} className={T.input} rows="3" placeholder="Why are you moving/editing this user? This goes into the audit trail."></textarea></div>
-            {editingGlobalUser.isSuperAdmin && <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">This user has super-admin access. This form will not grant or revoke that. Use Grant Access.</div>}
+            {editingGlobalUser.isSuperAdmin && <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">This user has super-admin access. This form will not grant or revoke that. Use Access Control.</div>}
             <button type="submit" className={`w-full ${T.btn}`}>Save Support Changes</button>
           </form>
         )}
@@ -3350,7 +3394,7 @@ Type RESTORE to continue.`);
                         </div>
                         <div className="text-[10px] text-slate-400 font-bold truncate mt-0.5">{u.email || 'No email'} • <span className="text-[#D4A381]">{u.role || 'No role'}</span></div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2">
-                          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Ping</div><div className="text-[10px] text-slate-300 font-bold truncate">{isOnlineNow(u) ? 'Online now' : timeAgo(u.lastActive)}</div></div>
+                          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Ping</div><div className="text-[10px] text-slate-300 font-bold truncate">{isOnlineNow(u) ? 'Online now' : timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</div></div>
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Push</div><div className={`text-[10px] font-bold truncate ${u.fcmToken ? 'text-emerald-300' : 'text-slate-400'}`}>{u.fcmToken ? 'On' : 'Off'}</div></div>
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">GPS</div><div className="text-[10px] text-slate-300 font-bold truncate">{u.gpsPermission || u.deviceDiagnostics?.gpsPermission || 'Unknown'}</div></div>
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Tab</div><div className="text-[10px] text-slate-300 font-bold truncate">{u.activeTab || 'Unknown'}</div></div>
@@ -3434,7 +3478,7 @@ Type RESTORE to continue.`);
                 
    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2">
                   <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
-                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Past Due (Lock App)</option></select></div>
+                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Maintenance Lock (Lock App)</option></select></div>
                   <div><label className={T.label}>Custom Price ($)</label><input type="number" placeholder="Default" value={editingRest.customPrice || ''} onChange={e => setEditingRest({...editingRest, customPrice: e.target.value})} className={`${T.input} placeholder-slate-600`} /></div>
                   <div><label className={T.label}>Trial Length (Days)</label><input type="number" min="0" placeholder="14" value={editingRest.trialDays !== undefined ? editingRest.trialDays : 14} onChange={e => setEditingRest({...editingRest, trialDays: parseInt(e.target.value) || 0})} className={T.input} /></div>
                 </div>
@@ -3445,7 +3489,7 @@ Type RESTORE to continue.`);
                 </div>
 
                 {/* Super-admin access is intentionally NOT managed here.
-                    Use System Administrator > Grant Access so elevated permissions stay in one audited place. */}
+                    Use System Administrator > Access Control so elevated permissions stay in one audited place. */}
 
                 {/* QUICK APPLY TIER PRESETS */}
                 <div className="pt-4 border-t border-[#2A353D]">
@@ -3653,14 +3697,15 @@ Type RESTORE to continue.`);
       {/* --- TAB: LIVE OPS / PRESENCE RADAR --- */}
       {subTab === 'live' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          {adminDataErrors.users && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Live user data is blocked by Firestore rules or auth claims: {adminDataErrors.users}. Deploy the included firestore.rules file, then log out and back in so super-admin claims refresh.</div>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border} flex items-center justify-between gap-3`}>
-                <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Live Users Now</h3>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Live Activity Now</h3>
                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} active</span>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
-                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users are reporting live presence yet. Open the app on another device, wait about 25 seconds, then refresh this panel. If it stays empty, check Firestore rules for presence field writes.</div>}
+                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users are reporting live presence yet. Open the app on another device, wait about 25 seconds, then refresh this panel. If it stays empty, deploy the included Firestore rules and confirm the user document can write heartbeat fields.</div>}
                 {onlineUsers.map(u => {
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
                   return (
@@ -3710,7 +3755,7 @@ Type RESTORE to continue.`);
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {recentlyActiveUsers.slice(0, 12).map(u => {
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown';
-                  return <div key={u.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{restName} • {timeAgo(u.lastActive)}</div></div>
+                  return <div key={u.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{restName} • {timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</div></div>
                 })}
                 {recentlyActiveUsers.length === 0 && <div className="text-sm text-slate-500 font-bold">No recently active users outside the live window.</div>}
               </div>
@@ -3790,7 +3835,7 @@ Type RESTORE to continue.`);
                       <button type="button" onClick={() => setSelectedClient(r)} className="truncate text-left hover:text-[#D4A381] underline-offset-4 hover:underline">{r.name}</button>
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
-                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
+                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Maintenance</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
                     </div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1">•</span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1">•</span> {r.ownerPhone}</>}</div>
                     
@@ -3810,7 +3855,7 @@ Type RESTORE to continue.`);
                       ) : (
                         <div className="flex flex-col">
                           <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500">Next Billing Cycle</span>
-                          <span className="text-[10px] font-bold text-emerald-400">{r.billingStatus === 'Past Due' ? 'PAYMENT FAILED' : nextBill.toLocaleDateString()}</span>
+                          <span className="text-[10px] font-bold text-emerald-400">{r.billingStatus === 'Past Due' ? 'MAINTENANCE MODE' : nextBill.toLocaleDateString()}</span>
                         </div>
                       )}
                     </div>
@@ -3868,7 +3913,7 @@ another@email.com"></textarea>
                   <div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
-                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">{restName}<span>|</span>{isOnlineNow(u) ? <span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span>Online Now</span> : <span className={timeAgo(u.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastActive)}</span>}</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">{restName}<span>|</span>{isOnlineNow(u) ? <span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span>Online Now</span> : <span className={timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</span>}</div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={() => openSupportUserEditor(u)} className="px-3 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40 transition-colors shadow-sm flex items-center gap-1"><Edit size={14} /> Support Edit</button>
@@ -4069,6 +4114,41 @@ another@email.com"></textarea>
             <CockpitMetric label="Backup Status" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
           </div>
 
+          <div className={`${T.card} p-4 border-cyan-900/30`}>
+            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+              <div>
+                <h3 className="font-black text-white text-sm flex items-center gap-2"><Check size={16} className="text-cyan-300"/> Review Stamps</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">View the latest platform review stamp and recent stamp audit trail. Use Platform Operations to create a new stamp.</p>
+              </div>
+              <button type="button" onClick={handleStampOpsReview} className="bg-cyan-900/20 text-cyan-300 border border-cyan-900/50 hover:bg-cyan-900/40 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Create New Stamp</button>
+            </div>
+            <div className="grid lg:grid-cols-[1.1fr_.9fr] gap-3 mt-3">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-2">Latest Saved Review</div>
+                {operationsReview ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-bold">
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Reviewed</div><div className="text-white">{formatClockDateTime(operationsReview.lastReviewedAt)}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">By</div><div className="text-white truncate">{operationsReview.lastReviewedBy || 'Unknown'}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Status</div><div className="text-white">{operationsReview.platformStatus || 'Unknown'}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Action Items</div><div className="text-[#D4A381] font-black">{operationsReview.actionItemCount ?? 0}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Crashes 24h</div><div className="text-white">{operationsReview.crashes24h ?? 0}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Rule Blocks</div><div className="text-white">{operationsReview.permissionDeniedCount ?? 0}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Backup</div><div className="text-white">{operationsReview.backupStatus || 'unknown'}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Version</div><div className="text-white">{operationsReview.version || 'unknown'}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Next Backup</div><div className="text-white">{operationsReview.nextAutomaticBackupAt ? formatClockDateTime(operationsReview.nextAutomaticBackupAt) : 'Not stamped'}</div></div>
+                  </div>
+                ) : <div className="text-xs font-bold text-slate-500">No review stamp saved yet. Create one from Platform Operations or the button above.</div>}
+              </div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-2">Recent Stamp Audit</div>
+                <div className="space-y-2 max-h-44 overflow-y-auto custom-scrollbar pr-1">
+                  {reviewStampLogs.length === 0 && <div className="text-xs font-bold text-slate-500">No review stamp audit records yet.</div>}
+                  {reviewStampLogs.slice(0, 6).map(log => <div key={log.id} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="flex justify-between gap-2"><span className="text-xs font-black text-white truncate">{log.userName || 'System Admin'}</span><span className="text-[9px] text-slate-500 font-bold whitespace-nowrap">{formatClockDateTime(log.timestamp)}</span></div><div className="text-[10px] text-slate-400 font-bold mt-1 line-clamp-2">{log.details || 'Review stamped.'}</div></div>)}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className={`${T.card} p-4 border-blue-900/30`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
               <div>
@@ -4078,7 +4158,7 @@ another@email.com"></textarea>
               <div className="grid grid-cols-2 sm:flex gap-2">
                 <button type="button" onClick={handleDownloadForensicBundle} className="bg-purple-900/20 text-purple-300 border border-purple-900/50 hover:bg-purple-900/40 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Forensic JSON</button>
                 <button type="button" onClick={handleDownloadClientDirectory} className="bg-amber-900/20 text-amber-300 border border-amber-900/50 hover:bg-amber-900/40 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Client CSV</button>
-                <button type="button" onClick={handleStampOpsReview} className="bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Stamp Review</button>
+                <button type="button" onClick={handleStampOpsReview} className="bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Create Stamp</button>
                 <button type="button" onClick={handleClearThisDeviceTempCache} className="bg-[#12161A] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Clear This Cache</button>
               </div>
             </div>
@@ -4106,7 +4186,7 @@ another@email.com"></textarea>
                 <button onClick={handleCopyDiagnostics} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Copy Support Diagnostics</button>
                 <button onClick={handleDownloadForensicBundle} className="w-full bg-purple-900/20 text-purple-300 border border-purple-900/50 hover:bg-purple-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Download Forensic Bundle</button>
                 <button onClick={handleDownloadClientDirectory} className="w-full bg-amber-900/20 text-amber-300 border border-amber-900/50 hover:bg-amber-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Download Client Directory CSV</button>
-                <button onClick={handleStampOpsReview} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Stamp Ops Review</button>
+                <button onClick={handleStampOpsReview} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Create Review Stamp</button>
                 <button onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 hover:bg-emerald-900/40 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">{(isBackupRunning || backupRunning) && <Loader2 size={12} className="animate-spin" />} Run Backup Now</button>
                 <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -4282,9 +4362,9 @@ another@email.com"></textarea>
               <button onClick={handleDownloadClientDirectory} type="button" className="w-full bg-amber-900/20 text-amber-300 border border-amber-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-amber-900/40 transition-colors">Download Client CSV</button>
             </div>
             <div className={`${T.card} p-5 border-cyan-900/30`}>
-              <h3 className="font-black text-white mb-1">Ops Review Stamp</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Writes a system health stamp with backup, crash, permission, and data-integrity counts so support can see the last platform review.</p>
-              <button onClick={handleStampOpsReview} type="button" className="w-full bg-cyan-900/20 text-cyan-300 border border-cyan-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-cyan-900/40 transition-colors">Stamp Review</button>
+              <h3 className="font-black text-white mb-1">Create Review Stamp</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Creates a system health stamp with backup, crash, permission, and data-integrity counts. To view saved stamps, open Forensics & Backups.</p>
+              <div className="grid grid-cols-2 gap-2"><button onClick={handleStampOpsReview} type="button" className="w-full bg-cyan-900/20 text-cyan-300 border border-cyan-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-cyan-900/40 transition-colors">Create Stamp</button><button onClick={() => jumpToAdminIssue('forensics')} type="button" className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-white transition-colors">View Stamps</button></div>
             </div>
             <div className={`${T.card} p-5 border-slate-700/50`}>
               <h3 className="font-black text-white mb-1">This Device Cache</h3>
@@ -4294,7 +4374,7 @@ another@email.com"></textarea>
 
             <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
               <h3 className="font-black text-white mb-1">Global Lockdown</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly suspends every tenant by triggering the Past Due billing lock. Bypasses your own workspace to prevent self-lockout.</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly puts every tenant behind the maintenance screen. Bypasses your own workspace to prevent self-lockout.</p>
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => handleGlobalLockdown(true)} className="w-full bg-red-900/20 text-red-500 border border-red-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors flex items-center justify-center gap-2"><Shield size={16}/> Lock All</button>
                 <button onClick={() => handleGlobalLockdown(false)} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2">Unlock All</button>
@@ -4685,10 +4765,10 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 const HELP_ARTICLES = [
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
-  { id:'manager-quick-start', title:'Manager / Restaurant Quick Start', group:'Quick Start Guides', keywords:'manager restaurant setup workspace tour add employees permissions backups geofence', body:['New workspaces open a manager setup tour that covers saving the app, adding employees, setting permissions, setting clock rules, backups, and Help Center.','Staff Roster shows the one-time generated login popup after adding employees. Copy, print, email, or text before closing.','Set the required work area in Settings so clock-out location can be reviewed.','Backup Center is under System Administrator → Forensics and requires RESTORE confirmation for restore actions.'] },
-  { id:'voice-beta', title:'Using 86 Voice beta', group:'Voice Commands', keywords:'voice beta microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list', body:['The microphone button is marked BETA. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.','Navigation commands can pull up screens by plain name: “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
+  { id:'manager-quick-start', title:'Manager / Restaurant Quick Start', group:'Quick Start Guides', keywords:'manager restaurant setup workspace tour add employees permissions backups geofence', body:['New workspaces open a manager setup tour that covers saving the app, adding employees, setting permissions, setting clock rules, backups, and Help Center.','Staff Roster shows the one-time generated login popup after adding employees. Copy, print, email, or text before closing.','Set the required work area in Settings so clock-out location can be reviewed.','Backup Center is under System Administrator → Forensics & Backups and requires RESTORE confirmation for restore actions.'] },
+  { id:'voice-beta', title:'Using 86 Voice beta', group:'Voice Commands', keywords:'voice beta microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list', body:['The microphone button is marked BETA. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.' , 'Saying “86 salmon” or “we’re out of ranch” posts an important 86 alert and does not edit inventory stock counts.','Navigation commands can pull up screens by plain name: “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
   { id:'clock-out-geofence-review', title:'Clock-out location review', group:'Time Clock', keywords:'geofence clock out outside area manager alerted timesheet note location', body:['If a location rule is enabled and an employee clocks out outside the required area, the app still lets them clock out.','The employee sees a warning, the manager gets an important alert, and the punch is marked in Financials → Timesheets with a manager review note.','This avoids trapping someone on the clock while still keeping a clean accountability trail.','If location is denied or unavailable, the punch is saved and marked for review.'] },
-  { id:'safe-demo-mode', title:'Safe customer demo mode', group:'System Administrator', keywords:'demo mode customer tier tabs read only hide phone email address employee manager', body:['Open System Administrator → Clients, choose a workspace, then start Demo Manager or Demo Employee.','Choose the tier and visible tabs before starting the demo. Demo mode hides System Administrator and masks emails, phone numbers, addresses, and wages.','Demo mode is read-only. Buttons that would save, publish, restore, delete, upload, post, clock, or edit are blocked.','Use the banner at the top to exit demo mode and return to System Administrator.'] },
+  { id:'safe-demo-mode', title:'Safe customer demo mode', group:'System Administrator', keywords:'demo mode customer tier tabs read only hide phone email address employee manager', body:['Open System Administrator → Workspaces, choose a workspace, then start Demo Manager or Demo Employee.','Choose the tier and visible tabs before starting the demo. Demo mode hides System Administrator and masks emails, phone numbers, addresses, and wages.','Demo mode is read-only. Buttons that would save, publish, restore, delete, upload, post, clock, or edit are blocked.','Use the banner at the top to exit demo mode and return to System Administrator.'] },
   { id:'new-13118', title:'What changed in version 13.1.18', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13117', title:'What changed in version 13.1.17', group:'Release Notes', keywords:'new update stability reliability fixes operations backup privacy', body:['Fixed stability issues, improved reliability, and polished system operations.'] },
   { id:'new-13114', title:'What changed in version 13.1.14', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
@@ -4715,11 +4795,11 @@ const HELP_ARTICLES = [
   { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Ops Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
-  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit', body:['Open System Administrator. The tab buttons are at the top. The Command Deck is the vertical panel on the left.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Users, MRR and stale clients open Clients, and push adoption opens Users.','Use the Hide Command Deck button when you need more screen space. Use Show Command Deck to bring it back.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
-  { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → Users and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Grant Access only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
+  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit', body:['Open System Administrator. The grouped section buttons are at the top. The Command Deck is the optional signal panel on the left.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use the Hide Command Deck button when you need more screen space. Use Show Command Deck to bring it back.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
+  { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
-  { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Grant Access for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },
-  { id:'admin-client-users', title:'Viewing and managing users from a client', group:'System Administrator', keywords:'client users restaurant users support edit possess force logout delete notifications gps billing modules', body:['Open System Administrator → Clients and click the client name or Users button.','The client drawer shows all users in that workspace, admin count, online users, push token count, GPS permission snapshots, billing state, and enabled modules.','Use Support Edit from the client drawer to move a user, update their role/status, force password change, or correct workspace routing.','Use Possess from the client drawer to troubleshoot exactly what a client user sees.'] },
+  { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Access Control for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },
+  { id:'admin-client-users', title:'Viewing and managing people from a workspace', group:'System Administrator', keywords:'client users restaurant users support edit possess force logout delete notifications gps billing modules', body:['Open System Administrator → Workspaces and click the workspace name or People button.','The workspace drawer shows all people in that workspace, admin count, online users, push token count, GPS permission snapshots, billing state, and enabled modules.','Use Support Edit from the workspace drawer to move a user, update their role/status, force password change, or correct workspace routing.','Use Possess from the workspace drawer to troubleshoot exactly what that user sees.'] },
   { id:'admin-backup-status', title:'Checking database backup status', group:'System Administrator', keywords:'database backup last backup status command deck weekly maintenance firestore export storage run now', body:['The System Administrator Command Deck includes Last Backup.','The app reads system/backupStatus when the automatic Firestore backup route writes it.','Click Last Backup or open Forensics to run a manual backup and verify the route.','A stale backup warning means you should check Vercel cron, CRON_SECRET, Firebase service account credentials, and Firebase Storage bucket settings.'] },
   { id:'no-auto-return', title:'Does the app still return users to Today after five minutes?', group:'Navigation', keywords:'landing page today away five minutes background tab phone stale session logout', body:['No. The automatic return-to-Today behavior was removed.','Users stay on the page they were using when they return from another app, lock screen, or browser tab.','Use Log Out when a device should be signed out.'] },
   { id:'voice-commands', title:'Using 86 Voice commands', group:'Voice Commands', keywords:'voice mic microphone command 86 salmon prep message maintenance burn waste open schedule recipe', body:['Tap the floating microphone button in the lower-left corner. Say one short command, then confirm the suggested action.','Examples: “86 salmon”, “prep 2 pans tomatoes”, “post message cooler is high”, “open Friday schedule”, “open beer cheese recipe”, or “waste 2 pounds chicken breast”.','Destructive actions like setting inventory to zero, posting alerts, maintenance reports, and burn logs require confirmation before the app writes data.','If the browser does not support speech recognition, type the command into the same voice panel.'] },
@@ -4730,12 +4810,12 @@ const HELP_ARTICLES = [
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'schedule-stability', title:'Schedule stability and restore help', group:'Scheduling', keywords:'schedule restore deleted shifts missing old data stability', body:['Fixed stability issues around schedule restore and month loading.', 'If a schedule looks wrong after a restore, contact a system administrator so the month can be repaired safely.'] },
-  { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste', body:['Open System Administrator → Forensics → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
+  { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste', body:['Open System Administrator → Forensics & Backups → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
   { id:'new-1311', title:'What changed in version 13.1.1', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
+  { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics & Backups → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
   { id:'financials-tab', title:'Using Financials', group:'Financials', keywords:'financials labor timesheets daily ledger sales payroll export costs', body:['Financials combines Labor & Timesheets with Daily Ledger so managers do not jump between separate money screens.', 'Use the Labor & Timesheets subtab for punches, payroll exports, role filters, tips, and punch corrections.', 'Use the Daily Ledger subtab for sales, labor cost, food cost, and context notes.', 'Old links for Labor or Daily Ledger still open Financials and land on the matching subtab.'] },
   { id:'schedule-builder-under-shifts', title:'Finding Schedule Builder', group:'Scheduling', keywords:'schedule builder maker time clock shifts subtab publish template coverage', body:['Schedule Builder now lives inside Time Clock & Schedule as a subtab for users with schedule access.', 'Open Time Clock & Schedule, then choose Schedule Builder from the subtab row.', 'The Schedule Builder is still hidden from staff who do not have schedule permission.', 'Event Calendar remains its own main menu tab.'] },
-  { id:'full-backup-restore', title:'Restoring a full database backup', group:'System Administrator', keywords:'restore backup firestore storage path deleted data database recovery gzip json', body:['Full automatic backups are saved to Firebase Storage as compressed JSON files.', 'To restore one, open System Administrator → Forensics → Backup Center, select a backup, and click Restore.', 'The restore is merge-based: it puts back missing/deleted documents and overwrites damaged documents from the backup, without deleting new documents that are not in the backup. If you use full database restore and a schedule month looks contaminated by old records, run that month’s Emergency Schedule Rescue afterward so the schedule month is hard-replaced cleanly.', 'Always run a fresh backup before restoring so there is a current safety copy.'] },
+  { id:'full-backup-restore', title:'Restoring a full database backup', group:'System Administrator', keywords:'restore backup firestore storage path deleted data database recovery gzip json', body:['Full automatic backups are saved to Firebase Storage as compressed JSON files.', 'To restore one, open System Administrator → Forensics & Backups → Backup Center, select a backup, and click Restore.', 'The restore is merge-based: it puts back missing/deleted documents and overwrites damaged documents from the backup, without deleting new documents that are not in the backup. If you use full database restore and a schedule month looks contaminated by old records, run that month’s Emergency Schedule Rescue afterward so the schedule month is hard-replaced cleanly.', 'Always run a fresh backup before restoring so there is a current safety copy.'] },
   { id:'new-1310', title:'What changed in version 13.1.0', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-1291', title:'What changed in version 12.9.1', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Financials → Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },

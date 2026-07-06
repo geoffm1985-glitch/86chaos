@@ -14,7 +14,8 @@ service firebase.storage {
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
-        request.auth.token.email == 'geoffm1985@gmail.com'
+        request.auth.token.email == 'geoffm1985@gmail.com' ||
+        (signedIn() && userDoc().isSuperAdmin == true)
       );
     }
 
