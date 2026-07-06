@@ -1,28 +1,13 @@
 # 86 Chaos
 
-Current build: 13.1.27
+Current build: 13.1.28
 
-## 13.1.27 focus
-
-This build tightens Staff Roster permissions while keeping the roster useful for the whole team.
-
-- Regular staff can open Staff Roster and view active coworkers.
-- Staff edit controls are hidden unless the signed-in user is a manager/admin account.
-- Staff Roster last-active status now reads from all presence heartbeat fields instead of only one stale field.
-- Voice/menu navigation can open Staff Roster for regular staff without exposing edit tools.
+## 13.1.28 focus
+- Adds a redundant presence-session heartbeat so Staff Roster and System Administrator live activity do not fall back to stale user-profile timestamps.
+- Keeps regular staff roster access read-only while showing more reliable live/last-active status.
+- Changes the System Administrator test push message so it clearly says it is only a test and not a published schedule alert.
 
 ## Deploy notes
-
-Deploy through the normal GitHub → Vercel flow.
-
-Changed deployable files:
-
-- `src/features/management.jsx`
-- `src/components/common.jsx`
-- `src/components/TabTeam.js`
-- `src/core/appCore.js`
-- `public/version.json`
-- `api/firestore-backup.js`
-- `api/full-system-diagnostics.js`
-
-No Firestore rules, Storage rules, API route behavior, or Vercel environment variable changes are required for this version.
+- Deploy through GitHub/Vercel as usual.
+- Publish the included `firestore.rules` to the matching Firebase project before testing live presence.
+- No Storage rules or Vercel environment changes are required for this build.

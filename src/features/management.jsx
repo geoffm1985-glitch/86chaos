@@ -127,7 +127,8 @@ const handleDeactivate = async (u) => {
 
   const parsePresenceTimeMs = (value) => {
     if (!value) return 0;
-    if (typeof value === 'string' || typeof value === 'number') {
+    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+    if (typeof value === 'string') {
       const parsed = new Date(value).getTime();
       return Number.isFinite(parsed) ? parsed : 0;
     }
@@ -1740,13 +1741,73 @@ const CHEERS_JULY_2026_SCHEDULE = [
     });
     const unsubRests = onSnapshot(collection(db, 'restaurants'), snap => { clearLoadError('restaurants'); setRestaurants(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('restaurants', err));
     const unsubAdmins = onSnapshot(query(collection(db, 'users'), where('isSuperAdmin', '==', true)), snap => { clearLoadError('superAdmins'); setSuperAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('superAdmins', err));
+    let rawUserList = [];
+    let rawPresenceSessions = [];
+    const parsePresenceForAdmin = (value) => {
+      if (!value) return 0;
+      if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+      if (typeof value === 'string') { const parsed = new Date(value).getTime(); return Number.isFinite(parsed) ? parsed : 0; }
+      if (typeof value?.toDate === 'function') { const parsed = value.toDate().getTime(); return Number.isFinite(parsed) ? parsed : 0; }
+      if (typeof value?.seconds === 'number') return value.seconds * 1000;
+      return 0;
+    };
+    const publishMergedUsers = () => {
+      const now = Date.now();
+      const liveWindowMs = 5 * 60 * 1000;
+      const sessionsByUser = {};
+      rawPresenceSessions.forEach(session => {
+        const userId = session.userId || session.uid || session.id;
+        if (!userId) return;
+        const lastMs = Math.max(
+          parsePresenceForAdmin(session.lastHeartbeatAt),
+          parsePresenceForAdmin(session.presenceUpdatedAt),
+          parsePresenceForAdmin(session.lastActive),
+          parsePresenceForAdmin(session.lastSeen),
+          parsePresenceForAdmin(session.heartbeatEpochMs)
+        );
+        if (!lastMs) return;
+        const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: (now - lastMs) < liveWindowMs && session.onlineState !== 'offline' };
+        if (!sessionsByUser[userId]) sessionsByUser[userId] = [];
+        sessionsByUser[userId].push(enriched);
+      });
+      const merged = rawUserList.map(user => {
+        const sessions = (sessionsByUser[user.id] || []).sort((a, b) => b._presenceLastMs - a._presenceLastMs);
+        if (!sessions.length) return user;
+        const liveSession = sessions.find(session => session._presenceLive);
+        const best = liveSession || sessions[0];
+        const bestTime = new Date(best._presenceLastMs).toISOString();
+        return {
+          ...user,
+          lastActive: bestTime,
+          lastSeen: bestTime,
+          lastHeartbeatAt: best.lastHeartbeatAt || bestTime,
+          presenceUpdatedAt: best.presenceUpdatedAt || bestTime,
+          onlineState: liveSession ? (best.onlineState || 'online') : (best.onlineState || user.onlineState),
+          activeTab: best.activeTab || user.activeTab,
+          activeSessionId: best.activeSessionId || user.activeSessionId,
+          activeDevice: best.activeDevice || user.activeDevice,
+          activeHost: best.activeHost || user.activeHost,
+          notificationPermission: best.notificationPermission || user.notificationPermission,
+          gpsPermission: best.gpsPermission || user.gpsPermission,
+          deviceDiagnostics: best.deviceDiagnostics || user.deviceDiagnostics,
+          presenceSessionCount: sessions.length,
+          presenceSource: liveSession ? 'live-session' : 'session-history'
+        };
+      });
+      setAllUsers(merged);
+      const counts = {}; rawUserList.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
+      setUserCounts(counts);
+    };
     const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
       clearLoadError('users');
-      const uList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAllUsers(uList);
-      const counts = {}; uList.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
-      setUserCounts(counts);
+      rawUserList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      publishMergedUsers();
     }, err => noteLoadError('users', err));
+    const unsubPresenceSessions = onSnapshot(collection(db, 'presenceSessions'), snap => {
+      clearLoadError('presenceSessions');
+      rawPresenceSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      publishMergedUsers();
+    }, err => noteLoadError('presenceSessions', err));
     const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => { clearLoadError('crashReports'); setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)); }, err => noteLoadError('crashReports', err));
 const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('auditLogs');
@@ -1766,7 +1827,7 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('operationsReview');
        setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubOpsReview(); };
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubPresenceSessions(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubOpsReview(); };
   }, []);
 
   useEffect(() => {
@@ -2520,15 +2581,19 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
   };
 
                const handleTestPush = async () => {
-    if (!window.confirm("Fire a test notification to all opted-in devices in your workspace?")) return;
+    if (!window.confirm("Send a plain test notification to all opted-in devices in your workspace?")) return;
     addToast('Pinging Server', 'Firing test shot to Vercel...');
     try {
-      const pushRes = await secureFetch('/api/send-schedule-alert', {
+      const pushRes = await secureFetch('/api/send-push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           restaurantId: appUser.restaurantId,
-          restaurantName: 'TEST MODE'
+          title: '86 Chaos Test Notification',
+          body: 'This is only a test push notification. No schedule was published.',
+          type: 'system-test',
+          isCritical: true,
+          textContent: 'test push notification only'
         })
       });
       const pushData = await pushRes.json();
@@ -2560,8 +2625,8 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
 
   const handleGlobalLockdown = async (lock) => {
     if (lock) {
-        if (prompt('CRITICAL: This will instantly lock out EVERY client workspace (except yours) by triggering the maintenance lock screen. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
-        addToast('Executing', 'Initiating global lockdown...');
+        if (prompt('CRITICAL: This will instantly put EVERY workspace into maintenance mode, including your restaurant group. Your Super Admin account will remain able to enter and lift it. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
+        addToast('Executing', 'Initiating global lockdown for all workspaces except your Super Admin access...');
     } else {
         if (!window.confirm('Restore access to all suspended workspaces?')) return;
         addToast('Executing', 'Lifting lockdown...');
@@ -2569,9 +2634,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     
     let count = 0;
     for (const r of restaurants) {
-      if (r.id !== appUser.restaurantId) {
-        try { await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); count++; } catch(e){}
-      }
+      try { await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); count++; } catch(e){}
     }
     addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'placed into maintenance mode' : 'restored'}.`);
   };
@@ -2698,7 +2761,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const nowMs = Date.now();
   const parsePresenceTimeMs = (value) => {
     if (!value) return 0;
-    if (typeof value === 'string' || typeof value === 'number') {
+    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+    if (typeof value === 'string') {
       const parsed = new Date(value).getTime();
       return Number.isFinite(parsed) ? parsed : 0;
     }
@@ -2845,7 +2909,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'People: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
     { title: 'Support: what each support tool means', group: 'Admin Tab Guide', keywords: 'support crashes permission denied raw inspector broadcast banner diagnostics user action telemetry', body: ['Crash reports show errors collected from the app and may include screen size, user agent, breadcrumbs, and stack details.', 'Permission-denied clues usually point to Firestore or Storage rule blocks. Check rules before assuming the UI is broken.', 'Raw Database Inspector lets a platform admin view a specific document by collection and document ID. Use it carefully and copy diagnostics before edits.', 'Broadcast Message sends a one-time message-style alert. Top-of-App Banner pins persistent text below the main header for selected workspaces or all workspaces.', 'Support should be used to diagnose and confirm before making risky changes in Operations or Forensics.'] },
     { title: 'Forensics & Backups: what to use it for', group: 'Admin Tab Guide', keywords: 'forensics backup center restore audit logs diagnostic json client csv backup countdown schedule rescue evidence trail', body: ['Forensics is the evidence cabinet. Use it when you need audit history, backup state, restore options, or downloadable diagnostic bundles.', 'Backup Center lists Firebase Storage backups and allows Download or Restore. Restore requires typing RESTORE and is merge-based, so it does not automatically delete documents that are newer than the backup.', 'Forensic JSON exports a support bundle with platform counts, recent sensitive actions, backup state, watchlists, and runtime clues.', 'Client CSV exports workspace IDs, plan/billing state, modules, user counts, and online counts for operations review.', 'Emergency rescue tools should only be used when a normal app workflow cannot repair data. Always verify the target restaurant and month first.'] },
-    { title: 'Platform Operations: what each operation does', group: 'Admin Tab Guide', keywords: 'operations demo workspace push notifications global refresh orphan sweep forensic bundle client csv review stamp cache lockdown', body: ['Deploy Demo Workspace creates a fake showcase restaurant for sales/demo purposes.', 'Test Push Notifications sends a live notification through the Vercel/Firebase Admin path to verify tokens and credentials.', 'Global Force Refresh tells active browsers to hard reload after a deployment or urgent system change.', 'Orphan Data Sweeper looks for shifts assigned to deleted users and removes those orphan records.', 'Forensic Bundle and Client Directory Export download support files without changing restaurant data.', 'Create Review Stamp records a platform review snapshot with backup, crash, permission, and integrity counts.', 'Clear This Cache only clears temporary cache on the current browser. It does not delete restaurant data.', 'Global Lockdown sets workspaces into maintenance lock mode. Use only for serious platform emergencies.'] },
+    { title: 'Platform Operations: what each operation does', group: 'Admin Tab Guide', keywords: 'operations demo workspace push notifications global refresh orphan sweep forensic bundle client csv review stamp cache lockdown', body: ['Deploy Demo Workspace creates a fake showcase restaurant for sales/demo purposes.', 'Test Push Notifications sends a live notification through the Vercel/Firebase Admin path to verify tokens and credentials.', 'Global Force Refresh tells active browsers to hard reload after a deployment or urgent system change.', 'Orphan Data Sweeper looks for shifts assigned to deleted users and removes those orphan records.', 'Forensic Bundle and Client Directory Export download support files without changing restaurant data.', 'Create Review Stamp records a platform review snapshot with backup, crash, permission, and integrity counts.', 'Clear This Cache only clears temporary cache on the current browser. It does not delete restaurant data.', 'Global Lockdown sets every workspace into maintenance lock mode, including the restaurant group you belong to. Your Super Admin account bypasses the screen so you can lift it. Use only for serious platform emergencies.'] },
     { title: 'Access Control: platform admin safety', group: 'Admin Tab Guide', keywords: 'grant access revoke super admin platform admin master admin security', body: ['Access Control is for platform administrators only, not normal restaurant managers.', 'Granting access gives broad system control, including workspaces, people, platform operations, forensics, backups, and support tools.', 'Use exact email addresses and revoke access when it is no longer needed.', 'If access does not work, confirm the user exists, confirm Firebase Auth email, confirm Firestore user document, then check custom claims/rules.'] },
     { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → People or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
@@ -3973,7 +4037,7 @@ Type RESTORE to continue.`);
                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} active</span>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
-                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users are reporting live presence yet. Open the app on another device, wait about 25 seconds, then refresh this panel. If it stays empty, deploy the included Firestore rules and confirm the user document can write heartbeat fields.</div>}
+                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users are reporting live presence yet. Open the app on another device, wait about 25 seconds, then refresh this panel. If it stays empty, publish the included Firestore rules so user heartbeat and presence session writes are allowed.</div>}
                 {onlineUsers.map(u => {
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
                   return (
@@ -4678,7 +4742,7 @@ another@email.com"></textarea>
 
             <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
               <h3 className="font-black text-white mb-1">Global Lockdown</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly puts every tenant behind the maintenance screen. Bypasses your own workspace to prevent self-lockout.</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly puts every workspace behind the maintenance screen, including your restaurant group. Your Super Admin account bypasses the lock so you can still enter and lift it.</p>
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => handleGlobalLockdown(true)} className="w-full bg-red-900/20 text-red-500 border border-red-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors flex items-center justify-center gap-2"><Shield size={16}/> Lock All</button>
                 <button onClick={() => handleGlobalLockdown(false)} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2">Unlock All</button>
@@ -5067,7 +5131,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-13127', title:'What changed in version 13.1.27', group:'Release Notes', keywords:'new update 13.1.27 staff roster read only last active activity permissions', body:['Staff Roster is easier for teams to use: regular staff can view coworkers without seeing edit controls.', 'Manager/admin accounts still handle roster changes.', 'Last app activity now uses the same heartbeat fields as live activity for a more reliable status.'] },
+  { id:'new-13128', title:'What changed in version 13.1.28', group:'Release Notes', keywords:'new update 13.1.28 staff roster online last active test push notifications', body:['Staff Roster now uses a stronger live presence heartbeat so online and last-active status updates more reliably.', 'Regular staff can still view the roster without staff edit controls.', 'The test push notification now clearly says it is only a test, not a published schedule alert.', 'Global Lockdown now locks every workspace, including your restaurant group, while your Super Admin account can still enter and unlock it.'] },
   { id:'new-13121', title:'What changed in version 13.1.21', group:'Release Notes', keywords:'new update 13.1.21 time clock clock in clock out loading label refresh employee punch', body:['The Time Clock button now shows the correct saving label while employees clock in or clock out.', 'Clock In stays on CLOCKING IN while saving, then changes to Clock Out.', 'Clock Out stays on CLOCKING OUT while saving, then changes back to Clock In without requiring a refresh.'] },
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
