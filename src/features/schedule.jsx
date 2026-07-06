@@ -45,6 +45,8 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   // --- TIME CLOCK LOGIC ---
   const [activePunch, setActivePunch] = useState(null);
   const [clockActionBusy, setClockActionBusy] = useState(false);
+  const [clockActionType, setClockActionType] = useState(null);
+  const [clockActionPunch, setClockActionPunch] = useState(null);
   const recentlyClockedOutRef = useRef({});
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [tipCash, setTipCash] = useState('');
@@ -184,6 +186,7 @@ const handleClockIn = async () => {
     }
 
     const executePunch = async () => {
+      setClockActionType('in');
       setClockActionBusy(true);
       try {
         const clockInStamp = new Date().toISOString();
@@ -215,6 +218,8 @@ const handleClockIn = async () => {
         addToast('Error', e.message); 
       } finally {
         setClockActionBusy(false);
+        setClockActionType(null);
+        setClockActionPunch(null);
       }
     };
 
@@ -296,10 +301,12 @@ Clock out anyway?`);
         breakStartTime: null,
         ...(geofenceReview.update || {})
       };
+      setClockActionType('out');
+      setClockActionPunch(punchToClose);
       setClockActionBusy(true);
       recentlyClockedOutRef.current[punchToClose.id] = Date.now() + 30000;
-      setActivePunch(null);
       await updateDoc(doc(db, "timePunches", punchToClose.id), punchUpdate);
+      setActivePunch(null);
       if (geofenceReview.alertNeeded) {
         const distText = geofenceReview.distanceFeet ? `${Math.round(geofenceReview.distanceFeet)} ft outside required area` : 'location not verified';
         const alertTitle = `GEOFENCE CLOCK-OUT REVIEW: ${appUser.name} clocked out with ${distText}. Review Financials → Timesheets.`;
@@ -335,6 +342,8 @@ Clock out anyway?`);
       addToast('Error', err.message); 
     } finally {
       setClockActionBusy(false);
+      setClockActionType(null);
+      setClockActionPunch(null);
     }
   };
 
@@ -431,6 +440,8 @@ const handleOfferSwap = async (shift) => {
     }
   };
 
+  const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
+
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-24">
       
@@ -481,14 +492,14 @@ const handleOfferSwap = async (shift) => {
               <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(myNextShift.date)}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
             ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
             
-            {activePunch ? (
+            {effectiveActivePunch ? (
               <div className="space-y-2 relative z-10">
                 <button onClick={initiateClockOut} disabled={clockActionBusy} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">
-                  <span>{clockActionBusy ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
-                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(activePunch.clockInTime)}</span>
+                  <span>{clockActionBusy && clockActionType === 'out' ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
+                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(effectiveActivePunch.clockInTime)}</span>
                 </button>
                 {appUser?.systemSettings?.breaks && (
-                  activePunch.status === 'on_break' ? (
+                  effectiveActivePunch.status === 'on_break' ? (
                     <button onClick={handleEndBreak} className="w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
                   ) : (
                     <button onClick={handleStartBreak} className="w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
@@ -497,7 +508,7 @@ const handleOfferSwap = async (shift) => {
               </div>
             ) : (
               <button onClick={handleClockIn} disabled={clockActionBusy} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10 disabled:opacity-60 disabled:cursor-not-allowed">
-                {clockActionBusy ? 'CLOCKING IN...' : 'CLOCK IN'}
+                {clockActionBusy && clockActionType === 'in' ? 'CLOCKING IN...' : 'CLOCK IN'}
               </button>
             )}
 

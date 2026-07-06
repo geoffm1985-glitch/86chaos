@@ -737,9 +737,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>Improved live-user visibility, push-token repair, 86 Voice alerts, and the System Administrator layout.</p>
+    <p>Fixed the employee time clock loading labels so Clock In and Clock Out no longer briefly display the opposite action while saving.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Live Activity','Push repair','86 voice alerts','Admin redesign','Review stamps','Maintenance lock','Firestore rules','Notification relay'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Clock In label','Clock Out label','No refresh needed','Employee punch flow'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>
