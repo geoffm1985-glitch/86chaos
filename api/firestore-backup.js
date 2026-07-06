@@ -2,7 +2,11 @@ const admin = require('firebase-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '13.1.24';
+function getMasterEmails() {
+  const raw = [process.env.MASTER_ADMIN_EMAILS, process.env.MASTER_ADMIN_EMAIL, 'geoffrm1985@gmail.com', 'geoffm1985@gmail.com'].filter(Boolean).join(',');
+  return new Set(String(raw).split(/[\s,;]+/).map(e => e.toLowerCase().trim()).filter(Boolean));
+}
+const APP_VERSION = '13.1.25';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -164,9 +168,9 @@ async function authorize(req, adminApp) {
 
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
-    const email = (decoded.email || '').toLowerCase();
-    if (email === masterEmail || decoded.superAdmin === true) {
+    const masterEmails = getMasterEmails();
+    const email = (decoded.email || '').toLowerCase().trim();
+    if (masterEmails.has(email) || decoded.superAdmin === true) {
       return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '' };
     }
     return { ok: false, status: 403, error: 'Only the master admin or a super admin can run backups.' };

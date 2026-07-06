@@ -1,5 +1,9 @@
 const admin = require('firebase-admin');
 
+function getMasterEmails() {
+  const raw = [process.env.MASTER_ADMIN_EMAILS, process.env.MASTER_ADMIN_EMAIL, 'geoffrm1985@gmail.com', 'geoffm1985@gmail.com'].filter(Boolean).join(',');
+  return new Set(String(raw).split(/[\s,;]+/).map(e => e.toLowerCase().trim()).filter(Boolean));
+}
 function initAdmin() {
   if (admin.apps.length) return admin;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -13,8 +17,8 @@ async function verifySuperAdmin(req) {
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
-  if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) throw new Error('Super admin access required.');
+  const masterEmails = getMasterEmails();
+  if (decoded.superAdmin !== true && !masterEmails.has((decoded.email || '').toLowerCase().trim())) throw new Error('Super admin access required.');
   return decoded;
 }
 
@@ -30,8 +34,8 @@ module.exports = async function handler(req, res) {
     const app = initAdmin();
     const db = app.firestore();
     const emails = normalizeEmails(req.body?.emails || req.body?.emailText);
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
-    const protectedEmails = new Set([masterEmail, (caller.email || '').toLowerCase()]);
+    const masterEmails = getMasterEmails();
+    const protectedEmails = new Set([...masterEmails, (caller.email || '').toLowerCase().trim()].filter(Boolean));
     const targets = emails.filter(e => !protectedEmails.has(e));
     if (!targets.length) return res.status(400).json({ error: 'No deletable emails supplied.' });
 
@@ -44,7 +48,7 @@ module.exports = async function handler(req, res) {
       try {
         const user = await app.auth().getUserByEmail(email);
         uidFromAuth = user.uid;
-        if ((user.email || '').toLowerCase() === masterEmail || user.uid === caller.uid) throw new Error('Protected admin account.');
+        if (masterEmails.has((user.email || '').toLowerCase().trim()) || user.uid === caller.uid) throw new Error('Protected admin account.');
         await app.auth().deleteUser(user.uid);
         authDeleted++;
       } catch (err) {

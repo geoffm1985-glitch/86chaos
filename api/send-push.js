@@ -3,6 +3,10 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getAuth } from 'firebase-admin/auth';
 
+function getMasterEmails() {
+  const raw = [process.env.MASTER_ADMIN_EMAILS, process.env.MASTER_ADMIN_EMAIL, 'geoffrm1985@gmail.com', 'geoffm1985@gmail.com'].filter(Boolean).join(',');
+  return new Set(String(raw).split(/[\s,;]+/).map(e => e.toLowerCase().trim()).filter(Boolean));
+}
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
   if (raw) {
@@ -120,11 +124,11 @@ export default async function handler(req, res) {
         if (!emailSnap.empty) { caller = emailSnap.docs[0].data(); break; }
       }
     }
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
-    const callerEmail = (decoded.email || caller.email || '').toLowerCase();
+    const masterEmails = getMasterEmails();
+    const callerEmail = (decoded.email || caller.email || '').toLowerCase().trim();
     const canSendForRestaurant =
       decoded.superAdmin === true ||
-      callerEmail === masterEmail ||
+      masterEmails.has(callerEmail) ||
       caller?.isSuperAdmin === true ||
       caller?.restaurantId === restaurantId;
 

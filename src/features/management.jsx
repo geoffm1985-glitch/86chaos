@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, getActiveVapidKey, getPushTokenKey, getPushDeviceSnapshot, getPushDeviceId } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, getActiveVapidKey, getPushTokenKey, getPushDeviceSnapshot, getPushDeviceId, isMasterAdminEmail, isPlatformSuperAdmin } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabTeam = ({ users, appUser, addToast }) => {
@@ -536,7 +536,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const accountEmail = (appUser?.email || '').toLowerCase().trim();
   const ownerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
   const isAccountOwner = !!ownerEmail && accountEmail === ownerEmail;
-  const isMasterAdmin = accountEmail === MASTER_ADMIN_EMAIL || appUser?.isSuperAdmin === true || appUser?.systemAccess === 'superAdmin';
+  const isMasterAdmin = isPlatformSuperAdmin(appUser);
   const canAccessWorkspaceSettings = isAccountOwner || isMasterAdmin;
   const settingsTabs = ['profile', 'preferences', 'alerts'].concat(canAccessWorkspaceSettings ? ['workspace', 'integrations'] : []);
 
@@ -1359,7 +1359,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 
 const TabAuditLog = ({ appUser }) => {
   const logs = useLiveCollection('auditLogs', appUser?.restaurantId, { limitCount: 200 });
-  const isGeoff = appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com';
+  const isGeoff = isMasterAdminEmail(appUser?.email);
   const sortedLogs = [...logs]
     .filter(log => isGeoff ? true : log.action !== 'APP_INSTALLED')
     .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -2070,7 +2070,7 @@ const handleDeleteGlobalUser = async (u) => {
     const emails = parseBulkEmailList(bulkDeleteEmails);
     if (emails.length === 0) return addToast('Nothing to Delete', 'Paste one or more email addresses first.');
 
-    const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
+    const protectedEmails = new Set(['geoffrm1985@gmail.com', 'geoffm1985@gmail.com', (appUser?.email || '').toLowerCase()].filter(Boolean));
     const targets = allUsers.filter(u => emails.includes((u.email || '').toLowerCase().trim()) && !protectedEmails.has((u.email || '').toLowerCase().trim()));
     const skippedProtected = emails.filter(email => protectedEmails.has(email));
 
@@ -2199,7 +2199,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     const selectedRestaurant = restaurants.find(r => r.id === supportUserForm.restaurantId);
     if (!selectedRestaurant) return addToast('Invalid Restaurant', 'That workspace could not be found.');
 
-    const protectedEmail = (editingGlobalUser.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+    const protectedEmail = isMasterAdminEmail(editingGlobalUser.email);
     const movingSelf = editingGlobalUser.id === appUser?.id && supportUserForm.restaurantId !== editingGlobalUser.restaurantId;
     if (protectedEmail && supportUserForm.restaurantId !== editingGlobalUser.restaurantId) {
       return addToast('Protected', 'The master admin account cannot be moved from this support editor.');
@@ -3780,7 +3780,7 @@ Type RESTORE to continue.`);
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr.toLocaleString()}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-            {appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
+            {isMasterAdminEmail(appUser?.email) && (
               <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
             )}          
           </div>
@@ -5065,7 +5065,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-13124', title:'What changed in version 13.1.24', group:'Release Notes', keywords:'new update 13.1.24 push notifications device repair workspace integrations settings alerts', body:['Strengthened multi-device push-token repair so a laptop test can reach a phone logged into the same account after that phone has connected push once.', 'System Administrator push tests now use a critical system-test route instead of schedule preferences, making push diagnostics cleaner.', 'Settings → Workspace and Settings → Integrations remain owner-level tools, and platform Super Admin can also view them for support.'] },
+  { id:'new-13125', title:'What changed in version 13.1.25', group:'Release Notes', keywords:'new update 13.1.25 push notifications device repair workspace integrations settings alerts firebase login', body:['Improved platform Super Admin recognition so owner-level Settings tabs remain available to the correct support account.', 'Push notification diagnostics continue to support same-account multi-device testing after each device has connected push once from Settings → Alerts.', 'Login now explains when Firebase is blocking a preview deployment URL so the workspace can use the production link or update Firebase allowed domains/referrers.'] },
   { id:'new-13122', title:'What changed in version 13.1.22', group:'Release Notes', keywords:'new update 13.1.22 reliability health backups diagnostics', body:['Improved system reliability checks and backup confidence for smoother updates.', 'Added stronger internal health checks before deployments.', 'Polished administrator monitoring tools while keeping customer-facing workflows unchanged.'] },
   { id:'new-13121', title:'What changed in version 13.1.21', group:'Release Notes', keywords:'new update 13.1.21 time clock clock in clock out loading label refresh employee punch', body:['The Time Clock button now shows the correct saving label while employees clock in or clock out.', 'Clock In stays on CLOCKING IN while saving, then changes to Clock Out.', 'Clock Out stays on CLOCKING OUT while saving, then changes back to Clock In without requiring a refresh.'] },
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },

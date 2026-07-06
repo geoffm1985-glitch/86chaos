@@ -2,6 +2,15 @@ import React, { useState } from 'react';
 import { signInWithEmailAndPassword, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
+const getFriendlyLoginError = (error) => {
+  const raw = `${error?.code || ''} ${error?.message || ''}`;
+  if (/requests-from-referer|are-blocked|unauthorized-domain|referrer/i.test(raw)) {
+    const host = typeof window !== 'undefined' ? window.location.host : 'this deployment URL';
+    return `Firebase is blocking this deployment URL (${host}). Use the production app link, or add this exact Vercel preview URL to Firebase Auth authorized domains and the Google Cloud API key HTTP referrer allowlist.`;
+  }
+  return error?.message || 'Login failed.';
+};
+
 const LoginScreen = ({ setAppUser, auth, db }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,7 +45,7 @@ const LoginScreen = ({ setAppUser, auth, db }) => {
         setLoginError('Login successful, but user profile is missing in the database.');
       }
     } catch (error) {
-      setLoginError(error.message);
+      setLoginError(getFriendlyLoginError(error));
     }
   };
 
@@ -61,7 +70,7 @@ const LoginScreen = ({ setAppUser, auth, db }) => {
       setAppUser({ ...pendingUser, forcePasswordChange: false, password: newPass });
       
     } catch (error) {
-      setLoginError(error.message);
+      setLoginError(getFriendlyLoginError(error));
     }
   };
 
@@ -74,7 +83,7 @@ const LoginScreen = ({ setAppUser, auth, db }) => {
       await sendPasswordResetEmail(auth, email);
       setLoginError("Reset link sent! Check your email inbox.");
     } catch (error) {
-      setLoginError(error.message);
+      setLoginError(getFriendlyLoginError(error));
     }
   };
 

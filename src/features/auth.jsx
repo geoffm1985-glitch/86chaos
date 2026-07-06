@@ -9,6 +9,15 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
+const getFriendlyLoginError = (error) => {
+  const raw = `${error?.code || ''} ${error?.message || ''}`;
+  if (/requests-from-referer|are-blocked|unauthorized-domain|referrer/i.test(raw)) {
+    const host = typeof window !== 'undefined' ? window.location.host : 'this deployment URL';
+    return `Firebase is blocking this deployment URL (${host}). Use the production app link, or add this exact Vercel preview URL to Firebase Auth authorized domains and the Google Cloud API key HTTP referrer allowlist.`;
+  }
+  return error?.message || 'Login failed.';
+};
+
 const LoginScreen = ({ setAppUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,7 +55,7 @@ const LoginScreen = ({ setAppUser }) => {
         setLoginError('Login successful, but user profile is missing in the database.');
       }
     } catch (error) {
-      setLoginError(error.message);
+      setLoginError(getFriendlyLoginError(error));
     }
   };
 
@@ -74,7 +83,7 @@ const LoginScreen = ({ setAppUser }) => {
       setAppUser({ ...safePendingUser, forcePasswordChange: false });
       
     } catch (error) {
-      setLoginError(error.message);
+      setLoginError(getFriendlyLoginError(error));
     }
   };
 
@@ -88,7 +97,7 @@ const LoginScreen = ({ setAppUser }) => {
  email);
       setLoginError("Reset link sent! Check your email inbox.");
     } catch (error) {
-      setLoginError(error.message);
+      setLoginError(getFriendlyLoginError(error));
     }
   };
 

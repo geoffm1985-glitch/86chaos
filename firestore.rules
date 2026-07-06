@@ -29,7 +29,7 @@ service cloud.firestore {
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
-        request.auth.token.email == 'geoffm1985@gmail.com' ||
+        request.auth.token.email in ['geoffrm1985@gmail.com', 'Geoffrm1985@gmail.com', 'geoffm1985@gmail.com', 'Geoffm1985@gmail.com'] ||
         (hasUserDoc() && userData().isSuperAdmin == true)
       );
     }

@@ -56,12 +56,17 @@ export const prodConfig = {
 };
 
 // 3. THE SWITCHER (Automatically routes Firebase based on the URL)
-// Local/staging hosts use the sandbox. Deployed Vercel/custom domains use production so
-// Firestore, FCM tokens, and Vercel Firebase Admin credentials stay in the same project.
+// Keep production devices, push tokens, and Vercel Firebase Admin credentials in the same project.
+// Set REACT_APP_FIREBASE_ENV=test or REACT_APP_FIREBASE_ENV=prod in Vercel when a preview branch needs an explicit project.
 const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+const firebaseEnvOverride = (process.env.REACT_APP_FIREBASE_ENV || '').toLowerCase().trim();
 const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname) || hostname.endsWith('.local');
 const isSandboxHost = /(^|[.-])(test|sandbox|staging|preview)([.-]|$)/i.test(hostname);
-export const firebaseConfig = (isLocalHost || isSandboxHost) ? testConfig : prodConfig;
+export const firebaseConfig = firebaseEnvOverride === 'test'
+  ? testConfig
+  : firebaseEnvOverride === 'prod'
+    ? prodConfig
+    : (isLocalHost || isSandboxHost) ? testConfig : prodConfig;
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
@@ -126,7 +131,10 @@ export const secureFetch = async (url, options = {}) => {
 };
 
 // --- Master Configuration ---
-export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
+export const MASTER_ADMIN_EMAIL = 'geoffrm1985@gmail.com';
+export const MASTER_ADMIN_EMAIL_ALIASES = ['geoffrm1985@gmail.com', 'geoffm1985@gmail.com'];
+export const isMasterAdminEmail = (email = '') => MASTER_ADMIN_EMAIL_ALIASES.includes(String(email || '').toLowerCase().trim());
+export const isPlatformSuperAdmin = (user = {}) => Boolean(user?.isSuperAdmin === true || user?.systemAccess === 'superAdmin' || isMasterAdminEmail(user?.email));
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 
@@ -177,7 +185,7 @@ export const getPushDeviceSnapshot = () => {
 };
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '13.1.24';
+export const CURRENT_VERSION = '13.1.25';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

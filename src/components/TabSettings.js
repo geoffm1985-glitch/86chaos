@@ -3,7 +3,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { Edit, Bell, Shield, Plus, Trash2, Package } from 'lucide-react';
 
-const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
+const MASTER_ADMIN_EMAILS = ['geoffrm1985@gmail.com', 'geoffm1985@gmail.com'];
 
 const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth, T, useLiveCollection, getAvatar, logAudit }) => {
   const [subTab, setSubTab] = useState('profile');
@@ -11,7 +11,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
   const accountEmail = (appUser?.email || '').toLowerCase().trim();
   const ownerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
   const isAccountOwner = !!ownerEmail && accountEmail === ownerEmail;
-  const isMasterAdmin = accountEmail === MASTER_ADMIN_EMAIL || appUser?.isSuperAdmin === true || appUser?.systemAccess === 'superAdmin';
+  const isMasterAdmin = MASTER_ADMIN_EMAILS.includes(accountEmail) || appUser?.isSuperAdmin === true || appUser?.systemAccess === 'superAdmin';
   const canAccessWorkspaceSettings = isAccountOwner || isMasterAdmin;
   const settingsTabs = ['profile', 'preferences', 'alerts'].concat(canAccessWorkspaceSettings ? ['workspace'] : []);
 

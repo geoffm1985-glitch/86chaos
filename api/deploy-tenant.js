@@ -1,5 +1,9 @@
 import admin from 'firebase-admin';
 
+function getMasterEmails() {
+  const raw = [process.env.MASTER_ADMIN_EMAILS, process.env.MASTER_ADMIN_EMAIL, 'geoffrm1985@gmail.com', 'geoffm1985@gmail.com'].filter(Boolean).join(',');
+  return new Set(String(raw).split(/[\s,;]+/).map(e => e.toLowerCase().trim()).filter(Boolean));
+}
 function loadServiceAccount() {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
     return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
@@ -41,9 +45,9 @@ export default async function handler(req, res) {
     const decoded = await admin.auth().verifyIdToken(authToken);
     const requesterSnap = await admin.firestore().collection('users').doc(decoded.uid).get();
     const requester = requesterSnap.exists ? requesterSnap.data() : {};
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
-    const requesterEmail = (decoded.email || requester.email || '').toLowerCase();
-    if (!requester.isSuperAdmin && requesterEmail !== masterEmail) {
+    const masterEmails = getMasterEmails();
+    const requesterEmail = (decoded.email || requester.email || '').toLowerCase().trim();
+    if (!requester.isSuperAdmin && !masterEmails.has(requesterEmail)) {
       return res.status(403).json({ error: 'Super Admin required to deploy workspaces.' });
     }
 
