@@ -80,11 +80,11 @@ service cloud.firestore {
 
     function presenceSessionKeys() {
       return [
-        'userId', 'restaurantId', 'userName', 'userEmail', 'role', 'photoURL',
+        'userId', 'uid', 'restaurantId', 'userName', 'userEmail', 'email', 'role', 'photoURL',
         'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
         'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
         'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
-        'createdAt', 'updatedAt'
+        'createdAt', 'updatedAt', 'source'
       ];
     }
 
@@ -102,6 +102,24 @@ service cloud.firestore {
         request.resource.data.restaurantId == resource.data.restaurantId &&
         resource.data.restaurantId is string &&
         isTenantMatch(resource.data.restaurantId);
+    }
+
+    function livePresenceKeys() {
+      return [
+        'userId', 'uid', 'restaurantId', 'userName', 'userEmail', 'email', 'role', 'photoURL',
+        'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
+        'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
+        'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
+        'createdAt', 'updatedAt', 'source'
+      ];
+    }
+
+    function livePresenceWriteIsSafe(userId) {
+      return request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly(livePresenceKeys()) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.restaurantId is string &&
+        isTenantMatch(request.resource.data.restaurantId);
     }
 
     function tenantAdminUserUpdateIsSafe() {
@@ -204,6 +222,22 @@ service cloud.firestore {
       allow delete: if signedIn() && (
         isSuperAdmin() ||
         resource.data.userId == request.auth.uid
+      );
+    }
+
+    // Stable live presence channel: one document per user. This prevents
+    // old session documents from pushing current online users out of capped reads.
+    match /livePresence/{userId} {
+      allow read: if signedIn() && (
+        isSuperAdmin() ||
+        (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId))
+      );
+
+      allow create, update: if signedIn() && livePresenceWriteIsSafe(userId);
+
+      allow delete: if signedIn() && (
+        isSuperAdmin() ||
+        userId == request.auth.uid
       );
     }
 

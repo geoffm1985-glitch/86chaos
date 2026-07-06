@@ -1,11 +1,11 @@
 # 86 Chaos
 
-Current build: 13.1.28
+Current build: 13.1.29
 
-## 13.1.28 focus
-- Adds a redundant presence-session heartbeat so Staff Roster and System Administrator live activity do not fall back to stale user-profile timestamps.
-- Keeps regular staff roster access read-only while showing more reliable live/last-active status.
-- Changes the System Administrator test push message so it clearly says it is only a test and not a published schedule alert.
+## 13.1.29 focus
+- Rebuilds live activity around a stable one-document-per-user `livePresence` heartbeat.
+- Keeps Staff Roster and System Administrator Live Activity from falling back to old multi-day timestamps while a user is actively online.
+- Adds a small Live Activity debug strip so the admin screen shows whether users are being read and counted as online.
 
 ## Deploy notes
 - Deploy through GitHub/Vercel as usual.

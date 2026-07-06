@@ -127,6 +127,9 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
   const presenceSessions = useLiveCollection('presenceSessions', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
+  // Stable per-user live presence. Unlike presenceSessions, this collection has only
+  // one document per user, so old sessions cannot push current users out of capped reads.
+  const livePresenceRecords = useLiveCollection('livePresence', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
   const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
@@ -334,8 +337,9 @@ if (liveAppUser && clientData) {
   };
   const displayUsers = useMemo(() => {
     const baseUsers = isDemoMode ? (users || []).map(maskDemoUser) : (users || []);
-    return isDemoMode ? baseUsers : mergePresenceIntoUsers(baseUsers, presenceSessions);
-  }, [isDemoMode, users, presenceSessions]);
+    const sharedPresence = [...(livePresenceRecords || []), ...(presenceSessions || [])];
+    return isDemoMode ? baseUsers : mergePresenceIntoUsers(baseUsers, sharedPresence);
+  }, [isDemoMode, users, presenceSessions, livePresenceRecords]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -504,9 +508,21 @@ if (liveAppUser && clientData) {
           gpsPermission: deviceDiagnostics.gpsPermission,
           deviceDiagnostics
         };
-        const presenceSessionPayload = {
+        const livePresencePayload = {
           ...presencePayload,
           userId: appUser.id,
+          uid: appUser.id,
+          restaurantId: rId,
+          userName: appUser.name || '',
+          userEmail: appUser.email || '',
+          email: appUser.email || '',
+          role: appUser.role || '',
+          photoURL: appUser.photoURL || '',
+          updatedAt: stamp,
+          source: 'app-heartbeat'
+        };
+        const presenceSessionPayload = {
+          ...livePresencePayload,
           restaurantId: rId,
           userName: appUser.name || '',
           userEmail: appUser.email || '',
@@ -521,6 +537,9 @@ if (liveAppUser && clientData) {
         try { localStorage.setItem(`chaosLastHeartbeat_${rId}_${appUser.id}`, String(heartbeatEpochMs)); } catch (err) {}
         const safeSessionId = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
         updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: appUser.id }).catch(()=>{});
+        setDoc(doc(db, 'livePresence', appUser.id), livePresencePayload, { merge: true }).catch((err)=>{
+          console.warn('86 Chaos live presence heartbeat blocked or delayed:', err?.message || err);
+        });
         setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload, { merge: true }).catch((err)=>{
           console.warn('86 Chaos presence session heartbeat blocked or delayed:', err?.message || err);
         });
