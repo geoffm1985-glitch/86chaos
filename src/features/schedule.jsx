@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -44,6 +44,8 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   
   // --- TIME CLOCK LOGIC ---
   const [activePunch, setActivePunch] = useState(null);
+  const [clockActionBusy, setClockActionBusy] = useState(false);
+  const recentlyClockedOutRef = useRef({});
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
@@ -58,18 +60,44 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   }, [voiceScheduleSubTabTarget?.id]);
 
   useEffect(() => {
-    if (!appUser?.id) return;
+    if (!appUser?.id || !appUser?.restaurantId) {
+      setActivePunch(null);
+      return;
+    }
+
+    // Keep this listener intentionally simple: restaurant + employee only.
+    // Filtering status in the browser avoids a Firestore composite-index trap that made
+    // regular employees wait for a full refresh before the button flipped state.
     const q = query(
-      collection(db, 'timePunches'), 
-      where('employeeId', '==', appUser.id), 
-      where('status', 'in', ['clocked_in', 'on_break'])
+      collection(db, 'timePunches'),
+      where('restaurantId', '==', appUser.restaurantId),
+      where('employeeId', '==', appUser.id)
     );
     const unsub = onSnapshot(q, snap => {
-      if (!snap.empty) { setActivePunch({ id: snap.docs[0].id, ...snap.docs[0].data() }); } 
-      else { setActivePunch(null); }
+      const activeStatuses = ['clocked_in', 'on_break'];
+      const punches = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => activeStatuses.includes(p.status));
+      const newest = punches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0))[0] || null;
+
+      setActivePunch(prev => {
+        if (newest?.id) {
+          const suppressUntil = recentlyClockedOutRef.current[newest.id] || 0;
+          if (Date.now() < suppressUntil) return null;
+          return newest;
+        }
+
+        // Do not let an empty/stale snapshot erase the optimistic button flip
+        // immediately after a successful clock-in write.
+        if (prev?._optimisticUntil && Date.now() < prev._optimisticUntil) return prev;
+        return null;
+      });
+    }, err => {
+      console.error('Active punch listener failed:', err);
+      addToast('Clock Sync Warning', 'Clock-in saved, but the live clock button could not refresh automatically. Check Firestore rules/indexes if this repeats.');
     });
     return () => unsub();
-  }, [appUser?.id]);
+  }, [appUser?.id, appUser?.restaurantId]);
 
 
 
@@ -144,6 +172,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   };
 
 const handleClockIn = async () => {
+    if (clockActionBusy || activePunch) return;
     // Check if scheduled today
     const isScheduledToday = shifts.some(s => s.employeeId === appUser.id && s.date === getToday() && s.isPublished);
     
@@ -155,12 +184,22 @@ const handleClockIn = async () => {
     }
 
     const executePunch = async () => {
+      setClockActionBusy(true);
       try {
-        await addDoc(collection(db, "timePunches"), { 
-          employeeId: appUser.id, employeeName: appUser.name, clockInTime: new Date().toISOString(), 
-          status: 'clocked_in', restaurantId: appUser.restaurantId, date: getToday(), breakMinutes: 0,
-          isUnscheduled: isUnscheduled, isApproved: !isUnscheduled
-        });
+        const clockInStamp = new Date().toISOString();
+        const punchData = {
+          employeeId: appUser.id,
+          employeeName: appUser.name,
+          clockInTime: clockInStamp,
+          status: 'clocked_in',
+          restaurantId: appUser.restaurantId,
+          date: getToday(),
+          breakMinutes: 0,
+          isUnscheduled: isUnscheduled,
+          isApproved: !isUnscheduled
+        };
+        const punchRef = await addDoc(collection(db, "timePunches"), punchData);
+        setActivePunch({ id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 });
         
         // Blast the manager alert to the Message Board
         if (isUnscheduled) {
@@ -171,7 +210,12 @@ const handleClockIn = async () => {
         }
         
         addToast('Clocked In', isUnscheduled ? 'Unscheduled shift started. Manager notified.' : 'Shift started successfully.');
-      } catch (e) { addToast('Error', e.message); }
+      } catch (e) { 
+        setActivePunch(null);
+        addToast('Error', e.message); 
+      } finally {
+        setClockActionBusy(false);
+      }
     };
 
     if (appUser?.systemSettings?.geofence) {
@@ -199,31 +243,39 @@ const handleClockIn = async () => {
   };
 
   const handleStartBreak = async () => {
-    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: new Date().toISOString(), status: 'on_break' });
+    if (!activePunch?.id) return;
+    const breakStartTime = new Date().toISOString();
+    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime, status: 'on_break' });
+    setActivePunch(prev => prev ? { ...prev, breakStartTime, status: 'on_break' } : prev);
     addToast('Break Started', 'Enjoy your break.');
   };
 
   const handleEndBreak = async () => {
+    if (!activePunch?.id) return;
     const breakStart = new Date(activePunch.breakStartTime);
     const now = new Date();
-    const mins = (now - breakStart) / 60000;
+    const mins = Number.isNaN(breakStart.getTime()) ? 0 : (now - breakStart) / 60000;
     const currentBreaks = activePunch.breakMinutes || 0;
-    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: null, breakMinutes: currentBreaks + mins, status: 'clocked_in' });
+    const breakMinutes = currentBreaks + mins;
+    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: null, breakMinutes, status: 'clocked_in' });
+    setActivePunch(prev => prev ? { ...prev, breakStartTime: null, breakMinutes, status: 'clocked_in' } : prev);
     addToast('Break Ended', 'Welcome back to work.');
   };
 
   const initiateClockOut = () => {
+    if (clockActionBusy) return;
     if (appUser?.systemSettings?.tips) { setIsTipModalOpen(true); } 
     else { finalizeClockOut(); }
   };
 
   const finalizeClockOut = async (e) => {
     if(e) e.preventDefault();
-    if (!activePunch) return;
+    if (!activePunch || clockActionBusy) return;
+    const punchToClose = activePunch;
     try {
-      let finalBreakMins = activePunch.breakMinutes || 0;
-      if (activePunch.status === 'on_break') {
-         const breakStart = new Date(activePunch.breakStartTime);
+      let finalBreakMins = punchToClose.breakMinutes || 0;
+      if (punchToClose.status === 'on_break') {
+         const breakStart = new Date(punchToClose.breakStartTime);
          finalBreakMins += (new Date() - breakStart) / 60000;
       }
       
@@ -244,7 +296,10 @@ Clock out anyway?`);
         breakStartTime: null,
         ...(geofenceReview.update || {})
       };
-      await updateDoc(doc(db, "timePunches", activePunch.id), punchUpdate);
+      setClockActionBusy(true);
+      recentlyClockedOutRef.current[punchToClose.id] = Date.now() + 30000;
+      setActivePunch(null);
+      await updateDoc(doc(db, "timePunches", punchToClose.id), punchUpdate);
       if (geofenceReview.alertNeeded) {
         const distText = geofenceReview.distanceFeet ? `${Math.round(geofenceReview.distanceFeet)} ft outside required area` : 'location not verified';
         const alertTitle = `GEOFENCE CLOCK-OUT REVIEW: ${appUser.name} clocked out with ${distText}. Review Financials → Timesheets.`;
@@ -258,7 +313,7 @@ Clock out anyway?`);
           restaurantId: appUser.restaurantId,
           employeeId: appUser.id,
           employeeName: appUser.name,
-          punchId: activePunch.id,
+          punchId: punchToClose.id,
           replies: [],
           geofenceStatus: geofenceReview.status || 'review'
         });
@@ -274,7 +329,13 @@ Clock out anyway?`);
       setIsTipModalOpen(false);
       setTipCash(''); setTipCredit('');
       addToast('Clocked Out', 'Shift ended. Great work today!');
-    } catch (err) { addToast('Error', err.message); }
+    } catch (err) {
+      if (punchToClose?.id) delete recentlyClockedOutRef.current[punchToClose.id];
+      setActivePunch(punchToClose || null);
+      addToast('Error', err.message); 
+    } finally {
+      setClockActionBusy(false);
+    }
   };
 
 // --- SHIFT LOGIC ---
@@ -384,7 +445,7 @@ const handleOfferSwap = async (shift) => {
             <label className={T.label}>Credit Card Tips ($)</label>
             <input type="number" step="0.01" min="0" value={tipCredit} onChange={e=>setTipCredit(e.target.value)} className={T.input} placeholder="0.00"/>
           </div>
-          <button type="submit" className={`w-full ${T.btn}`}>Finalize Clock Out</button>
+          <button type="submit" disabled={clockActionBusy} className={`w-full ${T.btn} disabled:opacity-60 disabled:cursor-not-allowed`}>{clockActionBusy ? 'Finalizing...' : 'Finalize Clock Out'}</button>
         </form>
       </Modal>
 
@@ -422,8 +483,8 @@ const handleOfferSwap = async (shift) => {
             
             {activePunch ? (
               <div className="space-y-2 relative z-10">
-                <button onClick={initiateClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
-                  <span>CLOCK OUT</span>
+                <button onClick={initiateClockOut} disabled={clockActionBusy} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                  <span>{clockActionBusy ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
                   <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(activePunch.clockInTime)}</span>
                 </button>
                 {appUser?.systemSettings?.breaks && (
@@ -435,8 +496,8 @@ const handleOfferSwap = async (shift) => {
                 )}
               </div>
             ) : (
-              <button onClick={handleClockIn} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10">
-                CLOCK IN
+              <button onClick={handleClockIn} disabled={clockActionBusy} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10 disabled:opacity-60 disabled:cursor-not-allowed">
+                {clockActionBusy ? 'CLOCKING IN...' : 'CLOCK IN'}
               </button>
             )}
 

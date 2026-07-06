@@ -1,12 +1,16 @@
 # 86 Chaos
 
-Current build: 13.1.19
+Current build: 13.1.20
 
-## 13.1.19 focus
-- Reorganized the System Administrator tab into cleaner professional groups: Overview, Customer Operations, Support & Safety, and Reference.
-- Fixed Live Activity / Recent Activity visibility by tightening heartbeat display logic and adding clearer Firestore-rule error feedback.
-- Repaired push-notification enrollment so already-approved browsers resync their FCM token on login.
-- Updated Firestore rules so users can safely save their own presence and push-token fields, while protected admin fields stay locked down.
-- Changed microphone phrases like “86 ranch” and “we’re out of fries” to send an important 86 alert instead of editing inventory.
-- Split review stamp wording so creating a stamp and viewing stamps are no longer confused.
-- Changed full-system lockout wording to show a maintenance screen instead of subscription language.
+## 13.1.20 focus
+
+This build tightens the employee Time Clock button state so punch actions flip immediately without requiring an app refresh.
+
+- Clock In now shows a short in-progress state, saves the punch, and immediately changes to Clock Out for the employee.
+- Clock Out now immediately changes back to Clock In after the employee confirms/finalizes the punch-out.
+- The active-punch listener now avoids a fragile status-filter query and filters active punches client-side, reducing Firestore index/rule surprises for regular employees.
+- Optimistic state guards prevent stale live snapshots from briefly undoing the button flip after a punch action.
+
+## Deploy notes
+
+Deploy through the normal GitHub → Vercel flow. No API route, Firestore rules, or Storage rules changes are required for this version.
