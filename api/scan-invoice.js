@@ -1,6 +1,6 @@
 // 86chaos invoice scanner
 // Extracts ALL visible invoice information from PDF or image files.
-// Uses Gemini multimodal document understanding when GEMINI_API_KEY or GOOGLE_API_KEY is set.
+// 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
 function cleanJsonText(text = '') {
   return String(text)
@@ -10,41 +10,101 @@ function cleanJsonText(text = '') {
     .trim();
 }
 
+function parseMoneyNumber(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const cleaned = String(value).replace(/[$,]/g, '').replace(/[()]/g, '-').trim();
+  const num = Number.parseFloat(cleaned);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function normalizeRow(row, index, data = {}) {
+  const r = row && typeof row === 'object' ? row : { rawText: String(row || '') };
+  const itemName = r.itemName || r.description || r.name || r.rawText || `Invoice Row ${index + 1}`;
+  const normalized = {
+    rowIndex: r.rowIndex ?? index + 1,
+    rowType: r.rowType || r.lineType || r.type || 'item',
+    productCode: r.productCode || r.sku || r.itemNumber || r.itemCode || r.code || r.pfgCode || '',
+    itemName,
+    description: r.description || itemName,
+    quantity: r.quantity ?? r.qty ?? r.shippedQty ?? r.receivedQty ?? '',
+    orderedQty: r.orderedQty ?? '',
+    shippedQty: r.shippedQty ?? r.receivedQty ?? '',
+    backOrderedQty: r.backOrderedQty ?? '',
+    packSize: r.packSize || r.pack || r.size || r.uom || '',
+    uom: r.uom || r.unitOfMeasure || '',
+    weight: r.weight || r.catchWeight || '',
+    unitPrice: r.unitPrice ?? r.casePrice ?? r.priceEach ?? '',
+    totalPrice: r.totalPrice ?? r.extendedPrice ?? r.lineTotal ?? '',
+    tax: r.tax ?? '',
+    discount: r.discount ?? '',
+    deposit: r.deposit ?? '',
+    rawText: r.rawText || '',
+    confidence: r.confidence || data.confidence || '',
+    ...r
+  };
+  normalized.isInventoryLine = isPurchasedProductRow(normalized);
+  return normalized;
+}
+
+function isPurchasedProductRow(row = {}) {
+  const rowType = String(row.rowType || row.lineType || row.type || '').toLowerCase();
+  const itemName = String(row.itemName || row.description || row.name || row.rawText || '').trim();
+  const raw = String(row.rawText || '').trim();
+  const combined = `${rowType} ${itemName} ${raw}`.toLowerCase();
+
+  if (!itemName || itemName.length < 2) return false;
+
+  // Explicit non-stock document/admin rows. These should be saved in allExtractedRows only,
+  // never pushed into Stock Matcher or inventory updates.
+  if (/(header|footer|note|memo|terms|customer|bill\s*to|ship\s*to|sold\s*to|remit|address|phone|email|metadata|page|route|invoice\s*(number|date)?|statement|subtotal|grand\s*total|total\s*due|balance|tax|freight|delivery|fuel|service\s*charge|fee|charge|deposit|discount|credit|payment|amount\s*due|change\s*due|signature)/i.test(combined)) return false;
+  if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return false;
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return false;
+  if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasValue(row.quantity)) return false;
+
+  const qty = parseMoneyNumber(row.quantity ?? row.qty ?? row.shippedQty ?? row.receivedQty ?? row.orderedQty);
+  const unitPrice = parseMoneyNumber(row.unitPrice ?? row.priceEach ?? row.casePrice);
+  const totalPrice = parseMoneyNumber(row.totalPrice ?? row.extendedPrice ?? row.lineTotal);
+  const hasQuantity = qty > 0;
+  const hasPrice = unitPrice > 0 || totalPrice > 0;
+  const hasSku = hasValue(row.productCode || row.sku || row.itemNumber || row.itemCode || row.code || row.pfgCode);
+  const hasPack = hasValue(row.packSize || row.pack || row.size || row.uom || row.unitOfMeasure || row.weight || row.catchWeight);
+
+  // Product rows on restaurant invoices almost always have a quantity plus at least
+  // one purchasing signal: SKU/code, pack/UOM, unit price, or line total.
+  if (!hasQuantity) return false;
+  if (!(hasPrice || hasSku || hasPack)) return false;
+
+  // A $0 row with no SKU and no pack is almost always a header/contact artifact.
+  if (!hasPrice && !hasSku && !hasPack) return false;
+
+  return true;
+}
+
 function normalizeInvoicePayload(parsed) {
   const data = parsed && typeof parsed === 'object' ? parsed : {};
-  const lineItems = Array.isArray(data.lineItems) ? data.lineItems : [];
+  const modelLineItems = Array.isArray(data.lineItems) ? data.lineItems : [];
   const allExtractedRows = Array.isArray(data.allExtractedRows)
     ? data.allExtractedRows
     : Array.isArray(data.invoiceRows)
       ? data.invoiceRows
-      : lineItems;
+      : modelLineItems;
 
-  const normalizedRows = allExtractedRows.map((row, index) => {
-    const r = row && typeof row === 'object' ? row : { rawText: String(row || '') };
-    const itemName = r.itemName || r.description || r.name || r.rawText || `Invoice Row ${index + 1}`;
-    return {
-      rowIndex: r.rowIndex ?? index + 1,
-      rowType: r.rowType || r.lineType || r.type || 'item',
-      productCode: r.productCode || r.sku || r.itemNumber || r.itemCode || r.code || r.pfgCode || '',
-      itemName,
-      description: r.description || itemName,
-      quantity: r.quantity ?? r.qty ?? r.shippedQty ?? r.receivedQty ?? '',
-      orderedQty: r.orderedQty ?? '',
-      shippedQty: r.shippedQty ?? r.receivedQty ?? '',
-      backOrderedQty: r.backOrderedQty ?? '',
-      packSize: r.packSize || r.pack || r.size || r.uom || '',
-      uom: r.uom || r.unitOfMeasure || '',
-      weight: r.weight || r.catchWeight || '',
-      unitPrice: r.unitPrice ?? r.casePrice ?? r.priceEach ?? '',
-      totalPrice: r.totalPrice ?? r.extendedPrice ?? r.lineTotal ?? '',
-      tax: r.tax ?? '',
-      discount: r.discount ?? '',
-      deposit: r.deposit ?? '',
-      rawText: r.rawText || '',
-      confidence: r.confidence || data.confidence || '',
-      ...r
-    };
-  });
+  const normalizedAllRows = allExtractedRows.map((row, index) => normalizeRow(row, index, data));
+  const normalizedModelLineItems = modelLineItems.map((row, index) => normalizeRow(row, index, data));
+
+  // Stock Matcher must only receive physical products that were purchased/delivered.
+  // Keep the rest in allExtractedRows/raw audit so invoice history remains complete.
+  const productRows = (normalizedModelLineItems.length ? normalizedModelLineItems : normalizedAllRows)
+    .filter(isPurchasedProductRow)
+    .map(row => ({ ...row, isInventoryLine: true }));
+
+  const skippedRows = normalizedAllRows
+    .filter(row => !isPurchasedProductRow(row))
+    .map(row => ({ ...row, isInventoryLine: false }));
 
   return {
     vendorName: data.vendorName || data.vendor || data.supplierName || '',
@@ -72,16 +132,16 @@ function normalizeInvoicePayload(parsed) {
     charges: Array.isArray(data.charges) ? data.charges : [],
     credits: Array.isArray(data.credits) ? data.credits : [],
     payments: Array.isArray(data.payments) ? data.payments : [],
-    lineItems: normalizedRows,
-    allExtractedRows: normalizedRows,
+    lineItems: productRows,
+    allExtractedRows: normalizedAllRows,
+    skippedRows,
     rawTranscription: data.rawTranscription || data.fullText || '',
     extractionNotes: data.extractionNotes || [],
     extractionWarnings: data.extractionWarnings || [],
     confidence: data.confidence || 'review',
-    scannerVersion: '13.0.3'
+    scannerVersion: '13.1.10'
   };
 }
-
 
 const admin = require('firebase-admin');
 
@@ -120,13 +180,23 @@ function sanitizeStoragePath(path = '') {
   return clean;
 }
 
+function detectMimeType(fileName = '', providedMime = '') {
+  const lower = String(fileName || '').toLowerCase();
+  if (providedMime && providedMime !== 'application/octet-stream') return providedMime;
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+  return 'image/jpeg';
+}
+
 async function readScanSource(reqBody, req, adminApp) {
   const body = reqBody || {};
-  const mimeType = body.mimeType || 'image/jpeg';
   const fileName = body.fileName || 'invoice';
+  const mimeType = detectMimeType(fileName, body.mimeType || '');
 
   // Preferred production path: browser uploads file directly to Firebase Storage,
-  // then sends only the small storage path to Vercel. This avoids Vercel's 4.5MB request limit.
+  // then sends only the small storage path to Vercel. This avoids Vercel request limits.
   if (body.storagePath) {
     const decoded = await verifySignedIn(req, adminApp);
     const storagePath = sanitizeStoragePath(body.storagePath);
@@ -136,17 +206,18 @@ async function readScanSource(reqBody, req, adminApp) {
     }
     const bucket = adminApp.storage().bucket();
     const [buffer] = await bucket.file(storagePath).download();
-    const detectedMime = body.mimeType || (fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-    const pdfLike = detectedMime === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
-    const maxBytes = pdfLike ? 50 * 1024 * 1024 : 95 * 1024 * 1024;
+    const pdfLike = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
+    const maxBytes = pdfLike
+      ? parseInt(process.env.INVOICE_SCAN_MAX_PDF_BYTES || String(100 * 1024 * 1024), 10)
+      : parseInt(process.env.INVOICE_SCAN_MAX_IMAGE_BYTES || String(100 * 1024 * 1024), 10);
     if (buffer.length > maxBytes) {
-      throw new Error(pdfLike
-        ? 'PDF is over Gemini\'s 50MB document limit. Split it into smaller PDFs or scan fewer pages at once.'
-        : 'Image/file is too large for one scan. Try a smaller file or fewer pages.');
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      throw new Error(`Invoice file is over the current ${mb}MB scanner limit. Split it into smaller files or scan fewer pages at once.`);
     }
     return {
-      fileBase64: buffer.toString('base64'),
-      mimeType: detectedMime,
+      fileBase64: null,
+      fileBuffer: buffer,
+      mimeType,
       fileName,
       source: 'firebase-storage',
       storagePath,
@@ -157,43 +228,117 @@ async function readScanSource(reqBody, req, adminApp) {
 
   // Legacy/fallback path for small images only. Large files should use storagePath.
   if (!body.fileBase64) throw new Error('Missing scan file. Please upload the invoice again.');
+  const fileBase64 = String(body.fileBase64).replace(/^data:[^;]+;base64,/, '');
   return {
-    fileBase64: body.fileBase64,
+    fileBase64,
+    fileBuffer: null,
     mimeType,
     fileName,
     source: 'inline-base64',
-    originalBytes: Math.round((String(body.fileBase64).length * 3) / 4)
+    originalBytes: Math.round((fileBase64.length * 3) / 4)
   };
 }
 
-module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+async function uploadToGeminiFiles(apiKey, scanSource) {
+  const fileBuffer = scanSource.fileBuffer;
+  if (!Buffer.isBuffer(fileBuffer) || !fileBuffer.length) throw new Error('No invoice file buffer available for Gemini upload.');
 
-  let scanSource = null;
+  const startResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(fileBuffer.length),
+      'X-Goog-Upload-Header-Content-Type': scanSource.mimeType,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      file: {
+        display_name: scanSource.fileName || 'invoice'
+      }
+    })
+  });
+
+  if (!startResponse.ok) {
+    const raw = await startResponse.text();
+    throw new Error(`Gemini file upload could not start. ${raw.slice(0, 500)}`);
+  }
+
+  const uploadUrl = startResponse.headers.get('x-goog-upload-url');
+  if (!uploadUrl) throw new Error('Gemini did not return a file upload URL.');
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': String(fileBuffer.length),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize'
+    },
+    body: fileBuffer
+  });
+
+  const uploadRaw = await uploadResponse.text();
+  if (!uploadResponse.ok) {
+    throw new Error(`Gemini file upload failed. ${uploadRaw.slice(0, 700)}`);
+  }
+
+  let uploadJson;
+  try { uploadJson = JSON.parse(uploadRaw); }
+  catch (err) { throw new Error(`Gemini file upload returned invalid JSON. ${uploadRaw.slice(0, 500)}`); }
+
+  const file = uploadJson.file || uploadJson;
+  if (!file?.uri) throw new Error('Gemini file upload finished but did not return a file URI.');
+  return waitForGeminiFileActive(apiKey, file);
+}
+
+async function waitForGeminiFileActive(apiKey, file) {
+  if (!file?.name) return file;
+  let current = file;
+  const maxWaitMs = parseInt(process.env.INVOICE_FILE_READY_TIMEOUT_MS || '90000', 10);
+  const started = Date.now();
+
+  while (Date.now() - started < maxWaitMs) {
+    const state = String(current.state || '').toUpperCase();
+    if (!state || state === 'ACTIVE' || state === 'STATE_UNSPECIFIED') return current;
+    if (state === 'FAILED') throw new Error('Gemini could not process the uploaded invoice file. Try rescanning or exporting the PDF again.');
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    const check = await fetch(`https://generativelanguage.googleapis.com/v1beta/${current.name}?key=${encodeURIComponent(apiKey)}`);
+    const raw = await check.text();
+    if (!check.ok) throw new Error(`Could not check Gemini invoice file status. ${raw.slice(0, 500)}`);
+    current = JSON.parse(raw);
+  }
+
+  throw new Error('Gemini is still preparing this invoice file. Try again in a minute, or scan fewer pages at once.');
+}
+
+async function deleteGeminiFileQuietly(apiKey, file) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY or GOOGLE_API_KEY in Vercel.' });
+    if (!file?.name) return;
+    await fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${encodeURIComponent(apiKey)}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('Could not delete temporary Gemini file:', err?.message || err);
+  }
+}
 
-    const adminApp = initAdmin();
-    scanSource = await readScanSource(req.body || {}, req, adminApp);
-    const { fileBase64, mimeType = 'image/jpeg', fileName = 'invoice' } = scanSource;
-    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-
-    const prompt = `
+function buildInvoicePrompt() {
+  return `
 You are the invoice extraction engine for a restaurant inventory system.
 
-Your job: extract ABSOLUTELY EVERYTHING visible from this invoice, receipt, order guide, delivery ticket, statement, PDF, or image.
+Your job: extract invoice data for restaurant inventory. Extract product rows separately from document/header/account rows.
 
 Rules:
 - Return ONLY valid JSON. No markdown.
 - Do not summarize.
 - Do not skip tiny rows, handwritten notes, fees, credits, taxes, deposits, totals, PO numbers, terms, route numbers, vendor/customer info, page numbers, or footer notes.
+- lineItems MUST contain ONLY physical products purchased/delivered that should be eligible to update inventory stock.
+- Do NOT put email addresses, From/To/Subject lines, vendor contact info, customer/bill-to/ship-to fields, headers, footers, page numbers, terms, totals, taxes, freight, deposits, fees, discounts, credits, payments, balances, notes, signatures, or account metadata in lineItems.
 - Preserve every visible line/row in allExtractedRows, even if it is not an inventory item.
 - If a value is unclear, include it as bestGuess and add a warning.
 - Keep rawTranscription as a readable transcription of the whole document.
-- For inventory/product rows, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
-- Mark non-product rows with rowType such as tax, freight, deposit, subtotal, total, discount, credit, payment, note, header, footer.
+- For inventory/product rows only, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
+- Mark non-product rows in allExtractedRows with rowType such as tax, freight, deposit, subtotal, total, discount, credit, payment, note, header, footer, contact, customer, metadata.
 - For catch-weight foods like chicken, beef, fish, cheese, and produce, include weight and weightPerCaseLbs when visible or strongly implied by pack size.
+- For longer multipage invoices, keep going until every visible product row is represented in lineItems and every visible row is represented in allExtractedRows.
 
 Return this JSON shape:
 {
@@ -229,27 +374,73 @@ Return this JSON shape:
   "extractionWarnings": [],
   "confidence": "high|medium|low|review"
 }`;
+}
+
+function createGenerationBody(prompt, filePart) {
+  const maxOutputTokens = parseInt(process.env.INVOICE_SCAN_MAX_OUTPUT_TOKENS || '65536', 10);
+  return {
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: prompt },
+        filePart
+      ]
+    }],
+    generationConfig: {
+      temperature: 0,
+      response_mime_type: 'application/json',
+      maxOutputTokens
+    }
+  };
+}
+
+async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  let scanSource = null;
+  let geminiFile = null;
+  try {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY or GOOGLE_API_KEY in Vercel.' });
+
+    const adminApp = initAdmin();
+    scanSource = await readScanSource(req.body || {}, req, adminApp);
+    const { mimeType = 'image/jpeg', fileName = 'invoice' } = scanSource;
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const inputMode = String(process.env.INVOICE_SCAN_INPUT_MODE || 'files').toLowerCase();
+    const useGeminiFiles = inputMode !== 'inline' && scanSource.source === 'firebase-storage' && Buffer.isBuffer(scanSource.fileBuffer);
+
+    const prompt = buildInvoicePrompt();
+    let filePart;
+    let scanInputMethod = 'inline-base64';
+
+    if (useGeminiFiles) {
+      geminiFile = await uploadToGeminiFiles(apiKey, scanSource);
+      filePart = { file_data: { mime_type: mimeType, file_uri: geminiFile.uri } };
+      scanInputMethod = 'gemini-files-api';
+    } else {
+      const fileBase64 = scanSource.fileBase64 || scanSource.fileBuffer?.toString('base64');
+      if (!fileBase64) throw new Error('No invoice file data available to scan.');
+      filePart = { inline_data: { mime_type: mimeType, data: fileBase64 } };
+    }
 
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const body = {
-      contents: [{
-        role: 'user',
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: mimeType, data: fileBase64 } }
-        ]
-      }],
-      generationConfig: {
-        temperature: 0,
-        response_mime_type: 'application/json'
-      }
-    };
+    const body = createGenerationBody(prompt, filePart);
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    const timeoutMs = parseInt(process.env.INVOICE_SCAN_TIMEOUT_MS || '285000', 10);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const raw = await response.text();
     if (!response.ok) {
@@ -257,6 +448,7 @@ Return this JSON shape:
         error: 'Gemini invoice scan failed.',
         details: raw.slice(0, 2000),
         scanSource: scanSource?.source || 'unknown',
+        scanInputMethod,
         fileName: scanSource?.fileName || fileName,
         originalBytes: scanSource?.originalBytes || null
       });
@@ -264,34 +456,47 @@ Return this JSON shape:
 
     const gemini = JSON.parse(raw);
     const text = gemini?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
-    if (!text) return res.status(502).json({ error: 'Gemini returned no invoice text.' });
+    if (!text) return res.status(502).json({ error: 'Gemini returned no invoice text.', scanInputMethod });
 
     let parsed;
     try {
       parsed = JSON.parse(cleanJsonText(text));
     } catch (err) {
-      return res.status(502).json({ error: 'Gemini returned invalid JSON.', rawText: text.slice(0, 4000) });
+      return res.status(502).json({ error: 'Gemini returned invalid JSON.', rawText: text.slice(0, 4000), scanInputMethod });
     }
 
     const normalized = normalizeInvoicePayload(parsed);
     normalized.scanFileName = fileName;
     normalized.scanMimeType = mimeType;
     normalized.scanSource = scanSource?.source || 'unknown';
+    normalized.scanInputMethod = scanInputMethod;
     normalized.scanStoragePath = scanSource?.storagePath || '';
     normalized.scanOriginalBytes = scanSource?.originalBytes || null;
+    normalized.geminiFileName = geminiFile?.name || '';
     normalized.processedAt = new Date().toISOString();
-    normalized.scannerVersion = '13.0.3';
+    normalized.scannerVersion = '13.1.10';
 
+    if (geminiFile) deleteGeminiFileQuietly(apiKey, geminiFile);
     return res.status(200).json(normalized);
   } catch (err) {
-    const message = err.message || 'Invoice scanner failed.';
-    const status = /authorization|token|permission|login/i.test(message) ? 401 : 500;
+    const isTimeout = err?.name === 'AbortError';
+    const message = isTimeout
+      ? 'Invoice scanner needed more time while AI was reading the file. Try again once, or scan fewer pages if this keeps happening.'
+      : (err.message || 'Invoice scanner failed.');
+    const status = isTimeout ? 504 : (/authorization|token|permission|login/i.test(message) ? 401 : 500);
     return res.status(status).json({
       error: message,
       hint: message.toLowerCase().includes('payload')
         ? 'Upload the invoice through Firebase Storage mode instead of sending it through Vercel.'
         : undefined,
-      scanSource: scanSource?.source || 'unknown'
+      scanSource: scanSource?.source || 'unknown',
+      scannerVersion: '13.1.10'
     });
   }
+}
+
+module.exports = handler;
+module.exports.config = {
+  maxDuration: 300,
+  memory: 1024
 };

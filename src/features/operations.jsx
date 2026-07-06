@@ -4,7 +4,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
@@ -481,6 +481,7 @@ const [searchTerm, setSearchTerm] = useState('');
 
   // AI Invoice Scanner State
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
+  const [invoiceScanProgress, setInvoiceScanProgress] = useState({ percent: 0, label: 'Ready', phase: 'idle' });
   const [scannedInvoice, setScannedInvoice] = useState(null);
 
   // Master Permission Check for Inventory Tabs
@@ -906,13 +907,50 @@ const executeOrder = async (method) => {
   const normalizeSku = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizeName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-  const scanFileViaStorage = async (file) => {
+  const parseInvoiceAmount = (value) => {
+    if (value === null || value === undefined || value === '') return 0;
+    const cleaned = String(value).replace(/[$,]/g, '').replace(/[()]/g, '-').trim();
+    const num = Number.parseFloat(cleaned);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const hasInvoiceValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
+
+  const isPurchasedInvoiceLine = (item = {}) => {
+    const rowType = String(item.rowType || item.lineType || item.type || '').toLowerCase();
+    const itemName = String(item.itemName || item.description || item.name || item.rawText || '').trim();
+    const rawText = String(item.rawText || '').trim();
+    const combined = `${rowType} ${itemName} ${rawText}`.toLowerCase();
+    if (!itemName || itemName.length < 2) return false;
+    if (/(header|footer|note|memo|terms|customer|bill\s*to|ship\s*to|sold\s*to|remit|address|phone|email|metadata|page|route|invoice\s*(number|date)?|statement|subtotal|grand\s*total|total\s*due|balance|tax|freight|delivery|fuel|service\s*charge|fee|charge|deposit|discount|credit|payment|amount\s*due|change\s*due|signature)/i.test(combined)) return false;
+    if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return false;
+    if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return false;
+    if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasInvoiceValue(item.quantity)) return false;
+
+    const qty = parseInvoiceAmount(item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? item.orderedQty);
+    const unitPrice = parseInvoiceAmount(item.unitPrice ?? item.priceEach ?? item.casePrice);
+    const totalPrice = parseInvoiceAmount(item.totalPrice ?? item.extendedPrice ?? item.lineTotal);
+    const hasQuantity = qty > 0;
+    const hasPrice = unitPrice > 0 || totalPrice > 0;
+    const hasSku = hasInvoiceValue(item.productCode || item.sku || item.itemNumber || item.itemCode || item.code || item.pfgCode);
+    const hasPack = hasInvoiceValue(item.packSize || item.pack || item.size || item.uom || item.unitOfMeasure || item.weight || item.catchWeight);
+
+    return hasQuantity && (hasPrice || hasSku || hasPack);
+  };
+
+
+  const updateInvoiceProgress = (percent, label, phase = 'working') => {
+    const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    setInvoiceScanProgress({ percent: safePercent, label, phase });
+  };
+
+  const scanFileViaStorage = async (file, onProgress = () => {}) => {
     const ext = (file.name.split('.').pop() || 'upload').toLowerCase().replace(/[^a-z0-9]/g, '') || 'upload';
     const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const restaurantId = appUser?.restaurantId || 'unknown-restaurant';
     const storagePath = `${restaurantId}/invoices/scans/${safeName}`;
     const fileRef = ref(storage, storagePath);
-    await uploadBytes(fileRef, file, {
+    const uploadTask = uploadBytesResumable(fileRef, file, {
       contentType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
       customMetadata: {
         originalName: file.name,
@@ -922,6 +960,18 @@ const executeOrder = async (method) => {
         purpose: 'invoice-scan'
       }
     });
+
+    await new Promise((resolve, reject) => {
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const uploadPercent = snapshot.totalBytes ? (snapshot.bytesTransferred / snapshot.totalBytes) * 100 : 0;
+          onProgress({ uploadPercent, bytesTransferred: snapshot.bytesTransferred, totalBytes: snapshot.totalBytes });
+        },
+        reject,
+        resolve
+      );
+    });
+
     return {
       storagePath,
       mimeType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
@@ -932,27 +982,59 @@ const executeOrder = async (method) => {
   };
 
   const handleScanInvoice = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsScanningInvoice(true);
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    addToast('Scanning Invoice', isPdf ? 'Uploading PDF safely, then extracting every visible row...' : 'Uploading image safely, then extracting every visible row...');
+    const maxBytes = isPdf ? 100 * 1024 * 1024 : 100 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      addToast('Invoice Too Large', 'This invoice is over 100MB. Split it into smaller files or scan fewer pages.');
+      e.target.value = '';
+      return;
+    }
+
+    setIsScanningInvoice(true);
+    setScannedInvoice(null);
+    updateInvoiceProgress(2, 'Preparing invoice file...', 'prepare');
+    addToast('Scanning Invoice', isPdf ? 'Uploading PDF, then sending it to the invoice scanner...' : 'Uploading photo, then sending it to the invoice scanner...');
+
+    let timeoutId = null;
+    let aiPulseId = null;
+    const controller = new AbortController();
 
     try {
-      // Important: upload the original file directly to Firebase Storage first.
-      // This avoids Vercel's request body limit, which is easy to hit when PDFs are base64 encoded.
-      let payload = await scanFileViaStorage(file);
+      // Upload the original file directly to Firebase Storage first. This is the only heavy upload.
+      // The progress bar is actual Firebase upload progress for this stage.
+      const payload = await scanFileViaStorage(file, ({ uploadPercent, bytesTransferred, totalBytes }) => {
+        const uiPercent = 5 + Math.round((uploadPercent / 100) * 55);
+        const mbDone = (bytesTransferred / (1024 * 1024)).toFixed(1);
+        const mbTotal = (totalBytes / (1024 * 1024)).toFixed(1);
+        updateInvoiceProgress(uiPercent, `Uploading original invoice: ${Math.round(uploadPercent)}% (${mbDone}/${mbTotal} MB)`, 'upload');
+      });
 
+      updateInvoiceProgress(63, 'Upload complete. Handing large document to AI file processor...', 'ai');
+      const startedAt = Date.now();
+      aiPulseId = window.setInterval(() => {
+        const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+        const waitPercent = Math.min(90, 66 + Math.floor(elapsedSeconds / 4));
+        updateInvoiceProgress(waitPercent, `AI scanner is reading the full invoice document... ${elapsedSeconds}s`, 'ai');
+      }, 2000);
+
+      timeoutId = window.setTimeout(() => controller.abort(), 320000);
       const response = await secureFetch('/api/scan-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
+
+      if (aiPulseId) window.clearInterval(aiPulseId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+      updateInvoiceProgress(92, 'Scanner finished. Building review screen...', 'reconcile');
 
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-         throw new Error("Invoice scanner crashed before returning JSON. The file may be too large for the scanner or Vercel returned an HTML error page.");
+         throw new Error("Invoice scanner returned a non-JSON response. Try a smaller invoice or check the Vercel function logs.");
       }
 
       const data = await response.json();
@@ -960,19 +1042,16 @@ const executeOrder = async (method) => {
         throw new Error(data.error || data.details || 'Failed to scan invoice.');
       }
 
-      const allRows = data.allExtractedRows || data.invoiceRows || data.lineItems || [];
-      const normalizedLineItems = allRows.map((item, rowIndex) => {
+      const fullRows = Array.isArray(data.allExtractedRows) ? data.allExtractedRows : (Array.isArray(data.invoiceRows) ? data.invoiceRows : []);
+      const candidateRows = Array.isArray(data.lineItems) && data.lineItems.length ? data.lineItems : fullRows;
+      const normalizedCandidates = candidateRows.map((item, rowIndex) => {
          const itemName = item.itemName || item.description || item.name || item.rawText || `Invoice Row ${rowIndex + 1}`;
          const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
          const skuKey = normalizeSku(incomingCode);
          const nameKey = normalizeName(itemName);
          const rowType = String(item.rowType || item.lineType || item.type || 'item').toLowerCase();
-         const isInventoryLine = !/(subtotal|total|tax|fee|charge|deposit|payment|balance|discount|credit|shipping|delivery)/i.test(rowType + ' ' + itemName);
-         const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
-         const matchByName = inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name))));
-         const match = matchByCode || matchByName;
-         return { 
-           ...item, 
+         const draftRow = {
+           ...item,
            itemName,
            productCode: incomingCode,
            quantity: item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? '',
@@ -980,21 +1059,39 @@ const executeOrder = async (method) => {
            unitPrice: item.unitPrice ?? item.priceEach ?? item.casePrice ?? '',
            totalPrice: item.totalPrice ?? item.extendedPrice ?? item.lineTotal ?? '',
            rowType,
+           rawText: item.rawText || ''
+         };
+         const isInventoryLine = isPurchasedInvoiceLine(draftRow);
+         const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
+         const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
+         const match = matchByCode || matchByName;
+         return { 
+           ...draftRow,
            isInventoryLine,
-           rawText: item.rawText || '',
-           matchId: match?.id || '',
-           matchName: match?.name || '',
+           matchedItemId: isInventoryLine && match ? match.id : '',
+           matchId: isInventoryLine && match ? match.id : '',
+           matchName: isInventoryLine && match ? match.name : '',
            action: isInventoryLine ? (match ? 'update' : 'create') : 'record'
          };
       });
-      setScannedInvoice({ ...data, lineItems: normalizedLineItems, allExtractedRows: normalizedLineItems, sourceFile: file.name });
-      addToast('Scan Complete', `Found ${normalizedLineItems.length} visible rows. Please review before approving.`);
+      const normalizedLineItems = normalizedCandidates.filter(isPurchasedInvoiceLine).map(i => ({ ...i, isInventoryLine: true }));
+      const skippedRows = (fullRows.length ? fullRows : normalizedCandidates).filter(row => !isPurchasedInvoiceLine(row));
+      updateInvoiceProgress(100, 'Review ready.', 'done');
+      setScannedInvoice({ ...data, lineItems: normalizedLineItems, skippedRows, allExtractedRows: fullRows.length ? fullRows : normalizedCandidates, sourceFile: file.name });
+      addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased product rows. ${skippedRows.length ? `${skippedRows.length} non-product rows were kept in the audit only.` : 'No non-product rows were sent to Stock Matcher.'}`);
     } catch (err) {
+      if (aiPulseId) window.clearInterval(aiPulseId);
+      if (timeoutId) window.clearTimeout(timeoutId);
       console.error(err);
-      addToast('Scan Error', err.message || 'Could not scan invoice.');
+      const message = err?.name === 'AbortError'
+        ? 'The invoice scanner needed more time. Try this same document one more time; if it keeps happening, split only the biggest PDF pages.'
+        : (err.message || 'Could not scan invoice.');
+      updateInvoiceProgress(100, message, 'error');
+      addToast('Scan Error', message);
+    } finally {
+      setIsScanningInvoice(false);
+      e.target.value = '';
     }
-    setIsScanningInvoice(false);
-    e.target.value = ''; 
   };
   const handleApproveInvoice = async () => {
      try {
@@ -1028,7 +1125,7 @@ const executeOrder = async (method) => {
 for (const item of scannedInvoice.lineItems) {
           // Catch every possible key name the AI might use for the SKU/Product Code
           const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
-          if (!item.isInventoryLine && item.matchedItemId !== 'CREATE_NEW') continue;
+          if (!item.isInventoryLine || !isPurchasedInvoiceLine(item)) continue;
 
 if (item.matchedItemId === 'CREATE_NEW') {
              // Smart Auto-Categorizer
@@ -1127,8 +1224,8 @@ const groupedItems = inventoryItems
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Rows Found</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Charges</div><div className="text-lg font-black text-white">{(scannedInvoice.charges || scannedInvoice.fees || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Product Rows</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Skipped Non-Stock</div><div className="text-lg font-black text-white">{(scannedInvoice.skippedRows || []).length}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Confidence</div><div className="text-lg font-black text-[#D4A381]">{scannedInvoice.confidence || 'Review'}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Terms</div><div className="text-xs font-black text-white truncate">{scannedInvoice.paymentTerms || scannedInvoice.terms || '—'}</div></div>
             </div>
@@ -1140,6 +1237,12 @@ const groupedItems = inventoryItems
                 {scannedInvoice.extractionNotes && <div className="mt-2 text-[10px] text-slate-300 font-bold">Notes: {Array.isArray(scannedInvoice.extractionNotes) ? scannedInvoice.extractionNotes.join(' • ') : scannedInvoice.extractionNotes}</div>}
                 {scannedInvoice.rawTranscription && <pre className="mt-2 max-h-36 overflow-auto text-[10px] whitespace-pre-wrap text-slate-400 bg-black/20 p-2 rounded-lg border border-[#2A353D]">{scannedInvoice.rawTranscription}</pre>}
               </details>
+            )}
+            
+            {(scannedInvoice.skippedRows || []).length > 0 && (
+              <div className="bg-blue-900/10 border border-blue-500/30 rounded-xl p-2 text-[10px] text-blue-200 font-bold leading-snug">
+                Non-product rows like email headers, addresses, taxes, totals, fees, and notes were kept in the Full Extraction Audit only. They will not be added to inventory.
+              </div>
             )}
             
             <div className="flex justify-between items-center mt-2 mb-1">
@@ -1442,16 +1545,33 @@ const groupedItems = inventoryItems
           <div className="flex flex-col gap-3 mb-6">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
-            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-60 pointer-events-none' : ''}`}>
                <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
-                  {isScanningInvoice ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
+                  {isScanningInvoice ? <span className="text-[11px] font-black tabular-nums">{invoiceScanProgress.percent}%</span> : <Camera size={24} />}
                   <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
                </label>
                <label className="flex-1 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381] font-black uppercase tracking-widest text-[11px] sm:text-xs" title="Upload Photo or PDF">
-                  <span>📄 Scan Invoice (PDF/Photo)</span>
+                  <span>{isScanningInvoice ? 'Scanning Invoice...' : '📄 Scan Invoice (PDF/Photo)'}</span>
                   <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
                </label>
             </div>
+            {(isScanningInvoice || invoiceScanProgress.phase === 'error') && (
+              <div className={`bg-[#12161A] border rounded-xl p-3 shadow-sm ${invoiceScanProgress.phase === 'error' ? 'border-red-500/40' : 'border-[#2A353D]'}`}>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className={`text-[10px] font-black uppercase tracking-widest ${invoiceScanProgress.phase === 'error' ? 'text-red-300' : 'text-[#D4A381]'}`}>
+                    {invoiceScanProgress.phase === 'error' ? 'Invoice scan stopped' : 'Invoice scan progress'}
+                  </div>
+                  <div className="text-[10px] font-black text-slate-400 tabular-nums">{invoiceScanProgress.percent}%</div>
+                </div>
+                <div className="h-3 bg-[#0B0E11] rounded-full overflow-hidden border border-[#2A353D]">
+                  <div className={`h-full transition-all duration-300 ${invoiceScanProgress.phase === 'error' ? 'bg-red-500' : 'bg-[#D4A381]'}`} style={{ width: `${invoiceScanProgress.percent}%` }} />
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400 font-bold leading-snug">
+                  {invoiceScanProgress.label}
+                </div>
+                {isScanningInvoice && <div className="mt-1 text-[10px] text-slate-500 font-bold">Keep this page open. Upload percentage is exact; large-document AI scanning shows the current stage and elapsed time.</div>}
+              </div>
+            )}
 
             {/* CSV IMPORT */}
             <label className={`flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>
