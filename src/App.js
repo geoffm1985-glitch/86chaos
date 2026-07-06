@@ -427,10 +427,11 @@ if (liveAppUser && clientData) {
         const stamp = new Date().toISOString();
         const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
         const deviceDiagnostics = await collectDeviceDiagnostics();
-        updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp }).catch(()=>{});
-        updateDoc(doc(db, 'users', appUser.id), {
+        const presencePayload = {
           lastActive: stamp,
           lastSeen: stamp,
+          lastHeartbeatAt: stamp,
+          presenceUpdatedAt: stamp,
           onlineState: state,
           activeTab: activeTabState,
           activeSessionId: sessionId,
@@ -439,22 +440,36 @@ if (liveAppUser && clientData) {
           notificationPermission: deviceDiagnostics.notifications,
           gpsPermission: deviceDiagnostics.gpsPermission,
           deviceDiagnostics
-        }).catch(()=>{});
+        };
+        updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: appUser.id }).catch(()=>{});
+        updateDoc(doc(db, 'users', appUser.id), presencePayload).catch((err)=>{
+          console.warn('86 Chaos presence heartbeat blocked or delayed:', err?.message || err);
+        });
       };
 
       sendHeartbeat(document.hidden ? 'away' : 'online');
-      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 60000);
+      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 25000);
       handleVisibility = () => sendHeartbeat(document.hidden ? 'away' : 'online');
       handleBeforeUnload = () => sendHeartbeat('offline');
       document.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('focus', handleVisibility);
+      window.addEventListener('online', handleVisibility);
+      window.addEventListener('pagehide', handleBeforeUnload);
       window.addEventListener('beforeunload', handleBeforeUnload);
     }
 
     return () => {
       unsub();
       if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (handleVisibility) document.removeEventListener('visibilitychange', handleVisibility);
-      if (handleBeforeUnload) window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (handleVisibility) {
+        document.removeEventListener('visibilitychange', handleVisibility);
+        window.removeEventListener('focus', handleVisibility);
+        window.removeEventListener('online', handleVisibility);
+      }
+      if (handleBeforeUnload) {
+        window.removeEventListener('pagehide', handleBeforeUnload);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      }
     };
   }, [rId, ghostTenant, appUser?.id, activeTabState]);
 
@@ -561,34 +576,67 @@ useEffect(() => {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
   };
 
-// --- AUTO-ASK FOR NOTIFICATIONS ON LOGIN ---
+// --- AUTO-ASK + TOKEN REPAIR FOR PUSH NOTIFICATIONS ---
   useEffect(() => {
-    if (liveAppUser && !ghostTenant && typeof window !== 'undefined' && 'Notification' in window) {
-      // Only ask if they haven't made a decision yet
-      if (Notification.permission === 'default') {
-        // Wait 2.5 seconds after app load so the browser doesn't flag it as spam
-        setTimeout(() => {
-          Notification.requestPermission().then(async (permission) => {
-            if (permission === 'granted' && messaging) {
-              
-              // THE FIX: Apply the Smart Target Lock here too
-              const activeVapidKey = window.location.hostname === 'app.86chaos.com' 
-                ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU' // Production
-                : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc'; // Testing Sandbox
+    if (!liveAppUser?.id || ghostTenant || typeof window === 'undefined' || !('Notification' in window) || !messaging) return;
 
-              const currentToken = await getToken(messaging, { 
-                vapidKey: activeVapidKey 
-              });
-              if (currentToken) {
-                await updateDoc(doc(db, "users", liveAppUser.id), { fcmToken: currentToken });
-                addToast('Success', 'Push notifications enabled for this device.');
-              }
-            }
-          });
-        }, 2500);
+    let canceled = false;
+    const activeVapidKey = window.location.hostname === 'app.86chaos.com'
+      ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
+      : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
+
+    const syncPushToken = async (permission, showToast = false) => {
+      if (canceled || permission !== 'granted') {
+        if (!canceled && liveAppUser?.id) {
+          updateDoc(doc(db, 'users', liveAppUser.id), {
+            notificationPermission: permission,
+            pushTokenPermission: permission,
+            lastPushTokenSyncAt: new Date().toISOString()
+          }).catch(() => {});
+        }
+        return;
       }
-    }
-  }, [liveAppUser?.id]);
+
+      try {
+        if ('serviceWorker' in navigator) {
+          await navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => null);
+        }
+        const currentToken = await getToken(messaging, { vapidKey: activeVapidKey });
+        if (!currentToken || canceled) return;
+        await updateDoc(doc(db, 'users', liveAppUser.id), {
+          fcmToken: currentToken,
+          fcmTokenUpdatedAt: new Date().toISOString(),
+          lastPushTokenSyncAt: new Date().toISOString(),
+          notificationPermission: permission,
+          pushTokenPermission: permission,
+          pushTokenHost: window.location.hostname
+        });
+        if (showToast) addToast('Push Ready', 'Push notifications are enabled for this device.');
+      } catch (err) {
+        console.warn('86 Chaos push token sync failed:', err?.message || err);
+        updateDoc(doc(db, 'users', liveAppUser.id), {
+          notificationPermission: permission,
+          pushTokenPermission: permission,
+          lastPushTokenSyncAt: new Date().toISOString()
+        }).catch(() => {});
+      }
+    };
+
+    const timer = setTimeout(async () => {
+      if (Notification.permission === 'default') {
+        try {
+          const permission = await Notification.requestPermission();
+          await syncPushToken(permission, permission === 'granted');
+        } catch (err) {
+          console.warn('86 Chaos notification permission request failed:', err?.message || err);
+        }
+      } else {
+        await syncPushToken(Notification.permission, false);
+      }
+    }, 2500);
+
+    return () => { canceled = true; clearTimeout(timer); };
+  }, [liveAppUser?.id, ghostTenant]);
                       
   // --- FOREGROUND NOTIFICATION CATCHER ---
   useEffect(() => {
@@ -656,14 +704,14 @@ useEffect(() => {
     );
   };
 
-  // BILLING LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
+  // MAINTENANCE LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
   if (clientData?.billingStatus === 'Past Due' && !ghostTenant) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">
-          <span className="text-6xl mb-4 block">🚫</span>
-          <h1 className="text-2xl font-black text-white mb-2">Subscription Past Due</h1>
-          <p className="text-slate-400 font-medium mb-6">Access to 86 Chaos has been temporarily suspended for {clientData.name || 'this workspace'}. Please contact your management team or 86 Chaos Support to renew your plan.</p>
+          <span className="text-6xl mb-4 block">🛠️</span>
+          <h1 className="text-2xl font-black text-white mb-2">Down for Maintenance</h1>
+          <p className="text-slate-400 font-medium mb-6">86 Chaos is temporarily down for maintenance for {clientData.name || 'this workspace'}. Please check back shortly or contact your management team if service does not return soon.</p>
           <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
         </div>
       </div>

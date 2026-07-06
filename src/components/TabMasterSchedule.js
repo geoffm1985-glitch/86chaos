@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Bell, Calendar, Repeat, Clock } from 'lucide-react';
 import TabMonth from './TabMonth';
@@ -10,27 +10,48 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   
   // --- TIME CLOCK LOGIC ---
   const [activePunch, setActivePunch] = useState(null);
+  const [clockActionBusy, setClockActionBusy] = useState(false);
+  const [clockActionType, setClockActionType] = useState(null);
+  const [clockActionPunch, setClockActionPunch] = useState(null);
+  const recentlyClockedOutRef = useRef({});
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
 
   useEffect(() => {
-    if (!appUser?.id) return;
+    if (!appUser?.id || !appUser?.restaurantId) {
+      setActivePunch(null);
+      return;
+    }
     const q = query(
-      collection(db, 'timePunches'), 
-      where('employeeId', '==', appUser.id), 
-      where('status', 'in', ['clocked_in', 'on_break'])
+      collection(db, 'timePunches'),
+      where('restaurantId', '==', appUser.restaurantId),
+      where('employeeId', '==', appUser.id)
     );
     const unsub = onSnapshot(q, snap => {
-      if (!snap.empty) { setActivePunch({ id: snap.docs[0].id, ...snap.docs[0].data() }); } 
-      else { setActivePunch(null); }
+      const punches = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => ['clocked_in', 'on_break'].includes(p.status))
+        .sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
+      const newest = punches[0] || null;
+      setActivePunch(prev => {
+        if (newest?.id) {
+          const suppressUntil = recentlyClockedOutRef.current[newest.id] || 0;
+          return Date.now() < suppressUntil ? null : newest;
+        }
+        if (prev?._optimisticUntil && Date.now() < prev._optimisticUntil) return prev;
+        return null;
+      });
     });
     return () => unsub();
-  }, [appUser?.id, db]);
+  }, [appUser?.id, appUser?.restaurantId, db]);
 
   const handleClockIn = async () => {
+    if (clockActionBusy || activePunch) return;
+    setClockActionType('in');
+    setClockActionBusy(true);
     try {
-      await addDoc(collection(db, "timePunches"), { 
+      const punchData = { 
         employeeId: appUser.id, 
         employeeName: appUser.name, 
         clockInTime: new Date().toISOString(), 
@@ -38,9 +59,18 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
         restaurantId: appUser.restaurantId, 
         date: getToday(),
         breakMinutes: 0
-      });
+      };
+      const punchRef = await addDoc(collection(db, "timePunches"), punchData);
+      setActivePunch({ id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 });
       addToast('Clocked In', 'Shift started successfully.');
-    } catch (e) { addToast('Error', e.message); }
+    } catch (e) {
+      setActivePunch(null);
+      addToast('Error', e.message);
+    } finally {
+      setClockActionBusy(false);
+      setClockActionType(null);
+      setClockActionPunch(null);
+    }
   };
 
   const handleStartBreak = async () => {
@@ -58,33 +88,48 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   };
 
   const initiateClockOut = () => {
+    if (clockActionBusy) return;
     if (appUser?.systemSettings?.tips) { setIsTipModalOpen(true); } 
     else { finalizeClockOut(); }
   };
 
   const finalizeClockOut = async (e) => {
     if(e) e.preventDefault();
-    if (!activePunch) return;
+    if (!activePunch || clockActionBusy) return;
+    const punchToClose = activePunch;
     try {
-      let finalBreakMins = activePunch.breakMinutes || 0;
-      if (activePunch.status === 'on_break') {
-         const breakStart = new Date(activePunch.breakStartTime);
+      let finalBreakMins = punchToClose.breakMinutes || 0;
+      if (punchToClose.status === 'on_break') {
+         const breakStart = new Date(punchToClose.breakStartTime);
          finalBreakMins += (new Date() - breakStart) / 60000;
       }
-      
-      await updateDoc(doc(db, "timePunches", activePunch.id), { 
-        clockOutTime: new Date().toISOString(), 
+      const clockOutTime = new Date().toISOString();
+      setClockActionType('out');
+      setClockActionPunch(punchToClose);
+      setClockActionBusy(true);
+      recentlyClockedOutRef.current[punchToClose.id] = Date.now() + 30000;
+      await updateDoc(doc(db, "timePunches", punchToClose.id), { 
+        clockOutTime, 
         status: 'clocked_out',
         cashTips: parseFloat(tipCash) || 0,
         creditTips: parseFloat(tipCredit) || 0,
         breakMinutes: finalBreakMins,
         breakStartTime: null
       });
+      setActivePunch(null);
       
       setIsTipModalOpen(false);
       setTipCash(''); setTipCredit('');
       addToast('Clocked Out', 'Shift ended. Great work today!');
-    } catch (err) { addToast('Error', err.message); }
+    } catch (err) {
+      if (punchToClose?.id) delete recentlyClockedOutRef.current[punchToClose.id];
+      setActivePunch(punchToClose || null);
+      addToast('Error', err.message);
+    } finally {
+      setClockActionBusy(false);
+      setClockActionType(null);
+      setClockActionPunch(null);
+    }
   };
 
   // --- SHIFT LOGIC ---
@@ -131,6 +176,8 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     }
   };
 
+  const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
+
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-24">
       
@@ -145,7 +192,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
             <label className={T.label}>Credit Card Tips ($)</label>
             <input type="number" step="0.01" min="0" value={tipCredit} onChange={e=>setTipCredit(e.target.value)} className={T.input} placeholder="0.00"/>
           </div>
-          <button type="submit" className={`w-full ${T.btn}`}>Finalize Clock Out</button>
+          <button type="submit" disabled={clockActionBusy} className={`w-full ${T.btn} disabled:opacity-60 disabled:cursor-not-allowed`}>{clockActionBusy ? 'Finalizing...' : 'Finalize Clock Out'}</button>
         </form>
       </Modal>
 
@@ -175,14 +222,14 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
               <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(myNextShift.date)}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
             ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
             
-            {activePunch ? (
+            {effectiveActivePunch ? (
               <div className="space-y-2 relative z-10">
-                <button onClick={initiateClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
-                  <span>CLOCK OUT</span>
-                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {new Date(activePunch.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                <button onClick={initiateClockOut} disabled={clockActionBusy} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                  <span>{clockActionBusy && clockActionType === 'out' ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
+                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {new Date(effectiveActivePunch.clockInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </button>
                 {appUser?.systemSettings?.breaks && (
-                  activePunch.status === 'on_break' ? (
+                  effectiveActivePunch.status === 'on_break' ? (
                     <button onClick={handleEndBreak} className="w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
                   ) : (
                     <button onClick={handleStartBreak} className="w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
@@ -190,8 +237,8 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
                 )}
               </div>
             ) : (
-              <button onClick={handleClockIn} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10">
-                CLOCK IN
+              <button onClick={handleClockIn} disabled={clockActionBusy} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10 disabled:opacity-60 disabled:cursor-not-allowed">
+                {clockActionBusy && clockActionType === 'in' ? 'CLOCKING IN...' : 'CLOCK IN'}
               </button>
             )}
 

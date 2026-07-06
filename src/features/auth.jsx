@@ -161,48 +161,55 @@ const LoginScreen = ({ setAppUser }) => {
         <div className="space-y-4 text-xs font-medium text-slate-300 leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="text-center border-b border-[#2A353D] pb-3 mb-3">
             <h3 className="font-black text-white text-lg uppercase tracking-widest">Privacy Policy for 86chaos</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 2, 2026</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 6, 2026</p>
           </div>
-          <p>Chilton App Works, LLC ("we," "us," or "our") operates the 86chaos restaurant operating system (the "Service"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application and website.</p>
-          
+          <p>Chilton App Works, LLC ("we," "us," or "our") operates the 86chaos restaurant operations web app, progressive web app, and related services (the "Service"). This policy explains what information may be collected, how it is used, and how restaurants and employees can request help with privacy questions.</p>
+          <p>86chaos is built for restaurants and workplace operations. It is not directed to children under 13, and restaurant managers should not create accounts for children who are not legally authorized to use workplace systems.</p>
+
           <h4 className="font-black text-[#D4A381] text-sm mt-4">1. Information We Collect</h4>
-          <p>We collect information that identifies, relates to, describes, or could reasonably be linked to you or your restaurant, including:</p>
+          <p>Depending on what your restaurant enables, we may collect:</p>
           <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
-            <li><strong className="text-white">Personal & Account Information:</strong> Names, email addresses, phone numbers, and profile photos.</li>
-            <li><strong className="text-white">Employment & Financial Data:</strong> Job titles, hourly wages, time punches, shift schedules, tips declared, and custom permissions.</li>
-            <li><strong className="text-white">Location Data (GPS):</strong> We collect precise location data exclusively when you attempt to clock in or out. This data is used solely to verify your presence within your employer's designated GPS geofence boundary. We do not track your location in the background.</li>
-            <li><strong className="text-white">Device & Telemetry Data:</strong> To improve system stability, we collect device information (Operating System, screen size, user agent), IP addresses (for security whitelisting), and usage telemetry (such as recent buttons clicked) attached to crash reports.</li>
-            <li><strong className="text-white">Images & Camera Data:</strong> We access your device camera and photo library, with your explicit permission, for scanning vendor invoices and attaching photos to the Message Board or Events ledger.</li>
+            <li><strong className="text-white">Account and Staff Information:</strong> name, email/login label, phone number, profile photo, job role, permissions, workspace/restaurant ID, and account status.</li>
+            <li><strong className="text-white">Scheduling and Labor Information:</strong> shifts, time punches, time-off requests, trade requests, wage labels entered by management, tips, approvals, punch corrections, and manager notes.</li>
+            <li><strong className="text-white">Location Information:</strong> precise GPS location may be requested only when a clock-in or clock-out location rule is enabled. Location is used to compare the punch against the restaurant's required work area. 86chaos does not run background location tracking.</li>
+            <li><strong className="text-white">Operational Content:</strong> prep lists, inventory records, recipes, invoices, vendor information, maintenance logs, sales/ledger entries, message board posts, likes, alerts, and uploaded attachments.</li>
+            <li><strong className="text-white">Camera, Files, and Photos:</strong> with permission, the app can use camera/file access for invoice scanning, profile photos, message attachments, maintenance photos, and similar restaurant workflows.</li>
+            <li><strong className="text-white">Device, Security, and Diagnostic Data:</strong> browser/device type, screen size, active tab, notification permission status, push token status, service worker support, IndexedDB support, error logs, audit logs, and recent app actions attached to crash reports.</li>
           </ul>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">2. How We Use Your Information</h4>
-          <p>We use the collected information to:</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">2. How We Use Information</h4>
           <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
-            <li>Facilitate core operational features, including time tracking, scheduling, and inventory management.</li>
-            <li>Process vendor invoices through our AI integration to extract line items and update stock. (Note: AI processing is used strictly for document parsing, not for biometric or facial recognition).</li>
-            <li>Send push notifications regarding shift changes, trade board requests, and critical manager alerts.</li>
-            <li>Monitor system health, troubleshoot crashes, and prevent fraudulent activity.</li>
+            <li>Provide restaurant operations tools, including scheduling, time clock, staff management, inventory, prep, message board, financial/labor views, maintenance, backups, and support tools.</li>
+            <li>Verify location-based punches when the restaurant enables geofence rules and mark punches for manager review when needed.</li>
+            <li>Send notifications about schedules, shift changes, messages, trade requests, time-off updates, manager alerts, and system notices.</li>
+            <li>Scan vendor invoices with AI document parsing so managers can review purchased product rows before updating inventory.</li>
+            <li>Secure the app, troubleshoot bugs, investigate support issues, maintain audit trails, prevent unauthorized access, and restore data from backups.</li>
           </ul>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">3. Third-Party Data Sharing</h4>
-          <p>We do not sell your personal data. We share data only with essential third-party service providers who assist in operating the Service:</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">3. Sharing and Service Providers</h4>
+          <p>We do not sell personal information. We share information only as needed to operate the Service, support your restaurant, comply with legal requirements, or protect the app and users.</p>
           <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
-            <li><strong className="text-white">Cloud Hosting & Database:</strong> Google Cloud/Firebase (for secure data storage and authentication).</li>
-            <li><strong className="text-white">Serverless Infrastructure:</strong> Vercel (for routing and processing data).</li>
-            <li><strong className="text-white">AI Processing:</strong> Third-party AI APIs are used specifically to parse and read uploaded invoice images.</li>
-            <li><strong className="text-white">External Integrations:</strong> If your employer connects 86chaos to third-party Point of Sale (POS) or Payroll providers, data is transmitted to those entities according to your employer's configuration.</li>
+            <li><strong className="text-white">Cloud hosting, database, authentication, push, and storage:</strong> Google Cloud/Firebase services.</li>
+            <li><strong className="text-white">Web hosting and serverless routes:</strong> Vercel.</li>
+            <li><strong className="text-white">AI document processing:</strong> AI providers used only for document parsing workflows such as invoice scanning, not for facial recognition or biometric identification.</li>
+            <li><strong className="text-white">Optional integrations:</strong> POS, payroll, accounting, notification, or other providers connected by your restaurant.</li>
           </ul>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">4. Employer Control (B2B Clause)</h4>
-          <p>86chaos is a B2B service provided to your employer. Your employer acts as the primary Data Controller. If you are an employee seeking to access, modify, or permanently delete your personal data (such as time punches or account records), you must direct those requests to your restaurant management team.</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">4. Restaurant / Employer Control</h4>
+          <p>86chaos is a business-to-business tool. Your restaurant/employer controls most workspace content and staff records. Employees who want to access, correct, export, or delete workplace records should contact restaurant management first. We can assist the restaurant with support requests when appropriate.</p>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">5. Data Security & Retention</h4>
-          <p>We use industry-standard security measures, including encryption and secure server environments, to protect your data. Data is retained for as long as your employer maintains an active workspace. If an employer deletes a user or a workspace, the associated data is permanently purged from our active databases.</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">5. Data Retention</h4>
+          <p>Operational data is retained while the restaurant workspace is active and as needed for payroll, scheduling, compliance, support, backups, fraud prevention, and legitimate business records. Backup files may retain restored or historical data for a limited backup window. If a workspace or user is deleted, active records are removed according to the restaurant's instructions and our backup/maintenance practices.</p>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">6. Contact Us</h4>
-          <p>If you have questions about this Privacy Policy, please contact us at:</p>
-          <p className="text-white font-bold mt-1">Email: support@86chaos.com<br/>Company: Chilton App Works, LLC</p>
-        </div>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">6. Security</h4>
+          <p>We use authentication, role-based permissions, server-side admin routes, audit logs, secure hosting, Firebase security rules, and backup controls to protect data. No system is perfect, so restaurants should use strong passwords, limit administrator access, and promptly disable accounts that no longer need access.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">7. Choices and Permissions</h4>
+          <p>You can deny browser permissions such as notifications, camera, or location, but some features may be limited. Location permission is only requested for location-based punch verification. Push notification preferences may be controlled inside the app or through the browser/device settings.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">8. Contact Us</h4>
+          <p>If you have questions about this Privacy Policy or need help with a privacy request, contact:</p>
+          <p className="text-white font-bold mt-1">Email: support@86chaos.com<br/>Company: Chilton App Works, LLC</p>        </div>
       </Modal>
     </div>
   );

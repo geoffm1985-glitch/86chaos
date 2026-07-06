@@ -309,7 +309,7 @@ const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }
 const normalizeVoiceText = (text = '') => String(text || '').toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
 const cleanVoiceItemName = (text = '') => String(text || '')
   .replace(/^(the|a|an)\s+/i, '')
-  .replace(/\b(to|in|on|for|please|right now|today)\b/gi, ' ')
+  .replace(/\b(all out of|out of|to|in|on|for|please|right now|today)\b/gi, ' ')
   .replace(/\s+/g, ' ')
   .trim();
 const findVoiceMatch = (items = [], spoken = '') => {
@@ -486,16 +486,27 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (recipe) return makeVoiceNav({ label:`Open recipe: ${recipe.title}`, tab:'recipes', summary:`Open Recipe Book and search for ${recipe.title}.`, localSearch: recipe.title });
     }
 
-    // 86 / out-of-stock commands.
+    // 86 / out-of-stock commands. These create an 86 alert only. They do NOT edit inventory.
     let itemPhrase = '';
-    if (/\b(86|eighty six)\b/.test(q)) itemPhrase = q.replace(/\b(86|eighty six|item|the|please)\b/g, ' ');
-    const outMatch = q.match(/(?:we are|we're|were|out of|we ran out of|ran out of)\s+(.+)/);
-    if (!itemPhrase && outMatch) itemPhrase = outMatch[1];
-    if (!itemPhrase && q.startsWith('out of ')) itemPhrase = q.replace(/^out of\s+/, '');
+    if (/\b(86|eighty six)\b/.test(q)) itemPhrase = q.replace(/\b(86|eighty six|item|the|please|send|post|alert|for)\b/g, ' ');
+    const outPatterns = [
+      /^(?:we are|we're|were)\s+(?:all\s+)?out of\s+(.+)$/,
+      /^(?:we are|we're|were)\s+outta\s+(.+)$/,
+      /^(?:we\s+)?ran out of\s+(.+)$/,
+      /^out of\s+(.+)$/,
+      /^all out of\s+(.+)$/
+    ];
+    if (!itemPhrase) {
+      for (const pattern of outPatterns) {
+        const match = q.match(pattern);
+        if (match?.[1]) { itemPhrase = match[1]; break; }
+      }
+    }
     if (itemPhrase) {
-      const item = findVoiceMatch(inventoryItems, cleanVoiceItemName(itemPhrase));
-      if (item) return { intent:'inventory_zero', label:`86 ${item.name}`, item, summary:`Set ${item.name} inventory to 0 and post an important 86 alert.`, needsConfirmation:true };
-      return { intent:'search_inventory', label:'Find inventory item', tab:'inventory', summary:`I heard an 86/out-of-stock command but could not confidently match “${cleanVoiceItemName(itemPhrase)}”.`, safe:true };
+      const cleaned = cleanVoiceItemName(itemPhrase);
+      const item = findVoiceMatch(inventoryItems, cleaned);
+      const itemName = item?.name || cleaned || 'Item';
+      return { intent:'eighty_six_alert', label:`Send 86 alert: ${itemName}`, item, itemName, summary:`Post an important 86 alert for ${itemName}. Inventory stock will not be changed.`, needsConfirmation:false };
     }
 
     // Prep tasks. Only the useful item name goes into the prep name field.
@@ -559,7 +570,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     setPending(action);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'create_prep'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'create_prep', 'eighty_six_alert'];
     if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
       await executeAction(action, text, true);
     }
@@ -607,12 +618,39 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         return;
       }
       if (appUser?.isDemo) return addToast('Demo Mode', 'Demo mode is read-only. Nothing was saved.');
-      if (actionToRun.intent === 'inventory_zero') {
-        await updateDoc(doc(db, 'inventoryItems', actionToRun.item.id), { currentStock: 0, updatedAt: new Date().toISOString(), lastVoiceCommand: sourceText });
-        await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'86 Alert', title:`86 ${actionToRun.item.name}`, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:true, replies:[], voiceCommand: sourceText, createdAt:new Date().toISOString() });
-        await logAudit(appUser, 'VOICE_86_ITEM', actionToRun.item.name, sourceText);
-        addToast('86 Posted', `${actionToRun.item.name} set to 0 and posted to Message Board.`);
-        setActiveTab('inventory'); if (closeWhenDone) setOpen(false); return;
+      if (actionToRun.intent === 'eighty_six_alert') {
+        const itemName = String(actionToRun.itemName || actionToRun.item?.name || 'Item').trim();
+        const alertTitle = `86 ${itemName}`;
+        await addDoc(collection(db, 'events'), {
+          restaurantId: appUser.restaurantId,
+          type:'note',
+          category:'86 Alert',
+          messageCategory:'86 Alert',
+          title: alertTitle,
+          author: appUser.name || appUser.email || 'Voice Command',
+          date:new Date().toISOString(),
+          isImportant:true,
+          replies:[],
+          voiceCommand: sourceText,
+          createdAt:new Date().toISOString(),
+          source:'86_voice_alert',
+          inventoryNotModified:true
+        });
+        await secureFetch('/api/send-push', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({
+            restaurantId: appUser.restaurantId,
+            title: alertTitle,
+            body: `${itemName} is out. Please 86 it until management updates the team.`,
+            type:'message',
+            isCritical:true,
+            textContent: alertTitle
+          })
+        }).catch((err) => console.warn('86 voice push failed:', err?.message || err));
+        await logAudit(appUser, 'VOICE_86_ALERT', itemName, sourceText);
+        addToast('86 Alert Sent', `${itemName} was posted as an important alert. Inventory was not changed.`);
+        setActiveTab('messages'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'create_prep') {
         const text = String(actionToRun.itemText || 'Prep task').trim();
@@ -699,9 +737,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>Employee Quick Start now only disappears permanently after the employee reaches the final step and clicks Finish. Skip for now only hides it for the current browser session.</p>
+    <p>Fixed the employee time clock loading labels so Clock In and Clock Out no longer briefly display the opposite action while saving.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Employee tour','Finish saves','Skip is temporary','Help Center','Invoice filtering','Message likes','Voice help search','Schedule roles','Geofence notes','Login popup','Demo mode','Security polish'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Clock In label','Clock Out label','No refresh needed','Employee punch flow'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>

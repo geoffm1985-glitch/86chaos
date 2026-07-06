@@ -1,24 +1,16 @@
 # 86 Chaos
 
-Current build: 13.1.14
+Current build: 13.1.21
 
-## 13.1.14 focus
-- Added System Administrator → Forensics → Emergency Schedule Rescue.
-- Reinjects the uploaded Cheers Chilton July 2026 schedule for restaurant ID `cheers_chilton_01`.
-- Deletes only existing July 2026 shifts for that restaurant, downloads a backup JSON, then imports 113 published shifts from the PDF schedule.
-- Requires typing `REINJECT JULY` before the button runs.
+## 13.1.21 focus
 
-## Notes carried forward
-- 13.1.10 invoice scanner filtering remains in place: only purchased product rows can be imported into inventory.
-- The large-document scanner path, Firebase upload progress bar, and longer invoice timeout from 13.1.9 remain in place.
-- Message Board newest-first sort and like button from 13.1.7 remain in place.
-- Voice navigation/help search from 13.1.6 remains in place.
-- Schedule Copilot/Builder role linking from 13.1.5 remains in place.
+This build fixes the employee Time Clock loading labels so punch actions no longer briefly show the opposite action.
 
+- Clock In now keeps the green Clock In button showing `CLOCKING IN...` until the punch-in save finishes, then switches to Clock Out.
+- Clock Out now keeps the red Clock Out button showing `CLOCKING OUT...` until the punch-out save finishes, then switches to Clock In.
+- The active-punch listener and optimistic button flip from 13.1.20 remain intact.
+- The legacy schedule component received the same defensive label fix for consistency.
 
-## 13.1.16
-- Fixed stability issues and improved schedule reliability.
-- Emergency schedule rescue months are editable in Schedule Builder before republishing.
+## Deploy notes
 
-## 13.1.15
-Fixed stability issues, cleaned up internal tools, and improved reliability.
+Deploy through the normal GitHub → Vercel flow. No API route, Firestore rules, Storage rules, or Vercel env changes are required for this version.
