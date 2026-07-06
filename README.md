@@ -1,8 +1,8 @@
 # 86 Chaos
 
-Current build: 13.1.12
+Current build: 13.1.14
 
-## 13.1.12 focus
+## 13.1.14 focus
 - Added System Administrator → Forensics → Emergency Schedule Rescue.
 - Reinjects the uploaded Cheers Chilton July 2026 schedule for restaurant ID `cheers_chilton_01`.
 - Deletes only existing July 2026 shifts for that restaurant, downloads a backup JSON, then imports 113 published shifts from the PDF schedule.
@@ -14,3 +14,11 @@ Current build: 13.1.12
 - Message Board newest-first sort and like button from 13.1.7 remain in place.
 - Voice navigation/help search from 13.1.6 remains in place.
 - Schedule Copilot/Builder role linking from 13.1.5 remains in place.
+
+
+## 13.1.16
+- Fixed stability issues and improved schedule reliability.
+- Emergency schedule rescue months are editable in Schedule Builder before republishing.
+
+## 13.1.15
+Fixed stability issues, cleaned up internal tools, and improved reliability.

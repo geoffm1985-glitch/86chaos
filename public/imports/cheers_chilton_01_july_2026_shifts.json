@@ -1,10 +1,11 @@
 {
   "restaurantId": "cheers_chilton_01",
   "month": "2026-07",
-  "isPublished": true,
-  "duplicatePolicy": "delete_existing_july_before_import",
+  "isPublished": false,
+  "duplicatePolicy": "overwrite_existing_july_schedule_builder_before_import",
   "notes": [
-    "Two obvious AM/PM OCR typos were normalized for restaurant hours: Lani 2a-9p was treated as 2p-9p; Chuck 10p-4p was treated as 10a-4p. Exact duplicate Clare 11a-2p rows were deduplicated."
+    "Two obvious AM/PM OCR typos were normalized for restaurant hours: Lani 2a-9p was treated as 2p-9p; Chuck 10p-4p was treated as 10a-4p. Exact duplicate Clare 11a-2p rows were deduplicated.",
+    "Version 13.1.16 loads these rows as editable unpublished Schedule Builder drafts so managers can review, change, and republish after rescue."
   ],
   "warnings": [
     "Skipped duplicate Clare 2026-07-10 11:00-14:00",
@@ -18,904 +19,1130 @@
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-01",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-01",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-01",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-02",
       "employeeName": "Lani",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-02",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-02",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-02",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-03",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-03",
       "employeeName": "Clare",
       "startTime": "11:00",
       "endTime": "14:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-03",
       "employeeName": "Chuck",
       "startTime": "14:00",
       "endTime": "22:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-03",
       "employeeName": "Lani",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-03",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-04",
       "employeeName": "Lani",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-04",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-07",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-07",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-07",
       "employeeName": "Julia",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-07",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-07",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-08",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-08",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-08",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-08",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-08",
       "employeeName": "Chuck",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-09",
       "employeeName": "Lani",
       "startTime": "14:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-09",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-09",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-09",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-10",
       "employeeName": "Clare",
       "startTime": "11:00",
       "endTime": "14:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-10",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "22:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-10",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "22:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-10",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-10",
       "employeeName": "Lani",
       "startTime": "14:00",
       "endTime": "22:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-11",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-11",
       "employeeName": "Lani",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-11",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-12",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-12",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-12",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-12",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-13",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-13",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-13",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-14",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-14",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-15",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-15",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-15",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-15",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-16",
       "employeeName": "Lani",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-16",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-16",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-17",
       "employeeName": "Clare",
       "startTime": "11:00",
       "endTime": "14:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-17",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "22:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-17",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-17",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-17",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-18",
       "employeeName": "Lani",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-18",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-18",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-19",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-19",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-19",
       "employeeName": "Maicol",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-20",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-20",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-20",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-20",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-21",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-21",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-21",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-21",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-22",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-22",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-22",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-22",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-23",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-23",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-23",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-23",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-24",
       "employeeName": "Clare",
       "startTime": "11:00",
       "endTime": "14:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-24",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "22:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-24",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-24",
       "employeeName": "Lani",
       "startTime": "14:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-24",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-24",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-25",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-25",
       "employeeName": "Lani",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-25",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-26",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-26",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-26",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-26",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-27",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-27",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-27",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-28",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-28",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-28",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-28",
       "employeeName": "Lani",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-29",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-29",
       "employeeName": "Chuck",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-29",
       "employeeName": "Maicol",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-29",
       "employeeName": "Julia",
       "startTime": "10:00",
       "endTime": "16:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-30",
       "employeeName": "Geoff",
       "startTime": "09:00",
       "endTime": "15:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-30",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-30",
       "employeeName": "Maicol",
       "startTime": "15:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-30",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-31",
       "employeeName": "Clare",
       "startTime": "11:00",
       "endTime": "14:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-31",
       "employeeName": "Lani",
       "startTime": "14:00",
       "endTime": "22:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-31",
       "employeeName": "Ellis",
       "startTime": "16:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-31",
       "employeeName": "Geoff",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     },
     {
       "date": "2026-07-31",
       "employeeName": "Chuck",
       "startTime": "10:00",
       "endTime": "21:00",
-      "isPublished": true,
-      "source": "86Chaos OS July 2026 PDF"
+      "isPublished": false,
+      "source": "86Chaos OS July 2026 PDF",
+      "scheduleBuilderDraft": true,
+      "readyToPublish": true
     }
   ]
 }

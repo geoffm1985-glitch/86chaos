@@ -1,4 +1,8 @@
 const admin = require('firebase-admin');
+const {
+  stableShiftDocId,
+  hardReplaceScheduleMonth
+} = require('./schedule-restore-utils');
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -44,6 +48,7 @@ function parseBody(req) {
 const RESTAURANT_ID = 'cheers_chilton_01';
 const MONTH_START = '2026-07-01';
 const MONTH_END = '2026-07-31';
+const SOURCE_KEY = 'cheers-july-2026-builder-overwrite-v3';
 const SCHEDULE = [
   ['2026-07-01','Chuck','10:00','21:00'],['2026-07-01','Julia','10:00','16:00'],['2026-07-01','Maicol','16:00','21:00'],['2026-07-01','Lani','16:00','21:00'],
   ['2026-07-02','Lani','10:00','21:00'],['2026-07-02','Geoff','10:00','21:00'],['2026-07-02','Ellis','16:00','21:00'],['2026-07-02','Maicol','16:00','21:00'],
@@ -80,32 +85,8 @@ function firstName(value) {
   return String(value || '').trim().split(/\s+/)[0].toLowerCase();
 }
 
-function serializeDoc(doc) {
-  const data = doc.data();
-  const out = { id: doc.id };
-  for (const [k, v] of Object.entries(data || {})) {
-    if (v && typeof v.toDate === 'function') out[k] = v.toDate().toISOString();
-    else out[k] = v;
-  }
-  return out;
-}
-
-async function deleteSnapshotInBatches(db, snap) {
-  let batch = db.batch();
-  let count = 0;
-  let batchCount = 0;
-  for (const d of snap.docs) {
-    batch.delete(d.ref);
-    count += 1;
-    batchCount += 1;
-    if (batchCount >= 450) {
-      await batch.commit();
-      batch = db.batch();
-      batchCount = 0;
-    }
-  }
-  if (batchCount > 0) await batch.commit();
-  return count;
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
 
 module.exports = async function handler(req, res) {
@@ -116,92 +97,155 @@ module.exports = async function handler(req, res) {
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
     const body = parseBody(req);
     if (body.confirm !== 'IMPORT_JULY_2026') return res.status(400).json({ ok: false, error: 'Missing confirm value IMPORT_JULY_2026.' });
+    if (body.restaurantId && body.restaurantId !== RESTAURANT_ID) return res.status(400).json({ ok: false, error: `This emergency import is locked to ${RESTAURANT_ID}.` });
 
     const db = app.firestore();
+    const runStarted = new Date();
+    const runId = `schedule-rescue-${runStarted.toISOString().replace(/[:.]/g, '-')}`;
+    const actor = auth.decoded.email || auth.decoded.uid || 'System Admin';
+
     const usersSnap = await db.collection('users').where('restaurantId', '==', RESTAURANT_ID).get();
     const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     const byName = new Map();
     for (const u of users) {
-      const key = firstName(u.name || u.email || u.id);
+      const key = firstName(u.name || u.displayName || u.email || u.id);
       if (!byName.has(key)) byName.set(key, u);
     }
 
-    const namesNeeded = Array.from(new Set(SCHEDULE.map(s => s[1].toLowerCase())));
+    const namesNeeded = uniqueSorted(SCHEDULE.map(s => firstName(s[1])));
     const unmatched = namesNeeded.filter(name => !byName.get(name));
     if (unmatched.length) {
       return res.status(409).json({ ok: false, error: `Cannot import. Missing user profile(s) in ${RESTAURANT_ID}: ${unmatched.join(', ')}`, unmatched });
     }
 
-    // Avoid Firestore composite-index requirement by querying the tenant only, then filtering July in memory.
-    // This import is a one-time rescue operation for one restaurant, so the small extra read cost is safer than
-    // requiring a production index while employees need their shifts restored.
-    const allRestaurantShiftsSnap = await db.collection('shifts')
-      .where('restaurantId', '==', RESTAURANT_ID)
-      .get();
-    const julyShiftDocs = allRestaurantShiftsSnap.docs.filter(d => {
-      const date = String((d.data() || {}).date || '');
-      return date >= MONTH_START && date <= MONTH_END;
-    });
-    const existingSnap = { docs: julyShiftDocs, size: julyShiftDocs.length };
-    const backup = {
-      type: 'cheers-july-2026-shift-import-backup',
+    const backupMeta = {
+      type: 'schedule-month-hard-replace-backup',
       restaurantId: RESTAURANT_ID,
       month: '2026-07',
-      generatedAt: new Date().toISOString(),
-      actor: auth.decoded.email || auth.decoded.uid,
-      replacedShiftCount: existingSnap.size,
-      replacedShifts: existingSnap.docs.map(serializeDoc),
+      sourceKey: SOURCE_KEY,
+      generatedAt: runStarted.toISOString(),
+      actor,
+      runId,
       sourceNotes: [
         'Source: 86CHAOS SCHEDULE JULY 2026 uploaded PDF.',
+        'This is a hard Schedule Builder replacement, not a merge. It removes all existing July 2026 shift records for this restaurant before writing the source schedule as unpublished builder drafts.',
+        'Restore armor handles older/restored shift records with date strings, timestamps, scheduleMonth metadata, or messy date fields.',
         'Duplicate exact Clare 11a-2p rows were deduplicated.',
         'Obvious AM/PM typos were normalized: Lani 2a-9p to 2p-9p, Chuck 10p-4p to 10a-4p.'
       ]
     };
 
-    const deletedCount = body.deleteExisting === false ? 0 : await deleteSnapshotInBatches(db, existingSnap);
+    const restoreGeneration = admin.firestore.Timestamp.fromDate(runStarted);
+    const result = await hardReplaceScheduleMonth(db, {
+      restaurantId: RESTAURANT_ID,
+      monthStart: MONTH_START,
+      monthEnd: MONTH_END,
+      backupMeta,
+      makeImportOperations: async () => SCHEDULE.map(([date, employeeName, startTime, endTime]) => {
+        const user = byName.get(firstName(employeeName));
+        const docId = stableShiftDocId({ restaurantId: RESTAURANT_ID, sourceKey: SOURCE_KEY, date, employeeId: user.id, employeeName, startTime, endTime });
+        const ref = db.collection('shifts').doc(docId);
+        return batch => batch.set(ref, {
+          restaurantId: RESTAURANT_ID,
+          employeeId: user.id,
+          employeeName: user.name || employeeName,
+          role: user.role || 'Unassigned',
+          date,
+          scheduleDateKey: date,
+          scheduleMonth: '2026-07',
+          startTime,
+          endTime,
+          isPublished: false,
+          publishState: 'draft',
+          scheduleBuilderDraft: true,
+          scheduleBuilderEditable: true,
+          readyToPublish: true,
+          createdAt: runStarted.toISOString(),
+          updatedAt: runStarted.toISOString(),
+          createdBy: actor,
+          updatedBy: actor,
+          importedAt: runStarted.toISOString(),
+          importedBy: actor,
+          restoredAt: restoreGeneration,
+          restoredBy: actor,
+          restoreRunId: runId,
+          restoreSourceKey: SOURCE_KEY,
+          sourceKey: SOURCE_KEY,
+          source: '86CHAOS SCHEDULE JULY 2026 PDF',
+          sourceLocked: false,
+          rescueProtected: true,
+          rescueEditable: true,
+          rescueMode: 'schedule_builder_overwrite',
+          rescueMonth: '2026-07'
+        }, { merge: false });
+      })
+    });
 
-    let batch = db.batch();
-    let batchCount = 0;
-    let importedCount = 0;
-    const now = new Date().toISOString();
-    for (const [date, employeeName, startTime, endTime] of SCHEDULE) {
-      const user = byName.get(employeeName.toLowerCase());
-      const ref = db.collection('shifts').doc();
-      batch.set(ref, {
-        restaurantId: RESTAURANT_ID,
-        employeeId: user.id,
-        employeeName: user.name || employeeName,
-        role: user.role || 'Unassigned',
-        date,
-        startTime,
-        endTime,
-        isPublished: true,
-        importedAt: now,
-        importedBy: auth.decoded.email || auth.decoded.uid,
-        source: '86CHAOS SCHEDULE JULY 2026 PDF'
-      });
-      importedCount += 1;
-      batchCount += 1;
-      if (batchCount >= 450) {
-        await batch.commit();
-        batch = db.batch();
-        batchCount = 0;
-      }
-    }
-    if (batchCount > 0) await batch.commit();
+    const seedDoc = {
+      restaurantId: RESTAURANT_ID,
+      month: '2026-07',
+      monthStart: MONTH_START,
+      monthEnd: MONTH_END,
+      sourceKey: SOURCE_KEY,
+      sourceTitle: '86CHAOS SCHEDULE JULY 2026',
+      rowCount: SCHEDULE.length,
+      rows: SCHEDULE.map(([date, employeeName, startTime, endTime]) => ({ date, employeeName, startTime, endTime })),
+      updatedAt: runStarted.toISOString(),
+      updatedBy: actor,
+      purpose: 'System-wide emergency schedule restore seed. Use this after any full database restore if the July Schedule Builder is missing or contaminated by old records. The seed reloads the month as unpublished drafts so a manager can review and republish.'
+    };
+
+    await db.collection('scheduleRestoreSeeds').doc(`${RESTAURANT_ID}_2026_07`).set(seedDoc, { merge: false });
+
+    const runDoc = {
+      restaurantId: RESTAURANT_ID,
+      action: 'HARD_REPLACE_SCHEDULE_BUILDER_MONTH',
+      month: '2026-07',
+      monthStart: MONTH_START,
+      monthEnd: MONTH_END,
+      sourceKey: SOURCE_KEY,
+      runId,
+      deletedCount: result.deletedCount,
+      importedCount: result.importedCount,
+      actor,
+      startedAt: runStarted.toISOString(),
+      finishedAt: new Date().toISOString(),
+      note: 'Deletes all existing shifts for the month/restaurant first, then writes the source schedule as unpublished Schedule Builder drafts using deterministic document IDs. Manager can review and republish.'
+    };
+    await db.collection('scheduleRestoreRuns').doc(runId).set(runDoc, { merge: false });
+    await db.collection('restaurants').doc(RESTAURANT_ID).set({
+      lastScheduleRescueRunId: runId,
+      lastScheduleRescueAt: runDoc.finishedAt,
+      lastScheduleRescueMonth: '2026-07',
+      scheduleRefreshToken: runId,
+      forceRefresh: runId,
+      scheduleRescueEnforceProtected: true,
+      scheduleRescueBuilderOverwriteMonths: admin.firestore.FieldValue.arrayUnion('2026-07'),
+      scheduleRescueDraftMonths: admin.firestore.FieldValue.arrayUnion('2026-07'),
+      scheduleRescueProtectedMonths: admin.firestore.FieldValue.arrayUnion('2026-07')
+    }, { merge: true });
 
     await db.collection('auditLogs').add({
       restaurantId: RESTAURANT_ID,
-      action: 'EMERGENCY_IMPORT_JULY_SCHEDULE',
+      action: 'EMERGENCY_IMPORT_JULY_SCHEDULE_BUILDER_OVERWRITE',
       target: 'shifts',
-      details: `Deleted ${deletedCount} existing July shift(s), imported ${importedCount} published shift(s).`,
+      details: `Hard-overwrote July 2026 Schedule Builder. Deleted ${result.deletedCount} existing July shift(s), imported ${result.importedCount} unpublished draft shift(s) for review/republish. Run ${runId}.`,
       userId: auth.decoded.uid,
-      userName: auth.decoded.email || 'System Admin',
-      timestamp: now,
+      userName: actor,
+      timestamp: runDoc.finishedAt,
       isGhost: false
     });
 
-    return res.status(200).json({ ok: true, restaurantId: RESTAURANT_ID, deletedCount, importedCount, backup });
+    return res.status(200).json({
+      ok: true,
+      restaurantId: RESTAURANT_ID,
+      mode: 'schedule-builder-hard-overwrite-draft',
+      month: '2026-07',
+      runId,
+      deletedCount: result.deletedCount,
+      importedCount: result.importedCount,
+      backup: result.backup
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ ok: false, error: err.message || 'Import failed.' });
