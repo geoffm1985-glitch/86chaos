@@ -2842,20 +2842,20 @@ Type RESTORE to continue.`);
 
   const handleRestoreCheersJulySchedule = async () => {
     if (isScheduleReinjecting) return;
-    const phrase = window.prompt('EMERGENCY SCHEDULE REINJECT\n\nThis will hard-replace the July 2026 schedule for cheers_chilton_01 from the uploaded PDF source. It will delete every existing July 2026 shift for that restaurant, including old restored/cached records, download a JSON backup of anything it replaces, then import the schedule as published shifts with protected restore IDs.\n\nType REINJECT JULY to continue.');
+    const phrase = window.prompt('EMERGENCY SCHEDULE BUILDER OVERWRITE\n\nThis will erase every July 2026 shift currently on the Schedule Builder for cheers_chilton_01, then reload the uploaded July PDF schedule as UNPUBLISHED draft shifts so you can review it and republish it. A JSON backup downloads first.\n\nType REINJECT JULY to continue.');
     if ((phrase || '').trim().toUpperCase() !== 'REINJECT JULY') {
       addToast('Canceled', 'July schedule reinject was not run.');
       return;
     }
 
     setIsScheduleReinjecting(true);
-    addToast('Reinject Started', 'Hard-replacing Cheers Chilton July 2026 schedule from the emergency import file.');
+    addToast('Overwrite Started', 'Clearing the July Schedule Builder and loading the PDF schedule as draft shifts.');
 
     try {
       const response = await secureFetch('/api/import-cheers-july-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: 'IMPORT_JULY_2026', restaurantId: CHEERS_RESTORE_RESTAURANT_ID, replaceMode: 'hard-month-replace' })
+        body: JSON.stringify({ confirm: 'IMPORT_JULY_2026', restaurantId: CHEERS_RESTORE_RESTAURANT_ID, replaceMode: 'schedule-builder-overwrite-draft' })
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Schedule reinject failed with status ${response.status}`);
@@ -2869,20 +2869,20 @@ Type RESTORE to continue.`);
         restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
         action: 'EMERGENCY_REINJECT_JULY_SCHEDULE_BUTTON',
         target: 'shifts',
-        details: `System Administrator button hard-replaced July 2026 schedule. Deleted ${result.deletedCount || 0} existing/restored shift(s), imported ${result.importedCount || 0} published shift(s). Run ${result.runId || 'unknown'}.`,
+        details: `System Administrator button overwrote the July 2026 Schedule Builder. Deleted ${result.deletedCount || 0} existing/restored shift(s), imported ${result.importedCount || 0} unpublished draft shift(s). Run ${result.runId || 'unknown'}.`,
         userId: appUser?.id || 'system-admin',
         userName: appUser?.email || appUser?.name || 'System Admin',
         timestamp: new Date().toISOString(),
         isGhost: appUser?.isGhost || false
       }).catch(() => {});
 
-      addToast('Schedule Reinjected', `${result.importedCount || 0} July shift(s) restored for Cheers Chilton. Reloading to clear schedule cache.`);
-      window.alert(`Schedule hard-replace complete.\n\nRestaurant: ${result.restaurantId || CHEERS_RESTORE_RESTAURANT_ID}\nDeleted old/restored July shifts: ${result.deletedCount || 0}\nImported published July shifts: ${result.importedCount || 0}\nRun ID: ${result.runId || 'n/a'}\n\nA backup JSON of replaced July shifts was downloaded to this computer.\n\nThe app will reload once to clear any cached schedule snapshot. Then open Time Clock & Schedule → Full Schedule or Schedule Builder and go to July 2026.`);
-      try { sessionStorage.setItem('86chaosPostRestoreTab', 'published'); } catch (_) {}
+      addToast('Schedule Builder Loaded', `${result.importedCount || 0} July draft shift(s) loaded for review and republish. Reloading to clear schedule cache.`);
+      window.alert(`Schedule Builder overwrite complete.\n\nRestaurant: ${result.restaurantId || CHEERS_RESTORE_RESTAURANT_ID}\nDeleted old/restored July shifts: ${result.deletedCount || 0}\nLoaded draft July shifts: ${result.importedCount || 0}\nRun ID: ${result.runId || 'n/a'}\n\nA backup JSON of replaced July shifts was downloaded to this computer.\n\nThe app will reload once. Then open Time Clock & Schedule → Schedule Builder, go to July 2026, review the draft, and click Publish Schedule.`);
+      try { sessionStorage.setItem('86chaosPostRestoreTab', 'schedule'); } catch (_) {}
       window.location.reload();
     } catch (err) {
-      addToast('Reinject Error', err.message || 'Schedule reinject failed.');
-      window.alert(`Schedule reinject failed:\n\n${err.message || err}\n\nNothing should be deleted if the import could not match all employee profiles.`);
+      addToast('Overwrite Error', err.message || 'Schedule Builder overwrite failed.');
+      window.alert(`Schedule Builder overwrite failed:\n\n${err.message || err}\n\nNothing should be deleted if the import could not match all employee profiles.`);
     } finally {
       setIsScheduleReinjecting(false);
     }
@@ -3949,7 +3949,7 @@ another@email.com"></textarea>
                     <Shield size={16} className="text-red-300 mt-0.5 shrink-0" />
                     <div>
                       <div className="text-[9px] font-black uppercase tracking-widest text-red-300">Emergency Schedule Rescue</div>
-                      <div className="text-[10px] text-slate-400 font-bold leading-snug">Reinjects the uploaded July 2026 schedule into <span className="text-slate-200">cheers_chilton_01</span>. It deletes that restaurant's July 2026 shifts only, downloads a backup of replaced shifts, then imports the PDF schedule as published shifts.</div>
+                      <div className="text-[10px] text-slate-400 font-bold leading-snug">Overwrites the July 2026 Schedule Builder for <span className="text-slate-200">cheers_chilton_01</span>. It deletes that restaurant's July 2026 builder shifts, downloads a backup, then reloads the PDF schedule as unpublished drafts so it can be reviewed and republished.</div>
                     </div>
                   </div>
                   <button type="button" onClick={handleRestoreCheersJulySchedule} disabled={isScheduleReinjecting} className="w-full bg-red-900/30 text-red-200 border border-red-800/70 hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
@@ -4467,6 +4467,8 @@ const HELP_ARTICLES = [
   { id:'voice-beta', title:'Using 86 Voice beta', group:'Voice Commands', keywords:'voice beta microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list', body:['The microphone button is marked BETA. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.','Navigation commands can pull up screens by plain name: “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
   { id:'clock-out-geofence-review', title:'Clock-out location review', group:'Time Clock', keywords:'geofence clock out outside area manager alerted timesheet note location', body:['If a location rule is enabled and an employee clocks out outside the required area, the app still lets them clock out.','The employee sees a warning, the manager gets an important alert, and the punch is marked in Financials → Timesheets with a manager review note.','This avoids trapping someone on the clock while still keeping a clean accountability trail.','If location is denied or unavailable, the punch is saved and marked for review.'] },
   { id:'safe-demo-mode', title:'Safe customer demo mode', group:'System Administrator', keywords:'demo mode customer tier tabs read only hide phone email address employee manager', body:['Open System Administrator → Clients, choose a workspace, then start Demo Manager or Demo Employee.','Choose the tier and visible tabs before starting the demo. Demo mode hides System Administrator and masks emails, phone numbers, addresses, and wages.','Demo mode is read-only. Buttons that would save, publish, restore, delete, upload, post, clock, or edit are blocked.','Use the banner at the top to exit demo mode and return to System Administrator.'] },
+  { id:'new-13114', title:'What changed in version 13.1.14', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
+  { id:'new-13115', title:'What changed in version 13.1.15', group:'Release Notes', keywords:'new update stability reliability fixes schedule builder', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13113', title:'What changed in version 13.1.13', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },

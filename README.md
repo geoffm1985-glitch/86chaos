@@ -14,3 +14,7 @@ Current build: 13.1.14
 - Message Board newest-first sort and like button from 13.1.7 remain in place.
 - Voice navigation/help search from 13.1.6 remains in place.
 - Schedule Copilot/Builder role linking from 13.1.5 remains in place.
+
+
+## 13.1.15
+Fixed stability issues, cleaned up internal tools, and improved reliability.

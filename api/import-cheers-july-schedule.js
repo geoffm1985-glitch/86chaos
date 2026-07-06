@@ -48,7 +48,7 @@ function parseBody(req) {
 const RESTAURANT_ID = 'cheers_chilton_01';
 const MONTH_START = '2026-07-01';
 const MONTH_END = '2026-07-31';
-const SOURCE_KEY = 'cheers-july-2026-pdf-v2';
+const SOURCE_KEY = 'cheers-july-2026-builder-overwrite-v3';
 const SCHEDULE = [
   ['2026-07-01','Chuck','10:00','21:00'],['2026-07-01','Julia','10:00','16:00'],['2026-07-01','Maicol','16:00','21:00'],['2026-07-01','Lani','16:00','21:00'],
   ['2026-07-02','Lani','10:00','21:00'],['2026-07-02','Geoff','10:00','21:00'],['2026-07-02','Ellis','16:00','21:00'],['2026-07-02','Maicol','16:00','21:00'],
@@ -128,7 +128,7 @@ module.exports = async function handler(req, res) {
       runId,
       sourceNotes: [
         'Source: 86CHAOS SCHEDULE JULY 2026 uploaded PDF.',
-        'This is a hard month replacement, not a merge. It removes all existing July 2026 shift records for this restaurant before writing the source schedule.',
+        'This is a hard Schedule Builder replacement, not a merge. It removes all existing July 2026 shift records for this restaurant before writing the source schedule as unpublished builder drafts.',
         'Restore armor handles older/restored shift records with date strings, timestamps, scheduleMonth metadata, or messy date fields.',
         'Duplicate exact Clare 11a-2p rows were deduplicated.',
         'Obvious AM/PM typos were normalized: Lani 2a-9p to 2p-9p, Chuck 10p-4p to 10a-4p.'
@@ -155,7 +155,10 @@ module.exports = async function handler(req, res) {
           scheduleMonth: '2026-07',
           startTime,
           endTime,
-          isPublished: true,
+          isPublished: false,
+          publishState: 'draft',
+          scheduleBuilderDraft: true,
+          readyToPublish: true,
           importedAt: runStarted.toISOString(),
           importedBy: actor,
           restoredAt: restoreGeneration,
@@ -165,7 +168,9 @@ module.exports = async function handler(req, res) {
           sourceKey: SOURCE_KEY,
           source: '86CHAOS SCHEDULE JULY 2026 PDF',
           sourceLocked: true,
-          rescueProtected: true
+          rescueProtected: true,
+          rescueMode: 'schedule_builder_overwrite',
+          rescueMonth: '2026-07'
         }, { merge: false });
       })
     });
@@ -181,14 +186,14 @@ module.exports = async function handler(req, res) {
       rows: SCHEDULE.map(([date, employeeName, startTime, endTime]) => ({ date, employeeName, startTime, endTime })),
       updatedAt: runStarted.toISOString(),
       updatedBy: actor,
-      purpose: 'System-wide emergency schedule restore seed. Use this after any full database restore if the July schedule is missing or contaminated by old records.'
+      purpose: 'System-wide emergency schedule restore seed. Use this after any full database restore if the July Schedule Builder is missing or contaminated by old records. The seed reloads the month as unpublished drafts so a manager can review and republish.'
     };
 
     await db.collection('scheduleRestoreSeeds').doc(`${RESTAURANT_ID}_2026_07`).set(seedDoc, { merge: false });
 
     const runDoc = {
       restaurantId: RESTAURANT_ID,
-      action: 'HARD_REPLACE_SCHEDULE_MONTH',
+      action: 'HARD_REPLACE_SCHEDULE_BUILDER_MONTH',
       month: '2026-07',
       monthStart: MONTH_START,
       monthEnd: MONTH_END,
@@ -199,7 +204,7 @@ module.exports = async function handler(req, res) {
       actor,
       startedAt: runStarted.toISOString(),
       finishedAt: new Date().toISOString(),
-      note: 'Deletes all existing shifts for the month/restaurant first, then writes the source schedule using deterministic document IDs.'
+      note: 'Deletes all existing shifts for the month/restaurant first, then writes the source schedule as unpublished Schedule Builder drafts using deterministic document IDs. Manager can review and republish.'
     };
     await db.collection('scheduleRestoreRuns').doc(runId).set(runDoc, { merge: false });
     await db.collection('restaurants').doc(RESTAURANT_ID).set({
@@ -207,15 +212,18 @@ module.exports = async function handler(req, res) {
       lastScheduleRescueAt: runDoc.finishedAt,
       lastScheduleRescueMonth: '2026-07',
       scheduleRefreshToken: runId,
+      forceRefresh: runId,
       scheduleRescueEnforceProtected: true,
+      scheduleRescueBuilderOverwriteMonths: admin.firestore.FieldValue.arrayUnion('2026-07'),
+      scheduleRescueDraftMonths: admin.firestore.FieldValue.arrayUnion('2026-07'),
       scheduleRescueProtectedMonths: admin.firestore.FieldValue.arrayUnion('2026-07')
     }, { merge: true });
 
     await db.collection('auditLogs').add({
       restaurantId: RESTAURANT_ID,
-      action: 'EMERGENCY_IMPORT_JULY_SCHEDULE_HARD_REPLACE',
+      action: 'EMERGENCY_IMPORT_JULY_SCHEDULE_BUILDER_OVERWRITE',
       target: 'shifts',
-      details: `Hard-replaced July 2026 schedule. Deleted ${result.deletedCount} existing July shift(s), imported ${result.importedCount} published shift(s). Run ${runId}.`,
+      details: `Hard-overwrote July 2026 Schedule Builder. Deleted ${result.deletedCount} existing July shift(s), imported ${result.importedCount} unpublished draft shift(s) for review/republish. Run ${runId}.`,
       userId: auth.decoded.uid,
       userName: actor,
       timestamp: runDoc.finishedAt,
@@ -225,7 +233,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       restaurantId: RESTAURANT_ID,
-      mode: 'hard-month-replace',
+      mode: 'schedule-builder-hard-overwrite-draft',
       month: '2026-07',
       runId,
       deletedCount: result.deletedCount,

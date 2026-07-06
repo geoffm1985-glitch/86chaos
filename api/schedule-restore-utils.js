@@ -42,6 +42,10 @@ function getShiftDate(data = {}) {
     data.date ||
     data.shiftDate ||
     data.scheduleDate ||
+    data.scheduleDateKey ||
+    data.shiftDateKey ||
+    data.serviceDate ||
+    data.workDate ||
     data.startDate ||
     data.day ||
     data.startsAt ||
