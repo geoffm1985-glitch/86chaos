@@ -3,7 +3,7 @@ import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
 import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
+import { T, db, auth, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
@@ -519,7 +519,18 @@ if (liveAppUser && clientData) {
 
       const sendHeartbeat = async (state = 'online') => {
         const stamp = new Date().toISOString();
-        const authUid = auth?.currentUser?.uid || appUser.id;
+        const firebaseUser = await waitForAuthCurrentUser(8000);
+        if (!firebaseUser) {
+          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
+          saveHeartbeatDebug({ ok: false, channel: 'auth-wait', state, message: 'Firebase login session is not active yet on this device. Log out and back in if this keeps showing.', heartbeatEpochMs: Date.now() });
+          return;
+        }
+        const authUid = firebaseUser.uid;
+        if (appUser.id && appUser.id !== authUid) {
+          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
+          saveHeartbeatDebug({ ok: false, channel: 'auth-mismatch', state, message: `Cached app user does not match Firebase Auth user. Cached ${appUser.id}; Auth ${authUid}. Please log out and back in.`, heartbeatEpochMs: Date.now() });
+          return;
+        }
         const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
         const deviceDiagnostics = await collectDeviceDiagnostics();
         const heartbeatEpochMs = Date.now();
@@ -560,9 +571,14 @@ if (liveAppUser && clientData) {
           sessionId: safeSessionId
         };
 
-        // Local self-signal keeps the signed-in person's own roster row live while the server
-        // heartbeat response catches up. Other users still come only from Firestore/server data.
-        try { localStorage.setItem(`chaosLastHeartbeat_${rId}_${appUser.id}`, String(heartbeatEpochMs)); } catch (err) {}
+        // Local self-signal is written only after Firebase confirms the heartbeat.
+        // This prevents a stale/cached login from falsely showing Online Now when Firestore rejected the save.
+        const markVerifiedLocalHeartbeat = () => {
+          try { localStorage.setItem(`chaosLastHeartbeat_${rId}_${appUser.id}`, String(heartbeatEpochMs)); } catch (err) {}
+        };
+        const clearVerifiedLocalHeartbeat = () => {
+          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
+        };
 
         let apiOk = false;
         let apiMessage = '';
@@ -587,6 +603,7 @@ if (liveAppUser && clientData) {
           apiOk = response.ok && data?.ok !== false;
           apiMessage = data?.error || data?.message || `API ${response.status}`;
           if (apiOk) {
+            markVerifiedLocalHeartbeat();
             saveHeartbeatDebug({ ok: true, channel: 'api', state, message: 'Heartbeat saved by server API.', heartbeatEpochMs, apiProjectId: data?.projectId || '' });
             return;
           }
@@ -605,14 +622,17 @@ if (liveAppUser && clientData) {
         const rejected = results.filter(r => r.status === 'rejected');
         const primarySaved = results[0]?.status === 'fulfilled' || results[2]?.status === 'fulfilled';
         if (rejected.length && !primarySaved) {
+          clearVerifiedLocalHeartbeat();
           const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
           console.warn('86 Chaos heartbeat fallback blocked or delayed:', errText);
           saveHeartbeatDebug({ ok: false, channel: 'client-fallback', state, message: `${apiMessage || 'API heartbeat failed'}; fallback failed: ${errText}`, heartbeatEpochMs });
         } else if (rejected.length && primarySaved) {
+          markVerifiedLocalHeartbeat();
           const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
           console.warn('86 Chaos heartbeat partially saved:', errText);
           saveHeartbeatDebug({ ok: true, channel: 'client-fallback-partial', state, message: `Live heartbeat saved; secondary write issue: ${errText}`, heartbeatEpochMs });
         } else {
+          markVerifiedLocalHeartbeat();
           saveHeartbeatDebug({ ok: true, channel: 'client-fallback', state, message: `Saved by client fallback after API issue: ${apiMessage || 'unknown'}`, heartbeatEpochMs });
         }
       };
