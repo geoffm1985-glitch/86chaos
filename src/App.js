@@ -3,7 +3,7 @@ import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
 import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
+import { T, db, auth, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
@@ -26,6 +26,7 @@ export default function App() {
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const [activeTabState, setActiveTabState] = useState(() => appUser?.preferences?.defaultTab || 'today');
   const [clientData, setClientData] = useState(null);
+  const [heartbeatDebug, setHeartbeatDebug] = useState(null);
   const clientFeatures = clientData?.features || {};
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -127,6 +128,9 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
   const presenceSessions = useLiveCollection('presenceSessions', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
+  // Stable per-user live presence. Unlike presenceSessions, this collection has only
+  // one document per user, so old sessions cannot push current users out of capped reads.
+  const livePresenceRecords = useLiveCollection('livePresence', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
   const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
@@ -334,8 +338,31 @@ if (liveAppUser && clientData) {
   };
   const displayUsers = useMemo(() => {
     const baseUsers = isDemoMode ? (users || []).map(maskDemoUser) : (users || []);
-    return isDemoMode ? baseUsers : mergePresenceIntoUsers(baseUsers, presenceSessions);
-  }, [isDemoMode, users, presenceSessions]);
+    const sharedPresence = [...(livePresenceRecords || []), ...(presenceSessions || [])];
+    let merged = isDemoMode ? baseUsers : mergePresenceIntoUsers(baseUsers, sharedPresence);
+    // Current-device safety net: a regular employee should never see their own row drop back
+    // to a days-old timestamp while this browser is actively sending heartbeats.
+    if (!isDemoMode && appUser?.id && rId) {
+      let localMs = 0;
+      try { localMs = Number(localStorage.getItem(`chaosLastHeartbeat_${rId}_${appUser.id}`) || 0); } catch (err) {}
+      if (localMs && (Date.now() - localMs) < 5 * 60 * 1000) {
+        const localIso = new Date(localMs).toISOString();
+        merged = merged.map(u => u.id === appUser.id ? {
+          ...u,
+          lastActive: localIso,
+          lastSeen: localIso,
+          lastHeartbeatAt: localIso,
+          presenceUpdatedAt: localIso,
+          heartbeatEpochMs: localMs,
+          onlineState: 'online',
+          activeTab: activeTabState,
+          activeHost: window.location.hostname,
+          presenceSource: u.presenceSource || 'local-current-device'
+        } : u);
+      }
+    }
+    return merged;
+  }, [isDemoMode, users, presenceSessions, livePresenceRecords, appUser?.id, rId, activeTabState]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -484,8 +511,15 @@ if (liveAppUser && clientData) {
         return diag;
       };
 
+      const saveHeartbeatDebug = (next) => {
+        const packed = { ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id };
+        setHeartbeatDebug(packed);
+        try { localStorage.setItem(`chaosHeartbeatDebug_${rId}_${appUser.id}`, JSON.stringify(packed)); } catch (err) {}
+      };
+
       const sendHeartbeat = async (state = 'online') => {
         const stamp = new Date().toISOString();
+        const authUid = auth?.currentUser?.uid || appUser.id;
         const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
         const deviceDiagnostics = await collectDeviceDiagnostics();
         const heartbeatEpochMs = Date.now();
@@ -504,29 +538,83 @@ if (liveAppUser && clientData) {
           gpsPermission: deviceDiagnostics.gpsPermission,
           deviceDiagnostics
         };
-        const presenceSessionPayload = {
+        const safeSessionId = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+        const createdAt = sessionStorage.getItem(`chaosPresenceCreatedAt_${sessionId}`) || stamp;
+        sessionStorage.setItem(`chaosPresenceCreatedAt_${sessionId}`, createdAt);
+        const livePresencePayload = {
           ...presencePayload,
-          userId: appUser.id,
+          userId: authUid,
+          uid: authUid,
           restaurantId: rId,
           userName: appUser.name || '',
           userEmail: appUser.email || '',
+          email: appUser.email || '',
           role: appUser.role || '',
           photoURL: appUser.photoURL || '',
+          createdAt,
           updatedAt: stamp,
-          createdAt: sessionStorage.getItem(`chaosPresenceCreatedAt_${sessionId}`) || stamp
+          source: 'app-heartbeat'
         };
-        sessionStorage.setItem(`chaosPresenceCreatedAt_${sessionId}`, presenceSessionPayload.createdAt);
-        // Save a local marker so the admin roster can keep this device visibly live while
-        // Firestore snapshots catch up. The saved roster never trusts this for other users.
+        const presenceSessionPayload = {
+          ...livePresencePayload,
+          sessionId: safeSessionId
+        };
+
+        // Local self-signal keeps the signed-in person's own roster row live while the server
+        // heartbeat response catches up. Other users still come only from Firestore/server data.
         try { localStorage.setItem(`chaosLastHeartbeat_${rId}_${appUser.id}`, String(heartbeatEpochMs)); } catch (err) {}
-        const safeSessionId = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
-        updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: appUser.id }).catch(()=>{});
-        setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload, { merge: true }).catch((err)=>{
-          console.warn('86 Chaos presence session heartbeat blocked or delayed:', err?.message || err);
-        });
-        updateDoc(doc(db, 'users', appUser.id), presencePayload).catch((err)=>{
-          console.warn('86 Chaos user heartbeat blocked or delayed:', err?.message || err);
-        });
+
+        let apiOk = false;
+        let apiMessage = '';
+        try {
+          const response = await secureFetch('/api/presence-heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              restaurantId: rId,
+              state,
+              activeTab: activeTabState,
+              sessionId: safeSessionId,
+              device,
+              deviceDiagnostics,
+              notificationPermission: deviceDiagnostics.notifications,
+              gpsPermission: deviceDiagnostics.gpsPermission,
+              heartbeatEpochMs,
+              stamp
+            })
+          });
+          const data = await response.json().catch(() => ({}));
+          apiOk = response.ok && data?.ok !== false;
+          apiMessage = data?.error || data?.message || `API ${response.status}`;
+          if (apiOk) {
+            saveHeartbeatDebug({ ok: true, channel: 'api', state, message: 'Heartbeat saved by server API.', heartbeatEpochMs, apiProjectId: data?.projectId || '' });
+            return;
+          }
+        } catch (err) {
+          apiMessage = err?.message || String(err);
+        }
+
+        // Fallback for local development or a missing Vercel function. livePresence is overwritten,
+        // not merged, so old poisoned presence docs cannot keep blocking fresh writes.
+        const results = await Promise.allSettled([
+          setDoc(doc(db, 'livePresence', authUid), livePresencePayload),
+          setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload),
+          setDoc(doc(db, 'users', authUid), presencePayload, { merge: true }),
+          updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: authUid }).catch(()=>{})
+        ]);
+        const rejected = results.filter(r => r.status === 'rejected');
+        const primarySaved = results[0]?.status === 'fulfilled' || results[2]?.status === 'fulfilled';
+        if (rejected.length && !primarySaved) {
+          const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
+          console.warn('86 Chaos heartbeat fallback blocked or delayed:', errText);
+          saveHeartbeatDebug({ ok: false, channel: 'client-fallback', state, message: `${apiMessage || 'API heartbeat failed'}; fallback failed: ${errText}`, heartbeatEpochMs });
+        } else if (rejected.length && primarySaved) {
+          const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
+          console.warn('86 Chaos heartbeat partially saved:', errText);
+          saveHeartbeatDebug({ ok: true, channel: 'client-fallback-partial', state, message: `Live heartbeat saved; secondary write issue: ${errText}`, heartbeatEpochMs });
+        } else {
+          saveHeartbeatDebug({ ok: true, channel: 'client-fallback', state, message: `Saved by client fallback after API issue: ${apiMessage || 'unknown'}`, heartbeatEpochMs });
+        }
       };
 
       sendHeartbeat(document.hidden ? 'away' : 'online');
@@ -762,7 +850,7 @@ useEffect(() => {
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
-    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
+    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} heartbeatDebug={heartbeatDebug} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;

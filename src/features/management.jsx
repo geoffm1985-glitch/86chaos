@@ -9,7 +9,7 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
-const TabTeam = ({ users, appUser, addToast }) => {
+const TabTeam = ({ users, appUser, addToast, heartbeatDebug }) => {
   const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
   const canManageTeam = Boolean(isSuperAdminUser || appUser?.isAdmin === true);
   const [name, setName] = useState(''); 
@@ -143,7 +143,8 @@ const handleDeactivate = async (u) => {
     parsePresenceTimeMs(u.lastHeartbeatAt),
     parsePresenceTimeMs(u.presenceUpdatedAt),
     parsePresenceTimeMs(u.lastActive),
-    parsePresenceTimeMs(u.lastSeen)
+    parsePresenceTimeMs(u.lastSeen),
+    parsePresenceTimeMs(u.heartbeatEpochMs)
   );
   const formatLastActive = (u = {}) => {
     const lastMs = getLastActiveMs(u);
@@ -166,6 +167,12 @@ const handleDeactivate = async (u) => {
 
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
 
+  const selfActivity = users.find(u => u.id === appUser?.id);
+  const heartbeatStatus = heartbeatDebug || (() => {
+    try { return JSON.parse(localStorage.getItem(`chaosHeartbeatDebug_${appUser?.restaurantId}_${appUser?.id}`) || 'null'); } catch (err) { return null; }
+  })();
+  const heartbeatTone = heartbeatStatus?.ok ? 'border-emerald-900/40 bg-emerald-900/10 text-emerald-200' : 'border-amber-900/50 bg-amber-900/10 text-amber-200';
+
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
       <Modal isOpen={!!createdLogin} onClose={() => setCreatedLogin(null)} title="Employee Login Created">
@@ -186,6 +193,21 @@ return (
           <p className="text-xs font-bold text-slate-400 mt-1">Regular staff can view the roster and last app activity, but only manager/admin accounts can add, edit, reset, or remove staff.</p>
         </div>
       )}
+
+      <div className={`${T.card} p-4 border ${heartbeatTone}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-widest">My Live Presence Check</div>
+            <p className="text-xs font-bold text-slate-300 mt-1">
+              {heartbeatStatus?.ok ? `Heartbeat saved through ${heartbeatStatus.channel || 'live channel'}.` : `Heartbeat is not confirmed yet${heartbeatStatus?.message ? `: ${heartbeatStatus.message}` : '.'}`}
+            </p>
+          </div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+            Roster sees you: <span className={formatLastActive(selfActivity || {}).tone}>{formatLastActive(selfActivity || {}).label}</span>
+          </div>
+        </div>
+        {heartbeatStatus?.message && <div className="mt-2 text-[10px] font-mono text-slate-500 break-all">{heartbeatStatus.message}</div>}
+      </div>
       
       {canManageTeam && (
         <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-2`}>
@@ -1743,6 +1765,7 @@ const CHEERS_JULY_2026_SCHEDULE = [
     const unsubAdmins = onSnapshot(query(collection(db, 'users'), where('isSuperAdmin', '==', true)), snap => { clearLoadError('superAdmins'); setSuperAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('superAdmins', err));
     let rawUserList = [];
     let rawPresenceSessions = [];
+    let rawLivePresence = [];
     const parsePresenceForAdmin = (value) => {
       if (!value) return 0;
       if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
@@ -1755,7 +1778,7 @@ const CHEERS_JULY_2026_SCHEDULE = [
       const now = Date.now();
       const liveWindowMs = 5 * 60 * 1000;
       const sessionsByUser = {};
-      rawPresenceSessions.forEach(session => {
+      [...rawLivePresence, ...rawPresenceSessions].forEach(session => {
         const userId = session.userId || session.uid || session.id;
         if (!userId) return;
         const lastMs = Math.max(
@@ -1790,8 +1813,9 @@ const CHEERS_JULY_2026_SCHEDULE = [
           notificationPermission: best.notificationPermission || user.notificationPermission,
           gpsPermission: best.gpsPermission || user.gpsPermission,
           deviceDiagnostics: best.deviceDiagnostics || user.deviceDiagnostics,
+          presenceRecordId: best.id || user.presenceRecordId,
           presenceSessionCount: sessions.length,
-          presenceSource: liveSession ? 'live-session' : 'session-history'
+          presenceSource: liveSession ? (best.source === 'app-heartbeat' ? 'live-presence' : 'live-session') : 'session-history'
         };
       });
       setAllUsers(merged);
@@ -1808,6 +1832,11 @@ const CHEERS_JULY_2026_SCHEDULE = [
       rawPresenceSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       publishMergedUsers();
     }, err => noteLoadError('presenceSessions', err));
+    const unsubLivePresence = onSnapshot(collection(db, 'livePresence'), snap => {
+      clearLoadError('livePresence');
+      rawLivePresence = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      publishMergedUsers();
+    }, err => noteLoadError('livePresence', err));
     const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => { clearLoadError('crashReports'); setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)); }, err => noteLoadError('crashReports', err));
 const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('auditLogs');
@@ -1827,7 +1856,7 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('operationsReview');
        setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubPresenceSessions(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubOpsReview(); };
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubPresenceSessions(); unsubLivePresence(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubOpsReview(); };
   }, []);
 
   useEffect(() => {
@@ -2777,7 +2806,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     parsePresenceTimeMs(u.lastHeartbeatAt),
     parsePresenceTimeMs(u.presenceUpdatedAt),
     parsePresenceTimeMs(u.lastActive),
-    parsePresenceTimeMs(u.lastSeen)
+    parsePresenceTimeMs(u.lastSeen),
+    parsePresenceTimeMs(u.heartbeatEpochMs)
   );
   const isOnlineNow = (u) => {
     const last = getLastActiveMs(u);
@@ -4030,6 +4060,8 @@ Type RESTORE to continue.`);
       {subTab === 'live' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {adminDataErrors.users && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Live user data is blocked by Firestore rules or auth claims: {adminDataErrors.users}. Deploy the included firestore.rules file, then log out and back in so super-admin claims refresh.</div>}
+          {adminDataErrors.livePresence && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Live presence is blocked by Firestore rules: {adminDataErrors.livePresence}. Publish the included firestore.rules file to the same Firebase project used by this preview deployment.</div>}
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400"><span className="text-emerald-400">Live Activity Debug</span><span>Users: {allUsers.length}</span><span>Online: {onlineUsers.length}</span><span>Window: 3 min</span><span>Source: livePresence + presenceSessions + user heartbeat</span></div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border} flex items-center justify-between gap-3`}>
@@ -5131,7 +5163,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-13128', title:'What changed in version 13.1.28', group:'Release Notes', keywords:'new update 13.1.28 staff roster online last active test push notifications', body:['Staff Roster now uses a stronger live presence heartbeat so online and last-active status updates more reliably.', 'Regular staff can still view the roster without staff edit controls.', 'The test push notification now clearly says it is only a test, not a published schedule alert.', 'Global Lockdown now locks every workspace, including your restaurant group, while your Super Admin account can still enter and unlock it.'] },
+  { id:'new-13129', title:'What changed in version 13.1.29', group:'Release Notes', keywords:'new update 13.1.29 live activity online presence staff roster heartbeat', body:['Live Activity now uses a stable one-document-per-user heartbeat so old session history cannot hide currently online users.', 'Staff Roster and System Administrator Live Activity both merge the same live presence source.', 'The admin Live Activity screen includes a compact debug strip with user and online counts for faster troubleshooting.', 'Publish the included Firestore rules before testing this version.'] },
   { id:'new-13121', title:'What changed in version 13.1.21', group:'Release Notes', keywords:'new update 13.1.21 time clock clock in clock out loading label refresh employee punch', body:['The Time Clock button now shows the correct saving label while employees clock in or clock out.', 'Clock In stays on CLOCKING IN while saving, then changes to Clock Out.', 'Clock Out stays on CLOCKING OUT while saving, then changes back to Clock In without requiring a refresh.'] },
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
