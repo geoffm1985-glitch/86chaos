@@ -2,7 +2,7 @@ const admin = require('firebase-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '13.1.29';
+const APP_VERSION = '13.1.32';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -65,28 +65,56 @@ function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
+function isGzipBuffer(buffer) {
+  return Buffer.isBuffer(buffer) && buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
+}
+
+function parseBackupBytes(buffer) {
+  const storageFormat = isGzipBuffer(buffer) ? 'gzip' : 'plain-json';
+  const text = storageFormat === 'gzip' ? zlib.gunzipSync(buffer).toString('utf8') : buffer.toString('utf8');
+  return { parsed: JSON.parse(text), storageFormat };
+}
+
+async function downloadBackupBytes(file) {
+  try {
+    const [buffer] = await file.download({ decompress: false });
+    return { buffer, rawDownload: true };
+  } catch (_) {
+    const [buffer] = await file.download();
+    return { buffer, rawDownload: false };
+  }
+}
+
 async function inspectLatestBackup(bucket, files) {
-  const latest = files.find(file => file.name.endsWith('.json.gz'));
+  const latest = files.find(file => file.name.endsWith('.json.gz') || file.name.endsWith('.json'));
   if (!latest) return { ok: false, status: 'missing', message: 'No Firestore backup files found.' };
   const [metadata] = await latest.getMetadata().catch(() => [{}]);
   const custom = metadata?.metadata || {};
-  const [buffer] = await latest.download();
+  const { buffer, rawDownload } = await downloadBackupBytes(latest);
   const hash = sha256(buffer);
   let parsed = null;
+  let storageFormat = 'unknown';
   try {
-    parsed = JSON.parse(zlib.gunzipSync(buffer).toString('utf8'));
+    const result = parseBackupBytes(buffer);
+    parsed = result.parsed;
+    storageFormat = result.storageFormat;
   } catch (err) {
-    return { ok: false, status: 'failed', path: latest.name, sizeBytes: Number(metadata.size || buffer.length || 0), sha256: hash, error: `Latest backup cannot be decompressed/read: ${err.message}` };
+    return { ok: false, status: 'failed', path: latest.name, sizeBytes: Number(metadata.size || buffer.length || 0), sha256: hash, storageFormat: isGzipBuffer(buffer) ? 'gzip-unreadable' : 'plain-json-unreadable', rawDownload, error: `Latest backup cannot be decompressed or parsed as JSON: ${err.message}` };
   }
   const errors = [];
+  const warnings = [];
   if (!parsed?.metadata?.runId) errors.push('Missing runId metadata.');
   if (!parsed?.collections || typeof parsed.collections !== 'object') errors.push('Missing collections payload.');
-  if (custom.sha256 && custom.sha256 !== hash) errors.push('Storage metadata checksum differs from downloaded checksum.');
+  if (latest.name.endsWith('.json.gz') && storageFormat !== 'gzip') warnings.push('Backup is named .json.gz, but Storage returned readable plain JSON. This can happen when Google Storage auto-decompresses gzip content; backup data is still readable.');
+  if (custom.sha256 && custom.sha256 !== hash) {
+    if (storageFormat === 'gzip') errors.push('Storage metadata checksum differs from downloaded compressed checksum.');
+    else warnings.push('Checksum comparison skipped because downloaded bytes were readable plain JSON instead of compressed gzip bytes.');
+  }
   const documentCount = Number(parsed?.metadata?.documentCount || custom.documentCount || 0);
   const collectionCount = Number(parsed?.metadata?.collectionCount || custom.collectionCount || 0);
   return {
     ok: errors.length === 0,
-    status: errors.length === 0 ? 'verified' : 'warning',
+    status: errors.length ? 'failed' : (warnings.length ? 'warning' : 'verified'),
     path: latest.name,
     runId: parsed?.metadata?.runId || custom.runId || '',
     mode: custom.mode || (latest.name.includes('/scheduled/') ? 'scheduled' : latest.name.includes('/manual/') ? 'manual' : 'unknown'),
@@ -95,9 +123,12 @@ async function inspectLatestBackup(bucket, files) {
     sizeBytes: Number(metadata.size || buffer.length || 0),
     sha256: hash,
     metadataSha256: custom.sha256 || '',
+    storageFormat,
+    rawDownload,
     documentCount,
     collectionCount,
-    errors
+    errors,
+    warnings
   };
 }
 
@@ -119,7 +150,7 @@ module.exports = async function handler(req, res) {
 
     const storageList = await timed('storageUsageAndBackups', async () => {
       const [allFiles] = await bucket.getFiles();
-      const backupFiles = allFiles.filter(file => file.name.startsWith('backups/firestore/') && file.name.endsWith('.json.gz')).sort((a, b) => b.name.localeCompare(a.name));
+      const backupFiles = allFiles.filter(file => file.name.startsWith('backups/firestore/') && (file.name.endsWith('.json.gz') || file.name.endsWith('.json'))).sort((a, b) => b.name.localeCompare(a.name));
       let bucketBytes = 0;
       let backupBytes = 0;
       let scheduled = 0;
@@ -129,7 +160,7 @@ module.exports = async function handler(req, res) {
         const [metadata] = await file.getMetadata().catch(() => [{}]);
         const size = Number(metadata?.size || 0);
         bucketBytes += size;
-        if (file.name.startsWith('backups/firestore/') && file.name.endsWith('.json.gz')) {
+        if (file.name.startsWith('backups/firestore/') && (file.name.endsWith('.json.gz') || file.name.endsWith('.json'))) {
           backupBytes += size;
           if (file.name.includes('/scheduled/')) scheduled++;
           if (file.name.includes('/manual/')) manual++;
@@ -169,7 +200,7 @@ module.exports = async function handler(req, res) {
         coreCollectionCounts: countChecks
       },
       lastSuccessfulSync: firestoreStatus.value?.lastSuccessfulBackupAt || firestoreStatus.value?.lastBackupAt || firestoreStatus.value?.lastRunAt || null,
-      backupIntegrity: firestoreStatus.value?.backupIntegrity || storageList.value?.latestIntegrity || null
+      backupIntegrity: storageList.value?.latestIntegrity || firestoreStatus.value?.backupIntegrity || null
     };
 
     await db.collection('system').doc('fullSystemDiagnostics').set({

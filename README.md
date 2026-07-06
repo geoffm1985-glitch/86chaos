@@ -1,6 +1,6 @@
 # 86 Chaos
 
-Current version: 13.1.30
+Current version: 13.1.32
 
 This package includes the full React/Vite/Firebase/Vercel app source for 86 Chaos plus the current release notes and QA checklist only.
 

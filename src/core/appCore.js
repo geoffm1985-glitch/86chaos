@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
 import L from 'leaflet';
@@ -99,12 +99,37 @@ const getAppCheckHeader = async () => {
   }
 };
 
+// Wait for Firebase Auth to finish restoring the browser session.
+// Mobile browsers can render the cached app user before auth.currentUser is ready,
+// which used to make server heartbeats fail with "No active user session".
+export const waitForAuthCurrentUser = async (timeoutMs = 8000) => {
+  if (auth.currentUser) return auth.currentUser;
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsub = () => {};
+    const done = (user) => {
+      if (settled) return;
+      settled = true;
+      try { unsub(); } catch (_) {}
+      clearTimeout(timer);
+      resolve(user || auth.currentUser || null);
+    };
+    const timer = setTimeout(() => done(auth.currentUser || null), timeoutMs);
+    try {
+      unsub = onAuthStateChanged(auth, (user) => { if (user) done(user); });
+    } catch (_) {
+      done(auth.currentUser || null);
+    }
+  });
+};
+
 // This attaches the real Firebase Auth token to Vercel API requests.
 // Do not trust client-sent role/email/restaurantId in API routes; verify this token server-side.
 export const secureFetch = async (url, options = {}) => {
-  if (!auth.currentUser) throw new Error("Unauthorized: No active user session.");
-  const { forceTokenRefresh = false, headers: optionHeaders = {}, ...fetchOptions } = options;
-  const token = await auth.currentUser.getIdToken(forceTokenRefresh);
+  const { forceTokenRefresh = false, authWaitMs = 8000, headers: optionHeaders = {}, ...fetchOptions } = options;
+  const currentUser = await waitForAuthCurrentUser(authWaitMs);
+  if (!currentUser) throw new Error("Unauthorized: Firebase login is not active on this device. Please log out and log back in.");
+  const token = await currentUser.getIdToken(forceTokenRefresh);
   const appCheckHeader = await getAppCheckHeader();
   let sessionHeader = {};
   try {
@@ -125,7 +150,7 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '13.1.30';
+export const CURRENT_VERSION = '13.1.32';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
