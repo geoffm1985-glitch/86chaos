@@ -38,7 +38,7 @@ const getRoleFromScheduleStaffList = (role, scheduleRoleOptions = []) => {
   return fuzzy || scheduleRoleOptions[0] || clean;
 };
 
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', scheduleBuilderProps = null }) => {
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null }) => {
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
@@ -48,6 +48,14 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
   const [subTab, setSubTab] = useState(initialSubTab);
+
+  useEffect(() => {
+    const requested = voiceScheduleSubTabTarget?.subTab;
+    if (!requested) return;
+    const allowed = ['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off'];
+    if ((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps) allowed.push('schedule-builder');
+    if (allowed.includes(requested)) setSubTab(requested);
+  }, [voiceScheduleSubTabTarget?.id]);
 
   useEffect(() => {
     if (!appUser?.id) return;

@@ -361,6 +361,52 @@ const parseNextWeekday = (phrase = '') => {
   d.setDate(d.getDate() + delta);
   return formatDate(d);
 };
+
+const isVoiceSuperAdmin = (user = {}) => Boolean((user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || user?.isSuperAdmin === true);
+const isVoiceAdmin = (user = {}) => Boolean(isVoiceSuperAdmin(user) || user?.isAdmin === true);
+const voiceFeatureEnabled = (features = {}, feature) => !feature || features?.[feature] !== false;
+const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today') => {
+  const perms = user?.permissions || {};
+  const isSuper = isVoiceSuperAdmin(user);
+  const isAdmin = isVoiceAdmin(user);
+  const role = String(user?.role || '').toLowerCase();
+  if (tab === 'today' || tab === 'help') return true;
+  if (tab === 'published') return voiceFeatureEnabled(clientFeatures, 'schedule');
+  if (tab === 'schedule') return voiceFeatureEnabled(clientFeatures, 'schedule') && (isAdmin || !!perms.schedule);
+  if (tab === 'events') return voiceFeatureEnabled(clientFeatures, 'events') && (isAdmin || !!perms.events || !!perms.schedule || !!perms.team);
+  if (tab === 'financials' || tab === 'sales' || tab === 'labor') return (voiceFeatureEnabled(clientFeatures, 'labor') || voiceFeatureEnabled(clientFeatures, 'sales')) && (isSuper || isAdmin || !!perms.labor || !!perms.sales);
+  if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops);
+  if (tab === 'messages') return voiceFeatureEnabled(clientFeatures, 'messages');
+  if (tab === 'prep') return voiceFeatureEnabled(clientFeatures, 'prep') && (isAdmin || role === 'kitchen' || !!perms.prep);
+  if (tab === 'recipes') return voiceFeatureEnabled(clientFeatures, 'recipes') && (isAdmin || role === 'kitchen' || !!perms.prep || !!perms.team);
+  if (tab === 'inventory') return voiceFeatureEnabled(clientFeatures, 'inventory') && (isAdmin || !!perms.inventory || !!perms.team);
+  if (tab === 'team') return voiceFeatureEnabled(clientFeatures, 'team') && (isAdmin || !!perms.team);
+  if (tab === 'maintenance') return voiceFeatureEnabled(clientFeatures, 'maintenance') && (isAdmin || !!perms.team);
+  if (tab === 'settings') return !user?.isDemo && isAdmin;
+  if (tab === 'audit') return !user?.isDemo && (isSuper || isAdmin);
+  if (tab === 'godmode') return isSuper;
+  return false;
+};
+
+const makeVoiceNav = ({ label, tab, summary, subTab = null, date = null, helpQuery = '', localSearch = '' }) => ({
+  intent: helpQuery ? 'help_search' : (subTab ? 'navigate_schedule' : 'navigate'),
+  label, tab, subTab, date, helpQuery, localSearch, summary, safe:true
+});
+
+const extractHelpSearchQuery = (raw = '') => {
+  const q = normalizeVoiceText(raw);
+  const patterns = [
+    /^(?:search|find|look up)\s+(?:the\s+)?(?:help center|help|manual|administrator manual)\s*(?:for|about|on)?\s+(.+)$/,
+    /^(?:help center|help|manual|administrator manual)\s+(?:search|find|look up)\s*(?:for|about|on)?\s+(.+)$/,
+    /^(?:show|open|go to|take me to)\s+(?:the\s+)?(?:help center|help|manual)\s+(?:for|about|on)\s+(.+)$/,
+    /^(?:help me with|help with|how do i|how to)\s+(.+)$/
+  ];
+  for (const pattern of patterns) {
+    const match = q.match(pattern);
+    if (match?.[1]) return cleanVoiceItemName(match[1]);
+  }
+  return '';
+};
 const inferVoiceBurnMode = (text = '', item = {}) => {
   const q = normalizeVoiceText(text);
   if (/\b(lb|lbs|pound|pounds|oz|ounce|ounces)\b/.test(q)) return 'weight';
@@ -376,7 +422,7 @@ const getVoiceWeightPerStockUnit = (item = {}) => {
   return m ? parseFloat(m[1]) : 0;
 };
 
-const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], setActiveTab, setCurrentDate, addToast }) => {
+const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], clientFeatures = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -398,20 +444,46 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     const q = normalizeVoiceText(raw);
     if (!q) return null;
 
+    // Help Center search commands. These must open Help Center and pre-fill only the useful search phrase.
+    const helpSearch = extractHelpSearchQuery(raw);
+    if (helpSearch) {
+      return makeVoiceNav({ label:'Search Help Center', tab:'help', helpQuery: helpSearch, summary:`Search Help Center for “${helpSearch}”.` });
+    }
+
     // Navigation commands first because they are safe and fast.
-    if (/\b(open|go to|show|take me to)\b/.test(q)) {
-      if (q.includes('inventory')) return { intent:'navigate', label:'Open Inventory', tab:'inventory', summary:'Open the Inventory tab.', safe:true };
-      if (q.includes('prep')) return { intent:'navigate', label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.', safe:true };
-      if (q.includes('message')) return { intent:'navigate', label:'Open Messages', tab:'messages', summary:'Open the Message Board.', safe:true };
-      if (q.includes('maintenance') || q.includes('repair')) return { intent:'navigate', label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.', safe:true };
-      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial')) return { intent:'navigate', label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.', safe:true };
-      if (q.includes('schedule')) {
-        const date = parseNextWeekday(q);
-        return { intent:'navigate_schedule', label:'Open Schedule', tab:'published', date, summary: date ? `Open Time Clock & Schedule full schedule on ${formatDisplayDate(date)}.` : 'Open Time Clock & Schedule full schedule.', safe:true };
+    if (/\b(open|go to|show|take me to|pull up|bring up|display)\b/.test(q)) {
+      const date = parseNextWeekday(q);
+      if (/\b(schedule builder|schedule maker|builder|copilot|coverage target|coverage targets|smart fill)\b/.test(q)) {
+        return makeVoiceNav({ label:'Open Schedule Builder', tab:'schedule', subTab:'schedule-builder', date, summary:'Open Time Clock & Schedule → Schedule Builder.' });
       }
-      const recipePhrase = q.replace(/\b(open|go to|show|take me to|recipe)\b/g, ' ').trim();
+      if (/\b(month view|monthly view|month schedule|calendar view)\b/.test(q)) {
+        return makeVoiceNav({ label:'Open Month View', tab:'published', subTab:'month-view', date, summary:'Open Time Clock & Schedule → Month View.' });
+      }
+      if (/\b(full schedule|schedule days|published schedule|whole schedule|team schedule|all schedule|everyone schedule)\b/.test(q) || (q.includes('schedule') && !/\b(my schedule|mine)\b/.test(q))) {
+        return makeVoiceNav({ label:'Open Full Schedule', tab:'published', subTab:'full-schedule', date, summary: date ? `Open the full schedule on ${formatDisplayDate(date)}.` : 'Open Time Clock & Schedule → Full Schedule.' });
+      }
+      if (/\b(my schedule|my shifts|mine)\b/.test(q)) {
+        return makeVoiceNav({ label:'Open My Schedule', tab:'published', subTab:'my-schedule', date, summary:'Open Time Clock & Schedule → My Schedule.' });
+      }
+      if (/\b(trade board|shift swap|swap board)\b/.test(q)) {
+        return makeVoiceNav({ label:'Open Trade Board', tab:'published', subTab:'trade-board', date, summary:'Open Time Clock & Schedule → Trade Board.' });
+      }
+      if (/\b(time off|request off|vacation request|availability)\b/.test(q)) {
+        return makeVoiceNav({ label:'Open Time Off', tab:'published', subTab:'time-off', date, summary:'Open Time Clock & Schedule → Request Off.' });
+      }
+      if (/\b(staff list|staff roster|team list|employee list|employees|roster|team)\b/.test(q)) return makeVoiceNav({ label:'Open Staff Roster', tab:'team', summary:'Open Staff Roster.' });
+      if (q.includes('inventory') || q.includes('orders')) return makeVoiceNav({ label:'Open Inventory', tab:'inventory', summary:'Open Inventory & Orders.' });
+      if (q.includes('prep')) return makeVoiceNav({ label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.' });
+      if (q.includes('recipe') || q.includes('recipes') || q.includes('recipe book')) return makeVoiceNav({ label:'Open Recipes', tab:'recipes', summary:'Open Recipe Book.' });
+      if (q.includes('message') || q.includes('announcement')) return makeVoiceNav({ label:'Open Messages', tab:'messages', summary:'Open the Message Board.' });
+      if (q.includes('maintenance') || q.includes('repair') || q.includes('broken')) return makeVoiceNav({ label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.' });
+      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial') || q.includes('daily ledger') || q.includes('sales')) return makeVoiceNav({ label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.' });
+      if (q.includes('help') || q.includes('manual')) return makeVoiceNav({ label:'Open Help Center', tab:'help', summary:'Open Help Center.' });
+      if (q.includes('settings')) return makeVoiceNav({ label:'Open Settings', tab:'settings', summary:'Open Settings.' });
+      if (q.includes('administrator') || q.includes('admin')) return makeVoiceNav({ label:'Open System Administrator', tab:'godmode', summary:'Open System Administrator.' });
+      const recipePhrase = q.replace(/\b(open|go to|show|take me to|pull up|bring up|display|recipe|recipes)\b/g, ' ').trim();
       const recipe = findVoiceMatch(recipes, recipePhrase);
-      if (recipe) return { intent:'navigate', label:`Open recipe: ${recipe.title}`, tab:'recipes', summary:`Open Recipe Book and search for ${recipe.title}.`, safe:true, localSearch: recipe.title };
+      if (recipe) return makeVoiceNav({ label:`Open recipe: ${recipe.title}`, tab:'recipes', summary:`Open Recipe Book and search for ${recipe.title}.`, localSearch: recipe.title });
     }
 
     // 86 / out-of-stock commands.
@@ -487,7 +559,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     setPending(action);
-    const instantIntents = ['navigate', 'navigate_schedule', 'create_prep'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'create_prep'];
     if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
       await executeAction(action, text, true);
     }
@@ -519,13 +591,20 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true) => {
     if (!actionToRun || !appUser?.restaurantId) return;
     try {
-      if (actionToRun.intent === 'navigate') {
-        setActiveTab(actionToRun.tab || 'today');
-        if (closeWhenDone) setOpen(false); return;
-      }
-      if (actionToRun.intent === 'navigate_schedule') {
+      if (['navigate', 'navigate_schedule', 'help_search'].includes(actionToRun.intent)) {
+        const targetTab = actionToRun.tab || 'today';
+        if (!canVoiceOpenTab(appUser, clientFeatures, targetTab)) {
+          addToast('Access Blocked', 'You do not have permission to open that area.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
         if (actionToRun.date && setCurrentDate) setCurrentDate(actionToRun.date);
-        setActiveTab(actionToRun.tab || 'schedule'); if (closeWhenDone) setOpen(false); return;
+        if (actionToRun.subTab && setScheduleSubTabTarget) setScheduleSubTabTarget({ subTab: actionToRun.subTab, id: Date.now() });
+        if (actionToRun.helpQuery && setHelpSearchTarget) setHelpSearchTarget({ query: actionToRun.helpQuery, id: Date.now() });
+        setActiveTab(targetTab);
+        addToast('Voice Navigation', actionToRun.summary || `Opening ${targetTab}.`);
+        if (closeWhenDone) setOpen(false);
+        return;
       }
       if (appUser?.isDemo) return addToast('Demo Mode', 'Demo mode is read-only. Nothing was saved.');
       if (actionToRun.intent === 'inventory_zero') {
