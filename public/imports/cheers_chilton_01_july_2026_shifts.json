@@ -5,7 +5,7 @@
   "duplicatePolicy": "overwrite_existing_july_schedule_builder_before_import",
   "notes": [
     "Two obvious AM/PM OCR typos were normalized for restaurant hours: Lani 2a-9p was treated as 2p-9p; Chuck 10p-4p was treated as 10a-4p. Exact duplicate Clare 11a-2p rows were deduplicated.",
-    "Version 13.1.15 loads these rows as unpublished Schedule Builder drafts so managers can review and republish after rescue."
+    "Version 13.1.16 loads these rows as editable unpublished Schedule Builder drafts so managers can review, change, and republish after rescue."
   ],
   "warnings": [
     "Skipped duplicate Clare 2026-07-10 11:00-14:00",

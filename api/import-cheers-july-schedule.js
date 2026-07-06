@@ -158,7 +158,12 @@ module.exports = async function handler(req, res) {
           isPublished: false,
           publishState: 'draft',
           scheduleBuilderDraft: true,
+          scheduleBuilderEditable: true,
           readyToPublish: true,
+          createdAt: runStarted.toISOString(),
+          updatedAt: runStarted.toISOString(),
+          createdBy: actor,
+          updatedBy: actor,
           importedAt: runStarted.toISOString(),
           importedBy: actor,
           restoredAt: restoreGeneration,
@@ -167,8 +172,9 @@ module.exports = async function handler(req, res) {
           restoreSourceKey: SOURCE_KEY,
           sourceKey: SOURCE_KEY,
           source: '86CHAOS SCHEDULE JULY 2026 PDF',
-          sourceLocked: true,
+          sourceLocked: false,
           rescueProtected: true,
+          rescueEditable: true,
           rescueMode: 'schedule_builder_overwrite',
           rescueMonth: '2026-07'
         }, { merge: false });

@@ -584,7 +584,7 @@ const handleOfferSwap = async (shift) => {
   );
 };
 
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, initialSubTab = 'schedule', hideSubTabs = false }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false }) => {
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -786,8 +786,18 @@ const [eventDate, setEventDate] = useState(getToday());
     return 'bg-[#D4A381] text-slate-900'; 
   };
 
+  const rescueEditableMonths = Array.from(new Set([
+    ...(Array.isArray(clientData?.scheduleRescueDraftMonths) ? clientData.scheduleRescueDraftMonths : []),
+    ...(Array.isArray(clientData?.scheduleRescueBuilderOverwriteMonths) ? clientData.scheduleRescueBuilderOverwriteMonths : []),
+    ...(Array.isArray(clientData?.scheduleRescueProtectedMonths) ? clientData.scheduleRescueProtectedMonths : [])
+  ].filter(Boolean)));
+  const currentScheduleMonth = getMonthStr(currentDate);
+  const isRescueEditableMonth = (month = currentScheduleMonth) => rescueEditableMonths.includes(month);
+  const canEditRescueMonth = (month = currentScheduleMonth) => isRescueEditableMonth(month) && !!(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.permissions?.schedule || appUser?.permissions?.team);
+  const canEditScheduleDate = (d) => !(d < getToday()) || canEditRescueMonth(getMonthStr(d));
+
   const handleCellClick = (d, empId) => {
-    if (d < getToday()) return addToast("Locked", "Cannot edit past dates.");
+    if (!canEditScheduleDate(d)) return addToast("Locked", "Cannot edit past dates.");
     const existing = monthShifts.find(s => s.date === d && s.employeeId === empId);
     if (existing) { if(window.confirm("Delete shift?")) deleteDoc(doc(db,"shifts",existing.id)); return; }
     setSelectedEmp(empId); if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x!==d)); else setAssignDates([...assignDates, d]);
@@ -807,7 +817,40 @@ const [eventDate, setEventDate] = useState(getToday());
       }
       validDates.push(d);
     }
-    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role || 'Unassigned', startTime: startTime, endTime: endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
+    for (const d of validDates) {
+      const nowIso = new Date().toISOString();
+      const shiftMonth = getMonthStr(d);
+      const rescueEdit = canEditRescueMonth(shiftMonth);
+      const shiftData = {
+        date: d,
+        scheduleDateKey: d,
+        scheduleMonth: shiftMonth,
+        employeeId: emp.id,
+        employeeName: emp.name || emp.displayName || 'Unknown',
+        role: emp.role || 'Unassigned',
+        startTime: startTime,
+        endTime: endTime,
+        isPublished: false,
+        publishState: 'draft',
+        scheduleBuilderDraft: true,
+        readyToPublish: true,
+        restaurantId: appUser.restaurantId,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        createdBy: appUser?.id || appUser?.email || 'schedule-builder',
+        updatedBy: appUser?.id || appUser?.email || 'schedule-builder'
+      };
+      if (rescueEdit) {
+        shiftData.rescueProtected = true;
+        shiftData.rescueEditable = true;
+        shiftData.rescueMode = 'schedule_builder_manual_edit';
+        shiftData.rescueMonth = shiftMonth;
+        shiftData.restoreSourceKey = `manual-after-rescue-${shiftMonth}`;
+        shiftData.sourceKey = `manual-schedule-builder-edit-${shiftMonth}`;
+        shiftData.source = 'Schedule Builder manual edit after emergency rescue';
+      }
+      await addDoc(collection(db, "shifts"), shiftData);
+    }
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
@@ -2151,10 +2194,10 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
   );
 };
 
-const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser }) => (
+const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser, clientData = null }) => (
   <div className="space-y-5">
     <ScheduleCopilot currentDate={currentDate} users={users} shifts={shifts} timeOffRequests={timeOffRequests} addToast={addToast} appUser={appUser} />
-    <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} />
+    <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} />
   </div>
 );
 

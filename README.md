@@ -16,5 +16,9 @@ Current build: 13.1.14
 - Schedule Copilot/Builder role linking from 13.1.5 remains in place.
 
 
+## 13.1.16
+- Fixed stability issues and improved schedule reliability.
+- Emergency schedule rescue months are editable in Schedule Builder before republishing.
+
 ## 13.1.15
 Fixed stability issues, cleaned up internal tools, and improved reliability.
