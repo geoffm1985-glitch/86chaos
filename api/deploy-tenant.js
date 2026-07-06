@@ -1,20 +1,25 @@
 import admin from 'firebase-admin';
 
+function loadServiceAccount() {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+    return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  }
+  return {
+    projectId: process.env.FIREBASE_PROJECT_ID || 'cheers-34b8d',
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/"/g, '')
+  };
+}
+
 // 1. Truly Bulletproof Firebase Init
 if (!admin.apps.length) {
-  if (process.env.FIREBASE_PRIVATE_KEY) {
-    const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
+  const serviceAccount = loadServiceAccount();
+  if (serviceAccount.client_email || serviceAccount.clientEmail) {
     admin.initializeApp({
-      credential: admin.credential.cert({
-        // THE IDIOT-PROOF FIX: Fallbacks directly to the known ID if Vercel drops the variable
-        projectId: process.env.FIREBASE_PROJECT_ID || 'cheers-34b8d', 
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: cleanKey,
-      }),
+      credential: admin.credential.cert(serviceAccount),
     });
   } else {
-    // Fallback
-    admin.initializeApp({ projectId: 'cheers-34b8d' });
+    admin.initializeApp({ projectId: serviceAccount.project_id || serviceAccount.projectId || 'cheers-34b8d' });
   }
 }
 
@@ -32,8 +37,15 @@ export default async function handler(req, res) {
   const authToken = authHeader.split('Bearer ')[1];
 
   try {
-    // Verify the admin requesting the deployment
-    await admin.auth().verifyIdToken(authToken);
+    // Verify the super admin requesting the deployment
+    const decoded = await admin.auth().verifyIdToken(authToken);
+    const requesterSnap = await admin.firestore().collection('users').doc(decoded.uid).get();
+    const requester = requesterSnap.exists ? requesterSnap.data() : {};
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
+    const requesterEmail = (decoded.email || requester.email || '').toLowerCase();
+    if (!requester.isSuperAdmin && requesterEmail !== masterEmail) {
+      return res.status(403).json({ error: 'Super Admin required to deploy workspaces.' });
+    }
 
     const { rName, oName, oEmail, oPhone, rAddress, tPass } = req.body;
 
@@ -47,7 +59,7 @@ export default async function handler(req, res) {
     const newAuthUid = userRecord.uid;
 
     // 2. Create Restaurant Workspace in Database
-    const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, maintenance: true, timesheets: true, events: true };
+    const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, labor: true, maintenance: true, timesheets: true, events: true };
     const newRestRef = admin.firestore().collection('restaurants').doc();
     
     await newRestRef.set({
@@ -70,17 +82,18 @@ export default async function handler(req, res) {
     await admin.firestore().collection('users').doc(newAuthUid).set({
        name: oName.trim(),
        email: oEmail.toLowerCase().trim(),
-       password: tPass,
        role: 'General Manager',
        isAdmin: true,
        isActive: true,
        forcePasswordChange: true,
        restaurantId: newRestRef.id,
        restaurantName: rName.trim(),
-       permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true }
+       permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true },
+       passwordStored: false,
+       passwordPurgedAt: new Date().toISOString()
     });
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, restaurantId: newRestRef.id, userId: newAuthUid, createdAt: new Date().toISOString() });
 
   } catch (error) {
     console.error("Deployment Error:", error);

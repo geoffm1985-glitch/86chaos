@@ -9,7 +9,36 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', scheduleBuilderProps = null }) => {
+
+const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
+
+const getScheduleStaffRoleOptions = (users = [], dbRoles = []) => {
+  const byLower = new Map();
+  const addRole = (role) => {
+    const clean = cleanScheduleRoleName(role);
+    if (!clean || clean.toLowerCase() === 'unassigned') return;
+    if (!byLower.has(clean.toLowerCase())) byLower.set(clean.toLowerCase(), clean);
+  };
+
+  // This is the single role source used by Schedule Builder and Schedule Copilot:
+  // restaurant-created roles plus the exact role names currently visible in the schedule staff list.
+  (dbRoles || []).forEach(r => addRole(r?.name));
+  (users || []).filter(u => u?.isActive !== false).forEach(u => addRole(u?.role));
+
+  const roles = Array.from(byLower.values()).sort((a, b) => a.localeCompare(b));
+  return roles.length ? roles : ['Unassigned'];
+};
+
+const getRoleFromScheduleStaffList = (role, scheduleRoleOptions = []) => {
+  const clean = cleanScheduleRoleName(role);
+  if (!clean) return scheduleRoleOptions[0] || 'Unassigned';
+  const exact = scheduleRoleOptions.find(r => r.toLowerCase() === clean.toLowerCase());
+  if (exact) return exact;
+  const fuzzy = scheduleRoleOptions.find(r => roleMatches(r, clean) || roleMatches(clean, r));
+  return fuzzy || scheduleRoleOptions[0] || clean;
+};
+
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null }) => {
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
@@ -19,6 +48,14 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
   const [subTab, setSubTab] = useState(initialSubTab);
+
+  useEffect(() => {
+    const requested = voiceScheduleSubTabTarget?.subTab;
+    if (!requested) return;
+    const allowed = ['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off'];
+    if ((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps) allowed.push('schedule-builder');
+    if (allowed.includes(requested)) setSubTab(requested);
+  }, [voiceScheduleSubTabTarget?.id]);
 
   useEffect(() => {
     if (!appUser?.id) return;
@@ -44,6 +81,66 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return (R * c) * 3.28084; // Convert final result to feet
+  };
+
+
+  const getClockOutGeofenceReview = async () => {
+    const settings = appUser?.systemSettings || {};
+    if (!settings.geofence) return { status: 'not_required', update: {}, alertNeeded: false };
+    const targetLat = parseFloat(settings.lat);
+    const targetLon = parseFloat(settings.lon);
+    const allowedRadius = parseInt(settings.geofenceRadius, 10) || 300;
+    if (!targetLat || !targetLon || !navigator.geolocation) {
+      return {
+        status: 'unverified',
+        alertNeeded: true,
+        update: {
+          clockOutGeofenceStatus: 'unverified',
+          requiresManagerReview: true,
+          managerNote: 'Clock-out location could not be verified. Manager review needed.',
+          clockOutLocationCheckedAt: new Date().toISOString()
+        },
+        message: 'Your clock-out will be saved, but location could not be verified. A manager will be alerted.'
+      };
+    }
+    try {
+      const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }));
+      const dist = calculateDistance(targetLat, targetLon, pos.coords.latitude, pos.coords.longitude);
+      const outside = dist > allowedRadius;
+      return {
+        status: outside ? 'outside' : 'inside',
+        alertNeeded: outside,
+        distanceFeet: dist,
+        update: {
+          clockOutGeofenceStatus: outside ? 'outside' : 'inside',
+          clockOutDistanceFeet: Math.round(dist),
+          clockOutRequiredRadiusFeet: allowedRadius,
+          clockOutLocation: {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy || null,
+            capturedAt: new Date().toISOString()
+          },
+          requiresManagerReview: outside,
+          managerNote: outside ? `Clocked out outside required area (${Math.round(dist)} ft from required area). Manager review needed.` : null,
+          clockOutLocationCheckedAt: new Date().toISOString()
+        },
+        message: outside ? `You are clocking out ${Math.round(dist)} feet outside the required work area. Your clock-out will still save, but a manager will be alerted and the time punch will be marked.` : ''
+      };
+    } catch (err) {
+      return {
+        status: 'unverified',
+        alertNeeded: true,
+        update: {
+          clockOutGeofenceStatus: 'unverified',
+          requiresManagerReview: true,
+          managerNote: 'Clock-out location was denied or unavailable. Manager review needed.',
+          clockOutLocationError: err?.message || 'Location unavailable',
+          clockOutLocationCheckedAt: new Date().toISOString()
+        },
+        message: 'Your clock-out will be saved, but location was denied or unavailable. A manager will be alerted.'
+      };
+    }
   };
 
 const handleClockIn = async () => {
@@ -130,14 +227,49 @@ const handleClockIn = async () => {
          finalBreakMins += (new Date() - breakStart) / 60000;
       }
       
-      await updateDoc(doc(db, "timePunches", activePunch.id), { 
-        clockOutTime: new Date().toISOString(), 
+      const geofenceReview = await getClockOutGeofenceReview();
+      if (geofenceReview.alertNeeded && geofenceReview.message) {
+        const proceed = window.confirm(`${geofenceReview.message}
+
+Clock out anyway?`);
+        if (!proceed) return;
+      }
+      const clockOutStamp = new Date().toISOString();
+      const punchUpdate = { 
+        clockOutTime: clockOutStamp, 
         status: 'clocked_out',
         cashTips: parseFloat(tipCash) || 0,
         creditTips: parseFloat(tipCredit) || 0,
         breakMinutes: finalBreakMins,
-        breakStartTime: null
-      });
+        breakStartTime: null,
+        ...(geofenceReview.update || {})
+      };
+      await updateDoc(doc(db, "timePunches", activePunch.id), punchUpdate);
+      if (geofenceReview.alertNeeded) {
+        const distText = geofenceReview.distanceFeet ? `${Math.round(geofenceReview.distanceFeet)} ft outside required area` : 'location not verified';
+        const alertTitle = `GEOFENCE CLOCK-OUT REVIEW: ${appUser.name} clocked out with ${distText}. Review Financials → Timesheets.`;
+        await addDoc(collection(db, "events"), {
+          date: clockOutStamp,
+          title: alertTitle,
+          type: 'note',
+          category: 'Geofence Clock-Out Alert',
+          author: 'System Alert',
+          isImportant: true,
+          restaurantId: appUser.restaurantId,
+          employeeId: appUser.id,
+          employeeName: appUser.name,
+          punchId: activePunch.id,
+          replies: [],
+          geofenceStatus: geofenceReview.status || 'review'
+        });
+        try {
+          await secureFetch('/api/send-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ restaurantId: appUser.restaurantId, type: 'geofence', title: 'Geofence Clock-Out Alert', body: alertTitle, isCritical: true })
+          });
+        } catch (pushErr) { console.warn('Geofence push failed:', pushErr); }
+      }
       
       setIsTipModalOpen(false);
       setTipCash(''); setTipCredit('');
@@ -1269,7 +1401,7 @@ const handleExportTimesheets = () => {
       {!hideSubTabs && (
         <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
           <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Builder</button>
-          <span className="text-[10px] font-bold text-slate-500 self-center">Labor and punch editing moved to Financials → Labor & Timesheets.</span>
+          <span className="text-[10px] font-bold text-slate-500 self-center">Labor and punch editing moved to the Labor tab.</span>
         </div>
       )}
 
@@ -2029,6 +2161,7 @@ const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffReque
 const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests = [], addToast, appUser }) => {
   const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { limitCount: 120 });
   const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { limitCount: 200 });
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { limitCount: 120 });
   const weekDates = getWeekDates(currentDate);
   const weekStart = weekDates[0];
   const weekEnd = weekDates[6];
@@ -2040,20 +2173,36 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [templateName, setTemplateName] = useState('Normal Week');
   const [templateDesc, setTemplateDesc] = useState('Reusable staffing pattern for this restaurant.');
-  const [templateRows, setTemplateRows] = useState([{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 }]);
-  const [targetForm, setTargetForm] = useState({ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 });
+  const [templateRows, setTemplateRows] = useState([{ dayIndex: 5, role: 'Unassigned', startTime: '16:00', endTime: '21:00', count: 2 }]);
+  const [targetForm, setTargetForm] = useState({ dayIndex: 5, role: 'Unassigned', startTime: '16:00', endTime: '21:00', count: 2 });
   const [draggedShiftId, setDraggedShiftId] = useState(null);
 
   const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const scheduleRoleOptions = getScheduleStaffRoleOptions(activeUsers, dbRoles);
+  const firstScheduleRole = scheduleRoleOptions[0] || 'Unassigned';
+  const canonicalScheduleRole = (role) => getRoleFromScheduleStaffList(role, scheduleRoleOptions);
+
+  useEffect(() => {
+    setTargetForm(f => {
+      const fixedRole = canonicalScheduleRole(f.role);
+      return fixedRole === f.role ? f : { ...f, role: fixedRole };
+    });
+    setTemplateRows(rows => rows.map(row => {
+      const fixedRole = canonicalScheduleRole(row.role);
+      return fixedRole === row.role ? row : { ...row, role: fixedRole };
+    }));
+  }, [firstScheduleRole, scheduleRoleOptions.join('|')]);
+
   const templateOptions = templates.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   const activeTemplate = templates.find(t => t.id === templateId) || null;
   const draftCount = weekShifts.filter(s => !s.isPublished).length;
   const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests, weekDates);
   const missingTargets = coverageTargets.flatMap(t => {
     const date = weekDates[parseInt(t.dayIndex || 0, 10)];
-    const existing = weekShifts.filter(s => s.date === date && roleMatches(s.role, t.role) && (!t.startTime || s.startTime === t.startTime)).length;
+    const targetRole = canonicalScheduleRole(t.role);
+    const existing = weekShifts.filter(s => s.date === date && roleMatches(s.role, targetRole) && (!t.startTime || s.startTime === t.startTime)).length;
     const needed = Math.max(0, (parseInt(t.count || 0,10) || 0) - existing);
-    return needed > 0 ? [{ ...t, date, needed, existing }] : [];
+    return needed > 0 ? [{ ...t, role: targetRole, originalRole: t.role, date, needed, existing }] : [];
   });
 
   function getScheduleWarnings(schedule, allUsers, requests, dates) {
@@ -2074,26 +2223,26 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     return [...new Set(warnings)].slice(0, 12);
   }
 
-  const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 1 }]);
+  const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]);
   const updateTemplateRow = (idx, patch) => setTemplateRows(templateRows.map((r,i) => i === idx ? { ...r, ...patch } : r));
   const removeTemplateRow = (idx) => setTemplateRows(templateRows.filter((_,i) => i !== idx));
 
   const saveTemplate = async (e) => {
     e.preventDefault();
-    const payload = { restaurantId: appUser.restaurantId, name: templateName.trim(), description: templateDesc.trim(), rows: templateRows.map(r => ({ ...r, dayIndex: parseInt(r.dayIndex,10), count: parseInt(r.count,10) || 1 })), updatedAt: new Date().toISOString(), updatedBy: appUser.name || appUser.email };
+    const payload = { restaurantId: appUser.restaurantId, name: templateName.trim(), description: templateDesc.trim(), rows: templateRows.map(r => ({ ...r, role: canonicalScheduleRole(r.role), dayIndex: parseInt(r.dayIndex,10), count: parseInt(r.count,10) || 1 })), updatedAt: new Date().toISOString(), updatedBy: appUser.name || appUser.email };
     try {
       if (editingTemplateId) { await updateDoc(doc(db, 'scheduleTemplates', editingTemplateId), payload); addToast('Template Updated', 'Schedule template saved.'); }
       else { await addDoc(collection(db, 'scheduleTemplates'), { ...payload, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Template Created', 'Reusable schedule template added.'); }
-      setEditingTemplateId(null); setTemplateName('Normal Week'); setTemplateDesc('Reusable staffing pattern for this restaurant.'); setTemplateRows([{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 }]); setActiveTool('templates');
+      setEditingTemplateId(null); setTemplateName('Normal Week'); setTemplateDesc('Reusable staffing pattern for this restaurant.'); setTemplateRows([{ dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 2 }]); setActiveTool('templates');
     } catch (err) { addToast('Error', err.message); }
   };
 
-  const editTemplate = (t) => { setEditingTemplateId(t.id); setTemplateName(t.name || 'Template'); setTemplateDesc(t.description || ''); setTemplateRows((t.rows && t.rows.length ? t.rows : [{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 1 }])); setActiveTool('template-editor'); };
+  const editTemplate = (t) => { setEditingTemplateId(t.id); setTemplateName(t.name || 'Template'); setTemplateDesc(t.description || ''); setTemplateRows((t.rows && t.rows.length ? t.rows : [{ dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]).map(r => ({ ...r, role: canonicalScheduleRole(r.role) })));  setActiveTool('template-editor'); };
   const deleteTemplate = async (t) => { if (!window.confirm(`Delete template "${t.name}"?`)) return; try { await deleteDoc(doc(db, 'scheduleTemplates', t.id)); addToast('Deleted', 'Template removed.'); } catch(err) { addToast('Error', err.message); } };
 
   const saveCurrentWeekAsTemplate = async () => {
     const grouped = {};
-    weekShifts.forEach(s => { const key = `${new Date(s.date+'T12:00:00').getDay()}|${s.role || 'Staff'}|${s.startTime || '09:00'}|${s.endTime || '17:00'}`; grouped[key] = (grouped[key] || 0) + 1; });
+    weekShifts.forEach(s => { const key = `${new Date(s.date+'T12:00:00').getDay()}|${canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff')}|${s.startTime || '09:00'}|${s.endTime || '17:00'}`; grouped[key] = (grouped[key] || 0) + 1; });
     const rows = Object.entries(grouped).map(([key,count]) => { const [dayIndex, role, startTime, endTime] = key.split('|'); return { dayIndex: parseInt(dayIndex,10), role, startTime, endTime, count }; });
     if (!rows.length) return addToast('No Shifts', 'Build a week first, then save it as a template.');
     try { await addDoc(collection(db, 'scheduleTemplates'), { restaurantId: appUser.restaurantId, name: `Week of ${formatDisplayDate(weekStart)}`, description: 'Saved from actual schedule.', rows, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Saved', 'Current week saved as a reusable template.'); }
@@ -2101,14 +2250,17 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   };
 
   const pickUserForShift = (role, date, usedIds = []) => {
-    const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, role));
+    const scheduleRole = canonicalScheduleRole(role);
+    const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, scheduleRole));
     const pool = candidates.length ? candidates : activeUsers.filter(u => !usedIds.includes(u.id));
     return pool.find(u => !timeOffRequests.some(r => (r.userId === u.id || r.employeeId === u.id) && r.date === date && String(r.status || '').toLowerCase().includes('approved'))) || pool[0];
   };
 
   const createShiftDraft = async (row, date, usedIds = []) => {
-    const employee = pickUserForShift(row.role, date, usedIds);
-    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: employee?.id || '', employeeName: employee?.name || 'Unassigned', role: row.role || employee?.role || 'Staff', date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
+    const scheduleRole = canonicalScheduleRole(row.role);
+    const employee = pickUserForShift(scheduleRole, date, usedIds);
+    const finalRole = employee?.role ? canonicalScheduleRole(employee.role) : scheduleRole;
+    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: employee?.id || '', employeeName: employee?.name || 'Unassigned', role: finalRole, targetRole: scheduleRole, date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
     return employee?.id;
   };
 
@@ -2137,7 +2289,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         const oldIndex = prevDates.indexOf(s.date);
         const date = weekDates[oldIndex];
         if (weekShifts.some(x => x.date === date && x.employeeId === s.employeeId && x.startTime === s.startTime)) continue;
-        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: s.employeeId, employeeName: s.employeeName || users.find(u => u.id === s.employeeId)?.name || 'Unknown', role: s.role, date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
+        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: s.employeeId, employeeName: s.employeeName || users.find(u => u.id === s.employeeId)?.name || 'Unknown', role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
         made++;
       }
       addToast('Copied', `${made} draft shifts copied from previous week.`);
@@ -2146,7 +2298,9 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
 
   const addCoverageTarget = async (e) => {
     e.preventDefault();
-    try { await addDoc(collection(db, 'scheduleCoverageTargets'), { restaurantId: appUser.restaurantId, ...targetForm, dayIndex: parseInt(targetForm.dayIndex,10), count: parseInt(targetForm.count,10) || 1, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Target Added', 'Coverage target saved for this restaurant.'); }
+    const role = canonicalScheduleRole(targetForm.role);
+    if (!role || role === 'Unassigned') return addToast('Role Needed', 'Add or assign staff roles first, then create coverage targets from the same Schedule Builder staff list.');
+    try { await addDoc(collection(db, 'scheduleCoverageTargets'), { restaurantId: appUser.restaurantId, ...targetForm, role, dayIndex: parseInt(targetForm.dayIndex,10), count: parseInt(targetForm.count,10) || 1, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager', source: 'schedule_staff_roles' }); setTargetForm(f => ({ ...f, role })); addToast('Target Added', 'Coverage target saved using the Schedule Builder staff role list.'); }
     catch(err) { addToast('Error', err.message); }
   };
 
@@ -2201,14 +2355,14 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   return (
     <div className={`${T.card} p-4 space-y-4 border-[#D4A381]/30`}>
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div><h3 className="text-xl font-black text-white">Templates, Coverage, Smart Fill & Publish Preview</h3><p className="text-xs text-slate-400 font-bold">Week of {formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}. Templates and coverage targets are saved per restaurant.</p></div>
+        <div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div><h3 className="text-xl font-black text-white">Templates, Coverage, Smart Fill & Publish Preview</h3><p className="text-xs text-slate-400 font-bold">Week of {formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}. Templates, coverage targets, and the builder now use the same staff role list for this restaurant.</p></div>
         <div className="flex flex-wrap gap-2"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Previous Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={`${T.btn} py-2`}>Publish Preview</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"><StatusTile label="Drafts" value={draftCount}/><StatusTile label="Missing Targets" value={missingTargets.length}/><StatusTile label="Warnings" value={conflictList.length}/><StatusTile label="Templates" value={templates.length}/></div>
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-2">{[['targets','Coverage Targets'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
-      {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input} placeholder="Role, e.g. Cook"/><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add targets like Friday dinner: 2 cooks, 3 servers, 1 bartender. Smart Fill uses these."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
+      {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Roles come from Staff Roster / Settings and match the Schedule Builder staff list.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add targets from the same roles shown in the Schedule Builder staff list. Smart Fill and the builder now use one shared role source."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
-      {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input} placeholder="Role"/><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
+      {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
       {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days on desktop, or use the Move to day dropdown on mobile. Quick edit controls can change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none md:hidden"><option value="">Move to day...</option>{weekDates.map((d,i)=><option key={d} value={d}>{dayNames[i]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}
       {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{missingTargets.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps found for the current week."/> : missingTargets.map(m => <div key={`${m.id}-${m.date}`} className="bg-amber-900/10 border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-amber-300">{formatDisplayDate(m.date)} needs {m.needed} more {m.role}</div><div className="text-xs text-slate-400">Existing: {m.existing} • Target: {m.count}</div></div>)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map((w,i)=><div key={i} className="bg-red-900/10 border border-red-900/40 rounded-xl p-3 mb-2 text-sm font-bold text-red-200">{w}</div>)}</div></div>}
     </div>

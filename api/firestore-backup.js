@@ -135,7 +135,7 @@ async function restoreBackupFromStorage({ adminApp, db, storagePath, actor }) {
     restoredDocumentCount,
     skippedDocumentCount,
     actor,
-    version: '13.1.1'
+    version: '13.1.4'
   };
   await db.collection('system').doc('backupStatus').set(result, { merge: true });
   await db.collection('system').doc('backupStatus').collection('restores').doc(runId).set(result, { merge: true });
@@ -230,7 +230,7 @@ async function handler(req, res) {
       lastRunAt: startedAt.toISOString(),
       actor: auth.actor,
       source: auth.source,
-      version: '13.1.1'
+      version: '13.1.4'
     }, { merge: true });
 
     const collections = await db.listCollections();
@@ -238,7 +238,7 @@ async function handler(req, res) {
       metadata: {
         app: '86 Chaos',
         type: 'firestore-json-backup',
-        version: '13.1.1',
+        version: '13.1.4',
         projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount().project_id || loadServiceAccount().projectId || null,
         mode,
         runId,
@@ -297,7 +297,7 @@ async function handler(req, res) {
       compressedBytes: gzipped.length,
       rawBytes: Buffer.byteLength(json, 'utf8'),
       deletedOldBackups,
-      version: '13.1.1'
+      version: '13.1.4'
     };
 
     await statusRef.set(statusPayload, { merge: true });
@@ -314,7 +314,7 @@ async function handler(req, res) {
           lastError: err.message,
           lastErrorAt: failedAt,
           runFinishedAt: failedAt,
-          version: '13.1.1'
+          version: '13.1.4'
         }, { merge: true });
         await db.collection('system').doc('backupStatus').collection('errors').add({
           message: err.message,

@@ -435,7 +435,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
 
       {/* TOP NAVIGATION TOGGLE */}
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-2">
-        <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
+        <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Builder</button>
         <button onClick={() => setSubTab('events')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'events' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Events Ledger</button>
         {appUser?.isAdmin && (
           <button onClick={() => setSubTab('timesheets')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'timesheets' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Timesheets & Labor</button>

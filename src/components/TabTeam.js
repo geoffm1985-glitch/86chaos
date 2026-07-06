@@ -56,8 +56,8 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
 
       await setDoc(doc(db, "users", newAuthUid), { 
         name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        password: tPass, role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
-        forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
+        role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
+        forcePasswordChange: true, passwordStored: false, passwordPurgedAt: new Date().toISOString(), photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
       }); 
       
       const welcomeMsg = `Welcome to 86chaos!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
