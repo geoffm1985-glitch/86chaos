@@ -1,6 +1,6 @@
 // 86chaos invoice scanner
 // Extracts ALL visible invoice information from PDF or image files.
-// 13.1.9: Large-document scan handoff uses Gemini Files API instead of giant inline base64.
+// 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
 function cleanJsonText(text = '') {
   return String(text)
@@ -10,41 +10,101 @@ function cleanJsonText(text = '') {
     .trim();
 }
 
+function parseMoneyNumber(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const cleaned = String(value).replace(/[$,]/g, '').replace(/[()]/g, '-').trim();
+  const num = Number.parseFloat(cleaned);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function normalizeRow(row, index, data = {}) {
+  const r = row && typeof row === 'object' ? row : { rawText: String(row || '') };
+  const itemName = r.itemName || r.description || r.name || r.rawText || `Invoice Row ${index + 1}`;
+  const normalized = {
+    rowIndex: r.rowIndex ?? index + 1,
+    rowType: r.rowType || r.lineType || r.type || 'item',
+    productCode: r.productCode || r.sku || r.itemNumber || r.itemCode || r.code || r.pfgCode || '',
+    itemName,
+    description: r.description || itemName,
+    quantity: r.quantity ?? r.qty ?? r.shippedQty ?? r.receivedQty ?? '',
+    orderedQty: r.orderedQty ?? '',
+    shippedQty: r.shippedQty ?? r.receivedQty ?? '',
+    backOrderedQty: r.backOrderedQty ?? '',
+    packSize: r.packSize || r.pack || r.size || r.uom || '',
+    uom: r.uom || r.unitOfMeasure || '',
+    weight: r.weight || r.catchWeight || '',
+    unitPrice: r.unitPrice ?? r.casePrice ?? r.priceEach ?? '',
+    totalPrice: r.totalPrice ?? r.extendedPrice ?? r.lineTotal ?? '',
+    tax: r.tax ?? '',
+    discount: r.discount ?? '',
+    deposit: r.deposit ?? '',
+    rawText: r.rawText || '',
+    confidence: r.confidence || data.confidence || '',
+    ...r
+  };
+  normalized.isInventoryLine = isPurchasedProductRow(normalized);
+  return normalized;
+}
+
+function isPurchasedProductRow(row = {}) {
+  const rowType = String(row.rowType || row.lineType || row.type || '').toLowerCase();
+  const itemName = String(row.itemName || row.description || row.name || row.rawText || '').trim();
+  const raw = String(row.rawText || '').trim();
+  const combined = `${rowType} ${itemName} ${raw}`.toLowerCase();
+
+  if (!itemName || itemName.length < 2) return false;
+
+  // Explicit non-stock document/admin rows. These should be saved in allExtractedRows only,
+  // never pushed into Stock Matcher or inventory updates.
+  if (/(header|footer|note|memo|terms|customer|bill\s*to|ship\s*to|sold\s*to|remit|address|phone|email|metadata|page|route|invoice\s*(number|date)?|statement|subtotal|grand\s*total|total\s*due|balance|tax|freight|delivery|fuel|service\s*charge|fee|charge|deposit|discount|credit|payment|amount\s*due|change\s*due|signature)/i.test(combined)) return false;
+  if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return false;
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return false;
+  if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasValue(row.quantity)) return false;
+
+  const qty = parseMoneyNumber(row.quantity ?? row.qty ?? row.shippedQty ?? row.receivedQty ?? row.orderedQty);
+  const unitPrice = parseMoneyNumber(row.unitPrice ?? row.priceEach ?? row.casePrice);
+  const totalPrice = parseMoneyNumber(row.totalPrice ?? row.extendedPrice ?? row.lineTotal);
+  const hasQuantity = qty > 0;
+  const hasPrice = unitPrice > 0 || totalPrice > 0;
+  const hasSku = hasValue(row.productCode || row.sku || row.itemNumber || row.itemCode || row.code || row.pfgCode);
+  const hasPack = hasValue(row.packSize || row.pack || row.size || row.uom || row.unitOfMeasure || row.weight || row.catchWeight);
+
+  // Product rows on restaurant invoices almost always have a quantity plus at least
+  // one purchasing signal: SKU/code, pack/UOM, unit price, or line total.
+  if (!hasQuantity) return false;
+  if (!(hasPrice || hasSku || hasPack)) return false;
+
+  // A $0 row with no SKU and no pack is almost always a header/contact artifact.
+  if (!hasPrice && !hasSku && !hasPack) return false;
+
+  return true;
+}
+
 function normalizeInvoicePayload(parsed) {
   const data = parsed && typeof parsed === 'object' ? parsed : {};
-  const lineItems = Array.isArray(data.lineItems) ? data.lineItems : [];
+  const modelLineItems = Array.isArray(data.lineItems) ? data.lineItems : [];
   const allExtractedRows = Array.isArray(data.allExtractedRows)
     ? data.allExtractedRows
     : Array.isArray(data.invoiceRows)
       ? data.invoiceRows
-      : lineItems;
+      : modelLineItems;
 
-  const normalizedRows = allExtractedRows.map((row, index) => {
-    const r = row && typeof row === 'object' ? row : { rawText: String(row || '') };
-    const itemName = r.itemName || r.description || r.name || r.rawText || `Invoice Row ${index + 1}`;
-    return {
-      rowIndex: r.rowIndex ?? index + 1,
-      rowType: r.rowType || r.lineType || r.type || 'item',
-      productCode: r.productCode || r.sku || r.itemNumber || r.itemCode || r.code || r.pfgCode || '',
-      itemName,
-      description: r.description || itemName,
-      quantity: r.quantity ?? r.qty ?? r.shippedQty ?? r.receivedQty ?? '',
-      orderedQty: r.orderedQty ?? '',
-      shippedQty: r.shippedQty ?? r.receivedQty ?? '',
-      backOrderedQty: r.backOrderedQty ?? '',
-      packSize: r.packSize || r.pack || r.size || r.uom || '',
-      uom: r.uom || r.unitOfMeasure || '',
-      weight: r.weight || r.catchWeight || '',
-      unitPrice: r.unitPrice ?? r.casePrice ?? r.priceEach ?? '',
-      totalPrice: r.totalPrice ?? r.extendedPrice ?? r.lineTotal ?? '',
-      tax: r.tax ?? '',
-      discount: r.discount ?? '',
-      deposit: r.deposit ?? '',
-      rawText: r.rawText || '',
-      confidence: r.confidence || data.confidence || '',
-      ...r
-    };
-  });
+  const normalizedAllRows = allExtractedRows.map((row, index) => normalizeRow(row, index, data));
+  const normalizedModelLineItems = modelLineItems.map((row, index) => normalizeRow(row, index, data));
+
+  // Stock Matcher must only receive physical products that were purchased/delivered.
+  // Keep the rest in allExtractedRows/raw audit so invoice history remains complete.
+  const productRows = (normalizedModelLineItems.length ? normalizedModelLineItems : normalizedAllRows)
+    .filter(isPurchasedProductRow)
+    .map(row => ({ ...row, isInventoryLine: true }));
+
+  const skippedRows = normalizedAllRows
+    .filter(row => !isPurchasedProductRow(row))
+    .map(row => ({ ...row, isInventoryLine: false }));
 
   return {
     vendorName: data.vendorName || data.vendor || data.supplierName || '',
@@ -72,13 +132,14 @@ function normalizeInvoicePayload(parsed) {
     charges: Array.isArray(data.charges) ? data.charges : [],
     credits: Array.isArray(data.credits) ? data.credits : [],
     payments: Array.isArray(data.payments) ? data.payments : [],
-    lineItems: normalizedRows,
-    allExtractedRows: normalizedRows,
+    lineItems: productRows,
+    allExtractedRows: normalizedAllRows,
+    skippedRows,
     rawTranscription: data.rawTranscription || data.fullText || '',
     extractionNotes: data.extractionNotes || [],
     extractionWarnings: data.extractionWarnings || [],
     confidence: data.confidence || 'review',
-    scannerVersion: '13.1.9'
+    scannerVersion: '13.1.10'
   };
 }
 
@@ -263,19 +324,21 @@ function buildInvoicePrompt() {
   return `
 You are the invoice extraction engine for a restaurant inventory system.
 
-Your job: extract ABSOLUTELY EVERYTHING visible from this invoice, receipt, order guide, delivery ticket, statement, PDF, or image.
+Your job: extract invoice data for restaurant inventory. Extract product rows separately from document/header/account rows.
 
 Rules:
 - Return ONLY valid JSON. No markdown.
 - Do not summarize.
 - Do not skip tiny rows, handwritten notes, fees, credits, taxes, deposits, totals, PO numbers, terms, route numbers, vendor/customer info, page numbers, or footer notes.
+- lineItems MUST contain ONLY physical products purchased/delivered that should be eligible to update inventory stock.
+- Do NOT put email addresses, From/To/Subject lines, vendor contact info, customer/bill-to/ship-to fields, headers, footers, page numbers, terms, totals, taxes, freight, deposits, fees, discounts, credits, payments, balances, notes, signatures, or account metadata in lineItems.
 - Preserve every visible line/row in allExtractedRows, even if it is not an inventory item.
 - If a value is unclear, include it as bestGuess and add a warning.
 - Keep rawTranscription as a readable transcription of the whole document.
-- For inventory/product rows, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
-- Mark non-product rows with rowType such as tax, freight, deposit, subtotal, total, discount, credit, payment, note, header, footer.
+- For inventory/product rows only, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
+- Mark non-product rows in allExtractedRows with rowType such as tax, freight, deposit, subtotal, total, discount, credit, payment, note, header, footer, contact, customer, metadata.
 - For catch-weight foods like chicken, beef, fish, cheese, and produce, include weight and weightPerCaseLbs when visible or strongly implied by pack size.
-- For longer multipage invoices, keep going until every visible row is represented in allExtractedRows.
+- For longer multipage invoices, keep going until every visible product row is represented in lineItems and every visible row is represented in allExtractedRows.
 
 Return this JSON shape:
 {
@@ -411,7 +474,7 @@ async function handler(req, res) {
     normalized.scanOriginalBytes = scanSource?.originalBytes || null;
     normalized.geminiFileName = geminiFile?.name || '';
     normalized.processedAt = new Date().toISOString();
-    normalized.scannerVersion = '13.1.9';
+    normalized.scannerVersion = '13.1.10';
 
     if (geminiFile) deleteGeminiFileQuietly(apiKey, geminiFile);
     return res.status(200).json(normalized);
@@ -427,7 +490,7 @@ async function handler(req, res) {
         ? 'Upload the invoice through Firebase Storage mode instead of sending it through Vercel.'
         : undefined,
       scanSource: scanSource?.source || 'unknown',
-      scannerVersion: '13.1.9'
+      scannerVersion: '13.1.10'
     });
   }
 }

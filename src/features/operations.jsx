@@ -907,6 +907,38 @@ const executeOrder = async (method) => {
   const normalizeSku = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizeName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+  const parseInvoiceAmount = (value) => {
+    if (value === null || value === undefined || value === '') return 0;
+    const cleaned = String(value).replace(/[$,]/g, '').replace(/[()]/g, '-').trim();
+    const num = Number.parseFloat(cleaned);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const hasInvoiceValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
+
+  const isPurchasedInvoiceLine = (item = {}) => {
+    const rowType = String(item.rowType || item.lineType || item.type || '').toLowerCase();
+    const itemName = String(item.itemName || item.description || item.name || item.rawText || '').trim();
+    const rawText = String(item.rawText || '').trim();
+    const combined = `${rowType} ${itemName} ${rawText}`.toLowerCase();
+    if (!itemName || itemName.length < 2) return false;
+    if (/(header|footer|note|memo|terms|customer|bill\s*to|ship\s*to|sold\s*to|remit|address|phone|email|metadata|page|route|invoice\s*(number|date)?|statement|subtotal|grand\s*total|total\s*due|balance|tax|freight|delivery|fuel|service\s*charge|fee|charge|deposit|discount|credit|payment|amount\s*due|change\s*due|signature)/i.test(combined)) return false;
+    if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return false;
+    if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return false;
+    if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasInvoiceValue(item.quantity)) return false;
+
+    const qty = parseInvoiceAmount(item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? item.orderedQty);
+    const unitPrice = parseInvoiceAmount(item.unitPrice ?? item.priceEach ?? item.casePrice);
+    const totalPrice = parseInvoiceAmount(item.totalPrice ?? item.extendedPrice ?? item.lineTotal);
+    const hasQuantity = qty > 0;
+    const hasPrice = unitPrice > 0 || totalPrice > 0;
+    const hasSku = hasInvoiceValue(item.productCode || item.sku || item.itemNumber || item.itemCode || item.code || item.pfgCode);
+    const hasPack = hasInvoiceValue(item.packSize || item.pack || item.size || item.uom || item.unitOfMeasure || item.weight || item.catchWeight);
+
+    return hasQuantity && (hasPrice || hasSku || hasPack);
+  };
+
+
   const updateInvoiceProgress = (percent, label, phase = 'working') => {
     const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
     setInvoiceScanProgress({ percent: safePercent, label, phase });
@@ -1010,19 +1042,16 @@ const executeOrder = async (method) => {
         throw new Error(data.error || data.details || 'Failed to scan invoice.');
       }
 
-      const allRows = data.allExtractedRows || data.invoiceRows || data.lineItems || [];
-      const normalizedLineItems = allRows.map((item, rowIndex) => {
+      const fullRows = Array.isArray(data.allExtractedRows) ? data.allExtractedRows : (Array.isArray(data.invoiceRows) ? data.invoiceRows : []);
+      const candidateRows = Array.isArray(data.lineItems) && data.lineItems.length ? data.lineItems : fullRows;
+      const normalizedCandidates = candidateRows.map((item, rowIndex) => {
          const itemName = item.itemName || item.description || item.name || item.rawText || `Invoice Row ${rowIndex + 1}`;
          const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
          const skuKey = normalizeSku(incomingCode);
          const nameKey = normalizeName(itemName);
          const rowType = String(item.rowType || item.lineType || item.type || 'item').toLowerCase();
-         const isInventoryLine = !/(subtotal|total|tax|fee|charge|deposit|payment|balance|discount|credit|shipping|delivery)/i.test(rowType + ' ' + itemName);
-         const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
-         const matchByName = inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name))));
-         const match = matchByCode || matchByName;
-         return { 
-           ...item, 
+         const draftRow = {
+           ...item,
            itemName,
            productCode: incomingCode,
            quantity: item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? '',
@@ -1030,16 +1059,26 @@ const executeOrder = async (method) => {
            unitPrice: item.unitPrice ?? item.priceEach ?? item.casePrice ?? '',
            totalPrice: item.totalPrice ?? item.extendedPrice ?? item.lineTotal ?? '',
            rowType,
+           rawText: item.rawText || ''
+         };
+         const isInventoryLine = isPurchasedInvoiceLine(draftRow);
+         const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
+         const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
+         const match = matchByCode || matchByName;
+         return { 
+           ...draftRow,
            isInventoryLine,
-           rawText: item.rawText || '',
-           matchId: match?.id || '',
-           matchName: match?.name || '',
+           matchedItemId: isInventoryLine && match ? match.id : '',
+           matchId: isInventoryLine && match ? match.id : '',
+           matchName: isInventoryLine && match ? match.name : '',
            action: isInventoryLine ? (match ? 'update' : 'create') : 'record'
          };
       });
+      const normalizedLineItems = normalizedCandidates.filter(isPurchasedInvoiceLine).map(i => ({ ...i, isInventoryLine: true }));
+      const skippedRows = (fullRows.length ? fullRows : normalizedCandidates).filter(row => !isPurchasedInvoiceLine(row));
       updateInvoiceProgress(100, 'Review ready.', 'done');
-      setScannedInvoice({ ...data, lineItems: normalizedLineItems, allExtractedRows: normalizedLineItems, sourceFile: file.name });
-      addToast('Scan Complete', `Found ${normalizedLineItems.length} visible rows. Please review before approving.`);
+      setScannedInvoice({ ...data, lineItems: normalizedLineItems, skippedRows, allExtractedRows: fullRows.length ? fullRows : normalizedCandidates, sourceFile: file.name });
+      addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased product rows. ${skippedRows.length ? `${skippedRows.length} non-product rows were kept in the audit only.` : 'No non-product rows were sent to Stock Matcher.'}`);
     } catch (err) {
       if (aiPulseId) window.clearInterval(aiPulseId);
       if (timeoutId) window.clearTimeout(timeoutId);
@@ -1086,7 +1125,7 @@ const executeOrder = async (method) => {
 for (const item of scannedInvoice.lineItems) {
           // Catch every possible key name the AI might use for the SKU/Product Code
           const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
-          if (!item.isInventoryLine && item.matchedItemId !== 'CREATE_NEW') continue;
+          if (!item.isInventoryLine || !isPurchasedInvoiceLine(item)) continue;
 
 if (item.matchedItemId === 'CREATE_NEW') {
              // Smart Auto-Categorizer
@@ -1185,8 +1224,8 @@ const groupedItems = inventoryItems
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Rows Found</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Charges</div><div className="text-lg font-black text-white">{(scannedInvoice.charges || scannedInvoice.fees || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Product Rows</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Skipped Non-Stock</div><div className="text-lg font-black text-white">{(scannedInvoice.skippedRows || []).length}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Confidence</div><div className="text-lg font-black text-[#D4A381]">{scannedInvoice.confidence || 'Review'}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Terms</div><div className="text-xs font-black text-white truncate">{scannedInvoice.paymentTerms || scannedInvoice.terms || '—'}</div></div>
             </div>
@@ -1198,6 +1237,12 @@ const groupedItems = inventoryItems
                 {scannedInvoice.extractionNotes && <div className="mt-2 text-[10px] text-slate-300 font-bold">Notes: {Array.isArray(scannedInvoice.extractionNotes) ? scannedInvoice.extractionNotes.join(' • ') : scannedInvoice.extractionNotes}</div>}
                 {scannedInvoice.rawTranscription && <pre className="mt-2 max-h-36 overflow-auto text-[10px] whitespace-pre-wrap text-slate-400 bg-black/20 p-2 rounded-lg border border-[#2A353D]">{scannedInvoice.rawTranscription}</pre>}
               </details>
+            )}
+            
+            {(scannedInvoice.skippedRows || []).length > 0 && (
+              <div className="bg-blue-900/10 border border-blue-500/30 rounded-xl p-2 text-[10px] text-blue-200 font-bold leading-snug">
+                Non-product rows like email headers, addresses, taxes, totals, fees, and notes were kept in the Full Extraction Audit only. They will not be added to inventory.
+              </div>
             )}
             
             <div className="flex justify-between items-center mt-2 mb-1">
