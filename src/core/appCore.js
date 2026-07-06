@@ -106,9 +106,15 @@ export const secureFetch = async (url, options = {}) => {
   const { forceTokenRefresh = false, headers: optionHeaders = {}, ...fetchOptions } = options;
   const token = await auth.currentUser.getIdToken(forceTokenRefresh);
   const appCheckHeader = await getAppCheckHeader();
+  let sessionHeader = {};
+  try {
+    const sid = sessionStorage.getItem('chaosSessionId');
+    if (sid) sessionHeader = { 'X-Chaos-Session-Id': sid };
+  } catch (_) {}
   const headers = {
     ...optionHeaders,
     ...appCheckHeader,
+    ...sessionHeader,
     'Authorization': `Bearer ${token}`
   };
   return fetch(url, { ...fetchOptions, headers });
@@ -119,7 +125,7 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '13.1.21';
+export const CURRENT_VERSION = '13.1.22';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -395,6 +401,7 @@ export const logAudit = async (user, action, target, details) => {
       details,
       timestamp: new Date().toISOString(),
       restaurantId: user.restaurantId,
+      sessionId: (() => { try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; } })(),
       isGhost
     });
   } catch (err) { console.error("Audit log failed:", err); }

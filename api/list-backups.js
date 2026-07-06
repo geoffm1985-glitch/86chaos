@@ -85,12 +85,28 @@ async function handler(req, res) {
         sizeBytes,
         createdAt,
         updatedAt,
+        integrityStatus: custom.integrityStatus || 'unknown',
+        integrityVerifiedAt: custom.integrityVerifiedAt || '',
+        integrityErrors: custom.integrityErrors || '',
+        sha256: custom.sha256 || '',
         signedUrl
       });
     }
 
     backups.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
-    return res.status(200).json({ ok: true, backups: backups.slice(0, 100), count: backups.length, bucket: bucket.name });
+    const totalBytes = backups.reduce((sum, item) => sum + Number(item.sizeBytes || 0), 0);
+    const verifiedCount = backups.filter(item => item.integrityStatus === 'verified').length;
+    let storageUsage = { totalFiles: backups.length, totalBytes, backupFiles: backups.length, backupBytes: totalBytes };
+    if (req.query?.includeUsage === '1' || req.query?.includeUsage === 'true') {
+      const [allFiles] = await bucket.getFiles();
+      let allBytes = 0;
+      for (const file of allFiles) {
+        const [metadata] = await file.getMetadata().catch(() => [{}]);
+        allBytes += Number(metadata?.size || 0);
+      }
+      storageUsage = { totalFiles: allFiles.length, totalBytes: allBytes, backupFiles: backups.length, backupBytes: totalBytes };
+    }
+    return res.status(200).json({ ok: true, backups: backups.slice(0, 100), count: backups.length, bucket: bucket.name, totalBytes, verifiedCount, storageUsage });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }

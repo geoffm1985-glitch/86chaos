@@ -1537,6 +1537,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [isBackupListLoading, setIsBackupListLoading] = useState(false);
   const [backupListFilter, setBackupListFilter] = useState('all');
   const [backupListError, setBackupListError] = useState('');
+  const [healthSnapshot, setHealthSnapshot] = useState(null);
+  const [isHealthLoading, setIsHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState('');
+  const [isDiagnosticsRunning, setIsDiagnosticsRunning] = useState(false);
+  const [lastDiagnosticsReport, setLastDiagnosticsReport] = useState(null);
   const [isScheduleReinjecting, setIsScheduleReinjecting] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [createdWorkspaceLogin, setCreatedWorkspaceLogin] = useState(null);
@@ -1713,6 +1718,9 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
   useEffect(() => {
     if (subTab === 'forensics' && backupList.length === 0 && !isBackupListLoading) {
       loadBackupList({ silent: true });
+    }
+    if (subTab === 'health' && !healthSnapshot && !isHealthLoading) {
+      refreshHealthDashboard({ silent: true });
     }
   }, [subTab]);
 
@@ -2055,7 +2063,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
           setBulkDeleteEmails('');
           await addDoc(collection(db, 'auditLogs'), {
             userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
-            details: `Bulk deleted users by email: ${emails.join(', ')}`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', isGhost: appUser?.isGhost || false
+            details: `Bulk deleted users by email: ${emails.join(', ')}`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
           }).catch(()=>{});
           return;
         }
@@ -2087,7 +2095,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       await addDoc(collection(db, 'auditLogs'), {
         userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
         details: `Bulk deleted ${profileDeleted} profile(s) by email. Auth deleted: ${authDeleted}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
-        timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', isGhost: appUser?.isGhost || false
+        timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
       }).catch(()=>{});
 
       addToast(errors.length ? 'Partial Delete' : 'Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
@@ -2708,6 +2716,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     storageUser: !!(localStorage.getItem('86chaosUser') || sessionStorage.getItem('86chaosUser')),
     userAgent: navigator.userAgent
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
+  const currentAdminSessionId = (() => {
+    try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; }
+  })();
   const platformSnapshot = [
     `86 Chaos Platform Snapshot`,
     `Version: ${CURRENT_VERSION}`,
@@ -2720,6 +2731,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     `Admins: ${adminUsers.length}`,
     `Crashes 24h: ${crashes24h}`,
     `Last backup/status: ${backupStatusLabel} (${backupDetail})`,
+    `Backup integrity: ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}`,
     `Permission denied logs: ${permissionDeniedLogs.length}`, 
     `Push opt-in: ${pushOptInRate}%`,
     `Users without restaurantId: ${usersWithoutRestaurant.length}`,
@@ -2738,7 +2750,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     usersWithoutRestaurant.length > 0 ? { tone: 'amber', title: 'Users missing restaurantId', detail: `${usersWithoutRestaurant.length} user profile(s) cannot route correctly.`, jump: 'support' } : null,
     duplicateEmailGroups.length > 0 ? { tone: 'red', title: 'Duplicate user emails', detail: `${duplicateEmailGroups.length} duplicate email group(s) found.`, jump: 'support' } : null,
     pushOptInRate < 30 && allUsers.length > 0 ? { tone: 'amber', title: 'Low push adoption', detail: `${pushOptInRate}% of users have notification tokens.`, jump: 'users' } : null,
-    backupIsStale ? { tone: 'amber', title: 'Backup status stale', detail: `Last reported backup/maintenance: ${backupStatusLabel}.`, jump: 'support' } : null
+    backupIsStale ? { tone: 'amber', title: 'Backup status stale', detail: `Last reported backup/maintenance: ${backupStatusLabel}.`, jump: 'health' } : null,
+    (backupStatus?.lastIntegrityStatus === 'failed' || backupStatus?.backupIntegrity?.status === 'failed') ? { tone: 'red', title: 'Backup integrity failed', detail: 'Latest backup did not pass Storage round-trip verification.', jump: 'health' } : null
   ].filter(Boolean);
   const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
 
@@ -2758,9 +2771,20 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {})).sort((a,b) => b[1] - a[1]).slice(0, 8);
+  const getAuditTimeMs = (log) => parsePresenceTimeMs(log.timestamp || log.time || log.createdAt);
+  const adminAuditSessionGroups = Object.values(auditLogs.reduce((acc, log) => {
+    const timeMs = getAuditTimeMs(log) || Date.now();
+    const block = Math.floor(timeMs / (30 * 60 * 1000));
+    const key = log.sessionId || log.activeSessionId || `${log.userId || log.userName || 'unknown'}-${block}`;
+    if (!acc[key]) acc[key] = { id: key, actor: log.userName || log.userId || 'Unknown', userId: log.userId || '', sessionId: log.sessionId || '', startedMs: timeMs, endedMs: timeMs, logs: [] };
+    acc[key].logs.push(log);
+    acc[key].startedMs = Math.min(acc[key].startedMs, timeMs);
+    acc[key].endedMs = Math.max(acc[key].endedMs, timeMs);
+    return acc;
+  }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
-    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
     { title: 'Live Activity: why online users may not appear', group: 'Admin Tab Guide', keywords: 'live users online heartbeat presence last active last seen firestore rules gps notification active tab', body: ['A live user appears when their browser writes a presence heartbeat to their user profile. The app writes lastActive, lastSeen, lastHeartbeatAt, onlineState, activeTab, activeDevice, notificationPermission, GPS permission, and device diagnostics.', 'If the Live Activity panel is empty while people are online, first confirm the deployed Firestore rules include the presence fields in userSafeSelfUpdate.', 'Open the app as a normal employee, wait about 25 seconds, then check System Administrator → Live Activity. The user should appear within the three-minute live window.', 'If they appear under Recent Activity but not Live Activity, their heartbeat is stale, the tab is hidden, or their browser/device went offline.', 'If no profile updates occur at all, check browser console for permission-denied and confirm the logged-in Firebase Auth UID matches the users document ID.'] },
     { title: 'Dashboard / Command Deck: what the numbers mean', group: 'Admin Tab Guide', keywords: 'dashboard command deck metrics backup countdown action queue mrr crashes stale clients push adoption', body: ['Online Now counts users with a fresh heartbeat in the last few minutes.', 'Crashes shows recent crash reports and should be used with Support before editing code or rules.', 'Backup info shows the last backup and the countdown to the next automatic backup.', 'MRR, trial, stale client, push opt-in, and sticky-rate cards are operating signals, not accounting books. Use them to spot accounts that need attention.', 'The Administrator Action Queue is the shortest path to urgent problems. Click a card to jump to the relevant admin section.'] },
     { title: 'Workspaces: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Workspaces to manage restaurant/customer environments, not individual shifts or menu work.', 'The workspace drawer shows users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/status state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
@@ -2776,6 +2800,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics & Backups.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents. If restored schedule data mixes with old/current schedule records, run the Emergency Schedule Rescue for that month so the month is hard-replaced.'] },
+    { title: 'Health Dashboard and full diagnostics', group: 'System Administrator', keywords: 'health dashboard firestore latency storage usage api response times sync diagnostics deployment report', body: ['Open System Administrator → Health Dashboard to see Firestore read latency, backup Storage usage, API route response times, backup integrity, and last successful sync.', 'Click Refresh Health to retest live timings without changing data.', 'Click Run Full System Diagnostics before deployments to download a JSON report with client runtime health plus server-side Firebase/Admin/Storage checks.', 'A failed backup-integrity badge means the latest backup could not be verified after upload and should be checked before deploying risky changes.'] },
+    { title: 'Audit timeline by administrator session', group: 'System Administrator', keywords: 'audit timeline sessions administrator actions grouped session forensics', body: ['Open System Administrator → Forensics & Backups and review Administrator Session Timeline.', 'Actions are grouped by the saved browser session ID when available. Older logs without a session ID are grouped into 30-minute actor windows.', 'Use this timeline to reconstruct what a support/admin user did during one troubleshooting visit instead of reading a flat log stream.', 'Server-side actions such as automatic backups use the run ID or route actor as their session clue.'] },
+    { title: 'Backup integrity verification', group: 'Backups', keywords: 'backup integrity verification sha checksum storage round trip automatic backups firestore backup', body: ['Every Firestore backup now verifies itself after uploading to Firebase Storage.', 'The backup route downloads the saved gzip, checks it can be decompressed, validates document and collection counts, and compares a SHA-256 checksum.', 'The Command Deck and Health Dashboard show the latest verification status from system/backupStatus.', 'If verification fails, do not restore or rely on that backup. Run another backup and check Vercel/Firebase Storage logs.'] },
     { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Labor & Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
     { title: 'Schedule Builder location', group: 'Scheduling', keywords: 'schedule builder time clock shifts subtab permissions', body: ['Schedule Builder is now a protected subtab inside Time Clock & Schedule.', 'Users still need schedule permission or admin access.', 'Event Calendar remains separate because it is not the same thing as staff scheduling.', 'Old Schedule Builder links route into the same protected schedule workflow.'] },
     { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Today Command Center after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
@@ -2835,7 +2862,10 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       detail: backupDetail,
       storagePath: backupStatus?.storagePath || backupStatus?.path || null,
       documentCount: backupStatus?.documentCount || 0,
-      collectionCount: backupStatus?.collectionCount || 0
+      collectionCount: backupStatus?.collectionCount || 0,
+      integrityStatus: backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked',
+      integrityVerifiedAt: backupStatus?.lastIntegrityVerifiedAt || backupStatus?.backupIntegrity?.verifiedAt || null,
+      sha256: backupStatus?.backupSha256 || backupStatus?.backupIntegrity?.sha256 || null
     },
     platform: {
       status: platformStatus,
@@ -2922,6 +2952,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
         userId: appUser?.id || 'system-admin',
         userName: appUser?.email || appUser?.name || 'System Admin',
         timestamp: stamp,
+        sessionId: currentAdminSessionId,
         isGhost: appUser?.isGhost || false
       }).catch(() => {});
       addToast('Review Stamp Created', 'System operations review stamp updated. View it under Forensics & Backups.');
@@ -2974,6 +3005,104 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     }
   };
 
+  const runTimedApiCheck = async (label, url, options = {}) => {
+    const started = performance.now();
+    try {
+      const response = await secureFetch(url, options);
+      const result = await response.json().catch(() => ({}));
+      return { label, url, ok: response.ok && result.ok !== false, status: response.status, ms: Math.round(performance.now() - started), result };
+    } catch (err) {
+      return { label, url, ok: false, status: 0, ms: Math.round(performance.now() - started), error: err.message || 'Request failed' };
+    }
+  };
+
+  const refreshHealthDashboard = async ({ silent = false } = {}) => {
+    if (isHealthLoading) return healthSnapshot;
+    setIsHealthLoading(true);
+    setHealthError('');
+    const generatedAt = new Date().toISOString();
+    try {
+      const firestoreStart = performance.now();
+      const backupSnap = await getDoc(doc(db, 'system', 'backupStatus'));
+      const firestoreLatencyMs = Math.round(performance.now() - firestoreStart);
+      const liveBackupStatus = backupSnap.exists() ? { id: backupSnap.id, ...backupSnap.data() } : null;
+
+      const apiChecks = [];
+      apiChecks.push(await runTimedApiCheck('Whoami Auth Check', '/api/whoami', { method: 'GET' }));
+      apiChecks.push(await runTimedApiCheck('Security Diagnostics', '/api/security-diagnostics', { method: 'GET' }));
+      apiChecks.push(await runTimedApiCheck('Storage Usage / Backup List', '/api/list-backups?includeUsage=1', { method: 'GET' }));
+
+      const backupListCheck = apiChecks.find(c => c.label === 'Storage Usage / Backup List');
+      const backupResult = backupListCheck?.result || {};
+      if (Array.isArray(backupResult.backups)) setBackupList(backupResult.backups);
+
+      const storageUsage = {
+        bucket: backupResult.bucket || liveBackupStatus?.storageBucket || 'unknown',
+        totalFiles: backupResult.storageUsage?.totalFiles ?? backupResult.count ?? backupResult.backups?.length ?? backupList.length,
+        backupFiles: backupResult.storageUsage?.backupFiles ?? backupResult.count ?? backupResult.backups?.length ?? backupList.length,
+        totalBytes: Number(backupResult.storageUsage?.totalBytes ?? backupResult.totalBytes ?? (backupResult.backups || []).reduce((sum, item) => sum + Number(item.sizeBytes || 0), 0)),
+        backupBytes: Number(backupResult.storageUsage?.backupBytes ?? backupResult.totalBytes ?? (backupResult.backups || []).reduce((sum, item) => sum + Number(item.sizeBytes || 0), 0)),
+        verifiedCount: Number(backupResult.verifiedCount || (backupResult.backups || []).filter(item => item.integrityStatus === 'verified').length || 0)
+      };
+
+      const snapshot = {
+        generatedAt,
+        firestoreLatencyMs,
+        firestoreStatus: firestoreLatencyMs < 800 ? 'healthy' : firestoreLatencyMs < 1800 ? 'slow' : 'degraded',
+        storageUsage,
+        apiChecks,
+        lastSuccessfulSync: liveBackupStatus?.lastSuccessfulBackupAt || liveBackupStatus?.lastBackupAt || liveBackupStatus?.lastRunAt || null,
+        backupIntegrity: liveBackupStatus?.backupIntegrity || {
+          status: liveBackupStatus?.lastIntegrityStatus || 'not checked',
+          verifiedAt: liveBackupStatus?.lastIntegrityVerifiedAt || null,
+          sha256: liveBackupStatus?.backupSha256 || null,
+          errors: liveBackupStatus?.backupIntegrity?.errors || []
+        },
+        clientRuntime: envReport
+      };
+      setHealthSnapshot(snapshot);
+      if (!silent) addToast('Health Refreshed', `Firestore ${snapshot.firestoreLatencyMs}ms • ${apiChecks.filter(c => c.ok).length}/${apiChecks.length} API checks healthy.`);
+      return snapshot;
+    } catch (err) {
+      const msg = err.message || 'Health check failed.';
+      setHealthError(msg);
+      if (!silent) addToast('Health Error', msg);
+      return null;
+    } finally {
+      setIsHealthLoading(false);
+    }
+  };
+
+  const handleRunFullSystemDiagnostics = async () => {
+    if (isDiagnosticsRunning) return;
+    setIsDiagnosticsRunning(true);
+    addToast('Diagnostics Started', 'Running full system diagnostics and building a deployment report.');
+    try {
+      const clientHealth = await refreshHealthDashboard({ silent: true });
+      const response = await secureFetch('/api/full-system-diagnostics', { method: 'POST' });
+      const serverReport = await response.json().catch(() => ({}));
+      if (!response.ok || serverReport.ok === false) throw new Error(serverReport.error || `Diagnostics failed with status ${response.status}`);
+      const report = {
+        ...serverReport,
+        clientHealth,
+        frontendSnapshot: buildForensicBundle(),
+        notes: [
+          'Run before deployments to capture Firestore latency, Storage backup usage, API timing, backup integrity, and client runtime state.',
+          'This report does not expose customer private records; it stores counts, statuses, and operational metadata.'
+        ]
+      };
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      downloadTextFile(`86chaos-full-system-diagnostics-${stamp}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8;');
+      setLastDiagnosticsReport(report);
+      setHealthSnapshot(prev => ({ ...(prev || clientHealth || {}), serverDiagnostics: serverReport, generatedAt: new Date().toISOString() }));
+      addToast('Diagnostics Complete', 'Full system diagnostics report downloaded.');
+    } catch (err) {
+      addToast('Diagnostics Error', err.message || 'Full system diagnostics failed. Check Vercel logs.');
+    } finally {
+      setIsDiagnosticsRunning(false);
+    }
+  };
+
   const handleRunBackupNow = async () => {
     if (isBackupRunning) return;
     const ok = window.confirm('Run a full Firestore JSON backup now? This can take a minute on large databases.');
@@ -2984,7 +3113,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       const response = await secureFetch('/api/firestore-backup?mode=manual', { method: 'POST' });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Backup failed with status ${response.status}`);
-      addToast('Backup Complete', `${result.documentCount || 0} document(s) saved to Storage.`);
+      addToast('Backup Complete', `${result.documentCount || 0} document(s) saved. Integrity: ${result.lastIntegrityStatus || result.backupIntegrity?.status || 'not checked'}.`);
       setSubTab('forensics');
       loadBackupList({ silent: true });
     } catch (err) {
@@ -3064,6 +3193,7 @@ Type RESTORE to continue.`);
         userId: appUser?.id || 'system-admin',
         userName: appUser?.email || appUser?.name || 'System Admin',
         timestamp: new Date().toISOString(),
+        sessionId: currentAdminSessionId,
         isGhost: appUser?.isGhost || false
       }).catch(() => {});
 
@@ -3109,6 +3239,7 @@ Type RESTORE to continue.`);
   const adminTabGroups = [
     { title:'Overview', tabs:[
       {id:'overview', label:'Dashboard'},
+      {id:'health', label:'Health Dashboard'},
       {id:'live', label:'Live Activity'}
     ]},
     { title:'Customer Operations', tabs:[
@@ -3195,6 +3326,7 @@ Type RESTORE to continue.`);
               </div>
               <div className="relative space-y-2">
                 <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} action item(s)`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} onClick={() => jumpToAdminIssue('overview')} />
+                <CockpitMetric label="Health" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Check'} detail={`Integrity: ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}`} tone={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : healthSnapshot?.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} onClick={() => jumpToAdminIssue('health')} />
                 <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} workspaces`} tone="emerald" onClick={() => jumpToAdminIssue('live')} />
                 <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" onClick={() => jumpToAdminIssue('tenants')} />
                 <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
@@ -3232,6 +3364,7 @@ Type RESTORE to continue.`);
                 <button type="button" onClick={() => jumpToAdminIssue('live')} className="bg-emerald-900/15 border border-emerald-900/50 text-emerald-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Live Radar</button>
                 <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-purple-900/15 border border-purple-900/50 text-purple-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clients</button>
                 <button type="button" onClick={handleDownloadForensicBundle} className="bg-blue-900/15 border border-blue-900/50 text-blue-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Forensics JSON</button>
+                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="bg-cyan-900/15 border border-cyan-900/50 text-cyan-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest disabled:opacity-50">Full Diag</button>
                 <button type="button" onClick={handleDownloadClientDirectory} className="bg-amber-900/15 border border-amber-900/50 text-amber-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Client CSV</button>
               </div>
             </div>
@@ -3695,6 +3828,87 @@ Type RESTORE to continue.`);
       )}
 
       {/* --- TAB: LIVE OPS / PRESENCE RADAR --- */}
+      {subTab === 'health' && (
+        <div id="admin-health" className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5 cockpit-grid border-blue-900/30`}>
+            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Health Dashboard</div>
+                <h2 className="text-2xl font-black text-white">Deployment Readiness + System Health</h2>
+                <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Live operational checks for Firestore latency, backup Storage usage, API response times, backup integrity, and last successful sync.</p>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2 w-full lg:w-auto">
+                <button type="button" onClick={() => refreshHealthDashboard()} disabled={isHealthLoading} className="bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/50 disabled:opacity-50 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white transition-colors flex items-center justify-center gap-2">
+                  {isHealthLoading ? <Loader2 size={14} className="animate-spin"/> : <Repeat size={14}/>} Refresh Health
+                </button>
+                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="bg-blue-900/20 border border-blue-900/50 hover:bg-blue-900/40 disabled:opacity-50 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest text-blue-300 transition-colors flex items-center justify-center gap-2">
+                  {isDiagnosticsRunning ? <Loader2 size={14} className="animate-spin"/> : <Wrench size={14}/>} Run Full Diagnostics
+                </button>
+              </div>
+            </div>
+            {healthError && <div className="mt-4 bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{healthError}</div>}
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <CockpitMetric label="Firestore Latency" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Run Check'} detail={healthSnapshot?.firestoreStatus || 'Not tested yet'} tone={!healthSnapshot ? 'blue' : healthSnapshot.firestoreLatencyMs > 1800 ? 'red' : healthSnapshot.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={!!healthSnapshot && healthSnapshot.firestoreLatencyMs > 1800} />
+            <CockpitMetric label="Backup Storage" value={healthSnapshot ? formatBackupBytes(healthSnapshot.storageUsage?.totalBytes) : formatBackupBytes(backupList.reduce((sum, b) => sum + Number(b.sizeBytes || 0), 0))} detail={`${healthSnapshot?.storageUsage?.totalFiles ?? backupList.length} Storage file(s) • ${healthSnapshot?.storageUsage?.backupFiles ?? backupList.length} backup(s)`} tone="blue" />
+            <CockpitMetric label="API Routes" value={healthSnapshot ? `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length}` : 'Run Check'} detail={healthSnapshot ? `${Math.round((healthSnapshot.apiChecks || []).reduce((sum, c) => sum + (c.ms || 0), 0) / Math.max(1, (healthSnapshot.apiChecks || []).length))}ms avg` : 'whoami / security / backups'} tone={healthSnapshot && (healthSnapshot.apiChecks || []).some(c => !c.ok) ? 'amber' : 'emerald'} />
+            <CockpitMetric label="Last Successful Sync" value={formatBackupTimestamp(healthSnapshot?.lastSuccessfulSync || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastBackupAt || backupStatus?.lastRunAt)} detail={backupStatus?.storagePath || 'Backup status route'} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
+            <CockpitMetric label="Backup Integrity" value={healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'Not Checked'} detail={healthSnapshot?.backupIntegrity?.verifiedAt ? formatBackupTimestamp(healthSnapshot.backupIntegrity.verifiedAt) : (backupStatus?.lastIntegrityVerifiedAt ? formatBackupTimestamp(backupStatus.lastIntegrityVerifiedAt) : 'Round-trip verification')} tone={(healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : (healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'verified' ? 'emerald' : 'amber'} hot={(healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} />
+          </div>
+
+          <div className="grid lg:grid-cols-[1.1fr_.9fr] gap-4">
+            <div className={`${T.card} overflow-hidden`}>
+              <div className={`bg-[#12161A] p-4 border-b ${T.border} flex items-center justify-between gap-3`}>
+                <div>
+                  <h3 className="font-black text-sm text-white flex items-center gap-2"><Globe className="text-blue-400" size={18}/> API Response Times</h3>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Useful before deploys: auth route, diagnostics route, and backup Storage list route.</p>
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{healthSnapshot?.generatedAt ? formatBackupTimestamp(healthSnapshot.generatedAt) : 'Not run'}</span>
+              </div>
+              <div className={`divide-y ${T.border}`}>
+                {!healthSnapshot && <div className="p-6 text-center text-xs font-bold text-slate-500">Click Refresh Health or Run Full Diagnostics to test the live routes.</div>}
+                {(healthSnapshot?.apiChecks || []).map(check => (
+                  <div key={check.label} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="font-black text-white text-sm">{check.label}</div>
+                      <div className="text-[9px] font-mono text-slate-500 break-all">{check.url}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${check.ok ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-red-900/20 text-red-300 border-red-900/50'}`}>{check.ok ? 'OK' : `ERR ${check.status || ''}`}</span>
+                      <span className="text-sm font-black text-white min-w-[70px] text-right">{check.ms}ms</span>
+                    </div>
+                    {check.error && <div className="sm:col-span-2 text-[10px] font-bold text-red-300">{check.error}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-sm flex items-center gap-2"><Shield size={16} className="text-emerald-300"/> Backup Integrity Detail</h3>
+                <div className="mt-3 space-y-2 text-xs font-bold text-slate-300">
+                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Status</span><span className="text-white">{healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}</span></div>
+                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Verified</span><span className="text-white text-right">{healthSnapshot?.backupIntegrity?.verifiedAt ? formatBackupTimestamp(healthSnapshot.backupIntegrity.verifiedAt) : (backupStatus?.lastIntegrityVerifiedAt ? formatBackupTimestamp(backupStatus.lastIntegrityVerifiedAt) : 'Not yet')}</span></div>
+                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Documents</span><span className="text-white">{healthSnapshot?.backupIntegrity?.documentCount || backupStatus?.backupIntegrity?.documentCount || backupStatus?.documentCount || 0}</span></div>
+                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Collections</span><span className="text-white">{healthSnapshot?.backupIntegrity?.collectionCount || backupStatus?.backupIntegrity?.collectionCount || backupStatus?.collectionCount || 0}</span></div>
+                  <div className="pt-2 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">SHA-256</div><div className="text-[9px] font-mono text-slate-500 break-all">{healthSnapshot?.backupIntegrity?.sha256 || backupStatus?.backupSha256 || backupStatus?.backupIntegrity?.sha256 || 'not stamped yet'}</div></div>
+                  {((healthSnapshot?.backupIntegrity?.errors || backupStatus?.backupIntegrity?.errors || []).length > 0) && <div className="bg-red-900/20 border border-red-900/50 rounded-lg p-2 text-[10px] text-red-200">{(healthSnapshot?.backupIntegrity?.errors || backupStatus?.backupIntegrity?.errors || []).join(' | ')}</div>}
+                </div>
+              </div>
+              <div className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-sm flex items-center gap-2"><Wrench size={16} className="text-blue-300"/> Deployment Diagnostics</h3>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 leading-snug">Run this before pushing production changes. It downloads a JSON report with server checks and client health, then writes a system audit record.</p>
+                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="mt-3 w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 disabled:opacity-50 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                  {isDiagnosticsRunning ? <Loader2 size={14} className="animate-spin"/> : <Wrench size={14}/>} Run Full System Diagnostics
+                </button>
+                {lastDiagnosticsReport && <div className="mt-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-bold text-slate-400">Last report: {formatBackupTimestamp(lastDiagnosticsReport.generatedAt)} • Duration {lastDiagnosticsReport.durationMs || 0}ms • Integrity {lastDiagnosticsReport.backupIntegrity?.status || 'unknown'}</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {subTab === 'live' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {adminDataErrors.users && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Live user data is blocked by Firestore rules or auth claims: {adminDataErrors.users}. Deploy the included firestore.rules file, then log out and back in so super-admin claims refresh.</div>}
@@ -4114,6 +4328,42 @@ another@email.com"></textarea>
             <CockpitMetric label="Backup Status" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
           </div>
 
+          <div className={`${T.card} overflow-hidden border-purple-900/30`}>
+            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
+              <div>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><Shield className="text-purple-400" size={18}/> Administrator Session Timeline</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Groups admin/support actions by browser session ID. Older records are grouped by actor in 30-minute windows.</p>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-widest text-purple-300 bg-purple-900/20 border border-purple-900/50 rounded-lg px-2 py-1">{adminAuditSessionGroups.length} session group(s)</span>
+            </div>
+            <div className="max-h-[420px] overflow-y-auto custom-scrollbar divide-y divide-[#2A353D]">
+              {adminAuditSessionGroups.length === 0 && <div className="p-6 text-center text-xs font-bold text-slate-500">No administrator actions found yet.</div>}
+              {adminAuditSessionGroups.map(group => (
+                <div key={group.id} className="p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                    <div>
+                      <div className="font-black text-white text-sm">{group.actor}</div>
+                      <div className="text-[9px] font-mono text-slate-500 break-all">Session: {group.sessionId || group.id}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest">{group.logs.length} action(s)</div>
+                      <div className="text-[9px] text-slate-500 font-bold">{formatBackupTimestamp(new Date(group.startedMs).toISOString())} → {formatBackupTimestamp(new Date(group.endedMs).toISOString())}</div>
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                    {group.logs.slice(0, 6).map(log => (
+                      <div key={log.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">
+                        <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-blue-300 truncate">{log.action || 'UNKNOWN'}</span><span className="text-[8px] text-slate-600 font-bold whitespace-nowrap">{formatBackupTimestamp(log.timestamp || log.time || log.createdAt)}</span></div>
+                        <div className="text-[10px] font-bold text-slate-400 mt-1 line-clamp-2">{log.details || log.target || 'No details'}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {group.logs.length > 6 && <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">+ {group.logs.length - 6} more action(s) in flat audit below</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className={`${T.card} p-4 border-cyan-900/30`}>
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
               <div>
@@ -4212,7 +4462,7 @@ another@email.com"></textarea>
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="text-[10px] font-black text-white truncate">{formatBackupTimestamp(backup.createdAt || backup.updatedAt)}</div>
-                            <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{backup.mode || 'backup'} • {formatBackupBytes(backup.sizeBytes)} • {backup.documentCount || 0} docs</div>
+                            <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{backup.mode || 'backup'} • {formatBackupBytes(backup.sizeBytes)} • {backup.documentCount || 0} docs • Integrity: {backup.integrityStatus || 'unknown'}</div>
                           </div>
                           <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${backup.mode === 'manual' ? 'text-blue-300 border-blue-900/50 bg-blue-900/20' : 'text-emerald-300 border-emerald-900/50 bg-emerald-900/20'}`}>{backup.mode || 'backup'}</span>
                         </div>
@@ -4763,6 +5013,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-13122', title:'What changed in version 13.1.22', group:'Release Notes', keywords:'new update 13.1.22 reliability health backups diagnostics', body:['Improved system reliability checks and backup confidence for smoother updates.', 'Added stronger internal health checks before deployments.', 'Polished administrator monitoring tools while keeping customer-facing workflows unchanged.'] },
   { id:'new-13121', title:'What changed in version 13.1.21', group:'Release Notes', keywords:'new update 13.1.21 time clock clock in clock out loading label refresh employee punch', body:['The Time Clock button now shows the correct saving label while employees clock in or clock out.', 'Clock In stays on CLOCKING IN while saving, then changes to Clock Out.', 'Clock Out stays on CLOCKING OUT while saving, then changes back to Clock In without requiring a refresh.'] },
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },

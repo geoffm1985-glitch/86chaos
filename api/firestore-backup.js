@@ -1,5 +1,8 @@
 const admin = require('firebase-admin');
 const zlib = require('zlib');
+const crypto = require('crypto');
+
+const APP_VERSION = '13.1.22';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -142,7 +145,7 @@ async function restoreBackupFromStorage({ adminApp, db, storagePath, actor }) {
     restoredDocumentCount,
     skippedDocumentCount,
     actor,
-    version: '13.1.17'
+    version: APP_VERSION
   };
   await db.collection('system').doc('backupStatus').set(result, { merge: true });
   await db.collection('system').doc('backupStatus').collection('restores').doc(runId).set(result, { merge: true });
@@ -208,6 +211,59 @@ async function pruneOldBackups(bucket, keepCount = 35) {
   }
 }
 
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+function buildIntegrityResult({ backup, downloadedBackup, expectedHash, downloadedHash, gzippedBytes, downloadedBytes, storagePath }) {
+  const errors = [];
+  if (!downloadedBackup?.metadata) errors.push('Missing backup metadata after download.');
+  if (!downloadedBackup?.collections || typeof downloadedBackup.collections !== 'object') errors.push('Missing collections payload after download.');
+  if (downloadedBackup?.metadata?.runId !== backup.metadata.runId) errors.push('Run ID mismatch after download.');
+  if (downloadedBackup?.metadata?.documentCount !== backup.metadata.documentCount) errors.push('Document count mismatch after download.');
+  if (downloadedBackup?.metadata?.collectionCount !== backup.metadata.collectionCount) errors.push('Collection count mismatch after download.');
+  if (expectedHash !== downloadedHash) errors.push('SHA-256 checksum mismatch after Storage round trip.');
+  return {
+    ok: errors.length === 0,
+    status: errors.length === 0 ? 'verified' : 'failed',
+    verifiedAt: new Date().toISOString(),
+    storagePath,
+    sha256: expectedHash,
+    roundTripSha256: downloadedHash,
+    compressedBytes: gzippedBytes,
+    downloadedBytes,
+    documentCount: backup.metadata.documentCount || 0,
+    collectionCount: backup.metadata.collectionCount || 0,
+    errors
+  };
+}
+
+async function verifyUploadedBackup({ file, backup, gzipped, storagePath }) {
+  const expectedHash = sha256(gzipped);
+  const [downloaded] = await file.download();
+  const downloadedHash = sha256(downloaded);
+  let downloadedBackup = null;
+  try {
+    downloadedBackup = JSON.parse(zlib.gunzipSync(downloaded).toString('utf8'));
+  } catch (err) {
+    return {
+      ok: false,
+      status: 'failed',
+      verifiedAt: new Date().toISOString(),
+      storagePath,
+      sha256: expectedHash,
+      roundTripSha256: downloadedHash,
+      compressedBytes: gzipped.length,
+      downloadedBytes: downloaded.length,
+      documentCount: backup.metadata.documentCount || 0,
+      collectionCount: backup.metadata.collectionCount || 0,
+      errors: [`Downloaded backup could not be decompressed/read: ${err.message}`]
+    };
+  }
+  return buildIntegrityResult({ backup, downloadedBackup, expectedHash, downloadedHash, gzippedBytes: gzipped.length, downloadedBytes: downloaded.length, storagePath });
+}
+
+
 async function handler(req, res) {
   const startedAt = new Date();
   let db;
@@ -237,7 +293,7 @@ async function handler(req, res) {
       lastRunAt: startedAt.toISOString(),
       actor: auth.actor,
       source: auth.source,
-      version: '13.1.17'
+      version: APP_VERSION
     }, { merge: true });
 
     const collections = await db.listCollections();
@@ -245,7 +301,7 @@ async function handler(req, res) {
       metadata: {
         app: '86 Chaos',
         type: 'firestore-json-backup',
-        version: '13.1.17',
+        version: APP_VERSION,
         projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount().project_id || loadServiceAccount().projectId || null,
         mode,
         runId,
@@ -269,7 +325,9 @@ async function handler(req, res) {
     const gzipped = zlib.gzipSync(Buffer.from(json, 'utf8'));
     const bucket = adminApp.storage().bucket();
     const filePath = `backups/firestore/${mode}/${runId}.json.gz`;
-    await bucket.file(filePath).save(gzipped, {
+    const backupFile = bucket.file(filePath);
+    const initialSha256 = sha256(gzipped);
+    await backupFile.save(gzipped, {
       resumable: false,
       contentType: 'application/json',
       metadata: {
@@ -279,10 +337,27 @@ async function handler(req, res) {
           mode,
           actor: auth.actor,
           documentCount: String(counters.documentCount),
-          collectionCount: String(counters.collectionCount)
+          collectionCount: String(counters.collectionCount),
+          sha256: initialSha256,
+          integrityStatus: 'pending'
         }
       }
     });
+
+    const integrity = await verifyUploadedBackup({ file: backupFile, backup, gzipped, storagePath: filePath });
+    await backupFile.setMetadata({
+      metadata: {
+        runId,
+        mode,
+        actor: auth.actor,
+        documentCount: String(counters.documentCount),
+        collectionCount: String(counters.collectionCount),
+        sha256: integrity.sha256,
+        integrityStatus: integrity.status,
+        integrityVerifiedAt: integrity.verifiedAt,
+        integrityErrors: integrity.errors.join(' | ')
+      }
+    }).catch(() => null);
 
     const deletedOldBackups = await pruneOldBackups(bucket);
 
@@ -303,15 +378,33 @@ async function handler(req, res) {
       documentCount: counters.documentCount,
       compressedBytes: gzipped.length,
       rawBytes: Buffer.byteLength(json, 'utf8'),
+      backupIntegrity: integrity,
+      lastIntegrityStatus: integrity.status,
+      lastIntegrityVerifiedAt: integrity.verifiedAt,
+      backupSha256: integrity.sha256,
       deletedOldBackups,
       nextScheduledAt: getNextDailyBackupAt(finishedAt),
       nextBackupAt: getNextDailyBackupAt(finishedAt),
       cronSchedule: '0 9 * * *',
-      version: '13.1.17'
+      version: APP_VERSION
     };
 
     await statusRef.set(statusPayload, { merge: true });
     await db.collection('system').doc('backupStatus').collection('runs').doc(runId).set(statusPayload, { merge: true });
+    await db.collection('auditLogs').add({
+      restaurantId: 'platform',
+      action: integrity.ok ? 'BACKUP_INTEGRITY_VERIFIED' : 'BACKUP_INTEGRITY_FAILED',
+      target: filePath,
+      details: integrity.ok
+        ? `Backup ${runId} verified after Storage round trip. ${counters.documentCount} docs, ${counters.collectionCount} collections.`
+        : `Backup ${runId} failed integrity verification: ${integrity.errors.join(' | ')}`,
+      userId: auth.uid || 'system-backup',
+      userName: auth.actor || 'System Backup',
+      timestamp: integrity.verifiedAt,
+      sessionId: runId,
+      sessionSource: mode,
+      isGhost: false
+    }).catch(() => null);
 
     return res.status(200).json({ ok: true, ...statusPayload });
   } catch (err) {
@@ -324,7 +417,7 @@ async function handler(req, res) {
           lastError: err.message,
           lastErrorAt: failedAt,
           runFinishedAt: failedAt,
-          version: '13.1.17'
+          version: APP_VERSION
         }, { merge: true });
         await db.collection('system').doc('backupStatus').collection('errors').add({
           message: err.message,
