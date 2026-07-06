@@ -9,6 +9,35 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
+const USER_PERMISSION_LABELS = {
+  schedule: 'Schedule Builder',
+  events: 'Event Calendar',
+  ops: 'Ops Command Center',
+  inventory: 'Inventory & Orders',
+  prep: 'Prep & Tasks + Recipe Book',
+  sales: 'Financials: Daily Ledger',
+  team: 'Staff Roster / Team Management',
+  labor: 'Financials: Labor & Timesheets'
+};
+
+const CLIENT_MODULES = [
+  { key: 'schedule', label: 'Time Clock & Shifts / Schedule Builder' },
+  { key: 'events', label: 'Event Calendar' },
+  { key: 'messages', label: 'Message Board' },
+  { key: 'ops', label: 'Ops Command Center' },
+  { key: 'prep', label: 'Prep & Tasks' },
+  { key: 'recipes', label: 'Recipe Book' },
+  { key: 'inventory', label: 'Inventory & Orders' },
+  { key: 'sales', label: 'Financials: Daily Ledger' },
+  { key: 'labor', label: 'Financials: Labor & Timesheets' },
+  { key: 'team', label: 'Staff Roster / Team Management' },
+  { key: 'maintenance', label: 'Maintenance Log' }
+];
+
+const CLIENT_MODULE_LABELS = CLIENT_MODULES.reduce((acc, item) => ({ ...acc, [item.key]: item.label }), {});
+const FEATURE_KEYS = CLIENT_MODULES.map(item => item.key);
+const EMPTY_FEATURE_MAP = FEATURE_KEYS.reduce((acc, key) => ({ ...acc, [key]: false }), {});
+
 const TabTeam = ({ users, appUser, addToast }) => {
   const canManageTeam = appUser.isAdmin || appUser.permissions?.team;
   const [name, setName] = useState(''); 
@@ -140,7 +169,7 @@ return (
           {editingUserId && (
             <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
               <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
-              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit ?</button>
+              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit</button>
             </div>
           )}
           
@@ -176,13 +205,13 @@ return (
           
           {!isAdmin && (
             <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Permission Presets: choose a plain-English job preset, then fine tune individual switches below.</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Permission presets: choose a plain-English job preset, then fine-tune individual switches below.</p>
               <div className="flex flex-wrap gap-2 mb-3">
                 {Object.keys(PERMISSION_PRESETS).map(preset => (
                   <button key={preset} type="button" onClick={() => setPerms({ ...DEFAULT_PERMISSIONS, ...PERMISSION_PRESETS[preset] })} className="px-2.5 py-1.5 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381] hover:border-[#D4A381]/40 transition-colors">{preset}</button>
                 ))}
               </div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Ops Command Center is only visible with Ops permission or Store Manager. Labor is only visible to Store Managers, Schedule/Sales managers, or users with Labor permission.</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom permissions: these labels match the main menu. Schedule Builder lives inside Time Clock & Shifts. Financials contains Labor & Timesheets and Daily Ledger.</p>
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => (
                   <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
@@ -2227,7 +2256,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
          ownerEmail: "demo@86chaos.com",
          isActive: true,
          isReadOnly: false,
-         features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true, labor: true },
+         features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, labor: true },
          labs: { laborProjection: true },
          planType: 'Enterprise',
          billingStatus: 'Paid',
@@ -2622,8 +2651,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     const last = getLastActiveMs(u);
     return !last || (nowMs - last) > 30 * 86400000;
   });
-  const moduleList = ['schedule','events','ops','messages','prep','recipes','inventory','sales','team','maintenance','labor','timesheets'];
-  const featureAdoption = moduleList.map(feat => ({ feat, count: restaurants.filter(r => r.features?.[feat] !== false).length })).sort((a,b) => b.count - a.count);
+  const moduleList = FEATURE_KEYS;
+  const featureAdoption = moduleList.map(feat => ({ feat, label: CLIENT_MODULE_LABELS[feat] || feat, count: restaurants.filter(r => r.features?.[feat] !== false).length })).sort((a,b) => b.count - a.count);
   const usersWithoutRestaurant = allUsers.filter(u => !u.restaurantId);
   const missingOwnerAccounts = restaurants.filter(r => r.ownerEmail && !allUsers.some(u => (u.email || '').toLowerCase() === (r.ownerEmail || '').toLowerCase()));
   const duplicateEmailGroups = Object.entries(allUsers.reduce((acc, u) => {
@@ -2700,8 +2729,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Client user management from Clients tab', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Clients and click the client name or Users button.', 'The client drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and billing state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that client or user sees.'] },
     { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
-    { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents.'] },
+
+    { title: 'Permission and module label standard', group: 'Permissions', keywords: 'permission labels module names financials schedule builder staff roster settings match tabs', body: ['Use the menu names when explaining access to clients: Time Clock & Shifts, Schedule Builder, Event Calendar, Message Board, Ops Command Center, Prep & Tasks, Recipe Book, Inventory & Orders, Financials, Staff Roster, Maintenance Log, Help Center, and Settings.', 'Staff Roster controls user permissions. Client Manage controls which modules the restaurant has purchased or enabled.', 'Financials is split into Labor & Timesheets and Daily Ledger. There is no separate Timesheets module toggle anymore.', 'If a user cannot see a page, check both layers: the client module must be enabled and the user must have the matching permission or Store Manager access.'] },
     { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Labor & Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
     { title: 'Schedule Builder location', group: 'Scheduling', keywords: 'schedule builder time clock shifts subtab permissions', body: ['Schedule Builder is now a protected subtab inside Time Clock & Schedule.', 'Users still need schedule permission or admin access.', 'Event Calendar remains separate because it is not the same thing as staff scheduling.', 'Old Schedule Builder links route into the same protected schedule workflow.'] },
     { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Today Command Center after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
@@ -3185,7 +3215,7 @@ Type RESTORE to continue.`);
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
                 <div className={T.label}>Enabled Modules</div>
                 <div className="flex flex-wrap gap-1.5">
-                  {moduleList.map(feat => <span key={feat} className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border ${selectedClient.features?.[feat] === false ? 'border-red-900/40 text-red-400 bg-red-900/10' : 'border-emerald-900/40 text-emerald-300 bg-emerald-900/10'}`}>{feat}</span>)}
+                  {moduleList.map(feat => <span key={feat} title={feat} className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border ${selectedClient.features?.[feat] === false ? 'border-red-900/40 text-red-400 bg-red-900/10' : 'border-emerald-900/40 text-emerald-300 bg-emerald-900/10'}`}>{CLIENT_MODULE_LABELS[feat] || feat}</span>)}
                 </div>
               </div>
             </div>
@@ -3253,7 +3283,7 @@ Type RESTORE to continue.`);
 // --- THE TIER PRESET ENGINE ---
           const applyTierPreset = (tier) => {
             // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
-            const baseFeatures = { schedule: false, events: false, ops: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, labor: false, timesheets: false };
+            const baseFeatures = { ...EMPTY_FEATURE_MAP };
             let newLabs = { laborProjection: false };
             let updatedFeatures = { ...baseFeatures };
             
@@ -3263,10 +3293,10 @@ Type RESTORE to continue.`);
             } else if (tier === 'Pro') {
                 updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
             } else if (tier === 'Elite') {
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true };
             } else if (tier === 'Enterprise') {
                 // Enterprise: Everything (Up to 5 Locations)
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true, timesheets: true };
+                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true };
                 newLabs = { laborProjection: true };
             }
 
@@ -3343,10 +3373,10 @@ Type RESTORE to continue.`);
                 <div className="pt-4 border-t border-[#2A353D]">
                    <label className={T.label}>Manual Module Overrides</label>
                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                      {['schedule', 'events', 'ops', 'messages', 'prep', 'recipes', 'inventory', 'sales', 'team', 'maintenance', 'labor', 'timesheets'].map(feat => (
+                      {CLIENT_MODULES.map(({ key: feat, label }) => (
                         <label key={feat} className={`flex items-center gap-2 p-2.5 rounded-lg border transition-colors cursor-pointer ${editingRest.features && editingRest.features[feat] ? 'bg-[#8F6040]/20 border-[#C59373]' : 'bg-[#12161A] border-[#2A353D] hover:bg-[#1A2126]'}`}>
                           <input type="checkbox" checked={editingRest.features ? editingRest.features[feat] : false} onChange={e => setEditingRest({...editingRest, features: { ...(editingRest.features || {}), [feat]: e.target.checked }})} className="w-4 h-4 accent-[#8F6040]" />
-                          <span className={`text-[11px] font-bold capitalize ${editingRest.features && editingRest.features[feat] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{feat}</span>
+                          <span className={`text-[11px] font-bold ${editingRest.features && editingRest.features[feat] ? 'text-[#D4A381]' : 'text-slate-400'}`}>{label}</span>
                         </label>
                       ))}
                    </div>
@@ -4534,8 +4564,10 @@ const HELP_ARTICLES = [
   { id:'new-1290', title:'What changed in version 12.9.0', group:'Release Notes', keywords:'new update 12.9 admin client users searchable manual backup help update landing page', body:['System Administrator → Clients now opens a full client user drawer with workspace users, admin count, online status, push/GPS diagnostics, billing, modules, support edit, possess, force logout, and delete tools.','The Administrator Manual is now a searchable troubleshooting database that also includes the full app Help Center articles.','The five-minute return-to-Today behavior was removed so users keep their place when they come back.','The startup update popup was removed. New version briefs now live inside Help Center and show as a Help Center notification dot.','The Command Deck now includes Last Backup status using system/backupStatus or the latest weekly maintenance stamp.'] },
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
-  { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
+  { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust support-safe profile details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
   { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste', body:['Open System Administrator → Forensics → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
+
+  { id:'new-1312', title:'What changed in version 13.1.2', group:'Release Notes', keywords:'new update 13.1.2 polish labels permissions financials schedule builder help manual settings', body:['Polish pass: permission labels now match the real menu and subtab names.', 'Staff Roster permissions now clearly show Schedule Builder, Event Calendar, Ops Command Center, Inventory & Orders, Prep & Tasks + Recipe Book, Financials: Daily Ledger, Staff Roster / Team Management, and Financials: Labor & Timesheets.', 'Client Manage module toggles now use the same names customers see in the app and the old Timesheets toggle was removed because Timesheets now lives under Financials.', 'Schedule Manager preset no longer grants Labor & Timesheets by default; Financials access now comes from Labor, Sales, Store Manager, or Super Admin.', 'Help Center and Administrator Manual were refreshed so support searches match the current app language.'] },
   { id:'new-1311', title:'What changed in version 13.1.1', group:'Release Notes', keywords:'new update 13.1.1 backup center restore list download backups', body:['System Administrator → Forensics now has a Backup Center with selectable backups.', 'You no longer need to paste Firebase Storage paths to restore a backup.', 'Backup entries show scheduled/manual type, date, size, document count, Download, and Restore actions.', 'Administrator Manual and Help Center were updated with Backup Center troubleshooting.'] },
   { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
   { id:'financials-tab', title:'Using Financials', group:'Financials', keywords:'financials labor timesheets daily ledger sales payroll export costs', body:['Financials combines Labor & Timesheets with Daily Ledger so managers do not jump between separate money screens.', 'Use the Labor & Timesheets subtab for punches, payroll exports, role filters, tips, and punch corrections.', 'Use the Daily Ledger subtab for sales, labor cost, food cost, and context notes.', 'Old links for Labor or Daily Ledger still open Financials and land on the matching subtab.'] },
