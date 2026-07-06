@@ -130,13 +130,21 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
     const end = shiftRangeEnd;
+    const rescuedMonths = Array.isArray(clientData?.scheduleRescueProtectedMonths) ? clientData.scheduleRescueProtectedMonths : [];
+    const rescueEnforced = clientData?.scheduleRescueEnforceProtected === true;
     return (rawShifts || [])
       .filter(s => {
-        const d = String(s.date || '');
+        const d = String(s.date || s.scheduleDateKey || '');
+        const month = String(s.scheduleMonth || d.slice(0, 7) || '');
+        if (rescueEnforced && rescuedMonths.includes(month)) {
+          // Emergency rescue armor: once a month is hard-restored, only show protected restore seed rows.
+          // This prevents old/merged backup records from flashing in and replacing the corrected schedule.
+          if (!(s.rescueProtected === true || s.sourceLocked === true || String(s.restoreSourceKey || '').includes('cheers-july-2026'))) return false;
+        }
         return !d || (d >= start && d <= end);
       })
       .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.employeeName || '').localeCompare(String(b.employeeName || '')));
-  }, [rawShifts, shiftRangeStart, shiftRangeEnd]);
+  }, [rawShifts, shiftRangeStart, shiftRangeEnd, clientData?.scheduleRescueEnforceProtected, JSON.stringify(clientData?.scheduleRescueProtectedMonths || [])]);
   const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 50, fallbackLimitCount: 25 });
   const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || isGlobalSearchOpen), whereClauses: [['date','>=', messageRangeStart]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'messages' ? 90 : 35, fallbackLimitCount: 25 });
   const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });

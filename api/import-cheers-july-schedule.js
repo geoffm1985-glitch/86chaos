@@ -206,7 +206,9 @@ module.exports = async function handler(req, res) {
       lastScheduleRescueRunId: runId,
       lastScheduleRescueAt: runDoc.finishedAt,
       lastScheduleRescueMonth: '2026-07',
-      scheduleRefreshToken: runId
+      scheduleRefreshToken: runId,
+      scheduleRescueEnforceProtected: true,
+      scheduleRescueProtectedMonths: admin.firestore.FieldValue.arrayUnion('2026-07')
     }, { merge: true });
 
     await db.collection('auditLogs').add({
