@@ -40,6 +40,10 @@
     "api/scan-invoice.js": {
       "maxDuration": 300,
       "memory": 1024
+    },
+    "api/full-system-diagnostics.js": {
+      "maxDuration": 60,
+      "memory": 1024
     }
   }
 }

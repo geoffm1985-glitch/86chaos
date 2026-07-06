@@ -5,7 +5,7 @@ import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 
 import { Edit, Trash2 } from 'lucide-react';
 
 const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiveCollection, getAvatar }) => {
-  const canManageTeam = appUser.isAdmin || appUser.permissions?.team;
+  const canManageTeam = Boolean(appUser?.isSuperAdmin === true || appUser?.isAdmin === true);
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
@@ -27,12 +27,15 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
   };
 
   const handleEditClick = (u) => {
+    if (!canManageTeam) return addToast('Read Only', 'Staff Roster is view-only for regular staff.');
     setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSave = async (e) => { 
-    e.preventDefault(); if (!name.trim() || !email.trim() || !phone.trim()) return; 
+    e.preventDefault();
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can change staff profiles.');
+    if (!name.trim() || !email.trim() || !phone.trim()) return; 
     
     if (editingUserId) {
         try {
@@ -79,12 +82,14 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
   };
 
   const handleDeactivate = async (u) => { 
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can remove staff accounts.');
     if (!window.confirm(`Terminate ${u.name}? They will be removed from the active roster but their historical schedule data will be preserved.`)) return; 
     await updateDoc(doc(db, "users", u.id), { isActive: false }); 
     addToast('Terminated', `${u.name} deactivated.`); 
   };
 
   const handlePasswordReset = async (u) => {
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can reset staff passwords.');
     if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
     try {
       await sendPasswordResetEmail(auth, u.email);
@@ -92,10 +97,55 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
     } catch(err) { addToast('Error', err.message); }
   };
 
+
+  const parsePresenceTimeMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof value?.toDate === 'function') {
+      const parsed = value.toDate().getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+  };
+  const getLastActiveMs = (u = {}) => Math.max(
+    parsePresenceTimeMs(u.lastHeartbeatAt),
+    parsePresenceTimeMs(u.presenceUpdatedAt),
+    parsePresenceTimeMs(u.lastActive),
+    parsePresenceTimeMs(u.lastSeen)
+  );
+  const formatLastActive = (u = {}) => {
+    const lastMs = getLastActiveMs(u);
+    if (!lastMs) return { label: 'Never active', tone: 'text-slate-500', exact: 'No app activity recorded yet.' };
+    const diff = Math.max(0, Date.now() - lastMs);
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    let label = 'Just now';
+    let tone = 'text-emerald-400';
+    if (diff < 3 * 60 * 1000 && u.onlineState !== 'offline') label = 'Online now';
+    else if (minutes < 60) label = `${minutes || 1}m ago`;
+    else if (hours < 24) { label = `${hours}h ago`; tone = 'text-emerald-500'; }
+    else if (days === 1) { label = 'Yesterday'; tone = 'text-amber-400'; }
+    else { label = `${days}d ago`; tone = days > 7 ? 'text-red-400' : 'text-amber-400'; }
+    let exact = '';
+    try { exact = new Date(lastMs).toLocaleString(); } catch (err) { exact = ''; }
+    return { label, tone, exact };
+  };
+
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
 
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
+      {!canManageTeam && (
+        <div className={`${T.card} p-4 border-blue-900/40 bg-blue-900/10`}>
+          <div className="text-xs font-black uppercase tracking-widest text-blue-300">Read-only Staff Roster</div>
+          <p className="text-xs font-bold text-slate-400 mt-1">Regular staff can view the roster and last app activity, but only manager/admin accounts can add, edit, reset, or remove staff.</p>
+        </div>
+      )}
       
       {canManageTeam && (
         <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-2`}>
@@ -119,7 +169,7 @@ return (
           <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
           
           {/* STRICTLY LOCKED TO ADMINS */}
-          {appUser?.isAdmin && (
+          {canManageTeam && (
             <div>
               <label className={T.label}>Hourly Wage ($)</label>
               <div className="relative">
@@ -129,7 +179,7 @@ return (
             </div>
           )}
 
-         {appUser?.isAdmin && (
+         {canManageTeam && (
             <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
               <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
               <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
@@ -158,23 +208,26 @@ return (
         <div className="divide-y divide-[#2A353D]">
           {activeUsers.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No active staff found.</div>}
           
-          {activeUsers.map(u => (
+          {activeUsers.map(u => {
+            const activity = formatLastActive(u);
+            return (
             <div key={u.id} className="p-2.5 border-b border-[#2A353D] hover:bg-[#12161A] transition-colors flex items-center justify-between gap-2">
               <div className="flex items-center gap-3 overflow-hidden">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs flex-shrink-0 ${u.isAdmin ? 'bg-red-900/50 border border-red-500/50' : 'bg-[#1A2126] border border-[#2A353D]'}`}>
-                  {u.name.charAt(0)}
+                  {(u.name || u.email || '?').charAt(0)}
                 </div>
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
-                    {appUser?.isAdmin && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
+                    {canManageTeam && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
+                    <span title={activity.exact} className={`text-[8px] font-black uppercase tracking-widest ml-1 ${activity.tone}`}>Last active: {activity.label}</span>
                   </div>
                 </div>
               </div>
               
-           {(appUser?.isAdmin || (canManageTeam && !u.isAdmin)) && (
+           {canManageTeam && (
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button onClick={() => handlePasswordReset(u)} className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded border border-[#2A353D]">Reset</button>
                   <button onClick={() => handleEditClick(u)} className="p-1 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Edit size={12}/></button>
@@ -182,7 +235,8 @@ return (
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
