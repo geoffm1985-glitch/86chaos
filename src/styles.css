@@ -17,6 +17,29 @@ body {
   overflow-x: hidden;
 }
 
+html,
+body {
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (pointer: coarse) {
+  button,
+  input,
+  textarea,
+  select,
+  a {
+    touch-action: manipulation;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
