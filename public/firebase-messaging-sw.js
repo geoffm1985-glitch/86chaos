@@ -22,19 +22,40 @@ const prodConfig = {
   measurementId: "G-JFZ6EZB0E3"
 };
 
-// 3. THE SMART BACKGROUND SWITCHER
 const firebaseConfig = self.location.hostname === 'app.86chaos.com' ? prodConfig : testConfig;
 
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  const notificationTitle = payload.notification.title || 'System Alert';
+  console.log('[firebase-messaging-sw.js] Background message received', payload);
+  const notificationTitle = payload.notification?.title || payload.data?.title || '86 Chaos Alert';
   const notificationOptions = {
-    body: payload.notification.body || 'You have a new notification.',
-    icon: '/wisco.png'
+    body: payload.notification?.body || payload.data?.body || 'You have a new notification.',
+    icon: payload.webpush?.notification?.icon || '/app-icon.png',
+    badge: payload.webpush?.notification?.badge || '/app-icon.png',
+    data: {
+      url: payload.fcmOptions?.link || payload.webpush?.fcmOptions?.link || payload.data?.url || '/'
+    },
+    requireInteraction: payload.data?.isCritical === 'true'
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification?.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.navigate(urlToOpen).catch(() => {});
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(urlToOpen);
+      return null;
+    })
+  );
 });

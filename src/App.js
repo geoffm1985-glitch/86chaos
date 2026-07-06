@@ -3,7 +3,7 @@ import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
+import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getActiveVapidKey, getPushTokenKey, getPushDeviceSnapshot } from './core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
@@ -581,9 +581,7 @@ useEffect(() => {
     if (!liveAppUser?.id || ghostTenant || typeof window === 'undefined' || !('Notification' in window) || !messaging) return;
 
     let canceled = false;
-    const activeVapidKey = window.location.hostname === 'app.86chaos.com'
-      ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
-      : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
+    const activeVapidKey = getActiveVapidKey();
 
     const syncPushToken = async (permission, showToast = false) => {
       if (canceled || permission !== 'granted') {
@@ -598,18 +596,29 @@ useEffect(() => {
       }
 
       try {
+        let swRegistration = null;
         if ('serviceWorker' in navigator) {
-          await navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => null);
+          swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' }).catch(() => null);
+          if (!swRegistration) swRegistration = await navigator.serviceWorker.ready.catch(() => null);
         }
-        const currentToken = await getToken(messaging, { vapidKey: activeVapidKey });
+        const currentToken = await getToken(messaging, { vapidKey: activeVapidKey, serviceWorkerRegistration: swRegistration || undefined });
         if (!currentToken || canceled) return;
+        const tokenKey = getPushTokenKey(currentToken);
+        const deviceSnapshot = getPushDeviceSnapshot();
+        const nowIso = new Date().toISOString();
         await updateDoc(doc(db, 'users', liveAppUser.id), {
           fcmToken: currentToken,
-          fcmTokenUpdatedAt: new Date().toISOString(),
-          lastPushTokenSyncAt: new Date().toISOString(),
+          fcmTokenUpdatedAt: nowIso,
+          lastPushTokenSyncAt: nowIso,
           notificationPermission: permission,
           pushTokenPermission: permission,
-          pushTokenHost: window.location.hostname
+          pushTokenHost: window.location.hostname,
+          [`fcmTokens.${tokenKey}`]: {
+            token: currentToken,
+            permission,
+            updatedAt: nowIso,
+            ...deviceSnapshot
+          }
         });
         if (showToast) addToast('Push Ready', 'Push notifications are enabled for this device.');
       } catch (err) {

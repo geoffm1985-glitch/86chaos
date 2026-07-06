@@ -71,8 +71,8 @@ service cloud.firestore {
         'name', 'phone', 'photoURL', 'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt',
         'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
         'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
-        'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
-        'device', 'host', 'theme', 'settings', 'notificationPrefs',
+        'fcmToken', 'fcmTokens', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission', 'lastPushFailureAt', 'lastPushFailureCode',
+        'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs',
         'forcePasswordChange', 'passwordPurgedAt', 'passwordStored'
       ]) &&
       !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys());

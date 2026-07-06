@@ -1,16 +1,17 @@
 # 86 Chaos
 
-Current build: 13.1.22
+Current build: 13.1.23
 
-## 13.1.22 focus
+## 13.1.23 focus
 
-This build adds a stronger System Administrator health and diagnostics layer for safer deployments and backup confidence.
+This build repairs push-notification registration/sending and locks owner-level workspace preferences to the account owner only.
 
-- Added backup integrity verification after Firestore backup uploads, including gzip read-back, metadata validation, document/collection count checks, and SHA-256 checksum stamping.
-- Added a System Administrator → Health Dashboard with Firestore latency, backup Storage usage, API response times, backup integrity status, and last successful sync.
-- Added one-click Run Full System Diagnostics, which downloads a deployment-readiness JSON report and logs the action.
-- Added Administrator Session Timeline in Forensics & Backups so admin/support actions are grouped by session instead of only showing as a flat audit stream.
-- Updated Backup Center rows, Command Deck, and Administrator Manual wording to include the new health, diagnostics, and integrity checks.
+- Push token registration now saves both the current device token and a per-device token map so phone/browser changes are less likely to break notifications.
+- Settings → Alerts now includes a Repair Device Push action even when browser permission is already allowed.
+- Push API routes now report missing tokens, muted users, failed sends, stale-token cleanup, and failure codes instead of only saying success/failure.
+- Schedule and general push routes now clean invalid/stale tokens automatically and send web-push metadata for better installed-app behavior.
+- Preferences → Workspace and owner-level integrations now appear only for the restaurant account owner.
+- Firestore rules now allow safe user preference/push-token self-updates while keeping restaurant workspace updates owner-only.
 
 ## Deploy notes
 
@@ -18,10 +19,14 @@ Deploy through the normal GitHub → Vercel flow.
 
 Changed deployable files:
 
-- `api/firestore-backup.js`
-- `api/list-backups.js`
-- `api/full-system-diagnostics.js`
-- `vercel.json`
-- React frontend files
+- `src/App.js`
+- `src/core/appCore.js`
+- `src/features/management.jsx`
+- `src/components/TabSettings.js`
+- `api/send-push.js`
+- `api/send-schedule-alert.js`
+- `public/firebase-messaging-sw.js`
+- `firestore.rules`
+- `public/version.json`
 
-No Firestore rules or Storage rules changes are required for this version. Vercel must redeploy the API routes before the new diagnostics and backup verification features are live.
+Firestore rules must be published after deploy. No Storage rules or Vercel env changes are required unless Firebase Admin credentials are missing in Vercel.

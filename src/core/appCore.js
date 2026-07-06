@@ -124,8 +124,37 @@ export const secureFetch = async (url, options = {}) => {
 export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
+
+// --- Push Notification Helpers ---
+export const getActiveVapidKey = () => {
+  if (typeof window === 'undefined') return '';
+  return window.location.hostname === 'app.86chaos.com'
+    ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
+    : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
+};
+
+export const getPushTokenKey = (token = '') => {
+  try {
+    return btoa(token).replace(/[^a-zA-Z0-9]/g, '').slice(-40) || `token_${Date.now()}`;
+  } catch (_) {
+    return `token_${Date.now()}`;
+  }
+};
+
+export const getPushDeviceSnapshot = () => {
+  if (typeof window === 'undefined') return {};
+  return {
+    host: window.location.hostname,
+    userAgent: window.navigator?.userAgent || 'unknown',
+    platform: window.navigator?.platform || 'unknown',
+    language: window.navigator?.language || 'unknown',
+    standalone: !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches),
+    screen: `${window.screen?.width || 0}x${window.screen?.height || 0}`
+  };
+};
+
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '13.1.22';
+export const CURRENT_VERSION = '13.1.23';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
