@@ -9,27 +9,6 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
-const getFriendlyLoginError = (error) => {
-  const raw = `${error?.code || ''} ${error?.message || ''}`;
-  if (/requests-from-referer|are-blocked|unauthorized-domain|referrer/i.test(raw)) {
-    const host = typeof window !== 'undefined' ? window.location.host : 'this deployment URL';
-    const cleanHost = String(host || '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
-    const url = cleanHost && cleanHost !== 'this deployment URL' ? `https://${cleanHost}` : 'this deployment URL';
-    return [
-      'Firebase blocked this preview link. Login, push-token repair, and owner tabs can fail from here until Firebase allows this exact URL.',
-      '',
-      'Fast fix: open the normal production 86 Chaos link on this device.',
-      '',
-      'Setup fix for this preview:',
-      `1. Add this domain to Firebase Auth authorized domains: ${cleanHost || host}`,
-      `2. Add this referrer to the Google Cloud API key allowlist: ${url}/*`,
-      '',
-      'After that, reload this page and sign in again. Do not test push notifications from this preview until it is allowed.'
-    ].join('\n');
-  }
-  return error?.message || 'Login failed.';
-};
-
 const LoginScreen = ({ setAppUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -67,7 +46,7 @@ const LoginScreen = ({ setAppUser }) => {
         setLoginError('Login successful, but user profile is missing in the database.');
       }
     } catch (error) {
-      setLoginError(getFriendlyLoginError(error));
+      setLoginError(error.message);
     }
   };
 
@@ -95,7 +74,7 @@ const LoginScreen = ({ setAppUser }) => {
       setAppUser({ ...safePendingUser, forcePasswordChange: false });
       
     } catch (error) {
-      setLoginError(getFriendlyLoginError(error));
+      setLoginError(error.message);
     }
   };
 
@@ -109,7 +88,7 @@ const LoginScreen = ({ setAppUser }) => {
  email);
       setLoginError("Reset link sent! Check your email inbox.");
     } catch (error) {
-      setLoginError(getFriendlyLoginError(error));
+      setLoginError(error.message);
     }
   };
 
@@ -132,7 +111,7 @@ const LoginScreen = ({ setAppUser }) => {
               <p className="text-xs text-[#D4A381] font-bold mt-1 uppercase tracking-widest">Please set a permanent password.</p>
             </div>
             
-            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-left whitespace-pre-line break-words leading-relaxed">{loginError}</div>}
+            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">{loginError}</div>}
 
             <div>
               <input type="password" placeholder="New Password (min 6 chars)" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" required />
@@ -149,7 +128,7 @@ const LoginScreen = ({ setAppUser }) => {
           /* OTHERWISE, RENDER THE STANDARD LOGIN FORM */
           <form onSubmit={handleLogin} className="w-full space-y-4">
             
-            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-left whitespace-pre-line break-words leading-relaxed">{loginError}</div>}
+            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">{loginError}</div>}
 
             <div>
               <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />

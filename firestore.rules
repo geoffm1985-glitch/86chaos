@@ -29,7 +29,7 @@ service cloud.firestore {
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
-        request.auth.token.email in ['geoffrm1985@gmail.com', 'Geoffrm1985@gmail.com', 'geoffm1985@gmail.com', 'Geoffm1985@gmail.com'] ||
+        request.auth.token.email == 'geoffm1985@gmail.com' ||
         (hasUserDoc() && userData().isSuperAdmin == true)
       );
     }
@@ -71,8 +71,8 @@ service cloud.firestore {
         'name', 'phone', 'photoURL', 'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt',
         'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
         'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
-        'fcmToken', 'fcmTokens', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission', 'pushDeviceId', 'fcmTokenDeviceId', 'lastPushFailureAt', 'lastPushFailureCode',
-        'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs',
+        'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
+        'device', 'host', 'theme', 'settings', 'notificationPrefs',
         'forcePasswordChange', 'passwordPurgedAt', 'passwordStored'
       ]) &&
       !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys());

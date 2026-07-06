@@ -5,8 +5,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
-  const masterEmails = ['geoffrm1985@gmail.com', 'geoffm1985@gmail.com'];
-  const isGod = masterEmails.includes((appUser?.email || '').toLowerCase().trim()) || appUser?.isSuperAdmin;
+  const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
 
   // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups like Cheers)
   const isEnabled = (feat) => clientFeatures[feat] !== false;

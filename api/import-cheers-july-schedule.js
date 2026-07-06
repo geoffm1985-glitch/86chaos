@@ -4,10 +4,6 @@ const {
   hardReplaceScheduleMonth
 } = require('./schedule-restore-utils');
 
-function getMasterEmails() {
-  const raw = [process.env.MASTER_ADMIN_EMAILS, process.env.MASTER_ADMIN_EMAIL, 'geoffrm1985@gmail.com', 'geoffm1985@gmail.com'].filter(Boolean).join(',');
-  return new Set(String(raw).split(/[\s,;]+/).map(e => e.toLowerCase().trim()).filter(Boolean));
-}
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (raw) {
@@ -34,9 +30,9 @@ async function authorize(req, app) {
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
   try {
     const decoded = await app.auth().verifyIdToken(token);
-    const masterEmails = getMasterEmails();
-    const email = (decoded.email || '').toLowerCase().trim();
-    if (masterEmails.has(email) || decoded.superAdmin === true) return { ok: true, decoded };
+    const master = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+    const email = (decoded.email || '').toLowerCase();
+    if (email === master || decoded.superAdmin === true) return { ok: true, decoded };
     return { ok: false, status: 403, error: 'Only master admin or super admin can run this import.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid token: ${err.message}` };

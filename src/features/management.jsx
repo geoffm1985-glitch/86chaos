@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, getActiveVapidKey, getPushTokenKey, getPushDeviceSnapshot, getPushDeviceId, isMasterAdminEmail, isPlatformSuperAdmin } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabTeam = ({ users, appUser, addToast }) => {
@@ -533,12 +533,6 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 
 const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
-  const accountEmail = (appUser?.email || '').toLowerCase().trim();
-  const ownerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const isAccountOwner = !!ownerEmail && accountEmail === ownerEmail;
-  const isMasterAdmin = isPlatformSuperAdmin(appUser);
-  const canAccessWorkspaceSettings = isAccountOwner || isMasterAdmin;
-  const settingsTabs = ['profile', 'preferences', 'alerts'].concat(canAccessWorkspaceSettings ? ['workspace', 'integrations'] : []);
 
   // --- Profile State ---
   const [name, setName] = useState(appUser?.name || '');
@@ -591,71 +585,30 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
   const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
 
-  const savedPushDeviceCount = appUser?.fcmTokens && typeof appUser.fcmTokens === 'object'
-    ? Object.values(appUser.fcmTokens).filter(v => (typeof v === 'string' ? v : v?.token)).length
-    : (appUser?.fcmToken ? 1 : 0);
-  const currentPushDeviceId = typeof window !== 'undefined' ? getPushDeviceId() : 'server';
-  const thisDeviceHasSavedToken = !!(appUser?.fcmTokens && Object.entries(appUser.fcmTokens).some(([key, value]) => key.startsWith(currentPushDeviceId) && (typeof value === 'string' ? value : value?.token)));
-
 const handleEnableNotifications = async () => {
-    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
-      return addToast('Not Supported', 'This browser does not support web push notifications.');
-    }
-    if (!messaging) return addToast('Not Supported', 'Firebase Messaging is not available on this device.');
-
     try {
-      const permission = Notification.permission === 'granted'
-        ? 'granted'
-        : await Notification.requestPermission();
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        
+        // --- NEW: THE SMART TARGET LOCK ---
+        const activeVapidKey = window.location.hostname === 'app.86chaos.com' 
+          ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU' // Production
+          : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc'; // Testing Sandbox
 
-      const nowIso = new Date().toISOString();
-      if (permission !== 'granted') {
-        await updateDoc(doc(db, "users", appUser.id), {
-          notificationPermission: permission,
-          pushTokenPermission: permission,
-          lastPushTokenSyncAt: nowIso
-        }).catch(() => {});
-        return addToast(permission === 'denied' ? 'Blocked' : 'Not Enabled', permission === 'denied' ? 'Notifications are blocked in browser/app settings.' : 'Notifications were not enabled for this device.');
-      }
-
-      let swRegistration = null;
-      if ('serviceWorker' in navigator) {
-        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' }).catch(() => null);
-        if (swRegistration?.update) await swRegistration.update().catch(() => null);
-        if (!swRegistration) swRegistration = await navigator.serviceWorker.ready.catch(() => null);
-      }
-
-      const currentToken = await getToken(messaging, {
-        vapidKey: getActiveVapidKey(),
-        serviceWorkerRegistration: swRegistration || undefined
-      });
-
-      if (!currentToken) return addToast('No Token', 'Firebase did not return a device token. Try closing and reopening the app.');
-
-      const tokenKey = getPushTokenKey(currentToken);
-      const deviceSnapshot = getPushDeviceSnapshot();
-      const pushDeviceId = getPushDeviceId();
-      await updateDoc(doc(db, "users", appUser.id), {
-        fcmToken: currentToken,
-        fcmTokenUpdatedAt: nowIso,
-        lastPushTokenSyncAt: nowIso,
-        notificationPermission: permission,
-        pushTokenPermission: permission,
-        pushTokenHost: window.location.hostname,
-        pushDeviceId,
-        fcmTokenDeviceId: pushDeviceId,
-        [`fcmTokens.${tokenKey}`]: {
-          token: currentToken,
-          deviceId: pushDeviceId,
-          permission,
-          updatedAt: nowIso,
-          ...deviceSnapshot
+        const currentToken = await getToken(messaging, { 
+          vapidKey: activeVapidKey 
+        });
+        
+        if (currentToken) {
+          await updateDoc(doc(db, "users", appUser.id), { fcmToken: currentToken });
+          addToast('Success', 'Push notifications enabled for this device.');
         }
-      });
-      addToast('Push Ready', 'This device is connected for 86 Chaos notifications.');
+      } else {
+        addToast('Denied', 'You blocked notifications in your browser settings.');
+      }
     } catch (error) {
-      console.error('Push setup failed:', error);
-      addToast('Push Error', error?.message || 'Could not enable notifications for this device.');
+      console.error(error);
+      addToast('Error', 'Could not enable notifications.');
     }
   };
 
@@ -736,7 +689,6 @@ const handleEnableNotifications = async () => {
 
   const handleSaveSystem = async (e) => {
     e.preventDefault();
-    if (!canAccessWorkspaceSettings) return addToast('Owner Only', 'Only the account owner or platform Super Admin can change workspace settings.');
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
       await setDoc(doc(db, "restaurants", targetId), {
@@ -817,8 +769,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-<div className={`grid ${isAccountOwner ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
-        {settingsTabs.map((tab) => (
+<div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
+        {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace', 'integrations'] : []).map((tab) => (
 <button type="button" key={tab} onClick={() => {
             if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
               return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
@@ -1035,17 +987,17 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div>
                 <div className="text-sm font-black text-white flex items-center gap-2">Device Connection</div>
                 <div className="text-[9px] font-medium text-slate-400 mt-0.5 leading-snug">
-                  Browser Status: {typeof window !== 'undefined' && typeof Notification !== 'undefined' ? (Notification.permission === 'granted' ? 'Allowed' : Notification.permission === 'denied' ? 'Blocked via Browser Settings' : 'Not Configured') : 'Not Supported'} · Saved devices: {savedPushDeviceCount}
+                  Browser Status: {typeof window !== 'undefined' && typeof Notification !== 'undefined' ? (Notification.permission === 'granted' ? 'Allowed' : Notification.permission === 'denied' ? 'Blocked via Browser Settings' : 'Not Configured') : 'Not Supported'}
                 </div>
               </div>
-              {typeof window !== 'undefined' && typeof Notification !== 'undefined' && (
+              {typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
                 <button onClick={handleEnableNotifications} type="button" className="px-4 py-2 bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-80 text-slate-900 font-black text-[10px] uppercase tracking-widest rounded-lg transition-colors shadow-md whitespace-nowrap">
-                  {Notification.permission === 'granted' ? 'Repair Device Push' : 'Connect Device'}
+                  Connect Device
                 </button>
               )}
-              {typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission === 'granted' && (appUser?.fcmToken || savedPushDeviceCount > 0) && (
-                <div className={`px-3 py-1.5 ${thisDeviceHasSavedToken ? 'bg-emerald-900/20 border-emerald-900/50 text-emerald-500' : 'bg-amber-900/20 border-amber-900/50 text-amber-400'} border font-black text-[10px] uppercase tracking-widest rounded-lg flex items-center gap-1`}>
-                  <Check size={12}/> {thisDeviceHasSavedToken ? 'This Device Saved' : 'Repair This Device'}
+              {typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission === 'granted' && (
+                <div className="px-3 py-1.5 bg-emerald-900/20 border border-emerald-900/50 text-emerald-500 font-black text-[10px] uppercase tracking-widest rounded-lg flex items-center gap-1">
+                  <Check size={12}/> Connected
                 </div>
               )}
             </div>
@@ -1127,7 +1079,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         </div>
       )}
 
-{subTab === 'workspace' && canAccessWorkspaceSettings && (
+{subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
@@ -1252,7 +1204,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
       )}
 
       {/* --- TRANSFER OWNERSHIP ZONE --- */}
-      {subTab === 'workspace' && canAccessWorkspaceSettings && (
+      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com') && (
         <form onSubmit={async (e) => {
           e.preventDefault();
           if (!newOwnerId) return addToast('Error', 'Select a new owner.');
@@ -1283,7 +1235,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
       )}
 
       {/* --- INTEGRATIONS ZONE --- */}
-      {subTab === 'integrations' && canAccessWorkspaceSettings && (
+      {subTab === 'integrations' && appUser?.isAdmin && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           
           <div className={`${T.card} p-4 sm:p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
@@ -1359,7 +1311,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 
 const TabAuditLog = ({ appUser }) => {
   const logs = useLiveCollection('auditLogs', appUser?.restaurantId, { limitCount: 200 });
-  const isGeoff = isMasterAdminEmail(appUser?.email);
+  const isGeoff = appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com';
   const sortedLogs = [...logs]
     .filter(log => isGeoff ? true : log.action !== 'APP_INSTALLED')
     .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -2070,7 +2022,7 @@ const handleDeleteGlobalUser = async (u) => {
     const emails = parseBulkEmailList(bulkDeleteEmails);
     if (emails.length === 0) return addToast('Nothing to Delete', 'Paste one or more email addresses first.');
 
-    const protectedEmails = new Set(['geoffrm1985@gmail.com', 'geoffm1985@gmail.com', (appUser?.email || '').toLowerCase()].filter(Boolean));
+    const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
     const targets = allUsers.filter(u => emails.includes((u.email || '').toLowerCase().trim()) && !protectedEmails.has((u.email || '').toLowerCase().trim()));
     const skippedProtected = emails.filter(email => protectedEmails.has(email));
 
@@ -2199,7 +2151,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     const selectedRestaurant = restaurants.find(r => r.id === supportUserForm.restaurantId);
     if (!selectedRestaurant) return addToast('Invalid Restaurant', 'That workspace could not be found.');
 
-    const protectedEmail = isMasterAdminEmail(editingGlobalUser.email);
+    const protectedEmail = (editingGlobalUser.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
     const movingSelf = editingGlobalUser.id === appUser?.id && supportUserForm.restaurantId !== editingGlobalUser.restaurantId;
     if (protectedEmail && supportUserForm.restaurantId !== editingGlobalUser.restaurantId) {
       return addToast('Protected', 'The master admin account cannot be moved from this support editor.');
@@ -2517,22 +2469,18 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     if (!window.confirm("Fire a test notification to all opted-in devices in your workspace?")) return;
     addToast('Pinging Server', 'Firing test shot to Vercel...');
     try {
-      const pushRes = await secureFetch('/api/send-push', {
+      const pushRes = await secureFetch('/api/send-schedule-alert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           restaurantId: appUser.restaurantId,
-          type: 'system_test',
-          title: '86 Chaos Test Push',
-          body: 'If this hits your phone, push is alive on this device.',
-          isCritical: true,
-          textContent: '86 Chaos Test Push'
+          restaurantName: 'TEST MODE'
         })
       });
       const pushData = await pushRes.json();
-      if (pushData.message) addToast('Server Reply', `${pushData.message} Missing users: ${pushData.missingTokenCount || 0}, muted: ${pushData.mutedCount || 0}, tokens: ${pushData.tokenCount || 0}.`); 
-      else if (pushData.success) addToast('Success', `Test pushed to ${pushData.sentCount} devices. Tokens checked: ${pushData.tokenCount || 0}, failed: ${pushData.failedCount || 0}, stale cleaned: ${pushData.invalidRemoved || 0}.`);
-      else addToast('API Error', pushData.error || `Push failed. Codes: ${JSON.stringify(pushData.failureCodes || {})}`);
+      if (pushData.message) addToast('Server Reply', pushData.message); 
+      else if (pushData.success) addToast('Success', `Test pushed to ${pushData.sentCount} devices.`);
+      else addToast('API Error', pushData.error || 'Unknown error');
     } catch (err) {
       addToast('Network Error', 'Failed to reach Vercel.');
     }
@@ -2843,7 +2791,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'People: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
     { title: 'Support: what each support tool means', group: 'Admin Tab Guide', keywords: 'support crashes permission denied raw inspector broadcast banner diagnostics user action telemetry', body: ['Crash reports show errors collected from the app and may include screen size, user agent, breadcrumbs, and stack details.', 'Permission-denied clues usually point to Firestore or Storage rule blocks. Check rules before assuming the UI is broken.', 'Raw Database Inspector lets a platform admin view a specific document by collection and document ID. Use it carefully and copy diagnostics before edits.', 'Broadcast Message sends a one-time message-style alert. Top-of-App Banner pins persistent text below the main header for selected workspaces or all workspaces.', 'Support should be used to diagnose and confirm before making risky changes in Operations or Forensics.'] },
     { title: 'Forensics & Backups: what to use it for', group: 'Admin Tab Guide', keywords: 'forensics backup center restore audit logs diagnostic json client csv backup countdown schedule rescue evidence trail', body: ['Forensics is the evidence cabinet. Use it when you need audit history, backup state, restore options, or downloadable diagnostic bundles.', 'Backup Center lists Firebase Storage backups and allows Download or Restore. Restore requires typing RESTORE and is merge-based, so it does not automatically delete documents that are newer than the backup.', 'Forensic JSON exports a support bundle with platform counts, recent sensitive actions, backup state, watchlists, and runtime clues.', 'Client CSV exports workspace IDs, plan/billing state, modules, user counts, and online counts for operations review.', 'Emergency rescue tools should only be used when a normal app workflow cannot repair data. Always verify the target restaurant and month first.'] },
-    { title: 'Platform Operations: what each operation does', group: 'Admin Tab Guide', keywords: 'operations demo workspace push notifications global refresh orphan sweep forensic bundle client csv review stamp cache lockdown', body: ['Deploy Demo Workspace creates a fake showcase restaurant for sales/demo purposes.', 'Test Push Notifications sends a critical system-test notification through the Vercel/Firebase Admin path to verify tokens, stale-token cleanup, Firebase Admin credentials, and same-account multi-device delivery.', 'Global Force Refresh tells active browsers to hard reload after a deployment or urgent system change.', 'Orphan Data Sweeper looks for shifts assigned to deleted users and removes those orphan records.', 'Forensic Bundle and Client Directory Export download support files without changing restaurant data.', 'Create Review Stamp records a platform review snapshot with backup, crash, permission, and integrity counts.', 'Clear This Cache only clears temporary cache on the current browser. It does not delete restaurant data.', 'Global Lockdown sets workspaces into maintenance lock mode. Use only for serious platform emergencies.'] },
+    { title: 'Platform Operations: what each operation does', group: 'Admin Tab Guide', keywords: 'operations demo workspace push notifications global refresh orphan sweep forensic bundle client csv review stamp cache lockdown', body: ['Deploy Demo Workspace creates a fake showcase restaurant for sales/demo purposes.', 'Test Push Notifications sends a live notification through the Vercel/Firebase Admin path to verify tokens and credentials.', 'Global Force Refresh tells active browsers to hard reload after a deployment or urgent system change.', 'Orphan Data Sweeper looks for shifts assigned to deleted users and removes those orphan records.', 'Forensic Bundle and Client Directory Export download support files without changing restaurant data.', 'Create Review Stamp records a platform review snapshot with backup, crash, permission, and integrity counts.', 'Clear This Cache only clears temporary cache on the current browser. It does not delete restaurant data.', 'Global Lockdown sets workspaces into maintenance lock mode. Use only for serious platform emergencies.'] },
     { title: 'Access Control: platform admin safety', group: 'Admin Tab Guide', keywords: 'grant access revoke super admin platform admin master admin security', body: ['Access Control is for platform administrators only, not normal restaurant managers.', 'Granting access gives broad system control, including workspaces, people, platform operations, forensics, backups, and support tools.', 'Use exact email addresses and revoke access when it is no longer needed.', 'If access does not work, confirm the user exists, confirm Firebase Auth email, confirm Firestore user document, then check custom claims/rules.'] },
     { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → People or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
@@ -3780,7 +3728,7 @@ Type RESTORE to continue.`);
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr.toLocaleString()}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-            {isMasterAdminEmail(appUser?.email) && (
+            {appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
               <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
             )}          
           </div>
@@ -5065,8 +5013,6 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-13126', title:'What changed in version 13.1.26', group:'Release Notes', keywords:'new update 13.1.26 login firebase preview deployment authorized domain push notifications settings tabs', body:['Improved the login warning shown when Firebase blocks a preview deployment URL.', 'The message now explains that login, push-token repair, and owner-only Settings tabs may not work from an unapproved preview link.', 'The warning shows the exact domain/referrer pattern needed for preview testing, while production login behavior stays unchanged.'] },
-  { id:'new-13125', title:'What changed in version 13.1.25', group:'Release Notes', keywords:'new update 13.1.25 push notifications device repair workspace integrations settings alerts firebase login', body:['Improved platform Super Admin recognition so owner-level Settings tabs remain available to the correct support account.', 'Push notification diagnostics continue to support same-account multi-device testing after each device has connected push once from Settings → Alerts.', 'Login now explains when Firebase is blocking a preview deployment URL so the workspace can use the production link or update Firebase allowed domains/referrers.'] },
   { id:'new-13122', title:'What changed in version 13.1.22', group:'Release Notes', keywords:'new update 13.1.22 reliability health backups diagnostics', body:['Improved system reliability checks and backup confidence for smoother updates.', 'Added stronger internal health checks before deployments.', 'Polished administrator monitoring tools while keeping customer-facing workflows unchanged.'] },
   { id:'new-13121', title:'What changed in version 13.1.21', group:'Release Notes', keywords:'new update 13.1.21 time clock clock in clock out loading label refresh employee punch', body:['The Time Clock button now shows the correct saving label while employees clock in or clock out.', 'Clock In stays on CLOCKING IN while saving, then changes to Clock Out.', 'Clock Out stays on CLOCKING OUT while saving, then changes back to Clock In without requiring a refresh.'] },
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
@@ -5110,8 +5056,6 @@ const HELP_ARTICLES = [
   { id:'no-auto-return', title:'Does the app still return users to Today after five minutes?', group:'Navigation', keywords:'landing page today away five minutes background tab phone stale session logout', body:['No. The automatic return-to-Today behavior was removed.','Users stay on the page they were using when they return from another app, lock screen, or browser tab.','Use Log Out when a device should be signed out.'] },
   { id:'voice-commands', title:'Using 86 Voice commands', group:'Voice Commands', keywords:'voice mic microphone command 86 salmon prep message maintenance burn waste open schedule recipe', body:['Tap the floating microphone button in the lower-left corner. Say one short command, then confirm the suggested action.','Examples: “86 salmon”, “prep 2 pans tomatoes”, “post message cooler is high”, “open Friday schedule”, “open beer cheese recipe”, or “waste 2 pounds chicken breast”.','Destructive actions like setting inventory to zero, posting alerts, maintenance reports, and burn logs require confirmation before the app writes data.','If the browser does not support speech recognition, type the command into the same voice panel.'] },
   { id:'read-saver', title:'Why some tabs load data only when opened', group:'Performance', keywords:'firebase reads read saver loading data missing old history month current week cost', body:['To reduce Firebase reads, 86 Chaos now loads each tab’s live data only when that tab needs it.','Schedule, punches, sales, messages, prep, and events use smaller date windows instead of loading years of history on login.','If an old record is not visible, use the relevant date range or open the feature tab that owns that data.','This protects multi-location clients from unnecessary Firestore costs.'] },
-  { id:'push-device-repair', title:'Turning on notifications for this device', group:'Settings', keywords:'notifications push alerts device connect repair schedule message 86 alert', body:['Open Settings → Alerts on each phone, tablet, or computer and press Connect Device. If the browser already says Allowed, press Repair Device Push to refresh that device’s saved token.', 'Keep notifications allowed in the browser or installed app settings. If the browser says Blocked, change the device/browser permission first.', 'Schedule posts, critical messages, 86 alerts, and other manager alerts use your saved alert preferences, quiet hours, and day-off mute settings.', 'After a new phone, browser reset, app reinstall, Chrome profile change, or major app update, open Settings → Alerts once on that specific device so 86 Chaos can register it again.'] },
-  { id:'workspace-owner-settings', title:'Who can change workspace settings?', group:'Settings', keywords:'workspace settings account owner owner only geofence payroll integrations preferences', body:['Settings → Workspace and Settings → Integrations are visible to the account owner for that restaurant, and to platform Super Admin for support.', 'Managers can still manage normal staff operations from the appropriate tabs when they have permission, but owner-level workspace controls stay hidden from normal non-owner admins.', 'If the wrong person needs ownership, the current owner can use Transfer Ownership from Settings → Workspace.'] },
   { id:'labor-role-export', title:'Printing timesheets by custom role', group:'Labor', keywords:'role export print pdf cook bartender server manager custom roles settings whole restaurant labor timesheets payroll', body:['Go to Financials → Timesheets → Export.','Choose Whole Restaurant or any role created in Settings, such as Line Cook, Bartender, Server, Manager, Host, or any custom role your client created.','Choose Time Punch Detail for every punch row or Total Hours Summary for one row per employee, then Download CSV or Print / Save PDF.','The role filter reads from Settings → Roles and also includes active user roles already in use, so each restaurant exports by its own job structure.'] },
   { id:'new-1290', title:'What changed in version 12.9.0', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },

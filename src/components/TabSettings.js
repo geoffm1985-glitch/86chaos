@@ -3,17 +3,11 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { Edit, Bell, Shield, Plus, Trash2, Package } from 'lucide-react';
 
-const MASTER_ADMIN_EMAILS = ['geoffrm1985@gmail.com', 'geoffm1985@gmail.com'];
+const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 
 const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth, T, useLiveCollection, getAvatar, logAudit }) => {
   const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
-  const accountEmail = (appUser?.email || '').toLowerCase().trim();
-  const ownerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const isAccountOwner = !!ownerEmail && accountEmail === ownerEmail;
-  const isMasterAdmin = MASTER_ADMIN_EMAILS.includes(accountEmail) || appUser?.isSuperAdmin === true || appUser?.systemAccess === 'superAdmin';
-  const canAccessWorkspaceSettings = isAccountOwner || isMasterAdmin;
-  const settingsTabs = ['profile', 'preferences', 'alerts'].concat(canAccessWorkspaceSettings ? ['workspace'] : []);
 
   // --- Profile State ---
   const [name, setName] = useState(appUser?.name || '');
@@ -103,7 +97,6 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
 
   const handleSaveSystem = async (e) => {
     e.preventDefault();
-    if (!canAccessWorkspaceSettings) return addToast('Owner Only', 'Only the account owner or platform Super Admin can change workspace settings.');
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
       await setDoc(doc(db, "restaurants", targetId), {
@@ -180,8 +173,8 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      <div className={`grid ${isAccountOwner ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
-        {settingsTabs.map((tab) => (
+      <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
+        {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace'] : []).map((tab) => (
           <button type="button" key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {tab}
           </button>
@@ -376,7 +369,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
         </form>
       )}
 
-      {subTab === 'workspace' && canAccessWorkspaceSettings && (
+      {subTab === 'workspace' && appUser?.isAdmin && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
@@ -423,7 +416,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
       )}
 
       {/* --- TRANSFER OWNERSHIP ZONE --- */}
-      {subTab === 'workspace' && canAccessWorkspaceSettings && (
+      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) && (
         <form onSubmit={async (e) => {
           e.preventDefault();
           if (!newOwnerId) return addToast('Error', 'Select a new owner.');

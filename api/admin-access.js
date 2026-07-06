@@ -1,9 +1,5 @@
 const admin = require('firebase-admin');
 
-function getMasterEmails() {
-  const raw = [process.env.MASTER_ADMIN_EMAILS, process.env.MASTER_ADMIN_EMAIL, 'geoffrm1985@gmail.com', 'geoffm1985@gmail.com'].filter(Boolean).join(',');
-  return new Set(String(raw).split(/[\s,;]+/).map(e => e.toLowerCase().trim()).filter(Boolean));
-}
 function initAdmin() {
   if (admin.apps.length) return admin;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -27,8 +23,8 @@ async function verifySuperAdmin(req) {
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const masterEmails = getMasterEmails();
-  if (decoded.superAdmin !== true && !masterEmails.has((decoded.email || '').toLowerCase().trim())) {
+  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+  if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) {
     throw new Error('Super admin access required.');
   }
   return decoded;

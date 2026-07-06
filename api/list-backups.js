@@ -1,9 +1,5 @@
 const admin = require('firebase-admin');
 
-function getMasterEmails() {
-  const raw = [process.env.MASTER_ADMIN_EMAILS, process.env.MASTER_ADMIN_EMAIL, 'geoffrm1985@gmail.com', 'geoffm1985@gmail.com'].filter(Boolean).join(',');
-  return new Set(String(raw).split(/[\s,;]+/).map(e => e.toLowerCase().trim()).filter(Boolean));
-}
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (raw) {
@@ -35,9 +31,9 @@ async function authorize(req, adminApp) {
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const masterEmails = getMasterEmails();
-    const email = (decoded.email || '').toLowerCase().trim();
-    if (masterEmails.has(email) || decoded.superAdmin === true) {
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+    const email = (decoded.email || '').toLowerCase();
+    if (email === masterEmail || decoded.superAdmin === true) {
       return { ok: true, actor: decoded.email || decoded.uid };
     }
     return { ok: false, status: 403, error: 'Only the master admin or a super admin can list backups.' };

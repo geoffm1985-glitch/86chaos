@@ -55,18 +55,8 @@ export const prodConfig = {
   measurementId: "G-JFZ6EZB0E3"
 };
 
-// 3. THE SWITCHER (Automatically routes Firebase based on the URL)
-// Keep production devices, push tokens, and Vercel Firebase Admin credentials in the same project.
-// Set REACT_APP_FIREBASE_ENV=test or REACT_APP_FIREBASE_ENV=prod in Vercel when a preview branch needs an explicit project.
-const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-const firebaseEnvOverride = (process.env.REACT_APP_FIREBASE_ENV || '').toLowerCase().trim();
-const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname) || hostname.endsWith('.local');
-const isSandboxHost = /(^|[.-])(test|sandbox|staging|preview)([.-]|$)/i.test(hostname);
-export const firebaseConfig = firebaseEnvOverride === 'test'
-  ? testConfig
-  : firebaseEnvOverride === 'prod'
-    ? prodConfig
-    : (isLocalHost || isSandboxHost) ? testConfig : prodConfig;
+// 3. THE SWITCHER (Automatically routes the database based on the URL)
+export const firebaseConfig = window.location.hostname === 'app.86chaos.com' ? prodConfig : testConfig;
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
@@ -131,61 +121,11 @@ export const secureFetch = async (url, options = {}) => {
 };
 
 // --- Master Configuration ---
-export const MASTER_ADMIN_EMAIL = 'geoffrm1985@gmail.com';
-export const MASTER_ADMIN_EMAIL_ALIASES = ['geoffrm1985@gmail.com', 'geoffm1985@gmail.com'];
-export const isMasterAdminEmail = (email = '') => MASTER_ADMIN_EMAIL_ALIASES.includes(String(email || '').toLowerCase().trim());
-export const isPlatformSuperAdmin = (user = {}) => Boolean(user?.isSuperAdmin === true || user?.systemAccess === 'superAdmin' || isMasterAdminEmail(user?.email));
+export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
-
-// --- Push Notification Helpers ---
-export const getActiveVapidKey = () => {
-  if (typeof window === 'undefined') return '';
-  return firebaseConfig.projectId === prodConfig.projectId
-    ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
-    : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
-};
-
-export const getPushDeviceId = () => {
-  if (typeof window === 'undefined') return 'server';
-  try {
-    const key = 'chaosPushDeviceId';
-    let id = window.localStorage?.getItem(key);
-    if (!id) {
-      const randomPart = (window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`);
-      id = `dev_${String(randomPart).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64)}`;
-      window.localStorage?.setItem(key, id);
-    }
-    return id;
-  } catch (_) {
-    return `dev_${Date.now()}`;
-  }
-};
-
-export const getPushTokenKey = (token = '') => {
-  const deviceId = getPushDeviceId();
-  try {
-    const tokenPart = btoa(token).replace(/[^a-zA-Z0-9]/g, '').slice(-16) || `${Date.now()}`;
-    return `${deviceId}_${tokenPart}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
-  } catch (_) {
-    return `${deviceId}_${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 120);
-  }
-};
-
-export const getPushDeviceSnapshot = () => {
-  if (typeof window === 'undefined') return {};
-  return {
-    host: window.location.hostname,
-    userAgent: window.navigator?.userAgent || 'unknown',
-    platform: window.navigator?.platform || 'unknown',
-    language: window.navigator?.language || 'unknown',
-    standalone: !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches),
-    screen: `${window.screen?.width || 0}x${window.screen?.height || 0}`
-  };
-};
-
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '13.1.26';
+export const CURRENT_VERSION = '13.1.22';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, isMasterAdminEmail } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 
 const CheersLogo = () => (
   <div className="flex items-center gap-2 sm:gap-3 cursor-pointer transition-opacity hover:opacity-80">
@@ -36,7 +36,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
-  const isGod = isMasterAdminEmail(appUser?.email) || appUser?.isSuperAdmin;
+  const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
@@ -52,7 +52,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('team') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
-  const isTrueGod = isMasterAdminEmail(appUser?.email) || appUser?.isSuperAdmin === true;
+  const isTrueGod = (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin === true;
   if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
   if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   tabs.push({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
@@ -189,7 +189,7 @@ const MiniProblemCard = ({ tone='amber', title, detail, action, onClick }) => {
 
 const getHomeProfile = (user) => {
   const role = (user?.role || '').toLowerCase();
-  if (user?.isSuperAdmin || isMasterAdminEmail(user?.email)) return 'system';
+  if (user?.isSuperAdmin || user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) return 'system';
   if (user?.isAdmin || user?.permissions?.ops || user?.permissions?.sales || user?.permissions?.team || user?.permissions?.schedule || user?.permissions?.labor) return 'manager';
   if (role.includes('cook') || role.includes('chef') || role.includes('kitchen') || role.includes('prep') || user?.permissions?.prep) return 'kitchen';
   if (role.includes('bartender') || role.includes('bar')) return 'bar';
@@ -362,7 +362,7 @@ const parseNextWeekday = (phrase = '') => {
   return formatDate(d);
 };
 
-const isVoiceSuperAdmin = (user = {}) => Boolean(isMasterAdminEmail(user?.email) || user?.isSuperAdmin === true);
+const isVoiceSuperAdmin = (user = {}) => Boolean((user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || user?.isSuperAdmin === true);
 const isVoiceAdmin = (user = {}) => Boolean(isVoiceSuperAdmin(user) || user?.isAdmin === true);
 const voiceFeatureEnabled = (features = {}, feature) => !feature || features?.[feature] !== false;
 const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today') => {

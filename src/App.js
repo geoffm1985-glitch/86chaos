@@ -3,7 +3,7 @@ import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getActiveVapidKey, getPushTokenKey, getPushDeviceSnapshot, getPushDeviceId, isMasterAdminEmail } from './core/appCore';
+import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
@@ -205,7 +205,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
          restaurantId: ghostWorkspaceId,
          restaurantName: ghostTenant.name,
          isAdmin: true,
-         isSuperAdmin: realAppUser.isSuperAdmin || isMasterAdminEmail(realAppUser.email),
+         isSuperAdmin: realAppUser.isSuperAdmin || realAppUser.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase(),
          role: `Ghosting ${ghostTenant.impersonate.role || 'User'}`,
          permissions: { ...fullGhostPermissions, ...(ghostTenant.impersonate.permissions || {}) },
          isGhost: true,
@@ -581,7 +581,9 @@ useEffect(() => {
     if (!liveAppUser?.id || ghostTenant || typeof window === 'undefined' || !('Notification' in window) || !messaging) return;
 
     let canceled = false;
-    const activeVapidKey = getActiveVapidKey();
+    const activeVapidKey = window.location.hostname === 'app.86chaos.com'
+      ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
+      : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
 
     const syncPushToken = async (permission, showToast = false) => {
       if (canceled || permission !== 'granted') {
@@ -596,34 +598,18 @@ useEffect(() => {
       }
 
       try {
-        let swRegistration = null;
         if ('serviceWorker' in navigator) {
-          swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' }).catch(() => null);
-          if (swRegistration?.update) await swRegistration.update().catch(() => null);
-          if (!swRegistration) swRegistration = await navigator.serviceWorker.ready.catch(() => null);
+          await navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => null);
         }
-        const currentToken = await getToken(messaging, { vapidKey: activeVapidKey, serviceWorkerRegistration: swRegistration || undefined });
+        const currentToken = await getToken(messaging, { vapidKey: activeVapidKey });
         if (!currentToken || canceled) return;
-        const tokenKey = getPushTokenKey(currentToken);
-        const deviceSnapshot = getPushDeviceSnapshot();
-        const pushDeviceId = getPushDeviceId();
-        const nowIso = new Date().toISOString();
         await updateDoc(doc(db, 'users', liveAppUser.id), {
           fcmToken: currentToken,
-          fcmTokenUpdatedAt: nowIso,
-          lastPushTokenSyncAt: nowIso,
+          fcmTokenUpdatedAt: new Date().toISOString(),
+          lastPushTokenSyncAt: new Date().toISOString(),
           notificationPermission: permission,
           pushTokenPermission: permission,
-          pushTokenHost: window.location.hostname,
-          pushDeviceId,
-          fcmTokenDeviceId: pushDeviceId,
-          [`fcmTokens.${tokenKey}`]: {
-            token: currentToken,
-            deviceId: pushDeviceId,
-            permission,
-            updatedAt: nowIso,
-            ...deviceSnapshot
-          }
+          pushTokenHost: window.location.hostname
         });
         if (showToast) addToast('Push Ready', 'Push notifications are enabled for this device.');
       } catch (err) {
@@ -698,7 +684,7 @@ useEffect(() => {
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && (isMasterAdminEmail(liveAppUser?.email) || liveAppUser?.isSuperAdmin === true)) return <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode' && ((liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin === true)) return <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
     if (activeTabState === 'audit' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin)) return <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />;
 
     return (
