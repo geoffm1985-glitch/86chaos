@@ -32,6 +32,7 @@ export default function App() {
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [voiceScheduleSubTabTarget, setVoiceScheduleSubTabTarget] = useState(null);
   const [voiceHelpSearchTarget, setVoiceHelpSearchTarget] = useState(null);
+  const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -118,7 +119,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsLaborData = wantsToday || ['financials', 'labor', 'sales', 'ops'].includes(activeTabState);
   const wantsInventoryData = wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen;
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
-  const wantsRecipesData = activeTabState === 'recipes' || isGlobalSearchOpen;
+  const wantsRecipesData = true; // Keep recipe titles available for 86 Voice exact-recipe navigation.
   const wantsMaintenanceData = wantsToday || ['maintenance', 'ops'].includes(activeTabState);
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState);
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
@@ -164,7 +165,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: activeTabState === 'maintenance' ? 110 : 30, fallbackLimitCount: 25 });
   const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
   const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 75, fallbackLimitCount: 35 });
-  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 180, fallbackLimitCount: 45 });
+  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 500, fallbackLimitCount: 120 });
   
 // --- LIVE APP USER LOGIC ---
   const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true, help: true };
@@ -868,7 +869,7 @@ useEffect(() => {
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'labor'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />;
-    if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />;
+    if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
     if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
     if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} heartbeatDebug={heartbeatDebug} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
@@ -1032,7 +1033,7 @@ return (
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
-      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} clientFeatures={displayClientFeatures} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} addToast={addToast} />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} clientFeatures={displayClientFeatures} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">

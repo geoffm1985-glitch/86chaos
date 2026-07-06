@@ -1753,7 +1753,7 @@ const groupedItems = inventoryItems
   );
 };
 
-const TabRecipes = ({ appUser, addToast }) => {
+const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
   const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCat, setFilterCat] = useState('All'); 
@@ -1942,6 +1942,45 @@ const TabRecipes = ({ appUser, addToast }) => {
     }
     addToast('Import Complete', `Injected ${count} legacy recipes.`);
   };
+
+  const normalizeRecipeVoiceText = (value = '') => String(value || '').toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
+  const findBestRecipeForVoice = (queryText = '') => {
+    const q = normalizeRecipeVoiceText(queryText);
+    if (!q) return null;
+    const qWords = q.split(' ').filter(w => w.length > 2);
+    const scored = (recipes || []).map(recipe => {
+      const titleText = normalizeRecipeVoiceText(recipe.title || '');
+      const ingredientText = normalizeRecipeVoiceText(recipe.ingredients || '').slice(0, 1000);
+      let score = 0;
+      if (recipe.id && voiceRecipeTarget?.recipeId && recipe.id === voiceRecipeTarget.recipeId) score += 220;
+      if (titleText === q) score += 170;
+      if (titleText.startsWith(q) || q.startsWith(titleText)) score += 95;
+      if (titleText.includes(q) || q.includes(titleText)) score += 70;
+      const titleWords = titleText.split(' ').filter(w => w.length > 2);
+      const hits = qWords.filter(w => titleWords.some(t => t === w || t.includes(w) || w.includes(t))).length;
+      score += hits * 26;
+      if (qWords.length && hits === qWords.length) score += 40;
+      if (ingredientText && qWords.some(w => ingredientText.includes(w))) score += 8;
+      return { recipe, score };
+    }).sort((a,b) => b.score - a.score);
+    return scored[0]?.score > 0 ? scored[0].recipe : null;
+  };
+
+  useEffect(() => {
+    if (!voiceRecipeTarget?.id) return;
+    const queryText = voiceRecipeTarget.recipeTitle || voiceRecipeTarget.query || '';
+    if (!queryText) return;
+    setFilterCat('All');
+    setSearchTerm(queryText);
+    const match = findBestRecipeForVoice(queryText);
+    if (match) {
+      setActiveRecipe(match);
+      setYieldMult(1);
+      addToast('Recipe Opened', match.title || queryText);
+    } else {
+      addToast('Recipe Search', `Searching Recipe Book for “${queryText}”.`);
+    }
+  }, [voiceRecipeTarget?.id, recipes.length]);
 
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
 

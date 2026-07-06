@@ -328,6 +328,51 @@ const findVoiceMatch = (items = [], spoken = '') => {
   }).sort((a,b) => b.score - a.score);
   return scored[0]?.score > 0 ? scored[0].item : null;
 };
+
+const extractRecipeVoiceQuery = (raw = '') => {
+  const q = normalizeVoiceText(raw);
+  const patterns = [
+    /^(?:open|show|pull up|bring up|display|go to|find|search for|look up)\s+(?:the\s+)?(.+?)\s+(?:recipe|recipes|spec|spec sheet|recipe card)$/,
+    /^(?:open|show|pull up|bring up|display|go to|find|search for|look up)\s+(?:the\s+)?(?:recipe|recipes|recipe book|spec|spec sheet|recipe card)\s+(?:for|called|named)?\s*(.+)$/,
+    /^(?:recipe|recipes|recipe book|spec|spec sheet|recipe card)\s+(?:for|called|named)?\s*(.+)$/,
+    /^(?:how do i make|how to make|show me how to make|what is the recipe for)\s+(.+)$/
+  ];
+  for (const pattern of patterns) {
+    const match = q.match(pattern);
+    if (match?.[1]) {
+      const cleaned = cleanVoiceItemName(match[1]
+        .replace(/\b(recipe|recipes|recipe book|spec|spec sheet|recipe card|please|open|show|pull up|bring up|display)\b/g, ' ')
+      );
+      if (cleaned) return cleaned;
+    }
+  }
+  return '';
+};
+
+const findVoiceRecipeMatch = (recipes = [], spoken = '') => {
+  const q = normalizeVoiceText(spoken);
+  if (!q) return null;
+  const qWords = q.split(' ').filter(w => w.length > 2);
+  const scored = (recipes || []).map(recipe => {
+    const title = normalizeVoiceText(recipe.title || recipe.name || '');
+    const category = normalizeVoiceText(recipe.category || '');
+    const ingredients = normalizeVoiceText(recipe.ingredients || '').slice(0, 800);
+    const haystack = `${title} ${category} ${ingredients}`.trim();
+    if (!title && !haystack) return { recipe, score: 0 };
+    let score = 0;
+    if (title === q) score += 160;
+    if (title.startsWith(q) || q.startsWith(title)) score += 95;
+    if (title.includes(q) || q.includes(title)) score += 75;
+    const titleWords = title.split(' ').filter(w => w.length > 2);
+    const hitCount = qWords.filter(w => titleWords.some(t => t === w || t.includes(w) || w.includes(t))).length;
+    score += hitCount * 24;
+    if (qWords.length && hitCount === qWords.length) score += 35;
+    if (ingredients && qWords.some(w => ingredients.includes(w))) score += 8;
+    if (category && qWords.some(w => category.includes(w))) score += 4;
+    return { recipe, score };
+  }).sort((a,b) => b.score - a.score);
+  return scored[0]?.score > 0 ? scored[0].recipe : null;
+};
 const VOICE_NUMBER_WORDS = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12 };
 const parseVoiceAmount = (text = '') => {
   const normalized = normalizeVoiceText(text);
@@ -422,7 +467,7 @@ const getVoiceWeightPerStockUnit = (item = {}) => {
   return m ? parseFloat(m[1]) : 0;
 };
 
-const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], clientFeatures = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, addToast }) => {
+const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], clientFeatures = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -443,6 +488,27 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     const raw = String(spokenText || '').trim();
     const q = normalizeVoiceText(raw);
     if (!q) return null;
+
+    // Specific recipe commands should open/search the live Recipe Book by title, including future recipes.
+    // Keep this ahead of generic navigation so “open beer cheese recipe” does not stop at the Recipe Book landing page.
+    const recipeQuery = extractRecipeVoiceQuery(raw);
+    if (recipeQuery) {
+      const recipe = findVoiceRecipeMatch(recipes, recipeQuery);
+      const displayName = recipe?.title || recipeQuery;
+      return {
+        intent:'open_recipe',
+        label:`Open recipe: ${displayName}`,
+        tab:'recipes',
+        recipeQuery,
+        recipeTitle: recipe?.title || '',
+        recipeId: recipe?.id || '',
+        summary: recipe?.title
+          ? `Open Recipe Book directly to ${recipe.title}.`
+          : `Open Recipe Book and search for “${recipeQuery}”. If the recipe exists now or is added later, the app will use the recipe list instead of a hardcoded command.`,
+        safe:true,
+        needsConfirmation:false
+      };
+    }
 
     // Help Center search commands. These must open Help Center and pre-fill only the useful search phrase.
     const helpSearch = extractHelpSearchQuery(raw);
@@ -474,7 +540,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (/\b(staff list|staff roster|team list|employee list|employees|roster|team)\b/.test(q)) return makeVoiceNav({ label:'Open Staff Roster', tab:'team', summary:'Open Staff Roster.' });
       if (q.includes('inventory') || q.includes('orders')) return makeVoiceNav({ label:'Open Inventory', tab:'inventory', summary:'Open Inventory & Orders.' });
       if (q.includes('prep')) return makeVoiceNav({ label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.' });
-      if (q.includes('recipe') || q.includes('recipes') || q.includes('recipe book')) return makeVoiceNav({ label:'Open Recipes', tab:'recipes', summary:'Open Recipe Book.' });
+      if (q.includes('recipe') || q.includes('recipes') || q.includes('recipe book') || q.includes('spec sheet')) return makeVoiceNav({ label:'Open Recipes', tab:'recipes', summary:'Open Recipe Book.' });
       if (q.includes('message') || q.includes('announcement')) return makeVoiceNav({ label:'Open Messages', tab:'messages', summary:'Open the Message Board.' });
       if (q.includes('maintenance') || q.includes('repair') || q.includes('broken')) return makeVoiceNav({ label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.' });
       if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial') || q.includes('daily ledger') || q.includes('sales')) return makeVoiceNav({ label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.' });
@@ -570,7 +636,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     setPending(action);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'create_prep', 'eighty_six_alert'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'create_prep', 'eighty_six_alert'];
     if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
       await executeAction(action, text, true);
     }
@@ -602,7 +668,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true) => {
     if (!actionToRun || !appUser?.restaurantId) return;
     try {
-      if (['navigate', 'navigate_schedule', 'help_search'].includes(actionToRun.intent)) {
+      if (['navigate', 'navigate_schedule', 'help_search', 'open_recipe'].includes(actionToRun.intent)) {
         const targetTab = actionToRun.tab || 'today';
         if (!canVoiceOpenTab(appUser, clientFeatures, targetTab)) {
           addToast('Access Blocked', 'You do not have permission to open that area.');
@@ -612,6 +678,14 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         if (actionToRun.date && setCurrentDate) setCurrentDate(actionToRun.date);
         if (actionToRun.subTab && setScheduleSubTabTarget) setScheduleSubTabTarget({ subTab: actionToRun.subTab, id: Date.now() });
         if (actionToRun.helpQuery && setHelpSearchTarget) setHelpSearchTarget({ query: actionToRun.helpQuery, id: Date.now() });
+        if (actionToRun.intent === 'open_recipe' && setRecipeTarget) {
+          setRecipeTarget({
+            query: actionToRun.recipeQuery || actionToRun.recipeTitle || actionToRun.localSearch || '',
+            recipeId: actionToRun.recipeId || '',
+            recipeTitle: actionToRun.recipeTitle || '',
+            id: Date.now()
+          });
+        }
         setActiveTab(targetTab);
         addToast('Voice Navigation', actionToRun.summary || `Opening ${targetTab}.`);
         if (closeWhenDone) setOpen(false);
@@ -700,7 +774,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         <button type="button" onClick={startListening} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
-        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "post message cooler is high", "open Friday schedule"' />
+        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "open beer cheese recipe", "prep 2 pans tomatoes", "open Friday schedule"' />
         <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
         {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
