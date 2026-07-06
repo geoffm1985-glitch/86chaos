@@ -35,6 +35,13 @@ function isoSafe(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, '-');
 }
 
+function getNextDailyBackupAt(from = new Date()) {
+  const next = new Date(from.getTime());
+  next.setUTCHours(9, 0, 0, 0); // Vercel cron: 0 9 * * *
+  if (next.getTime() <= from.getTime()) next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString();
+}
+
 function serializeValue(value) {
   if (value === null || value === undefined) return value ?? null;
   if (typeof value?.toDate === 'function') return { __type: 'timestamp', value: value.toDate().toISOString() };
@@ -135,7 +142,7 @@ async function restoreBackupFromStorage({ adminApp, db, storagePath, actor }) {
     restoredDocumentCount,
     skippedDocumentCount,
     actor,
-    version: '13.1.13'
+    version: '13.1.17'
   };
   await db.collection('system').doc('backupStatus').set(result, { merge: true });
   await db.collection('system').doc('backupStatus').collection('restores').doc(runId).set(result, { merge: true });
@@ -230,7 +237,7 @@ async function handler(req, res) {
       lastRunAt: startedAt.toISOString(),
       actor: auth.actor,
       source: auth.source,
-      version: '13.1.13'
+      version: '13.1.17'
     }, { merge: true });
 
     const collections = await db.listCollections();
@@ -238,7 +245,7 @@ async function handler(req, res) {
       metadata: {
         app: '86 Chaos',
         type: 'firestore-json-backup',
-        version: '13.1.13',
+        version: '13.1.17',
         projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount().project_id || loadServiceAccount().projectId || null,
         mode,
         runId,
@@ -297,7 +304,10 @@ async function handler(req, res) {
       compressedBytes: gzipped.length,
       rawBytes: Buffer.byteLength(json, 'utf8'),
       deletedOldBackups,
-      version: '13.1.13'
+      nextScheduledAt: getNextDailyBackupAt(finishedAt),
+      nextBackupAt: getNextDailyBackupAt(finishedAt),
+      cronSchedule: '0 9 * * *',
+      version: '13.1.17'
     };
 
     await statusRef.set(statusPayload, { merge: true });
@@ -314,7 +324,7 @@ async function handler(req, res) {
           lastError: err.message,
           lastErrorAt: failedAt,
           runFinishedAt: failedAt,
-          version: '13.1.13'
+          version: '13.1.17'
         }, { merge: true });
         await db.collection('system').doc('backupStatus').collection('errors').add({
           message: err.message,

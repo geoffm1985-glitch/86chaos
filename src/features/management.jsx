@@ -1527,6 +1527,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [backupStatus, setBackupStatus] = useState(null);
+  const [backupCountdownTick, setBackupCountdownTick] = useState(Date.now());
   const [isBackupRunning, setIsBackupRunning] = useState(false);
   const [backupRestorePath, setBackupRestorePath] = useState('');
   const [isBackupRestoring, setIsBackupRestoring] = useState(false);
@@ -1549,6 +1550,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [rName, setRName] = useState(''); const [rAddress, setRAddress] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
 const [editingRest, setEditingRest] = useState(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => setBackupCountdownTick(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
   const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
   const printWorkspaceLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
@@ -2570,6 +2576,28 @@ const handleRevokeAccess = async (user) => {
   const backupStatusLabel = backupRunning ? 'Running...' : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported');
   const backupIsStale = !backupRunning && (!lastBackupDate || backupAgeHours > 7 * 24);
   const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp' : 'No backup status doc'));
+  const getNextAutoBackupDate = () => {
+    const explicit = parseAnyDate(backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || backupStatus?.nextRunAt);
+    if (explicit && explicit.getTime() > backupCountdownTick) return explicit;
+    const next = new Date(backupCountdownTick);
+    next.setUTCHours(9, 0, 0, 0); // Vercel cron: 0 9 * * *
+    if (next.getTime() <= backupCountdownTick) next.setUTCDate(next.getUTCDate() + 1);
+    return next;
+  };
+  const formatCountdown = (ms) => {
+    if (!Number.isFinite(ms) || ms <= 0) return 'due now';
+    const totalMinutes = Math.max(0, Math.ceil(ms / 60000));
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  };
+  const nextAutoBackupDate = getNextAutoBackupDate();
+  const nextBackupCountdown = backupRunning ? 'running now' : formatCountdown(nextAutoBackupDate.getTime() - backupCountdownTick);
+  const nextBackupLocalTime = nextAutoBackupDate.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  const backupCommandDeckDetail = `${backupDetail} • Next: ${nextBackupCountdown}`;
   const filteredBackupList = backupList.filter(b => backupListFilter === 'all' || b.mode === backupListFilter);
 
   // --- NEW SAAS HEALTH METRICS ---
@@ -2748,6 +2776,124 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     } catch (err) {
       addToast('Diagnostics', diagnostics.substring(0, 220));
     }
+  };
+
+  const buildForensicBundle = () => ({
+    generatedAt: new Date().toISOString(),
+    generatedBy: appUser?.email || appUser?.name || 'System Administrator',
+    version: CURRENT_VERSION,
+    backup: {
+      status: backupStatus?.status || backupStatus?.lastStatus || 'unknown',
+      lastBackupAt: backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastRunAt || null,
+      nextAutomaticBackupAt: nextAutoBackupDate?.toISOString?.() || null,
+      nextAutomaticBackupCountdown: nextBackupCountdown,
+      detail: backupDetail,
+      storagePath: backupStatus?.storagePath || backupStatus?.path || null,
+      documentCount: backupStatus?.documentCount || 0,
+      collectionCount: backupStatus?.collectionCount || 0
+    },
+    platform: {
+      status: platformStatus,
+      actionItems: adminRiskQueue,
+      host: envReport.host,
+      path: envReport.path,
+      online: envReport.online,
+      serviceWorker: envReport.serviceWorker,
+      indexedDb: envReport.indexedDb,
+      notifications: envReport.notifications,
+      userAgent: envReport.userAgent
+    },
+    counts: {
+      restaurants: restaurants.length,
+      users: allUsers.length,
+      onlineUsers: onlineUsers.length,
+      crashLogs: crashLogs.length,
+      crashes24h,
+      auditLogs: auditLogs.length,
+      ghostAuditLogs: ghostAuditLogs.length,
+      destructiveAuditLogs: destructiveAuditLogs.length,
+      accessAuditLogs: accessAuditLogs.length,
+      supportEditLogs: supportEditLogs.length,
+      usersWithoutRestaurant: usersWithoutRestaurant.length,
+      missingOwnerAccounts: missingOwnerAccounts.length,
+      duplicateEmailGroups: duplicateEmailGroups.length,
+      pastDueWorkspaces: pastDueWorkspaces.length,
+      readOnlyWorkspaces: readOnlyWorkspaces.length,
+      pushOptInRate
+    },
+    watchlists: {
+      usersWithoutRestaurant: usersWithoutRestaurant.slice(0, 50).map(u => ({ id: u.id, name: u.name || '', email: u.email || '' })),
+      missingOwnerAccounts: missingOwnerAccounts.slice(0, 50).map(r => ({ id: r.id, name: r.name || '', ownerEmail: r.ownerEmail || '' })),
+      duplicateEmailGroups: duplicateEmailGroups.slice(0, 50).map(([email, group]) => ({ email, profileIds: group.map(u => u.id) })),
+      permissionDeniedLogs: permissionDeniedLogs.slice(0, 25).map(log => ({ id: log.id, time: log.time || '', message: log.message || '', restaurantId: log.restaurantId || '', user: log.user || '' })),
+      recentDestructiveActions: destructiveAuditLogs.slice(0, 25).map(log => ({ id: log.id, timestamp: log.timestamp || '', action: log.action || '', target: log.target || '', restaurantId: log.restaurantId || '', userName: log.userName || '' }))
+    }
+  });
+
+  const handleDownloadForensicBundle = () => {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(`86chaos-forensic-bundle-${stamp}.json`, JSON.stringify(buildForensicBundle(), null, 2), 'application/json;charset=utf-8;');
+    addToast('Forensic Bundle', 'Downloaded platform diagnostics JSON.');
+  };
+
+  const handleDownloadClientDirectory = () => {
+    const rows = [['Restaurant ID','Restaurant','Owner','Owner Email','Plan','Billing','Users','Online','Last Active','Modules Enabled']];
+    restaurants.forEach(r => {
+      const usersForRest = allUsers.filter(u => u.restaurantId === r.id);
+      const modulesEnabled = moduleList.filter(key => r.features?.[key] !== false).join('|');
+      rows.push([r.id, r.name || '', r.ownerName || '', r.ownerEmail || '', r.planType || '', r.billingStatus || '', usersForRest.length, usersForRest.filter(isOnlineNow).length, r.lastActive || '', modulesEnabled]);
+    });
+    downloadCsvRows(`86chaos-client-directory-${getToday()}.csv`, rows);
+    addToast('Client Directory', 'Downloaded workspace operations CSV.');
+  };
+
+  const handleStampOpsReview = async () => {
+    const ok = window.confirm('Stamp a system operations review record with the current health counts? This does not change client data.');
+    if (!ok) return;
+    const stamp = new Date().toISOString();
+    const payload = {
+      lastReviewedAt: stamp,
+      lastReviewedBy: appUser?.email || appUser?.name || 'System Administrator',
+      version: CURRENT_VERSION,
+      platformStatus,
+      actionItemCount: adminRiskQueue.length,
+      crashes24h,
+      permissionDeniedCount: permissionDeniedLogs.length,
+      backupStatus: backupStatus?.status || backupStatus?.lastStatus || 'unknown',
+      nextAutomaticBackupAt: nextAutoBackupDate?.toISOString?.() || null,
+      usersWithoutRestaurant: usersWithoutRestaurant.length,
+      missingOwnerAccounts: missingOwnerAccounts.length,
+      duplicateEmailGroups: duplicateEmailGroups.length,
+      pastDueWorkspaces: pastDueWorkspaces.length,
+      readOnlyWorkspaces: readOnlyWorkspaces.length
+    };
+    try {
+      await setDoc(doc(db, 'system', 'operationsReview'), payload, { merge: true });
+      await addDoc(collection(db, 'auditLogs'), {
+        restaurantId: 'platform',
+        action: 'SYSTEM_OPERATIONS_REVIEW_STAMP',
+        target: 'system/operationsReview',
+        details: `Operations review stamped. Status: ${platformStatus}. Action items: ${adminRiskQueue.length}.`,
+        userId: appUser?.id || 'system-admin',
+        userName: appUser?.email || appUser?.name || 'System Admin',
+        timestamp: stamp,
+        isGhost: appUser?.isGhost || false
+      }).catch(() => {});
+      addToast('Ops Review Saved', 'System operations review stamp updated.');
+    } catch (err) {
+      addToast('Ops Review Error', err.message || 'Could not write operations review.');
+    }
+  };
+
+  const handleClearThisDeviceTempCache = () => {
+    if (!window.confirm('Clear temporary tour/help/demo cache on THIS browser only? This will not delete restaurant data.')) return;
+    Object.keys(sessionStorage || {}).forEach(key => {
+      if (/tourSeenThisSession|86chaosPostRestoreTab|demo|help/i.test(key)) sessionStorage.removeItem(key);
+    });
+    Object.keys(localStorage || {}).forEach(key => {
+      if (/helpBriefSeen_|tourSeenThisSession|demo/i.test(key)) localStorage.removeItem(key);
+    });
+    addToast('Device Cache Cleared', 'Temporary local cache was cleared on this browser.');
   };
 
 
@@ -2986,7 +3132,12 @@ Type RESTORE to continue.`);
                 <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
                 <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('users')} />
                 <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('tenants')} />
-                <CockpitMetric label="Last Backup" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} onClick={() => jumpToAdminIssue('forensics')} />
+                <CockpitMetric label="Last Backup" value={backupStatusLabel} detail={backupCommandDeckDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} onClick={() => jumpToAdminIssue('forensics')} />
+                <button type="button" onClick={() => jumpToAdminIssue('forensics')} className="w-full text-left bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381]/50 rounded-xl p-3 transition-colors">
+                  <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Next Automatic Backup</span><SignalPip tone={backupRunning ? 'blue' : 'emerald'} label={backupRunning ? 'RUNNING' : 'COUNTDOWN'} hot={backupRunning} /></div>
+                  <div className="text-xl font-black text-white mt-2">{nextBackupCountdown}</div>
+                  <div className="text-[10px] font-bold text-slate-400 mt-1">Scheduled for {nextBackupLocalTime}</div>
+                </button>
                 <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white transition-colors flex items-center justify-center gap-2">
                   {(isBackupRunning || backupRunning) ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
                   {(isBackupRunning || backupRunning) ? 'Backup Running' : 'Run Backup Now'}
@@ -3012,6 +3163,8 @@ Type RESTORE to continue.`);
                 <button type="button" onClick={handleClearAllBanners} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-red-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clear Banners</button>
                 <button type="button" onClick={() => jumpToAdminIssue('live')} className="bg-emerald-900/15 border border-emerald-900/50 text-emerald-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Live Radar</button>
                 <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-purple-900/15 border border-purple-900/50 text-purple-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clients</button>
+                <button type="button" onClick={handleDownloadForensicBundle} className="bg-blue-900/15 border border-blue-900/50 text-blue-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Forensics JSON</button>
+                <button type="button" onClick={handleDownloadClientDirectory} className="bg-amber-900/15 border border-amber-900/50 text-amber-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Client CSV</button>
               </div>
             </div>
 
@@ -3892,6 +4045,27 @@ another@email.com"></textarea>
             <CockpitMetric label="Backup Status" value={backupStatusLabel} detail={backupDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
           </div>
 
+          <div className={`${T.card} p-4 border-blue-900/30`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-black text-white text-sm flex items-center gap-2"><Wrench size={16} className="text-blue-400"/> Diagnostic & Forensic Toolkit</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">One-click support bundle, client directory export, backup countdown, and data integrity watchlists.</p>
+              </div>
+              <div className="grid grid-cols-2 sm:flex gap-2">
+                <button type="button" onClick={handleDownloadForensicBundle} className="bg-purple-900/20 text-purple-300 border border-purple-900/50 hover:bg-purple-900/40 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Forensic JSON</button>
+                <button type="button" onClick={handleDownloadClientDirectory} className="bg-amber-900/20 text-amber-300 border border-amber-900/50 hover:bg-amber-900/40 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Client CSV</button>
+                <button type="button" onClick={handleStampOpsReview} className="bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Stamp Review</button>
+                <button type="button" onClick={handleClearThisDeviceTempCache} className="bg-[#12161A] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Clear This Cache</button>
+              </div>
+            </div>
+            <div className="grid md:grid-cols-4 gap-2">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Data Watchlist</div><div className="text-lg font-black text-white">{usersWithoutRestaurant.length + missingOwnerAccounts.length + duplicateEmailGroups.length}</div><div className="text-[9px] text-slate-500 font-bold">routing / owner / duplicates</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Sensitive Actions</div><div className="text-lg font-black text-white">{destructiveAuditLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">delete / nuke / lock / sweep</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Rule Blocks</div><div className={`text-lg font-black ${permissionDeniedLogs.length ? 'text-red-300' : 'text-emerald-400'}`}>{permissionDeniedLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">permission-denied logs</div></div>
+            </div>
+          </div>
+
           <div className="grid lg:grid-cols-3 gap-4">
             <div className={`${T.card} p-4`}>
               <h3 className="font-black text-white text-sm mb-3">Top Audit Actors</h3>
@@ -3906,6 +4080,9 @@ another@email.com"></textarea>
               <div className="space-y-2">
                 <button onClick={() => setIsRawInspectorOpen(true)} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"><Wrench size={12} /> Inspect Raw JSON</button>
                 <button onClick={handleCopyDiagnostics} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Copy Support Diagnostics</button>
+                <button onClick={handleDownloadForensicBundle} className="w-full bg-purple-900/20 text-purple-300 border border-purple-900/50 hover:bg-purple-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Download Forensic Bundle</button>
+                <button onClick={handleDownloadClientDirectory} className="w-full bg-amber-900/20 text-amber-300 border border-amber-900/50 hover:bg-amber-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Download Client Directory CSV</button>
+                <button onClick={handleStampOpsReview} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Stamp Ops Review</button>
                 <button onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 hover:bg-emerald-900/40 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">{(isBackupRunning || backupRunning) && <Loader2 size={12} className="animate-spin" />} Run Backup Now</button>
                 <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -4068,6 +4245,27 @@ another@email.com"></textarea>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
+            </div>
+
+            <div className={`${T.card} p-5 border-purple-900/30`}>
+              <h3 className="font-black text-white mb-1">Forensic Bundle</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Downloads a single JSON support packet with platform counts, backup status, watchlists, runtime clues, and recent sensitive actions.</p>
+              <button onClick={handleDownloadForensicBundle} type="button" className="w-full bg-purple-900/20 text-purple-300 border border-purple-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-purple-900/40 transition-colors">Download Bundle</button>
+            </div>
+            <div className={`${T.card} p-5 border-amber-900/30`}>
+              <h3 className="font-black text-white mb-1">Client Directory Export</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Downloads workspace IDs, owner labels, plan/billing status, user count, online count, and enabled modules for operations review.</p>
+              <button onClick={handleDownloadClientDirectory} type="button" className="w-full bg-amber-900/20 text-amber-300 border border-amber-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-amber-900/40 transition-colors">Download Client CSV</button>
+            </div>
+            <div className={`${T.card} p-5 border-cyan-900/30`}>
+              <h3 className="font-black text-white mb-1">Ops Review Stamp</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Writes a system health stamp with backup, crash, permission, and data-integrity counts so support can see the last platform review.</p>
+              <button onClick={handleStampOpsReview} type="button" className="w-full bg-cyan-900/20 text-cyan-300 border border-cyan-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-cyan-900/40 transition-colors">Stamp Review</button>
+            </div>
+            <div className={`${T.card} p-5 border-slate-700/50`}>
+              <h3 className="font-black text-white mb-1">This Device Cache</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Clears temporary help/demo/tour cache on this browser only. It does not delete restaurant data, users, schedules, or backups.</p>
+              <button onClick={handleClearThisDeviceTempCache} type="button" className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-[#D4A381] transition-colors">Clear Temp Cache</button>
             </div>
 
             <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
@@ -4467,6 +4665,7 @@ const HELP_ARTICLES = [
   { id:'voice-beta', title:'Using 86 Voice beta', group:'Voice Commands', keywords:'voice beta microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list', body:['The microphone button is marked BETA. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.','Navigation commands can pull up screens by plain name: “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
   { id:'clock-out-geofence-review', title:'Clock-out location review', group:'Time Clock', keywords:'geofence clock out outside area manager alerted timesheet note location', body:['If a location rule is enabled and an employee clocks out outside the required area, the app still lets them clock out.','The employee sees a warning, the manager gets an important alert, and the punch is marked in Financials → Timesheets with a manager review note.','This avoids trapping someone on the clock while still keeping a clean accountability trail.','If location is denied or unavailable, the punch is saved and marked for review.'] },
   { id:'safe-demo-mode', title:'Safe customer demo mode', group:'System Administrator', keywords:'demo mode customer tier tabs read only hide phone email address employee manager', body:['Open System Administrator → Clients, choose a workspace, then start Demo Manager or Demo Employee.','Choose the tier and visible tabs before starting the demo. Demo mode hides System Administrator and masks emails, phone numbers, addresses, and wages.','Demo mode is read-only. Buttons that would save, publish, restore, delete, upload, post, clock, or edit are blocked.','Use the banner at the top to exit demo mode and return to System Administrator.'] },
+  { id:'new-13117', title:'What changed in version 13.1.17', group:'Release Notes', keywords:'new update stability reliability fixes operations backup privacy', body:['Fixed stability issues, improved reliability, and polished system operations.'] },
   { id:'new-13114', title:'What changed in version 13.1.14', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13115', title:'What changed in version 13.1.15', group:'Release Notes', keywords:'new update stability reliability fixes schedule builder', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13116', title:'What changed in version 13.1.16', group:'Release Notes', keywords:'new update stability reliability fixes schedule editing', body:['Fixed stability issues and improved schedule reliability.'] },
