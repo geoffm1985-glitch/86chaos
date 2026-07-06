@@ -1534,6 +1534,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [isBackupListLoading, setIsBackupListLoading] = useState(false);
   const [backupListFilter, setBackupListFilter] = useState('all');
   const [backupListError, setBackupListError] = useState('');
+  const [isScheduleReinjecting, setIsScheduleReinjecting] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [createdWorkspaceLogin, setCreatedWorkspaceLogin] = useState(null);
   const [demoPlan, setDemoPlan] = useState('Pro');
@@ -2633,7 +2634,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert', 'import-cheers-july-schedule'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -2840,104 +2841,50 @@ Type RESTORE to continue.`);
 
 
   const handleRestoreCheersJulySchedule = async () => {
-    const phrase = window.prompt('This will restore the July 2026 schedule directly into the SAME Firebase database this app is currently showing. It will delete existing July 2026 shifts for cheers_chilton_01, download a backup, then import the PDF schedule as published shifts. Type IMPORT JULY to continue.');
-    if ((phrase || '').trim().toUpperCase() !== 'IMPORT JULY') {
-      addToast('Canceled', 'July schedule import was not run.');
+    if (isScheduleReinjecting) return;
+    const phrase = window.prompt('EMERGENCY SCHEDULE REINJECT\n\nThis will restore the July 2026 schedule for cheers_chilton_01 from the uploaded PDF source. It will delete existing July 2026 shifts for that restaurant only, create a local JSON backup download of anything it replaces, then import the schedule as published shifts.\n\nType REINJECT JULY to continue.');
+    if ((phrase || '').trim().toUpperCase() !== 'REINJECT JULY') {
+      addToast('Canceled', 'July schedule reinject was not run.');
       return;
     }
 
-    addToast('Import Started', 'Restoring Cheers Chilton July 2026 schedule in the current app database.');
+    setIsScheduleReinjecting(true);
+    addToast('Reinject Started', 'Restoring Cheers Chilton July 2026 schedule from the emergency import file.');
 
     try {
-      const rosterSnap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', CHEERS_RESTORE_RESTAURANT_ID)));
-      const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const byFirstName = new Map();
-      roster.forEach(u => {
-        const key = String(u.name || u.email || u.id || '').trim().split(/\s+/)[0].toLowerCase();
-        if (key && !byFirstName.has(key)) byFirstName.set(key, u);
+      const response = await secureFetch('/api/import-cheers-july-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'IMPORT_JULY_2026', restaurantId: CHEERS_RESTORE_RESTAURANT_ID })
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Schedule reinject failed with status ${response.status}`);
 
-      const namesNeeded = Array.from(new Set(CHEERS_JULY_2026_SCHEDULE.map(row => String(row[1]).toLowerCase())));
-      const unmatched = namesNeeded.filter(name => !byFirstName.get(name));
-      if (unmatched.length) {
-        throw new Error(`Missing user profile(s) in ${CHEERS_RESTORE_RESTAURANT_ID}: ${unmatched.join(', ')}. Nothing was deleted.`);
-      }
-
-      const allTenantShiftsSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', CHEERS_RESTORE_RESTAURANT_ID)));
-      const julyDocs = allTenantShiftsSnap.docs.filter(d => {
-        const date = String((d.data() || {}).date || '');
-        return date >= CHEERS_RESTORE_MONTH_START && date <= CHEERS_RESTORE_MONTH_END;
-      });
-
-      const backup = {
-        type: 'client-side-cheers-july-2026-shift-import-backup',
-        restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
-        month: '2026-07',
-        generatedAt: new Date().toISOString(),
-        actor: appUser?.email || appUser?.id || 'system-admin',
-        currentHost: window.location.hostname,
-        replacedShiftCount: julyDocs.length,
-        replacedShifts: julyDocs.map(d => ({ id: d.id, ...d.data() })),
-        sourceNotes: [
-          'Source: 86CHAOS SCHEDULE JULY 2026 uploaded PDF.',
-          'This restore wrote through the frontend Firebase instance currently loaded by the app.',
-          'The schedule listener now uses a schedule-safe tenant query so a missing composite index cannot overwrite the restored view with stale fallback data.',
-          'Duplicate exact Clare 11a-2p rows were deduplicated.',
-          'Obvious AM/PM typos were normalized: Lani 2a-9p to 2p-9p, Chuck 10p-4p to 10a-4p.'
-        ]
-      };
-
-      const backupName = `Cheers_Chilton_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-      downloadTextFile(backupName, JSON.stringify(backup, null, 2), 'application/json;charset=utf-8;');
-
-      for (const oldShift of julyDocs) {
-        await deleteDoc(doc(db, 'shifts', oldShift.id));
-      }
-
-      const now = new Date().toISOString();
-      let importedCount = 0;
-      for (const [date, employeeName, startTime, endTime] of CHEERS_JULY_2026_SCHEDULE) {
-        const user = byFirstName.get(String(employeeName).toLowerCase());
-        await addDoc(collection(db, 'shifts'), {
-          restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
-          employeeId: user.id,
-          employeeName: user.name || employeeName,
-          role: user.role || 'Unassigned',
-          date,
-          startTime,
-          endTime,
-          isPublished: true,
-          importedAt: now,
-          importedBy: appUser?.email || appUser?.id || 'system-admin',
-          source: '86CHAOS SCHEDULE JULY 2026 PDF',
-          restoreMode: 'client-side-current-database'
-        });
-        importedCount += 1;
+      if (result.backup) {
+        const backupName = `Cheers_Chilton_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        downloadTextFile(backupName, JSON.stringify(result.backup, null, 2), 'application/json;charset=utf-8;');
       }
 
       await addDoc(collection(db, 'auditLogs'), {
         restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
-        action: 'EMERGENCY_IMPORT_JULY_SCHEDULE_CLIENT_SIDE',
+        action: 'EMERGENCY_REINJECT_JULY_SCHEDULE_BUTTON',
         target: 'shifts',
-        details: `Deleted ${julyDocs.length} existing July shift(s), imported ${importedCount} published shift(s) through current app Firebase instance.`,
+        details: `System Administrator button reinjected July 2026 schedule. Deleted ${result.deletedCount || 0} existing shift(s), imported ${result.importedCount || 0} published shift(s).`,
         userId: appUser?.id || 'system-admin',
         userName: appUser?.email || appUser?.name || 'System Admin',
-        timestamp: now,
+        timestamp: new Date().toISOString(),
         isGhost: appUser?.isGhost || false
-      });
+      }).catch(() => {});
 
-      const verifySnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', CHEERS_RESTORE_RESTAURANT_ID)));
-      const verifiedJuly = verifySnap.docs.filter(d => {
-        const date = String((d.data() || {}).date || '');
-        return date >= CHEERS_RESTORE_MONTH_START && date <= CHEERS_RESTORE_MONTH_END;
-      });
-
-      addToast('Schedule Restored', `${importedCount} imported. Verification found ${verifiedJuly.length} July shift(s) in this app database.`);
-      window.alert(`Restore complete.\n\nDeleted: ${julyDocs.length}\nImported: ${importedCount}\nVerified July shifts now in this app database: ${verifiedJuly.length}\n\nThe schedule screen now uses a restore-safe listener. Open July 2026 in Schedule Builder and the restored shifts should stay visible.`);
+      addToast('Schedule Reinjected', `${result.importedCount || 0} July shift(s) restored for Cheers Chilton.`);
+      window.alert(`Schedule reinject complete.\n\nRestaurant: ${result.restaurantId || CHEERS_RESTORE_RESTAURANT_ID}\nDeleted old July shifts: ${result.deletedCount || 0}\nImported published July shifts: ${result.importedCount || 0}\n\nA backup JSON of replaced July shifts was downloaded to this computer.\n\nOpen Time Clock & Schedule → Full Schedule or Schedule Builder and go to July 2026.`);
       setSubTab('forensics');
+      if (typeof setActiveTab === 'function') setActiveTab('published');
     } catch (err) {
-      addToast('Import Error', err.message || 'Client-side schedule import failed.');
-      window.alert(`Import failed:\n\n${err.message || err}`);
+      addToast('Reinject Error', err.message || 'Schedule reinject failed.');
+      window.alert(`Schedule reinject failed:\n\n${err.message || err}\n\nNothing should be deleted if the import could not match all employee profiles.`);
+    } finally {
+      setIsScheduleReinjecting(false);
     }
   };
 
@@ -3997,6 +3944,20 @@ another@email.com"></textarea>
                     ))}
                   </div>
                 </div>
+                <div className="bg-red-950/20 border border-red-900/50 rounded-xl p-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <Shield size={16} className="text-red-300 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="text-[9px] font-black uppercase tracking-widest text-red-300">Emergency Schedule Rescue</div>
+                      <div className="text-[10px] text-slate-400 font-bold leading-snug">Reinjects the uploaded July 2026 schedule into <span className="text-slate-200">cheers_chilton_01</span>. It deletes that restaurant's July 2026 shifts only, downloads a backup of replaced shifts, then imports the PDF schedule as published shifts.</div>
+                    </div>
+                  </div>
+                  <button type="button" onClick={handleRestoreCheersJulySchedule} disabled={isScheduleReinjecting} className="w-full bg-red-900/30 text-red-200 border border-red-800/70 hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
+                    {isScheduleReinjecting ? <Loader2 size={12} className="animate-spin" /> : <Calendar size={12} />}
+                    {isScheduleReinjecting ? 'Reinjecting July Schedule...' : 'Reinject Cheers July 2026 Schedule'}
+                  </button>
+                  <div className="text-[9px] text-slate-500 font-bold leading-snug">Safety phrase required: <span className="text-red-200">REINJECT JULY</span>. Super Admin only.</div>
+                </div>
                 <button onClick={() => jumpToAdminIssue('support')} className="w-full bg-orange-900/20 text-orange-300 border border-orange-900/50 hover:bg-orange-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Open Support Bay</button>
               </div>
               <p className="text-[10px] text-slate-500 font-bold mt-3 leading-snug">Use raw JSON only when normal screens cannot explain the issue. For destructive changes, copy diagnostics first.</p>
@@ -4506,6 +4467,7 @@ const HELP_ARTICLES = [
   { id:'voice-beta', title:'Using 86 Voice beta', group:'Voice Commands', keywords:'voice beta microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list', body:['The microphone button is marked BETA. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.','Navigation commands can pull up screens by plain name: “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
   { id:'clock-out-geofence-review', title:'Clock-out location review', group:'Time Clock', keywords:'geofence clock out outside area manager alerted timesheet note location', body:['If a location rule is enabled and an employee clocks out outside the required area, the app still lets them clock out.','The employee sees a warning, the manager gets an important alert, and the punch is marked in Financials → Timesheets with a manager review note.','This avoids trapping someone on the clock while still keeping a clean accountability trail.','If location is denied or unavailable, the punch is saved and marked for review.'] },
   { id:'safe-demo-mode', title:'Safe customer demo mode', group:'System Administrator', keywords:'demo mode customer tier tabs read only hide phone email address employee manager', body:['Open System Administrator → Clients, choose a workspace, then start Demo Manager or Demo Employee.','Choose the tier and visible tabs before starting the demo. Demo mode hides System Administrator and masks emails, phone numbers, addresses, and wages.','Demo mode is read-only. Buttons that would save, publish, restore, delete, upload, post, clock, or edit are blocked.','Use the banner at the top to exit demo mode and return to System Administrator.'] },
+  { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update 13.1.12 schedule reinject restore july cheers chilton system administrator forensics emergency', body:['System Administrator → Forensics now includes an Emergency Schedule Rescue button for Cheers Chilton July 2026.', 'The button reinjects the uploaded July 2026 schedule for restaurant ID cheers_chilton_01, deletes only that restaurant’s July 2026 shifts, and imports the PDF schedule as published shifts.', 'Before import, a JSON backup of replaced July shifts is downloaded locally and the action is written to the audit log.', 'The button requires typing REINJECT JULY so it cannot be clicked by accident.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update 13.1.11 employee quick start tour finish skip onboarding complete', body:['Employee Quick Start now only saves as complete after the employee clicks through the tour and presses Finish.', 'Closing the tour or clicking Skip for now only hides it for the current browser session. It will come back later until Finish is completed.', 'Finish saves onboardingComplete on the employee user record and also keeps a local backup flag so the tour stays gone immediately.'] },
   { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update 13.1.10 invoice scanner product rows stock matcher skip email headers non inventory purchased products', body:['Invoice scanning now separates purchased product rows from document/admin rows before the Stock Matcher opens.', 'Email headers, From/To lines, addresses, customer info, taxes, totals, freight, fees, deposits, notes, and other non-stock rows are kept in the Full Extraction Audit only.', 'Approve & Update Stock now has an extra safety guard so only product rows can update existing inventory or be added as new items.'] },
   { id:'new-1319', title:'What changed in version 13.1.9', group:'Release Notes', keywords:'new update 13.1.9 invoice scanner large documents Gemini Files API timeout bigger PDF progress', body:['Invoice scanning now uses a large-document AI handoff so uploaded PDFs/photos are sent to Gemini as files instead of giant inline payloads.', 'The scanner timeout was extended for larger multipage invoices, and the progress bar now explains the large-document AI stage instead of looking stuck.', 'The upload stage still shows exact Firebase upload progress. The AI reading stage shows status and elapsed time because Gemini does not provide line-by-line progress while it reads the document.', 'The scanner app limit was raised to 100MB, with clearer errors if the AI service itself rejects a file.'] },
@@ -4539,6 +4501,7 @@ const HELP_ARTICLES = [
   { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update 12.8.1 bulk delete users confirmation administrator', body:['Bulk Delete Users by Email now asks for DELETE and accepts DELETE as the confirmation phrase.','DELETE USERS is still accepted for backwards compatibility.','This fixes the confusing canceled message when support staff followed the visible prompt.'] },
   { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update 12.8.2 support edit diagnostics gps notifications permissions', body:['System Administrator → Users → Support Edit no longer edits normal feature permissions. Permissions are displayed read-only so support can diagnose access without accidentally changing it.','Support Edit now shows notification token status, browser notification permission, GPS permission/support, workspace geofence status, active tab, host, device, screen, time zone, and saved notification preferences.','The app heartbeat now saves device diagnostics for support visibility whenever a real user is active.'] },
   { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update 12.8 administrator command deck user editor forensics forge manual', body:['System Administrator now has top navigation and a hideable vertical Command Deck.','Command Deck metrics and action queue items are clickable and jump to the related issue.','Global Users now has Support Edit so support staff can move users between restaurants and adjust profile/permission details.','Forensics has richer summaries for ghost actions, destructive actions, support edits, top actors, and top actions.','Forge was removed from the visible admin navigation. Use Operations for global actions.','A System Administrator manual was added for future support hires.'] },
+  { id:'schedule-rescue-cheers-july', title:'Emergency schedule reinject: Cheers July 2026', group:'System Administrator', keywords:'schedule reinject restore deleted shifts july 2026 cheers chilton forensics emergency', body:['Open System Administrator → Forensics.', 'Use Emergency Schedule Rescue → Reinject Cheers July 2026 Schedule.', 'Type REINJECT JULY when prompted. The tool deletes existing July 2026 shifts for cheers_chilton_01 only, downloads a backup JSON of replaced shifts, then imports the uploaded PDF schedule as published shifts.', 'After it finishes, open Time Clock & Schedule → Full Schedule or Schedule Builder and move to July 2026 to verify the restored shifts.'] },
   { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste', body:['Open System Administrator → Forensics → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
   { id:'new-1311', title:'What changed in version 13.1.1', group:'Release Notes', keywords:'new update 13.1.1 backup center restore list download backups', body:['System Administrator → Forensics now has a Backup Center with selectable backups.', 'You no longer need to paste Firebase Storage paths to restore a backup.', 'Backup entries show scheduled/manual type, date, size, document count, Download, and Restore actions.', 'Administrator Manual and Help Center were updated with Backup Center troubleshooting.'] },
   { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
