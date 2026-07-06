@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
@@ -126,6 +126,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
+  const presenceSessions = useLiveCollection('presenceSessions', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
   const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
@@ -278,7 +279,63 @@ if (liveAppUser && clientData) {
     sales: rawDemoFeatures.financials !== false && liveAppUser?.demoRole !== 'employee'
   } : clientFeatures;
   const maskDemoUser = (u, idx = 0) => ({ ...u, name: u.name || `Demo Staff ${idx+1}`, email: `employee${idx+1}@demo.hidden`, phone: 'Hidden for demo', address: 'Hidden for demo', emergencyContact: 'Hidden for demo', wage: 0, photoURL: u.photoURL || '' });
-  const displayUsers = isDemoMode ? (users || []).map(maskDemoUser) : users;
+  const parsePresenceTimeMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+    if (typeof value === 'string') { const parsed = new Date(value).getTime(); return Number.isFinite(parsed) ? parsed : 0; }
+    if (typeof value?.toDate === 'function') { const parsed = value.toDate().getTime(); return Number.isFinite(parsed) ? parsed : 0; }
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+  };
+  const mergePresenceIntoUsers = (userList = [], sessionList = []) => {
+    if (!Array.isArray(userList) || !Array.isArray(sessionList) || sessionList.length === 0) return userList || [];
+    const now = Date.now();
+    const liveWindowMs = 5 * 60 * 1000;
+    const sessionsByUser = {};
+    sessionList.forEach(session => {
+      const userId = session.userId || session.uid || session.id;
+      if (!userId) return;
+      const lastMs = Math.max(
+        parsePresenceTimeMs(session.lastHeartbeatAt),
+        parsePresenceTimeMs(session.presenceUpdatedAt),
+        parsePresenceTimeMs(session.lastActive),
+        parsePresenceTimeMs(session.lastSeen),
+        parsePresenceTimeMs(session.heartbeatEpochMs)
+      );
+      if (!lastMs) return;
+      const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: (now - lastMs) < liveWindowMs && session.onlineState !== 'offline' };
+      if (!sessionsByUser[userId]) sessionsByUser[userId] = [];
+      sessionsByUser[userId].push(enriched);
+    });
+    return (userList || []).map(user => {
+      const sessions = (sessionsByUser[user.id] || []).sort((a, b) => b._presenceLastMs - a._presenceLastMs);
+      if (sessions.length === 0) return user;
+      const liveSession = sessions.find(s => s._presenceLive);
+      const best = liveSession || sessions[0];
+      const bestTime = new Date(best._presenceLastMs).toISOString();
+      return {
+        ...user,
+        lastActive: bestTime,
+        lastSeen: bestTime,
+        lastHeartbeatAt: best.lastHeartbeatAt || bestTime,
+        presenceUpdatedAt: best.presenceUpdatedAt || bestTime,
+        onlineState: liveSession ? (best.onlineState || 'online') : (best.onlineState || user.onlineState),
+        activeTab: best.activeTab || user.activeTab,
+        activeSessionId: best.activeSessionId || user.activeSessionId,
+        activeDevice: best.activeDevice || user.activeDevice,
+        activeHost: best.activeHost || user.activeHost,
+        notificationPermission: best.notificationPermission || user.notificationPermission,
+        gpsPermission: best.gpsPermission || user.gpsPermission,
+        deviceDiagnostics: best.deviceDiagnostics || user.deviceDiagnostics,
+        presenceSessionCount: sessions.length,
+        presenceSource: liveSession ? 'live-session' : 'session-history'
+      };
+    });
+  };
+  const displayUsers = useMemo(() => {
+    const baseUsers = isDemoMode ? (users || []).map(maskDemoUser) : (users || []);
+    return isDemoMode ? baseUsers : mergePresenceIntoUsers(baseUsers, presenceSessions);
+  }, [isDemoMode, users, presenceSessions]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -394,10 +451,14 @@ if (liveAppUser && clientData) {
     let handleBeforeUnload = null;
 
     if (!ghostTenant && appUser?.id) {
-      let sessionId = sessionStorage.getItem('chaosSessionId');
+      // Keep live presence sessions tied to the current user + workspace.
+      // Reusing one generic session id after account switching can make Firestore reject
+      // the heartbeat update because the old session belongs to a different user.
+      const presenceSessionKey = `chaosSessionId_${rId}_${appUser.id}`;
+      let sessionId = sessionStorage.getItem(presenceSessionKey);
       if (!sessionId) {
-        sessionId = `${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        sessionStorage.setItem('chaosSessionId', sessionId);
+        sessionId = `${rId}_${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem(presenceSessionKey, sessionId);
       }
 
       const collectDeviceDiagnostics = async () => {
@@ -427,11 +488,13 @@ if (liveAppUser && clientData) {
         const stamp = new Date().toISOString();
         const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
         const deviceDiagnostics = await collectDeviceDiagnostics();
+        const heartbeatEpochMs = Date.now();
         const presencePayload = {
           lastActive: stamp,
           lastSeen: stamp,
           lastHeartbeatAt: stamp,
           presenceUpdatedAt: stamp,
+          heartbeatEpochMs,
           onlineState: state,
           activeTab: activeTabState,
           activeSessionId: sessionId,
@@ -441,9 +504,28 @@ if (liveAppUser && clientData) {
           gpsPermission: deviceDiagnostics.gpsPermission,
           deviceDiagnostics
         };
+        const presenceSessionPayload = {
+          ...presencePayload,
+          userId: appUser.id,
+          restaurantId: rId,
+          userName: appUser.name || '',
+          userEmail: appUser.email || '',
+          role: appUser.role || '',
+          photoURL: appUser.photoURL || '',
+          updatedAt: stamp,
+          createdAt: sessionStorage.getItem(`chaosPresenceCreatedAt_${sessionId}`) || stamp
+        };
+        sessionStorage.setItem(`chaosPresenceCreatedAt_${sessionId}`, presenceSessionPayload.createdAt);
+        // Save a local marker so the admin roster can keep this device visibly live while
+        // Firestore snapshots catch up. The saved roster never trusts this for other users.
+        try { localStorage.setItem(`chaosLastHeartbeat_${rId}_${appUser.id}`, String(heartbeatEpochMs)); } catch (err) {}
+        const safeSessionId = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
         updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: appUser.id }).catch(()=>{});
+        setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload, { merge: true }).catch((err)=>{
+          console.warn('86 Chaos presence session heartbeat blocked or delayed:', err?.message || err);
+        });
         updateDoc(doc(db, 'users', appUser.id), presencePayload).catch((err)=>{
-          console.warn('86 Chaos presence heartbeat blocked or delayed:', err?.message || err);
+          console.warn('86 Chaos user heartbeat blocked or delayed:', err?.message || err);
         });
       };
 
@@ -704,8 +786,14 @@ useEffect(() => {
     );
   };
 
-  // MAINTENANCE LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
-  if (clientData?.billingStatus === 'Past Due' && !ghostTenant) {
+  // MAINTENANCE LOCK SCREEN
+  // Global lockdown should affect every workspace, including Cheers, but never lock out
+  // the platform owner/super-admin account that needs to lift the lockdown.
+  const maintenanceBypass = Boolean(
+    liveAppUser?.isSuperAdmin === true ||
+    (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()
+  );
+  if (clientData?.billingStatus === 'Past Due' && !ghostTenant && !maintenanceBypass) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">

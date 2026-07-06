@@ -100,7 +100,8 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
 
   const parsePresenceTimeMs = (value) => {
     if (!value) return 0;
-    if (typeof value === 'string' || typeof value === 'number') {
+    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+    if (typeof value === 'string') {
       const parsed = new Date(value).getTime();
       return Number.isFinite(parsed) ? parsed : 0;
     }

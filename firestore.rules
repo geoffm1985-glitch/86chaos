@@ -69,13 +69,39 @@ service cloud.firestore {
     function userSafeSelfUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         'name', 'phone', 'photoURL', 'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt',
-        'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
+        'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost', 'heartbeatEpochMs',
         'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
         'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
         'device', 'host', 'theme', 'settings', 'notificationPrefs',
         'forcePasswordChange', 'passwordPurgedAt', 'passwordStored'
       ]) &&
       !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys());
+    }
+
+    function presenceSessionKeys() {
+      return [
+        'userId', 'restaurantId', 'userName', 'userEmail', 'role', 'photoURL',
+        'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
+        'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
+        'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
+        'createdAt', 'updatedAt'
+      ];
+    }
+
+    function presenceCreateIsSafe() {
+      return request.resource.data.keys().hasOnly(presenceSessionKeys()) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.restaurantId is string &&
+        isTenantMatch(request.resource.data.restaurantId);
+    }
+
+    function presenceUpdateIsSafe() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(presenceSessionKeys()) &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        resource.data.restaurantId is string &&
+        isTenantMatch(resource.data.restaurantId);
     }
 
     function tenantAdminUserUpdateIsSafe() {
@@ -158,6 +184,26 @@ service cloud.firestore {
       allow delete: if signedIn() && (
         isSuperAdmin() ||
         isTenantAdmin(resource.data.restaurantId)
+      );
+    }
+
+    // ============================================================
+    // PRESENCE SESSIONS
+    // Redundant live heartbeat channel. Users may write only their
+    // own session heartbeat; tenant peers/admins may read live state.
+    // ============================================================
+    match /presenceSessions/{sessionId} {
+      allow read: if signedIn() && (
+        isSuperAdmin() ||
+        (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId))
+      );
+
+      allow create: if signedIn() && presenceCreateIsSafe();
+      allow update: if signedIn() && presenceUpdateIsSafe();
+
+      allow delete: if signedIn() && (
+        isSuperAdmin() ||
+        resource.data.userId == request.auth.uid
       );
     }
 
