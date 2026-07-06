@@ -10,7 +10,8 @@ import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_AD
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabTeam = ({ users, appUser, addToast }) => {
-  const canManageTeam = appUser.isAdmin || appUser.permissions?.team;
+  const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
+  const canManageTeam = Boolean(isSuperAdminUser || appUser?.isAdmin === true);
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
@@ -49,12 +50,15 @@ const TabTeam = ({ users, appUser, addToast }) => {
   const textLogin = (login) => { if (!login.phone) return addToast('No Phone', 'This employee does not have a phone number entered.'); const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?'; window.location.href = `sms:${login.phone}${smsChar}body=${encodeURIComponent(buildLoginText(login))}`; };
 
   const handleEditClick = (u) => {
+    if (!canManageTeam) return addToast('Read Only', 'Staff Roster is view-only for regular staff.');
     setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSave = async (e) => { 
-    e.preventDefault(); if (!name.trim() || !email.trim() || !phone.trim()) return; 
+    e.preventDefault();
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can change staff profiles.');
+    if (!name.trim() || !email.trim() || !phone.trim()) return; 
     
     if (editingUserId) {
         try {
@@ -92,6 +96,7 @@ const TabTeam = ({ users, appUser, addToast }) => {
   };
 
 const handleDeactivate = async (u) => { 
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can remove staff accounts.');
     if (!window.confirm(`Terminate ${u.name}? This will permanently delete their global account from the entire system.`)) return; 
     
     addToast('Terminating', `Erasing ${u.name} from the system...`);
@@ -112,11 +117,50 @@ const handleDeactivate = async (u) => {
   };
 
   const handlePasswordReset = async (u) => {
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can reset staff passwords.');
     if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
     try {
       await sendPasswordResetEmail(auth, u.email);
       addToast('Sent', `Reset email sent to ${u.email}`);
     } catch(err) { addToast('Error', err.message); }
+  };
+
+  const parsePresenceTimeMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof value?.toDate === 'function') {
+      const parsed = value.toDate().getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+  };
+  const getLastActiveMs = (u = {}) => Math.max(
+    parsePresenceTimeMs(u.lastHeartbeatAt),
+    parsePresenceTimeMs(u.presenceUpdatedAt),
+    parsePresenceTimeMs(u.lastActive),
+    parsePresenceTimeMs(u.lastSeen)
+  );
+  const formatLastActive = (u = {}) => {
+    const lastMs = getLastActiveMs(u);
+    if (!lastMs) return { label: 'Never active', tone: 'text-slate-500', exact: 'No app activity recorded yet.' };
+    const diff = Math.max(0, Date.now() - lastMs);
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    let label = 'Just now';
+    let tone = 'text-emerald-400';
+    if (diff < 3 * 60 * 1000 && u.onlineState !== 'offline') label = 'Online now';
+    else if (minutes < 60) label = `${minutes || 1}m ago`;
+    else if (hours < 24) { label = `${hours}h ago`; tone = 'text-emerald-500'; }
+    else if (days === 1) { label = 'Yesterday'; tone = 'text-amber-400'; }
+    else { label = `${days}d ago`; tone = days > 7 ? 'text-red-400' : 'text-amber-400'; }
+    let exact = '';
+    try { exact = formatClockDateTime(new Date(lastMs).toISOString(), appUser); } catch (err) { exact = new Date(lastMs).toLocaleString(); }
+    return { label, tone, exact };
   };
 
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
@@ -134,6 +178,13 @@ return (
           <button type="button" onClick={() => setCreatedLogin(null)} className={`w-full ${T.btn}`}>Done</button>
         </div>}
       </Modal>
+
+      {!canManageTeam && (
+        <div className={`${T.card} p-4 border-blue-900/40 bg-blue-900/10`}>
+          <div className="text-xs font-black uppercase tracking-widest text-blue-300">Read-only Staff Roster</div>
+          <p className="text-xs font-bold text-slate-400 mt-1">Regular staff can view the roster and last app activity, but only manager/admin accounts can add, edit, reset, or remove staff.</p>
+        </div>
+      )}
       
       {canManageTeam && (
         <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-2`}>
@@ -157,7 +208,7 @@ return (
           <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
           
           {/* STRICTLY LOCKED TO ADMINS */}
-          {appUser?.isAdmin && (
+          {canManageTeam && (
             <div>
               <label className={T.label}>Hourly Wage ($)</label>
               <div className="relative">
@@ -167,7 +218,7 @@ return (
             </div>
           )}
 
-  {appUser?.isAdmin && (
+  {canManageTeam && (
             <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
               <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
               <span className="text-sm font-black text-red-500">Store Manager (Full Admin)</span>
@@ -202,24 +253,26 @@ return (
         <div className="divide-y divide-[#2A353D]">
           {activeUsers.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No active staff found.</div>}
           
-          {activeUsers.map(u => (
+          {activeUsers.map(u => {
+            const activity = formatLastActive(u);
+            return (
             <div key={u.id} className="p-2.5 border-b border-[#2A353D] hover:bg-[#12161A] transition-colors flex items-center justify-between gap-2">
               <div className="flex items-center gap-3 overflow-hidden">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs flex-shrink-0 ${u.isAdmin ? 'bg-red-900/50 border border-red-500/50' : 'bg-[#1A2126] border border-[#2A353D]'}`}>
-                  {u.name.charAt(0)}
+                  {(u.name || u.email || '?').charAt(0)}
                 </div>
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
 <div className="flex items-center gap-2 mt-0.5">
                     <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
-                    {appUser?.isAdmin && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
-                    {appUser?.isAdmin && <span className={`text-[8px] font-black uppercase tracking-widest ml-1 ${(!u.lastActive || Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) > 1) ? 'text-red-500' : 'text-emerald-500'}`}>{!u.lastActive ? 'Never' : Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) === 0 ? 'Active Today' : `Inactive ${Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000)} days`}</span>}
+                    {canManageTeam && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
+                    <span title={activity.exact} className={`text-[8px] font-black uppercase tracking-widest ml-1 ${activity.tone}`}>Last active: {activity.label}</span>
                   </div>
                 </div>
               </div>
               
-           {(appUser?.isAdmin || (canManageTeam && !u.isAdmin)) && (
+           {canManageTeam && (
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button onClick={() => handlePasswordReset(u)} className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded border border-[#2A353D]">Reset</button>
                   <button onClick={() => handleEditClick(u)} className="p-1 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Edit size={12}/></button>
@@ -227,7 +280,8 @@ return (
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -5013,7 +5067,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-13122', title:'What changed in version 13.1.22', group:'Release Notes', keywords:'new update 13.1.22 reliability health backups diagnostics', body:['Improved system reliability checks and backup confidence for smoother updates.', 'Added stronger internal health checks before deployments.', 'Polished administrator monitoring tools while keeping customer-facing workflows unchanged.'] },
+  { id:'new-13127', title:'What changed in version 13.1.27', group:'Release Notes', keywords:'new update 13.1.27 staff roster read only last active activity permissions', body:['Staff Roster is easier for teams to use: regular staff can view coworkers without seeing edit controls.', 'Manager/admin accounts still handle roster changes.', 'Last app activity now uses the same heartbeat fields as live activity for a more reliable status.'] },
   { id:'new-13121', title:'What changed in version 13.1.21', group:'Release Notes', keywords:'new update 13.1.21 time clock clock in clock out loading label refresh employee punch', body:['The Time Clock button now shows the correct saving label while employees clock in or clock out.', 'Clock In stays on CLOCKING IN while saving, then changes to Clock Out.', 'Clock Out stays on CLOCKING OUT while saving, then changes back to Clock In without requiring a refresh.'] },
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
