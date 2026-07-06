@@ -84,7 +84,7 @@ service cloud.firestore {
         'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
         'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
         'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
-        'createdAt', 'updatedAt', 'source'
+        'createdAt', 'updatedAt', 'source', 'sessionId'
       ];
     }
 

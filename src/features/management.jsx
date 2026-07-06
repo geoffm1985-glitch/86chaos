@@ -9,7 +9,7 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
-const TabTeam = ({ users, appUser, addToast }) => {
+const TabTeam = ({ users, appUser, addToast, heartbeatDebug }) => {
   const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
   const canManageTeam = Boolean(isSuperAdminUser || appUser?.isAdmin === true);
   const [name, setName] = useState(''); 
@@ -167,6 +167,12 @@ const handleDeactivate = async (u) => {
 
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
 
+  const selfActivity = users.find(u => u.id === appUser?.id);
+  const heartbeatStatus = heartbeatDebug || (() => {
+    try { return JSON.parse(localStorage.getItem(`chaosHeartbeatDebug_${appUser?.restaurantId}_${appUser?.id}`) || 'null'); } catch (err) { return null; }
+  })();
+  const heartbeatTone = heartbeatStatus?.ok ? 'border-emerald-900/40 bg-emerald-900/10 text-emerald-200' : 'border-amber-900/50 bg-amber-900/10 text-amber-200';
+
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
       <Modal isOpen={!!createdLogin} onClose={() => setCreatedLogin(null)} title="Employee Login Created">
@@ -187,6 +193,21 @@ return (
           <p className="text-xs font-bold text-slate-400 mt-1">Regular staff can view the roster and last app activity, but only manager/admin accounts can add, edit, reset, or remove staff.</p>
         </div>
       )}
+
+      <div className={`${T.card} p-4 border ${heartbeatTone}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-widest">My Live Presence Check</div>
+            <p className="text-xs font-bold text-slate-300 mt-1">
+              {heartbeatStatus?.ok ? `Heartbeat saved through ${heartbeatStatus.channel || 'live channel'}.` : `Heartbeat is not confirmed yet${heartbeatStatus?.message ? `: ${heartbeatStatus.message}` : '.'}`}
+            </p>
+          </div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+            Roster sees you: <span className={formatLastActive(selfActivity || {}).tone}>{formatLastActive(selfActivity || {}).label}</span>
+          </div>
+        </div>
+        {heartbeatStatus?.message && <div className="mt-2 text-[10px] font-mono text-slate-500 break-all">{heartbeatStatus.message}</div>}
+      </div>
       
       {canManageTeam && (
         <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-2`}>
