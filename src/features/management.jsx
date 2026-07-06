@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
@@ -271,7 +271,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
       const matchesCat = categoryFilter === 'All' || (e.messageCategory || (e.isImportant ? 'Important' : 'Shift Note')) === categoryFilter;
       return matchesText && matchesCat;
     })
-    .sort((a,b) => (b.isImportant === a.isImportant ? 0 : b.isImportant ? 1 : -1) || new Date(b.date) - new Date(a.date));
+    // Newest posts always stay at the top. Important posts keep their badge,
+    // but they no longer jump ahead of newer operational notes.
+    .sort((a,b) => new Date(b.date || 0) - new Date(a.date || 0));
 
   useEffect(() => {
     if (!appUser?.id || !events.length) return;
@@ -312,7 +314,8 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
       replies: [],
       imageUrl: photoUrl,
       messageCategory,
-      readBy: isCritical ? [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] : []
+      readBy: isCritical ? [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] : [],
+      likes: []
     });
 
     try {
@@ -353,6 +356,21 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
     } catch (err) { addToast('Error', 'Could not post reply.'); }
   };
 
+
+  const handleToggleLike = async (post) => {
+    if (!appUser?.id || !post?.id) return;
+    const currentLikes = Array.isArray(post.likes) ? post.likes : [];
+    const alreadyLiked = currentLikes.some(l => l.userId === appUser.id);
+    const nextLikes = alreadyLiked
+      ? currentLikes.filter(l => l.userId !== appUser.id)
+      : [...currentLikes, { userId: appUser.id, name: appUser.name, at: new Date().toISOString() }];
+    try {
+      await updateDoc(doc(db, 'events', post.id), { likes: nextLikes });
+    } catch (err) {
+      addToast('Like Failed', 'Could not update the like on this post.');
+    }
+  };
+
   const getTimeAgo = (dateString) => {
     const mins = Math.floor((new Date() - new Date(dateString)) / 60000);
     if (mins < 1) return 'now';
@@ -365,24 +383,28 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   return (
     <div className="max-w-4xl mx-auto space-y-2 message-pro pb-20">
       <div className="cockpit-panel rounded-xl overflow-hidden">
-        <div className="p-2.5 sm:p-3 flex flex-col sm:flex-row sm:items-center gap-2 border-b border-[#2A353D] bg-[#12161A]/70">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className="h-8 w-8 rounded-lg bg-[#0B0E11] border border-[#2A353D] flex items-center justify-center text-[#D4A381]"><MessageSquare size={16}/></div>
-            <div className="min-w-0">
-              <h2 className="text-sm font-black text-white leading-none">Message Board</h2>
-              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-1">Ops announcements, shift notes, and manager alerts</p>
+        <div className="p-2.5 sm:p-3 border-b border-[#2A353D] bg-[#12161A]/70 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-8 w-8 rounded-lg bg-[#0B0E11] border border-[#2A353D] flex items-center justify-center text-[#D4A381] flex-shrink-0"><MessageSquare size={16}/></div>
+              <div className="min-w-0">
+                <h2 className="text-base sm:text-lg font-black text-white leading-tight whitespace-nowrap">Message Board</h2>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-0.5 leading-snug">Ops notes, 86 alerts, maintenance, and announcements</p>
+              </div>
+            </div>
+            <div className="hidden sm:flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap pt-1"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{allNotes.length} visible</div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(220px,320px)_1fr] gap-2 items-center">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15}/>
+              <input type="text" placeholder="Search posts..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {['All','Shift Note','86 Alert','Maintenance','Announcement','General'].map(cat => (
+                <button key={cat} type="button" onClick={() => setCategoryFilter(cat)} className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-widest whitespace-nowrap ${categoryFilter === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D]'}`}>{cat}</button>
+              ))}
             </div>
           </div>
-          <div className="relative sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15}/>
-            <input type="text" placeholder="Search posts..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
-          </div>
-          <div className="flex flex-wrap gap-1 sm:max-w-md">
-            {['All','Shift Note','86 Alert','Maintenance','Announcement','General'].map(cat => (
-              <button key={cat} onClick={() => setCategoryFilter(cat)} className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-widest ${categoryFilter === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D]'}`}>{cat}</button>
-            ))}
-          </div>
-          <div className="hidden md:flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{allNotes.length} visible</div>
         </div>
 
         <form onSubmit={handleBroadcast} className="p-2.5 sm:p-3 bg-[#1A2126]">
@@ -456,6 +478,17 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
 
                       {n.title && <p className="font-medium text-sm leading-snug text-slate-200 break-words whitespace-pre-wrap mt-2">{n.title}</p>}
                       {n.imageUrl && <div className="mt-2 rounded-lg overflow-hidden border border-[#2A353D] bg-[#0B0E11] max-w-xl"><img src={n.imageUrl} alt="Attached" className="w-full max-h-[260px] object-cover" /></div>}
+
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleLike(n)}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest transition-colors ${Array.isArray(n.likes) && n.likes.some(l => l.userId === appUser?.id) ? 'bg-[#D4A381]/15 border-[#D4A381]/60 text-[#D4A381]' : 'bg-[#0B0E11] border-[#2A353D] text-slate-500 hover:text-[#D4A381] hover:border-[#D4A381]/40'}`}
+                          title={Array.isArray(n.likes) && n.likes.length ? `Liked by ${(n.likes || []).map(l => l.name || 'Someone').slice(0, 6).join(', ')}` : 'Like this post'}
+                        >
+                          <ThumbsUp size={13}/> {(n.likes || []).length ? `${(n.likes || []).length}` : 'Like'}
+                        </button>
+                      </div>
 
                       {replies.length > 0 && (
                         <button type="button" onClick={() => toggleReplies(n.id)} className="mt-2 flex items-center gap-1.5 text-[10px] font-black text-slate-500 hover:text-[#D4A381] uppercase tracking-widest transition-colors">
