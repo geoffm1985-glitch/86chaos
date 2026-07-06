@@ -288,14 +288,23 @@ if (liveAppUser && clientData) {
     { title:'Backups and help', body:'Backup Center lives under System Administrator → Forensics. Help Center has Quick Start Guides and restart buttons.' }
   ];
   const activeTourSteps = tourMode === 'manager' ? managerTourSteps : employeeTourSteps;
-  const finishTour = async (skipped = false) => {
+  const getTourSessionKey = (mode = tourMode) => `tourSeenThisSession_${liveAppUser?.id || 'guest'}_${mode || 'tour'}_${CURRENT_VERSION}`;
+  const getTourCompleteKey = (mode = tourMode) => mode === 'manager' ? `managerTourComplete_${rId || 'workspace'}` : `employeeTourComplete_${liveAppUser?.id || 'employee'}`;
+  const dismissTourForNow = () => {
+    const mode = tourMode;
+    if (liveAppUser?.id) sessionStorage.setItem(getTourSessionKey(mode), 'true');
+    setTourMode(null);
+    setTourStep(0);
+  };
+  const finishTour = async () => {
     const mode = tourMode;
     setTourMode(null);
     setTourStep(0);
     if (!liveAppUser || isDemoMode) return;
     try {
-      if (mode === 'manager' && rId) await updateDoc(doc(db, 'restaurants', rId), { workspaceOnboardingComplete: true, workspaceOnboardingCompletedAt: new Date().toISOString(), workspaceOnboardingSkipped: skipped });
-      if (mode === 'employee' && liveAppUser?.id) await updateDoc(doc(db, 'users', liveAppUser.id), { onboardingComplete: true, onboardingCompletedAt: new Date().toISOString(), onboardingSkipped: skipped });
+      localStorage.setItem(getTourCompleteKey(mode), 'true');
+      if (mode === 'manager' && rId) await updateDoc(doc(db, 'restaurants', rId), { workspaceOnboardingComplete: true, workspaceOnboardingCompletedAt: new Date().toISOString(), workspaceOnboardingSkipped: false });
+      if (mode === 'employee' && liveAppUser?.id) await updateDoc(doc(db, 'users', liveAppUser.id), { onboardingComplete: true, onboardingCompletedAt: new Date().toISOString(), onboardingSkipped: false });
     } catch(e) { console.warn('Tour completion save failed', e); }
   };
 
@@ -310,18 +319,22 @@ if (liveAppUser && clientData) {
 
   useEffect(() => {
     if (!liveAppUser || isDemoMode || tourMode) return;
-    const key = `tourSeenThisSession_${liveAppUser.id}_${CURRENT_VERSION}`;
-    if (sessionStorage.getItem(key) === 'true') return;
-    if ((liveAppUser.isAdmin || liveAppUser.permissions?.team) && displayClientData && !displayClientData.workspaceOnboardingComplete) {
+    const managerCompleteLocal = rId ? localStorage.getItem(`managerTourComplete_${rId}`) === 'true' : false;
+    const employeeCompleteLocal = liveAppUser?.id ? localStorage.getItem(`employeeTourComplete_${liveAppUser.id}`) === 'true' : false;
+    if ((liveAppUser.isAdmin || liveAppUser.permissions?.team) && displayClientData && !displayClientData.workspaceOnboardingComplete && !managerCompleteLocal) {
+      const key = `tourSeenThisSession_${liveAppUser.id}_manager_${CURRENT_VERSION}`;
+      if (sessionStorage.getItem(key) === 'true') return;
       sessionStorage.setItem(key, 'true');
       setTourMode('manager');
       setTourStep(0);
-    } else if (!liveAppUser.onboardingComplete) {
+    } else if (!liveAppUser.onboardingComplete && !employeeCompleteLocal) {
+      const key = `tourSeenThisSession_${liveAppUser.id}_employee_${CURRENT_VERSION}`;
+      if (sessionStorage.getItem(key) === 'true') return;
       sessionStorage.setItem(key, 'true');
       setTourMode('employee');
       setTourStep(0);
     }
-  }, [liveAppUser?.id, liveAppUser?.onboardingComplete, liveAppUser?.isAdmin, displayClientData?.workspaceOnboardingComplete, isDemoMode, tourMode]);
+  }, [liveAppUser?.id, liveAppUser?.onboardingComplete, liveAppUser?.isAdmin, displayClientData?.workspaceOnboardingComplete, rId, isDemoMode, tourMode]);
 
   useEffect(() => {
     const restart = (e) => { setTourMode(e.detail?.mode || (liveAppUser?.isAdmin ? 'manager' : 'employee')); setTourStep(0); };
@@ -801,7 +814,7 @@ return (
         </div>
       </Modal>
 
-      <Modal isOpen={!!tourMode} onClose={() => finishTour(true)} title={tourMode === 'manager' ? 'Manager Quick Start' : 'Employee Quick Start'}>
+      <Modal isOpen={!!tourMode} onClose={dismissTourForNow} title={tourMode === 'manager' ? 'Manager Quick Start' : 'Employee Quick Start'}>
         {tourMode && <div className="space-y-4">
           <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Step {tourStep + 1} of {activeTourSteps.length}</div>
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-4">
@@ -810,9 +823,9 @@ return (
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setTourStep(Math.max(0, tourStep - 1))} className={T.btnAlt} disabled={tourStep === 0}>Back</button>
-            {tourStep < activeTourSteps.length - 1 ? <button type="button" onClick={() => setTourStep(tourStep + 1)} className={`${T.btn} flex-1`}>Next</button> : <button type="button" onClick={() => finishTour(false)} className={`${T.btn} flex-1`}>Finish</button>}
+            {tourStep < activeTourSteps.length - 1 ? <button type="button" onClick={() => setTourStep(tourStep + 1)} className={`${T.btn} flex-1`}>Next</button> : <button type="button" onClick={finishTour} className={`${T.btn} flex-1`}>Finish</button>}
           </div>
-          <button type="button" onClick={() => finishTour(true)} className="w-full text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Skip for now</button>
+          <button type="button" onClick={dismissTourForNow} className="w-full text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Skip for now</button>
         </div>}
       </Modal>
 
