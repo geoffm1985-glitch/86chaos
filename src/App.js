@@ -74,6 +74,17 @@ export default function App() {
 
 const [currentDate, setCurrentDate] = useState(getToday());
 
+  useEffect(() => {
+    try {
+      const postRestoreTab = sessionStorage.getItem('86chaosPostRestoreTab');
+      if (postRestoreTab) {
+        sessionStorage.removeItem('86chaosPostRestoreTab');
+        setCurrentDate('2026-07-01');
+        setActiveTabState(postRestoreTab);
+      }
+    } catch (_) {}
+  }, []);
+
   const addDays = (dateStr, amount) => {
     const d = new Date(`${dateStr}T12:00:00`);
     d.setDate(d.getDate() + amount);

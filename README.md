@@ -1,8 +1,8 @@
 # 86 Chaos
 
-Current build: 13.1.12
+Current build: 13.1.13
 
-## 13.1.12 focus
+## 13.1.13 focus
 - Added System Administrator → Forensics → Emergency Schedule Rescue.
 - Reinjects the uploaded Cheers Chilton July 2026 schedule for restaurant ID `cheers_chilton_01`.
 - Deletes only existing July 2026 shifts for that restaurant, downloads a backup JSON, then imports 113 published shifts from the PDF schedule.
