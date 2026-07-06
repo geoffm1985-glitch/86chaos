@@ -4,7 +4,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
@@ -481,6 +481,7 @@ const [searchTerm, setSearchTerm] = useState('');
 
   // AI Invoice Scanner State
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
+  const [invoiceScanProgress, setInvoiceScanProgress] = useState({ percent: 0, label: 'Ready', phase: 'idle' });
   const [scannedInvoice, setScannedInvoice] = useState(null);
 
   // Master Permission Check for Inventory Tabs
@@ -906,13 +907,18 @@ const executeOrder = async (method) => {
   const normalizeSku = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizeName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-  const scanFileViaStorage = async (file) => {
+  const updateInvoiceProgress = (percent, label, phase = 'working') => {
+    const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    setInvoiceScanProgress({ percent: safePercent, label, phase });
+  };
+
+  const scanFileViaStorage = async (file, onProgress = () => {}) => {
     const ext = (file.name.split('.').pop() || 'upload').toLowerCase().replace(/[^a-z0-9]/g, '') || 'upload';
     const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const restaurantId = appUser?.restaurantId || 'unknown-restaurant';
     const storagePath = `${restaurantId}/invoices/scans/${safeName}`;
     const fileRef = ref(storage, storagePath);
-    await uploadBytes(fileRef, file, {
+    const uploadTask = uploadBytesResumable(fileRef, file, {
       contentType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
       customMetadata: {
         originalName: file.name,
@@ -922,6 +928,18 @@ const executeOrder = async (method) => {
         purpose: 'invoice-scan'
       }
     });
+
+    await new Promise((resolve, reject) => {
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const uploadPercent = snapshot.totalBytes ? (snapshot.bytesTransferred / snapshot.totalBytes) * 100 : 0;
+          onProgress({ uploadPercent, bytesTransferred: snapshot.bytesTransferred, totalBytes: snapshot.totalBytes });
+        },
+        reject,
+        resolve
+      );
+    });
+
     return {
       storagePath,
       mimeType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
@@ -932,27 +950,59 @@ const executeOrder = async (method) => {
   };
 
   const handleScanInvoice = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsScanningInvoice(true);
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    addToast('Scanning Invoice', isPdf ? 'Uploading PDF safely, then extracting every visible row...' : 'Uploading image safely, then extracting every visible row...');
+    const maxBytes = isPdf ? 50 * 1024 * 1024 : 50 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      addToast('Invoice Too Large', 'This invoice is over 50MB. Split it into smaller files or scan fewer pages.');
+      e.target.value = '';
+      return;
+    }
+
+    setIsScanningInvoice(true);
+    setScannedInvoice(null);
+    updateInvoiceProgress(2, 'Preparing invoice file...', 'prepare');
+    addToast('Scanning Invoice', isPdf ? 'Uploading PDF, then sending it to the invoice scanner...' : 'Uploading photo, then sending it to the invoice scanner...');
+
+    let timeoutId = null;
+    let aiPulseId = null;
+    const controller = new AbortController();
 
     try {
-      // Important: upload the original file directly to Firebase Storage first.
-      // This avoids Vercel's request body limit, which is easy to hit when PDFs are base64 encoded.
-      let payload = await scanFileViaStorage(file);
+      // Upload the original file directly to Firebase Storage first. This is the only heavy upload.
+      // The progress bar is actual Firebase upload progress for this stage.
+      const payload = await scanFileViaStorage(file, ({ uploadPercent, bytesTransferred, totalBytes }) => {
+        const uiPercent = 5 + Math.round((uploadPercent / 100) * 55);
+        const mbDone = (bytesTransferred / (1024 * 1024)).toFixed(1);
+        const mbTotal = (totalBytes / (1024 * 1024)).toFixed(1);
+        updateInvoiceProgress(uiPercent, `Uploading original invoice: ${Math.round(uploadPercent)}% (${mbDone}/${mbTotal} MB)`, 'upload');
+      });
 
+      updateInvoiceProgress(63, 'Upload complete. Starting AI invoice extraction...', 'ai');
+      const startedAt = Date.now();
+      aiPulseId = window.setInterval(() => {
+        const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+        const waitPercent = Math.min(90, 66 + Math.floor(elapsedSeconds / 4));
+        updateInvoiceProgress(waitPercent, `AI scanner is reading line items... ${elapsedSeconds}s`, 'ai');
+      }, 2000);
+
+      timeoutId = window.setTimeout(() => controller.abort(), 135000);
       const response = await secureFetch('/api/scan-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
+
+      if (aiPulseId) window.clearInterval(aiPulseId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+      updateInvoiceProgress(92, 'Scanner finished. Building review screen...', 'reconcile');
 
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-         throw new Error("Invoice scanner crashed before returning JSON. The file may be too large for the scanner or Vercel returned an HTML error page.");
+         throw new Error("Invoice scanner returned a non-JSON response. Try a smaller invoice or check the Vercel function logs.");
       }
 
       const data = await response.json();
@@ -987,14 +1037,22 @@ const executeOrder = async (method) => {
            action: isInventoryLine ? (match ? 'update' : 'create') : 'record'
          };
       });
+      updateInvoiceProgress(100, 'Review ready.', 'done');
       setScannedInvoice({ ...data, lineItems: normalizedLineItems, allExtractedRows: normalizedLineItems, sourceFile: file.name });
       addToast('Scan Complete', `Found ${normalizedLineItems.length} visible rows. Please review before approving.`);
     } catch (err) {
+      if (aiPulseId) window.clearInterval(aiPulseId);
+      if (timeoutId) window.clearTimeout(timeoutId);
       console.error(err);
-      addToast('Scan Error', err.message || 'Could not scan invoice.');
+      const message = err?.name === 'AbortError'
+        ? 'The invoice scanner took too long and was stopped. Try a clearer photo, fewer PDF pages, or a smaller file.'
+        : (err.message || 'Could not scan invoice.');
+      updateInvoiceProgress(100, message, 'error');
+      addToast('Scan Error', message);
+    } finally {
+      setIsScanningInvoice(false);
+      e.target.value = '';
     }
-    setIsScanningInvoice(false);
-    e.target.value = ''; 
   };
   const handleApproveInvoice = async () => {
      try {
@@ -1442,16 +1500,33 @@ const groupedItems = inventoryItems
           <div className="flex flex-col gap-3 mb-6">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
-            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-60 pointer-events-none' : ''}`}>
                <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
-                  {isScanningInvoice ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
+                  {isScanningInvoice ? <span className="text-[11px] font-black tabular-nums">{invoiceScanProgress.percent}%</span> : <Camera size={24} />}
                   <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
                </label>
                <label className="flex-1 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381] font-black uppercase tracking-widest text-[11px] sm:text-xs" title="Upload Photo or PDF">
-                  <span>📄 Scan Invoice (PDF/Photo)</span>
+                  <span>{isScanningInvoice ? 'Scanning Invoice...' : '📄 Scan Invoice (PDF/Photo)'}</span>
                   <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
                </label>
             </div>
+            {(isScanningInvoice || invoiceScanProgress.phase === 'error') && (
+              <div className={`bg-[#12161A] border rounded-xl p-3 shadow-sm ${invoiceScanProgress.phase === 'error' ? 'border-red-500/40' : 'border-[#2A353D]'}`}>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className={`text-[10px] font-black uppercase tracking-widest ${invoiceScanProgress.phase === 'error' ? 'text-red-300' : 'text-[#D4A381]'}`}>
+                    {invoiceScanProgress.phase === 'error' ? 'Invoice scan stopped' : 'Invoice scan progress'}
+                  </div>
+                  <div className="text-[10px] font-black text-slate-400 tabular-nums">{invoiceScanProgress.percent}%</div>
+                </div>
+                <div className="h-3 bg-[#0B0E11] rounded-full overflow-hidden border border-[#2A353D]">
+                  <div className={`h-full transition-all duration-300 ${invoiceScanProgress.phase === 'error' ? 'bg-red-500' : 'bg-[#D4A381]'}`} style={{ width: `${invoiceScanProgress.percent}%` }} />
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400 font-bold leading-snug">
+                  {invoiceScanProgress.label}
+                </div>
+                {isScanningInvoice && <div className="mt-1 text-[10px] text-slate-500 font-bold">Keep this page open. The upload percentage is exact; AI extraction updates as the scanner works.</div>}
+              </div>
+            )}
 
             {/* CSV IMPORT */}
             <label className={`flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>

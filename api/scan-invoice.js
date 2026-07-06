@@ -78,7 +78,7 @@ function normalizeInvoicePayload(parsed) {
     extractionNotes: data.extractionNotes || [],
     extractionWarnings: data.extractionWarnings || [],
     confidence: data.confidence || 'review',
-    scannerVersion: '13.0.3'
+    scannerVersion: '13.1.8'
   };
 }
 
@@ -245,11 +245,20 @@ Return this JSON shape:
       }
     };
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    const timeoutMs = parseInt(process.env.INVOICE_SCAN_TIMEOUT_MS || '110000', 10);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const raw = await response.text();
     if (!response.ok) {
@@ -284,8 +293,11 @@ Return this JSON shape:
 
     return res.status(200).json(normalized);
   } catch (err) {
-    const message = err.message || 'Invoice scanner failed.';
-    const status = /authorization|token|permission|login/i.test(message) ? 401 : 500;
+    const isTimeout = err?.name === 'AbortError';
+    const message = isTimeout
+      ? 'Invoice scanner timed out while AI was reading the file. Try a clearer photo, fewer PDF pages, or a smaller file.'
+      : (err.message || 'Invoice scanner failed.');
+    const status = isTimeout ? 504 : (/authorization|token|permission|login/i.test(message) ? 401 : 500);
     return res.status(status).json({
       error: message,
       hint: message.toLowerCase().includes('payload')
