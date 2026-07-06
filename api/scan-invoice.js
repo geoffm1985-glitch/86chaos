@@ -1,6 +1,6 @@
 // 86chaos invoice scanner
 // Extracts ALL visible invoice information from PDF or image files.
-// Uses Gemini multimodal document understanding when GEMINI_API_KEY or GOOGLE_API_KEY is set.
+// 13.1.9: Large-document scan handoff uses Gemini Files API instead of giant inline base64.
 
 function cleanJsonText(text = '') {
   return String(text)
@@ -78,10 +78,9 @@ function normalizeInvoicePayload(parsed) {
     extractionNotes: data.extractionNotes || [],
     extractionWarnings: data.extractionWarnings || [],
     confidence: data.confidence || 'review',
-    scannerVersion: '13.1.8'
+    scannerVersion: '13.1.9'
   };
 }
-
 
 const admin = require('firebase-admin');
 
@@ -120,13 +119,23 @@ function sanitizeStoragePath(path = '') {
   return clean;
 }
 
+function detectMimeType(fileName = '', providedMime = '') {
+  const lower = String(fileName || '').toLowerCase();
+  if (providedMime && providedMime !== 'application/octet-stream') return providedMime;
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+  return 'image/jpeg';
+}
+
 async function readScanSource(reqBody, req, adminApp) {
   const body = reqBody || {};
-  const mimeType = body.mimeType || 'image/jpeg';
   const fileName = body.fileName || 'invoice';
+  const mimeType = detectMimeType(fileName, body.mimeType || '');
 
   // Preferred production path: browser uploads file directly to Firebase Storage,
-  // then sends only the small storage path to Vercel. This avoids Vercel's 4.5MB request limit.
+  // then sends only the small storage path to Vercel. This avoids Vercel request limits.
   if (body.storagePath) {
     const decoded = await verifySignedIn(req, adminApp);
     const storagePath = sanitizeStoragePath(body.storagePath);
@@ -136,17 +145,18 @@ async function readScanSource(reqBody, req, adminApp) {
     }
     const bucket = adminApp.storage().bucket();
     const [buffer] = await bucket.file(storagePath).download();
-    const detectedMime = body.mimeType || (fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-    const pdfLike = detectedMime === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
-    const maxBytes = pdfLike ? 50 * 1024 * 1024 : 95 * 1024 * 1024;
+    const pdfLike = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
+    const maxBytes = pdfLike
+      ? parseInt(process.env.INVOICE_SCAN_MAX_PDF_BYTES || String(100 * 1024 * 1024), 10)
+      : parseInt(process.env.INVOICE_SCAN_MAX_IMAGE_BYTES || String(100 * 1024 * 1024), 10);
     if (buffer.length > maxBytes) {
-      throw new Error(pdfLike
-        ? 'PDF is over Gemini\'s 50MB document limit. Split it into smaller PDFs or scan fewer pages at once.'
-        : 'Image/file is too large for one scan. Try a smaller file or fewer pages.');
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      throw new Error(`Invoice file is over the current ${mb}MB scanner limit. Split it into smaller files or scan fewer pages at once.`);
     }
     return {
-      fileBase64: buffer.toString('base64'),
-      mimeType: detectedMime,
+      fileBase64: null,
+      fileBuffer: buffer,
+      mimeType,
       fileName,
       source: 'firebase-storage',
       storagePath,
@@ -157,29 +167,100 @@ async function readScanSource(reqBody, req, adminApp) {
 
   // Legacy/fallback path for small images only. Large files should use storagePath.
   if (!body.fileBase64) throw new Error('Missing scan file. Please upload the invoice again.');
+  const fileBase64 = String(body.fileBase64).replace(/^data:[^;]+;base64,/, '');
   return {
-    fileBase64: body.fileBase64,
+    fileBase64,
+    fileBuffer: null,
     mimeType,
     fileName,
     source: 'inline-base64',
-    originalBytes: Math.round((String(body.fileBase64).length * 3) / 4)
+    originalBytes: Math.round((fileBase64.length * 3) / 4)
   };
 }
 
-module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+async function uploadToGeminiFiles(apiKey, scanSource) {
+  const fileBuffer = scanSource.fileBuffer;
+  if (!Buffer.isBuffer(fileBuffer) || !fileBuffer.length) throw new Error('No invoice file buffer available for Gemini upload.');
 
-  let scanSource = null;
+  const startResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(fileBuffer.length),
+      'X-Goog-Upload-Header-Content-Type': scanSource.mimeType,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      file: {
+        display_name: scanSource.fileName || 'invoice'
+      }
+    })
+  });
+
+  if (!startResponse.ok) {
+    const raw = await startResponse.text();
+    throw new Error(`Gemini file upload could not start. ${raw.slice(0, 500)}`);
+  }
+
+  const uploadUrl = startResponse.headers.get('x-goog-upload-url');
+  if (!uploadUrl) throw new Error('Gemini did not return a file upload URL.');
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': String(fileBuffer.length),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize'
+    },
+    body: fileBuffer
+  });
+
+  const uploadRaw = await uploadResponse.text();
+  if (!uploadResponse.ok) {
+    throw new Error(`Gemini file upload failed. ${uploadRaw.slice(0, 700)}`);
+  }
+
+  let uploadJson;
+  try { uploadJson = JSON.parse(uploadRaw); }
+  catch (err) { throw new Error(`Gemini file upload returned invalid JSON. ${uploadRaw.slice(0, 500)}`); }
+
+  const file = uploadJson.file || uploadJson;
+  if (!file?.uri) throw new Error('Gemini file upload finished but did not return a file URI.');
+  return waitForGeminiFileActive(apiKey, file);
+}
+
+async function waitForGeminiFileActive(apiKey, file) {
+  if (!file?.name) return file;
+  let current = file;
+  const maxWaitMs = parseInt(process.env.INVOICE_FILE_READY_TIMEOUT_MS || '90000', 10);
+  const started = Date.now();
+
+  while (Date.now() - started < maxWaitMs) {
+    const state = String(current.state || '').toUpperCase();
+    if (!state || state === 'ACTIVE' || state === 'STATE_UNSPECIFIED') return current;
+    if (state === 'FAILED') throw new Error('Gemini could not process the uploaded invoice file. Try rescanning or exporting the PDF again.');
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    const check = await fetch(`https://generativelanguage.googleapis.com/v1beta/${current.name}?key=${encodeURIComponent(apiKey)}`);
+    const raw = await check.text();
+    if (!check.ok) throw new Error(`Could not check Gemini invoice file status. ${raw.slice(0, 500)}`);
+    current = JSON.parse(raw);
+  }
+
+  throw new Error('Gemini is still preparing this invoice file. Try again in a minute, or scan fewer pages at once.');
+}
+
+async function deleteGeminiFileQuietly(apiKey, file) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY or GOOGLE_API_KEY in Vercel.' });
+    if (!file?.name) return;
+    await fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${encodeURIComponent(apiKey)}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('Could not delete temporary Gemini file:', err?.message || err);
+  }
+}
 
-    const adminApp = initAdmin();
-    scanSource = await readScanSource(req.body || {}, req, adminApp);
-    const { fileBase64, mimeType = 'image/jpeg', fileName = 'invoice' } = scanSource;
-    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-
-    const prompt = `
+function buildInvoicePrompt() {
+  return `
 You are the invoice extraction engine for a restaurant inventory system.
 
 Your job: extract ABSOLUTELY EVERYTHING visible from this invoice, receipt, order guide, delivery ticket, statement, PDF, or image.
@@ -194,6 +275,7 @@ Rules:
 - For inventory/product rows, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
 - Mark non-product rows with rowType such as tax, freight, deposit, subtotal, total, discount, credit, payment, note, header, footer.
 - For catch-weight foods like chicken, beef, fish, cheese, and produce, include weight and weightPerCaseLbs when visible or strongly implied by pack size.
+- For longer multipage invoices, keep going until every visible row is represented in allExtractedRows.
 
 Return this JSON shape:
 {
@@ -229,23 +311,60 @@ Return this JSON shape:
   "extractionWarnings": [],
   "confidence": "high|medium|low|review"
 }`;
+}
+
+function createGenerationBody(prompt, filePart) {
+  const maxOutputTokens = parseInt(process.env.INVOICE_SCAN_MAX_OUTPUT_TOKENS || '65536', 10);
+  return {
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: prompt },
+        filePart
+      ]
+    }],
+    generationConfig: {
+      temperature: 0,
+      response_mime_type: 'application/json',
+      maxOutputTokens
+    }
+  };
+}
+
+async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  let scanSource = null;
+  let geminiFile = null;
+  try {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY or GOOGLE_API_KEY in Vercel.' });
+
+    const adminApp = initAdmin();
+    scanSource = await readScanSource(req.body || {}, req, adminApp);
+    const { mimeType = 'image/jpeg', fileName = 'invoice' } = scanSource;
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const inputMode = String(process.env.INVOICE_SCAN_INPUT_MODE || 'files').toLowerCase();
+    const useGeminiFiles = inputMode !== 'inline' && scanSource.source === 'firebase-storage' && Buffer.isBuffer(scanSource.fileBuffer);
+
+    const prompt = buildInvoicePrompt();
+    let filePart;
+    let scanInputMethod = 'inline-base64';
+
+    if (useGeminiFiles) {
+      geminiFile = await uploadToGeminiFiles(apiKey, scanSource);
+      filePart = { file_data: { mime_type: mimeType, file_uri: geminiFile.uri } };
+      scanInputMethod = 'gemini-files-api';
+    } else {
+      const fileBase64 = scanSource.fileBase64 || scanSource.fileBuffer?.toString('base64');
+      if (!fileBase64) throw new Error('No invoice file data available to scan.');
+      filePart = { inline_data: { mime_type: mimeType, data: fileBase64 } };
+    }
 
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const body = {
-      contents: [{
-        role: 'user',
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: mimeType, data: fileBase64 } }
-        ]
-      }],
-      generationConfig: {
-        temperature: 0,
-        response_mime_type: 'application/json'
-      }
-    };
+    const body = createGenerationBody(prompt, filePart);
 
-    const timeoutMs = parseInt(process.env.INVOICE_SCAN_TIMEOUT_MS || '110000', 10);
+    const timeoutMs = parseInt(process.env.INVOICE_SCAN_TIMEOUT_MS || '285000', 10);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     let response;
@@ -266,6 +385,7 @@ Return this JSON shape:
         error: 'Gemini invoice scan failed.',
         details: raw.slice(0, 2000),
         scanSource: scanSource?.source || 'unknown',
+        scanInputMethod,
         fileName: scanSource?.fileName || fileName,
         originalBytes: scanSource?.originalBytes || null
       });
@@ -273,29 +393,32 @@ Return this JSON shape:
 
     const gemini = JSON.parse(raw);
     const text = gemini?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
-    if (!text) return res.status(502).json({ error: 'Gemini returned no invoice text.' });
+    if (!text) return res.status(502).json({ error: 'Gemini returned no invoice text.', scanInputMethod });
 
     let parsed;
     try {
       parsed = JSON.parse(cleanJsonText(text));
     } catch (err) {
-      return res.status(502).json({ error: 'Gemini returned invalid JSON.', rawText: text.slice(0, 4000) });
+      return res.status(502).json({ error: 'Gemini returned invalid JSON.', rawText: text.slice(0, 4000), scanInputMethod });
     }
 
     const normalized = normalizeInvoicePayload(parsed);
     normalized.scanFileName = fileName;
     normalized.scanMimeType = mimeType;
     normalized.scanSource = scanSource?.source || 'unknown';
+    normalized.scanInputMethod = scanInputMethod;
     normalized.scanStoragePath = scanSource?.storagePath || '';
     normalized.scanOriginalBytes = scanSource?.originalBytes || null;
+    normalized.geminiFileName = geminiFile?.name || '';
     normalized.processedAt = new Date().toISOString();
-    normalized.scannerVersion = '13.0.3';
+    normalized.scannerVersion = '13.1.9';
 
+    if (geminiFile) deleteGeminiFileQuietly(apiKey, geminiFile);
     return res.status(200).json(normalized);
   } catch (err) {
     const isTimeout = err?.name === 'AbortError';
     const message = isTimeout
-      ? 'Invoice scanner timed out while AI was reading the file. Try a clearer photo, fewer PDF pages, or a smaller file.'
+      ? 'Invoice scanner needed more time while AI was reading the file. Try again once, or scan fewer pages if this keeps happening.'
       : (err.message || 'Invoice scanner failed.');
     const status = isTimeout ? 504 : (/authorization|token|permission|login/i.test(message) ? 401 : 500);
     return res.status(status).json({
@@ -303,7 +426,14 @@ Return this JSON shape:
       hint: message.toLowerCase().includes('payload')
         ? 'Upload the invoice through Firebase Storage mode instead of sending it through Vercel.'
         : undefined,
-      scanSource: scanSource?.source || 'unknown'
+      scanSource: scanSource?.source || 'unknown',
+      scannerVersion: '13.1.9'
     });
   }
+}
+
+module.exports = handler;
+module.exports.config = {
+  maxDuration: 300,
+  memory: 1024
 };

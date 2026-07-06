@@ -954,9 +954,9 @@ const executeOrder = async (method) => {
     if (!file) return;
 
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    const maxBytes = isPdf ? 50 * 1024 * 1024 : 50 * 1024 * 1024;
+    const maxBytes = isPdf ? 100 * 1024 * 1024 : 100 * 1024 * 1024;
     if (file.size > maxBytes) {
-      addToast('Invoice Too Large', 'This invoice is over 50MB. Split it into smaller files or scan fewer pages.');
+      addToast('Invoice Too Large', 'This invoice is over 100MB. Split it into smaller files or scan fewer pages.');
       e.target.value = '';
       return;
     }
@@ -980,15 +980,15 @@ const executeOrder = async (method) => {
         updateInvoiceProgress(uiPercent, `Uploading original invoice: ${Math.round(uploadPercent)}% (${mbDone}/${mbTotal} MB)`, 'upload');
       });
 
-      updateInvoiceProgress(63, 'Upload complete. Starting AI invoice extraction...', 'ai');
+      updateInvoiceProgress(63, 'Upload complete. Handing large document to AI file processor...', 'ai');
       const startedAt = Date.now();
       aiPulseId = window.setInterval(() => {
         const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
         const waitPercent = Math.min(90, 66 + Math.floor(elapsedSeconds / 4));
-        updateInvoiceProgress(waitPercent, `AI scanner is reading line items... ${elapsedSeconds}s`, 'ai');
+        updateInvoiceProgress(waitPercent, `AI scanner is reading the full invoice document... ${elapsedSeconds}s`, 'ai');
       }, 2000);
 
-      timeoutId = window.setTimeout(() => controller.abort(), 135000);
+      timeoutId = window.setTimeout(() => controller.abort(), 320000);
       const response = await secureFetch('/api/scan-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1045,7 +1045,7 @@ const executeOrder = async (method) => {
       if (timeoutId) window.clearTimeout(timeoutId);
       console.error(err);
       const message = err?.name === 'AbortError'
-        ? 'The invoice scanner took too long and was stopped. Try a clearer photo, fewer PDF pages, or a smaller file.'
+        ? 'The invoice scanner needed more time. Try this same document one more time; if it keeps happening, split only the biggest PDF pages.'
         : (err.message || 'Could not scan invoice.');
       updateInvoiceProgress(100, message, 'error');
       addToast('Scan Error', message);
@@ -1524,7 +1524,7 @@ const groupedItems = inventoryItems
                 <div className="mt-2 text-[11px] text-slate-400 font-bold leading-snug">
                   {invoiceScanProgress.label}
                 </div>
-                {isScanningInvoice && <div className="mt-1 text-[10px] text-slate-500 font-bold">Keep this page open. The upload percentage is exact; AI extraction updates as the scanner works.</div>}
+                {isScanningInvoice && <div className="mt-1 text-[10px] text-slate-500 font-bold">Keep this page open. Upload percentage is exact; large-document AI scanning shows the current stage and elapsed time.</div>}
               </div>
             )}
 
