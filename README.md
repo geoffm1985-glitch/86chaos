@@ -1,11 +1,12 @@
 # 86 Chaos
 
-Current build: 13.1.11
+Current build: 13.1.12
 
-## 13.1.11 focus
-- Employee Quick Start now only saves as complete when the employee reaches the final step and clicks Finish.
-- Closing the modal or clicking Skip for now only hides the tour for the current browser session. It will come back later until Finish is clicked.
-- Finish saves the completion flag to the user record and also keeps a local backup flag so the tour stays gone immediately after completion.
+## 13.1.12 focus
+- Added System Administrator → Forensics → Emergency Schedule Rescue.
+- Reinjects the uploaded Cheers Chilton July 2026 schedule for restaurant ID `cheers_chilton_01`.
+- Deletes only existing July 2026 shifts for that restaurant, downloads a backup JSON, then imports 113 published shifts from the PDF schedule.
+- Requires typing `REINJECT JULY` before the button runs.
 
 ## Notes carried forward
 - 13.1.10 invoice scanner filtering remains in place: only purchased product rows can be imported into inventory.
