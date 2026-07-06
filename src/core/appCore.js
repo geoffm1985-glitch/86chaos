@@ -185,7 +185,7 @@ export const getPushDeviceSnapshot = () => {
 };
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '13.1.25';
+export const CURRENT_VERSION = '13.1.26';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

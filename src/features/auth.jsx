@@ -13,7 +13,19 @@ const getFriendlyLoginError = (error) => {
   const raw = `${error?.code || ''} ${error?.message || ''}`;
   if (/requests-from-referer|are-blocked|unauthorized-domain|referrer/i.test(raw)) {
     const host = typeof window !== 'undefined' ? window.location.host : 'this deployment URL';
-    return `Firebase is blocking this deployment URL (${host}). Use the production app link, or add this exact Vercel preview URL to Firebase Auth authorized domains and the Google Cloud API key HTTP referrer allowlist.`;
+    const cleanHost = String(host || '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
+    const url = cleanHost && cleanHost !== 'this deployment URL' ? `https://${cleanHost}` : 'this deployment URL';
+    return [
+      'Firebase blocked this preview link. Login, push-token repair, and owner tabs can fail from here until Firebase allows this exact URL.',
+      '',
+      'Fast fix: open the normal production 86 Chaos link on this device.',
+      '',
+      'Setup fix for this preview:',
+      `1. Add this domain to Firebase Auth authorized domains: ${cleanHost || host}`,
+      `2. Add this referrer to the Google Cloud API key allowlist: ${url}/*`,
+      '',
+      'After that, reload this page and sign in again. Do not test push notifications from this preview until it is allowed.'
+    ].join('\n');
   }
   return error?.message || 'Login failed.';
 };
@@ -120,7 +132,7 @@ const LoginScreen = ({ setAppUser }) => {
               <p className="text-xs text-[#D4A381] font-bold mt-1 uppercase tracking-widest">Please set a permanent password.</p>
             </div>
             
-            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">{loginError}</div>}
+            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-left whitespace-pre-line break-words leading-relaxed">{loginError}</div>}
 
             <div>
               <input type="password" placeholder="New Password (min 6 chars)" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" required />
@@ -137,7 +149,7 @@ const LoginScreen = ({ setAppUser }) => {
           /* OTHERWISE, RENDER THE STANDARD LOGIN FORM */
           <form onSubmit={handleLogin} className="w-full space-y-4">
             
-            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">{loginError}</div>}
+            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-left whitespace-pre-line break-words leading-relaxed">{loginError}</div>}
 
             <div>
               <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />

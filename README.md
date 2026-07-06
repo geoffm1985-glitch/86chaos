@@ -1,14 +1,14 @@
 # 86 Chaos
 
-Current build: 13.1.25
+Current build: 13.1.26
 
-## 13.1.25 focus
+## 13.1.26 focus
 
-- Restores platform Super Admin recognition for the Geoffrm account alias across frontend settings, Firestore rules, and Vercel API routes.
-- Keeps Settings → Workspace and Settings → Integrations visible to the account owner and platform Super Admin, while still hidden from normal non-owner admins.
-- Makes Firebase referrer/authorized-domain login failures readable instead of dumping the raw Firebase error.
-- Keeps push notification testing tied to same-account multi-device tokens from the active production workspace.
+- Makes Firebase blocked-preview login errors actionable instead of dumping a vague warning.
+- Explains why login, push-token repair, and owner-only Settings tabs can fail on an unapproved Vercel preview URL.
+- Shows the exact domain and exact referrer pattern to add when testing preview deployments.
+- Keeps production login behavior unchanged.
 
 ## Deploy notes
 
-Deploy through GitHub/Vercel as usual. Publish the included `firestore.rules` in Firebase for the Super Admin bootstrap email update.
+Deploy through GitHub/Vercel as usual. No Firestore rules, Storage rules, Vercel config, or API route changes are required for this version. If testing from a Vercel preview URL, add that preview domain to Firebase Auth authorized domains and add the matching `https://preview-domain/*` referrer to the Google Cloud API key restrictions.
