@@ -1735,7 +1735,10 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 };
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
-  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(true);
+  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(min-width: 1024px)').matches;
+  });
   
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
@@ -1778,6 +1781,17 @@ const [editingRest, setEditingRest] = useState(null);
   useEffect(() => {
     const timer = setInterval(() => setBackupCountdownTick(Date.now()), 30000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Mobile admin should open as a clean section picker, not a mile-long cockpit scroll.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const closeDeckOnSmallScreens = () => {
+      if (window.matchMedia('(max-width: 1023px)').matches) setIsCommandDeckOpen(false);
+    };
+    closeDeckOnSmallScreens();
+    window.addEventListener('orientationchange', closeDeckOnSmallScreens);
+    return () => window.removeEventListener('orientationchange', closeDeckOnSmallScreens);
   }, []);
   const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
@@ -3526,26 +3540,28 @@ Type RESTORE to continue.`);
   };
 
   const adminTabGroups = [
-    { title:'Overview', tabs:[
-      {id:'overview', label:'Dashboard'},
-      {id:'health', label:'Health Dashboard'},
-      {id:'live', label:'Live Activity'}
+    { title:'Overview', summary:'Status, readiness, and active users', tabs:[
+      {id:'overview', label:'Command Center', short:'Home'},
+      {id:'health', label:'Health + Deployment', short:'Health'},
+      {id:'live', label:'Live Activity', short:'Live'}
     ]},
-    { title:'Customer Operations', tabs:[
-      {id:'tenants', label:'Workspaces'},
-      {id:'users', label:'People'},
-      {id:'admins', label:'Access Control'}
+    { title:'Customer Operations', summary:'Workspaces, people, permissions', tabs:[
+      {id:'tenants', label:'Workspaces', short:'Clients'},
+      {id:'users', label:'People + Push Devices', short:'People'},
+      {id:'admins', label:'Access Control', short:'Access'}
     ]},
-    { title:'Support & Safety', tabs:[
-      {id:'support', label:'Support Desk'},
-      {id:'forensics', label:'Forensics & Backups'},
-      {id:'ops', label:'Platform Operations'}
+    { title:'Support & Safety', summary:'Diagnostics, backups, safe controls', tabs:[
+      {id:'support', label:'Support Desk', short:'Support'},
+      {id:'forensics', label:'Forensics + Backups', short:'Backups'},
+      {id:'ops', label:'Operations + Lockdown', short:'Ops'}
     ]},
-    { title:'Reference', tabs:[
-      {id:'manual', label:'Admin Manual'}
+    { title:'Reference', summary:'Admin instructions and meanings', tabs:[
+      {id:'manual', label:'Administrator Manual', short:'Manual'}
     ]}
   ];
-  const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title })));
+  const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
+  const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
+  const mobilePrimaryTabs = ['overview', 'health', 'live', 'tenants', 'users', 'forensics', 'ops', 'manual'];
 
   const jumpToAdminIssue = (target) => {
     setSubTab(target || 'overview');
@@ -3586,24 +3602,59 @@ Type RESTORE to continue.`);
         </div>
 
         {/* ORGANIZED ADMIN NAVIGATION */}
-        <div className="relative grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          {adminTabGroups.map(group => (
-            <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
-              <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-1.5">{group.title}</div>
-              <div className="grid grid-cols-1 gap-1.5">
-                {group.tabs.map((t) => (
-                  <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-3 py-2.5 text-left text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all border ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}>
-                    {t.label}
-                  </button>
-                ))}
+        <div className="relative space-y-3">
+          <div className="lg:hidden bg-[#0B0E11]/80 border border-[#2A353D] rounded-2xl p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">Mobile Admin Layout</div>
+                <div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div>
+                <div className="text-[10px] font-bold text-slate-500 truncate">{activeAdminTab.group} • {activeAdminTab.groupSummary}</div>
               </div>
+              <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="flex-shrink-0 bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest">
+                {isCommandDeckOpen ? 'Hide Signals' : 'Signals'}
+              </button>
             </div>
-          ))}
+            <select
+              value={subTab}
+              onChange={(e) => setSubTab(e.target.value)}
+              className={`${T.input} text-sm font-black`}
+              aria-label="Choose administrator section"
+            >
+              {adminTabGroups.map(group => (
+                <optgroup key={group.title} label={group.title}>
+                  {group.tabs.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <div className="grid grid-cols-4 gap-1.5">
+              {adminTabs.filter(t => mobilePrimaryTabs.includes(t.id)).map(t => (
+                <button key={t.id} type="button" onClick={() => setSubTab(t.id)} className={`px-2 py-2 rounded-xl border text-[8px] font-black uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white border-red-500' : 'bg-[#12161A] text-slate-400 border-[#2A353D]'}`}>
+                  {t.short || t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden lg:grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            {adminTabGroups.map(group => (
+              <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
+                <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-0.5">{group.title}</div>
+                <div className="text-[9px] font-bold text-slate-600 px-1.5 pb-1.5 truncate">{group.summary}</div>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {group.tabs.map((t) => (
+                    <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-3 py-2.5 text-left text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all border ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       <div className={`grid gap-4 ${isCommandDeckOpen ? 'lg:grid-cols-[300px_minmax(0,1fr)]' : 'lg:grid-cols-1'}`}>
         {isCommandDeckOpen && (
-          <aside className="lg:sticky lg:top-4 h-max space-y-3" id="admin-command-deck">
+          <aside className="lg:sticky lg:top-4 h-max space-y-3 max-lg:max-h-[58vh] max-lg:overflow-y-auto max-lg:pr-1 custom-scrollbar" id="admin-command-deck">
             <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative">
               <div className="absolute inset-0 cockpit-grid opacity-40 pointer-events-none"></div>
               <div className="relative flex items-center justify-between gap-2 mb-3">
@@ -3668,8 +3719,12 @@ Type RESTORE to continue.`);
         )}
 
         <div className="min-w-0 space-y-6">
+          <div className="lg:hidden bg-[#0B0E11] border border-[#2A353D] rounded-2xl px-3 py-2 flex items-center justify-between gap-3">
+            <div className="min-w-0"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Admin Section</div><div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div></div>
+            <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 flex-shrink-0">{activeAdminTab.group}</span>
+          </div>
           {!isCommandDeckOpen && (
-            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Show Command Deck</button>
+            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Open Signal Board</button>
           )}
 <Modal isOpen={!!editingGlobalUser} onClose={() => { setEditingGlobalUser(null); setSupportUserForm({}); }} title={`Support Edit User: ${editingGlobalUser?.name || editingGlobalUser?.email || ''}`}>
         {editingGlobalUser && (
@@ -5326,6 +5381,7 @@ const HELP_ARTICLES = [
   { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
+  { id:'new-13136', title:'What changed in version 13.1.36', group:'Release Notes', keywords:'new update 13.1.36 administrator admin mobile command center layout settings', body:['System Administrator now has a cleaner command-center layout with grouped sections for Overview, Customer Operations, Support & Safety, and Reference.', 'On phones, the admin tab opens with a compact section picker instead of forcing you through a long Command Deck scroll.', 'The Command Deck now defaults closed on mobile and can be opened with Signals when needed.', 'Desktop still keeps the full professional grouped navigation and left-side signal board.'] },
   { id:'new-13135', title:'What changed in version 13.1.35', group:'Release Notes', keywords:'new update 13.1.35 voice recipes recipe book specific recipe open search microphone', body:['86 Voice can now open a specific recipe from the Recipe Book by name.', 'Commands like “open beer cheese recipe”, “show me chicken marsala recipe”, or “what is the recipe for ranch” search the live Recipe Book instead of relying on hardcoded recipe names.', 'If a recipe is added later, the same voice command pattern will work for it automatically.', 'If the app cannot find an exact match, it opens Recipe Book with the useful search phrase filled in.'] },
   { id:'new-1319', title:'What changed in version 13.1.9', group:'Release Notes', keywords:'new update 13.1.9 invoice scanner large documents Gemini Files API timeout bigger PDF progress', body:['Invoice scanning now uses a large-document AI handoff so uploaded PDFs/photos are sent to Gemini as files instead of giant inline payloads.', 'The scanner timeout was extended for larger multipage invoices, and the progress bar now explains the large-document AI stage instead of looking stuck.', 'The upload stage still shows exact Firebase upload progress. The AI reading stage shows status and elapsed time because Gemini does not provide line-by-line progress while it reads the document.', 'The scanner app limit was raised to 100MB, with clearer errors if the AI service itself rejects a file.'] },
   { id:'new-1318', title:'What changed in version 13.1.8', group:'Release Notes', keywords:'new update 13.1.8 invoice scanner progress bar upload timeout stuck spinning AI scan', body:['Invoice scanning now shows a progress bar instead of an endless loading spinner.','The upload stage uses real Firebase upload progress so managers can see whether the file is actually moving.','The AI extraction stage now shows a clear scanner status and has a timeout so it cannot spin forever without reporting what happened.','Large invoices still upload through Firebase Storage first, then the scanner reads the stored file and opens the Reconcile Invoice review screen.'] },
@@ -5344,7 +5400,8 @@ const HELP_ARTICLES = [
   { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Ops Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
-  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit', body:['Open System Administrator. The grouped section buttons are at the top. The Command Deck is the optional signal panel on the left.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use the Hide Command Deck button when you need more screen space. Use Show Command Deck to bring it back.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
+  { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
+  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
   { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Access Control for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },
