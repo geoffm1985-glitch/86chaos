@@ -1,13 +1,91 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+
+
+const GEOFENCE_TILE_PROVIDERS = [
+  {
+    id: 'carto-light',
+    label: 'Carto Light',
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    maxZoom: 20
+  },
+  {
+    id: 'osm-standard',
+    label: 'OpenStreetMap',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  },
+  {
+    id: 'osm-hot',
+    label: 'OpenStreetMap HOT',
+    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors, Tiles style by HOT',
+    maxZoom: 19
+  }
+];
+
+const getSafeMapCenter = (lat, lon) => {
+  const parsedLat = parseFloat(lat);
+  const parsedLon = parseFloat(lon);
+  if (Number.isFinite(parsedLat) && Number.isFinite(parsedLon)) return [parsedLat, parsedLon];
+  return [44.0296, -88.1633];
+};
+
+const GeofenceMapStabilizer = ({ lat, lon, radius, refreshNonce }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return undefined;
+    const center = getSafeMapCenter(lat, lon);
+    const container = map.getContainer?.();
+    let cancelled = false;
+    let observer = null;
+    const timeouts = [];
+
+    const repairMap = () => {
+      if (cancelled) return;
+      try {
+        map.invalidateSize({ animate: false, pan: false });
+        map.setView(center, map.getZoom() || 17, { animate: false });
+      } catch (_) {}
+    };
+
+    [0, 80, 200, 450, 900, 1500, 2500].forEach((delay) => {
+      timeouts.push(setTimeout(repairMap, delay));
+    });
+
+    const onWindowResize = () => repairMap();
+    const onVisibility = () => { if (!document.hidden) repairMap(); };
+    window.addEventListener('resize', onWindowResize);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    if (container && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => repairMap());
+      observer.observe(container);
+      if (container.parentElement) observer.observe(container.parentElement);
+    }
+
+    return () => {
+      cancelled = true;
+      timeouts.forEach(clearTimeout);
+      window.removeEventListener('resize', onWindowResize);
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (observer) observer.disconnect();
+    };
+  }, [map, lat, lon, radius, refreshNonce]);
+
+  return null;
+};
 
 const TabTeam = ({ users, appUser, addToast, heartbeatDebug }) => {
   const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
@@ -661,6 +739,26 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [sysWageAccess, setSysWageAccess] = useState(sys.wageAccess || []);
   const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
   const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
+  const [mapProviderIndex, setMapProviderIndex] = useState(0);
+  const [mapLoadState, setMapLoadState] = useState('idle');
+  const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
+  const mapTileErrorAtRef = useRef(0);
+  const activeMapProvider = GEOFENCE_TILE_PROVIDERS[mapProviderIndex] || GEOFENCE_TILE_PROVIDERS[0];
+
+  const refreshGeofenceMap = () => {
+    setMapLoadState('refreshing');
+    setMapRefreshNonce((n) => n + 1);
+    setTimeout(() => setMapLoadState((prev) => prev === 'refreshing' ? 'ready' : prev), 1500);
+  };
+
+  const handleGeofenceTileError = () => {
+    const now = Date.now();
+    if (now - mapTileErrorAtRef.current < 2500) return;
+    mapTileErrorAtRef.current = now;
+    setMapLoadState('retrying');
+    setMapProviderIndex((idx) => (idx + 1) % GEOFENCE_TILE_PROVIDERS.length);
+    setMapRefreshNonce((n) => n + 1);
+  };
 
 const handleEnableNotifications = async () => {
     try {
@@ -690,19 +788,37 @@ const handleEnableNotifications = async () => {
   };
 
   const handleGeocodeAddress = async () => {
-    if (!sysAddress.trim()) return addToast('Error', 'Please enter a full address first.');
+    const address = sysAddress.trim();
+    if (!address) return addToast('Error', 'Please enter a full address first.');
     addToast('Locating...', 'Searching map database...');
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(sysAddress)}`);
-      const data = await res.json();
-      if (data && data.length > 0) {
-        setSysLat(parseFloat(data[0].lat).toFixed(4));
-        setSysLon(parseFloat(data[0].lon).toFixed(4));
-        addToast('Found', 'Coordinates locked in.');
+    const keepSavedCoords = () => {
+      const hasSavedCoords = Number.isFinite(parseFloat(sysLat)) && Number.isFinite(parseFloat(sysLon));
+      if (hasSavedCoords) {
+        addToast('Map Lookup Unavailable', 'Saved latitude/longitude stayed unchanged. You can still save or click the map.');
       } else {
-        addToast('Error', 'Address not found. Try adding city and state.');
+        addToast('Map Lookup Unavailable', 'Type latitude/longitude manually or try the full street, city, and state.');
       }
-    } catch (err) { addToast('Error', 'Failed to reach map service.'); }
+    };
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(`/api/geocode-address?q=${encodeURIComponent(address)}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok && Number.isFinite(parseFloat(data.lat)) && Number.isFinite(parseFloat(data.lon))) {
+        setSysLat(parseFloat(data.lat).toFixed(6));
+        setSysLon(parseFloat(data.lon).toFixed(6));
+        if (data.warning) {
+          addToast('GPS Found', 'Used saved restaurant coordinates because live map lookup was unavailable.');
+        } else {
+          addToast('Found', 'Coordinates locked in.');
+        }
+      } else {
+        addToast('Address Not Found', data?.error || 'Try adding city and state, or enter coordinates manually.');
+      }
+    } catch (err) {
+      keepSavedCoords();
+    }
   };
 
   // --- Role Management State (Admin Only) ---
@@ -1184,21 +1300,39 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                      <div><label className={T.label}>Radius (Feet)</label><input type="number" min="10" value={sysRadius} onChange={e=>setSysRadius(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 300"/></div>
                    </div>
 
-                   <div className="w-full h-80 mt-4 rounded-xl border border-[#2A353D] relative z-0 overflow-hidden shadow-inner">
+                   <div className="w-full h-80 mt-4 rounded-xl border border-[#2A353D] relative z-0 overflow-hidden shadow-inner bg-[#0B0E11]">
                      <MapContainer 
-                       center={[parseFloat(sysLat) || 44.0296, parseFloat(sysLon) || -88.1633]} 
+                       center={getSafeMapCenter(sysLat, sysLon)} 
                        zoom={17} 
-                       style={{ height: '100%', width: '100%' }}
+                       minZoom={3}
+                       maxZoom={activeMapProvider.maxZoom || 19}
+                       preferCanvas={true}
+                       scrollWheelZoom={true}
+                       style={{ height: '100%', width: '100%', minHeight: 320 }}
                      >
-                       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                       <GeofenceMapStabilizer lat={sysLat} lon={sysLon} radius={sysRadius} refreshNonce={mapRefreshNonce} />
+                       <TileLayer
+                         key={`${activeMapProvider.id}-${mapRefreshNonce}`}
+                         attribution={activeMapProvider.attribution}
+                         url={activeMapProvider.url}
+                         maxZoom={activeMapProvider.maxZoom || 19}
+                         updateWhenIdle={false}
+                         updateWhenZooming={false}
+                         keepBuffer={4}
+                         eventHandlers={{
+                           loading: () => setMapLoadState('loading'),
+                           load: () => setMapLoadState('ready'),
+                           tileerror: handleGeofenceTileError
+                         }}
+                       />
                        <MapClickListener 
                          setLat={(lat) => setSysLat(lat.toFixed(6))} 
                          setLon={(lon) => setSysLon(lon.toFixed(6))} 
                        />
-                       {sysLat && sysLon && (
+                       {Number.isFinite(parseFloat(sysLat)) && Number.isFinite(parseFloat(sysLon)) && (
                          <Marker position={[parseFloat(sysLat), parseFloat(sysLon)]} icon={customMapIcon} />
                        )}
-                       {sysLat && sysLon && sysRadius && (
+                       {Number.isFinite(parseFloat(sysLat)) && Number.isFinite(parseFloat(sysLon)) && sysRadius && (
                          <Circle 
                            center={[parseFloat(sysLat), parseFloat(sysLon)]} 
                            radius={parseInt(sysRadius) * 0.3048} 
@@ -1206,8 +1340,14 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                          />
                        )}
                      </MapContainer>
+                     <div className="absolute top-2 right-2 z-[500] flex gap-2">
+                       {mapLoadState && mapLoadState !== 'ready' && mapLoadState !== 'idle' && (
+                         <span className="px-2 py-1 rounded-lg bg-[#12161A]/90 border border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{mapLoadState === 'retrying' ? 'Switching map tiles' : 'Loading map'}</span>
+                       )}
+                       <button type="button" onClick={refreshGeofenceMap} className="px-2 py-1 rounded-lg bg-[#12161A]/90 border border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-200 hover:text-[#D4A381]">Refresh Map</button>
+                     </div>
                    </div>
-                   <p className={`text-[10px] ${T.muted} font-bold uppercase tracking-widest mt-2 text-center`}>Click map to set geofence center</p>
+                   <p className={`text-[10px] ${T.muted} font-bold uppercase tracking-widest mt-2 text-center`}>Click map to set geofence center. If tiles load gray or half-finished, tap Refresh Map. Provider: {activeMapProvider.label}.</p>
                  </div>
                )}
                <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to unlock Unpaid Break Tracking.'); } }}>
@@ -2933,6 +3073,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
   const adminManualArticles = [
     { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
     { title: 'Live Activity: why online users may not appear', group: 'Admin Tab Guide', keywords: 'live users online heartbeat presence last active last seen firestore rules gps notification active tab auth session', body: ['A live user appears when their browser saves a verified presence heartbeat. The app now waits for the Firebase login session before it marks the current device as online, so stale cached sessions cannot falsely show Online Now.', 'The Staff Roster My Live Presence Check tells you whether the heartbeat was saved by the server API, saved by the client fallback, waiting for auth, or blocked by permissions.', 'If it says Firebase login is not active, log out and back in on that device. If it says permission-denied, publish the included Firestore rules to the same Firebase project used by that deployment.', 'System Administrator → Live Activity reads the same livePresence and presenceSessions sources as Staff Roster. A user should appear within the three-minute live window after leaving the app open for about 30 seconds.', 'For preview testing, confirm Vercel Preview server variables and the browser Firebase config point at the same Firebase project. Mixed Preview/Production Firebase credentials make heartbeat tokens verify against the wrong project.'] },
     { title: 'Dashboard / Command Deck: what the numbers mean', group: 'Admin Tab Guide', keywords: 'dashboard command deck metrics backup countdown action queue mrr crashes stale clients push adoption', body: ['Online Now counts users with a fresh heartbeat in the last few minutes.', 'Crashes shows recent crash reports and should be used with Support before editing code or rules.', 'Backup info shows the last backup and the countdown to the next automatic backup.', 'MRR, trial, stale client, push opt-in, and sticky-rate cards are operating signals, not accounting books. Use them to spot accounts that need attention.', 'The Administrator Action Queue is the shortest path to urgent problems. Click a card to jump to the relevant admin section.'] },
     { title: 'Workspaces: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Workspaces to manage restaurant/customer environments, not individual shifts or menu work.', 'The workspace drawer shows users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/status state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
@@ -5163,6 +5304,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-13134', title:'What changed in version 13.1.34', group:'Release Notes', keywords:'new update 13.1.34 geofence map pin drop tiles loading gray half image settings workspace', body:['The geofence pin-drop map in Settings → Workspace → Global Config now loads more reliably on desktop and mobile.', 'The app forces the map to resize after the settings panel renders, after browser resize events, and after returning to the tab so gray or half-loaded tiles are less likely.', 'A Refresh Map button was added, and the map can switch tile providers if the current map tiles fail to load.'] },
+  { id:'new-13133', title:'What changed in version 13.1.33', group:'Release Notes', keywords:'new update 13.1.33 geofence gps map lookup settings coordinates', body:['Geofence address lookup now uses a safer app-side map lookup instead of relying only on the browser reaching the map service directly.', 'If live map lookup is unavailable, saved latitude and longitude values remain usable and the app gives clearer guidance instead of a vague map-service error.', 'The geofence map tile source was refreshed for better loading in Settings.'] },
   { id:'new-13132', title:'What changed in version 13.1.32', group:'Release Notes', keywords:'new update 13.1.32 live status activity backup verification reliability', body:['Live staff status is more reliable on phones after login or refresh.', 'Backup verification now recognizes readable backup data even when cloud storage returns it already decompressed.', 'Administrator troubleshooting text was updated for live status and backup integrity checks.'] },
   { id:'new-13131', title:'What changed in version 13.1.31', group:'Release Notes', keywords:'new update 13.1.31 mobile zoom pinch double tap stable kitchen screens', body:['Mobile phone screens now stay at the intended app scale instead of pinch-zooming or double-tap zooming during use.', 'Form fields use a mobile-safe text size so phones are less likely to zoom when staff tap into inputs.', 'This keeps time clock, roster, inventory, and schedule screens steadier on kitchen devices.'] },
 
