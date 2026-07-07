@@ -24,7 +24,7 @@ function cleanMoney(v) {
   return Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0;
 }
 function cleanPerms(perms = {}) {
-  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'wageView', 'wageEdit'];
+  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'wageView', 'wageEdit'];
   return allowed.reduce((acc, key) => {
     acc[key] = perms?.[key] === true;
     return acc;
@@ -156,7 +156,7 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      const permissions = ctx.canChooseWageAccess ? incomingPerms : { ...incomingPerms, wageView: false, wageEdit: false };
+      const permissions = ctx.canChooseWageAccess ? incomingPerms : { ...incomingPerms, wageView: false, wageEdit: false, settings: false, branding: false, integrations: false };
       const wage = ctx.canEditWages ? cleanMoney(body.wage) : 0;
       const payload = {
         name,
@@ -193,7 +193,11 @@ module.exports = async function handler(req, res) {
       if (current.restaurantId !== ctx.restaurantId && !ctx.isSuperAdmin) return res.status(403).json({ error: 'That staff profile belongs to another workspace.' });
 
       const targetPerms = cleanPerms(current.permissions || {});
-      const nextPerms = ctx.canChooseWageAccess ? incomingPerms : { ...targetPerms, ...incomingPerms, wageView: targetPerms.wageView, wageEdit: targetPerms.wageEdit };
+      const ownerOnlyPermissionKeys = ['wageView', 'wageEdit', 'settings', 'branding', 'integrations'];
+      const nextPerms = ctx.canChooseWageAccess ? incomingPerms : { ...targetPerms, ...incomingPerms };
+      if (!ctx.canChooseWageAccess) {
+        ownerOnlyPermissionKeys.forEach((key) => { nextPerms[key] = targetPerms[key]; });
+      }
       if (nextPerms.wageEdit) nextPerms.wageView = true;
 
       const payload = {
@@ -208,11 +212,63 @@ module.exports = async function handler(req, res) {
         staffWriteSource: 'staff-member-api'
       };
       if (ctx.canChooseWageAccess) payload.isAdmin = body.isAdmin === true;
-      if (ctx.canEditWages) payload.wage = cleanMoney(body.wage);
+      if (ctx.canEditWages && Object.prototype.hasOwnProperty.call(body, 'wage')) payload.wage = cleanMoney(body.wage);
 
       await targetRef.set(payload, { merge: true });
       await writeAudit(db, ctx, payload.wage !== undefined ? 'STAFF_WAGE_UPDATE' : 'STAFF_UPDATE', targetUid, `${payload.name || targetUid} was updated by ${ctx.callerEmail}.`);
       return res.status(200).json({ ok: true, action: 'update', uid: targetUid, staff: { id: targetUid, ...current, ...payload } });
+    }
+
+
+    if (action === 'deactivate' || action === 'delete') {
+      const targetUid = cleanString(body.targetUid);
+      if (!targetUid) return res.status(400).json({ error: 'targetUid is required.' });
+      const targetRef = db.collection('users').doc(targetUid);
+      const targetSnap = await targetRef.get();
+      if (!targetSnap.exists) return res.status(404).json({ error: 'Staff profile was not found.' });
+      const current = targetSnap.data() || {};
+      if (current.restaurantId !== ctx.restaurantId && !ctx.isSuperAdmin) return res.status(403).json({ error: 'That staff profile belongs to another workspace.' });
+      if (targetUid === ctx.decoded.uid || targetUid === ctx.callerDocId) {
+        return res.status(400).json({ error: 'You cannot remove your own staff account from here. Use another owner/Super Admin account for ownership changes.' });
+      }
+      const targetEmail = norm(current.email);
+      const targetIsOwner = Boolean(
+        current?.isOwner === true ||
+        current?.accountOwner === true ||
+        current?.owner === true ||
+        current?.workspaceOwner === true ||
+        norm(current?.accountRole) === 'owner' ||
+        targetUid === ctx.restaurant?.ownerUid ||
+        targetUid === ctx.restaurant?.ownerUserId ||
+        targetEmail && (
+          targetEmail === norm(ctx.restaurant?.ownerEmail) ||
+          targetEmail === norm(ctx.restaurant?.ownerEmailLower) ||
+          targetEmail === norm(ctx.restaurant?.ownerUserEmail)
+        )
+      );
+      if (targetIsOwner && !ctx.isSuperAdmin) {
+        return res.status(403).json({ error: 'Only a Super Admin can remove an account-owner profile.' });
+      }
+
+      const now = new Date().toISOString();
+      const payload = {
+        isActive: false,
+        deactivatedAt: now,
+        deactivatedBy: ctx.callerDocId || ctx.decoded.uid,
+        deactivatedByEmail: ctx.callerEmail || '',
+        staffWriteSource: 'staff-member-api',
+        updatedAt: now
+      };
+      await targetRef.set(payload, { merge: true });
+      let authDisabled = false;
+      try {
+        await auth.updateUser(targetUid, { disabled: true });
+        authDisabled = true;
+      } catch (authErr) {
+        console.warn('staff-member deactivate could not disable auth user:', authErr?.code || authErr?.message || authErr);
+      }
+      await writeAudit(db, ctx, 'STAFF_DEACTIVATE', targetUid, `${current.name || current.email || targetUid} was removed from the active roster by ${ctx.callerEmail}. Auth disabled: ${authDisabled ? 'yes' : 'no'}.`);
+      return res.status(200).json({ ok: true, action: 'deactivate', uid: targetUid, authDisabled, staff: { id: targetUid, ...current, ...payload } });
     }
 
     return res.status(400).json({ error: 'Unsupported staff action.' });
