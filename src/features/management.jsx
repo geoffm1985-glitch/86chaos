@@ -117,7 +117,7 @@ const TabTeam = ({ users, appUser, clientData, addToast, heartbeatDebug }) => {
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, wageView: false, wageEdit: false };
+  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, wageView: false, wageEdit: false };
   const PERMISSION_PRESETS = {
     'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false },
     'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false, labor: false },
@@ -382,10 +382,11 @@ return (
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => {
                   const wageAccessToggle = k === 'wageView' || k === 'wageEdit';
-                  const disabled = wageAccessToggle && !canChooseWageAccess;
-                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
+                  const ownerOnlyToggle = wageAccessToggle || k === 'settings' || k === 'branding' || k === 'integrations';
+                  const disabled = ownerOnlyToggle && !canChooseWageAccess;
+                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
                   return (
-                  <label key={k} className={`flex items-center gap-2 text-xs font-bold uppercase ${disabled ? 'opacity-45 cursor-not-allowed text-slate-500' : 'cursor-pointer text-slate-300'}`} title={disabled ? 'Only the account owner can choose wage access.' : ''}>
+                  <label key={k} className={`flex items-center gap-2 text-xs font-bold uppercase ${disabled ? 'opacity-45 cursor-not-allowed text-slate-500' : 'cursor-pointer text-slate-300'}`} title={disabled ? 'Only the account owner can choose this access.' : ''}>
                     <input type="checkbox" disabled={disabled} checked={!!perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked, ...(k === 'wageEdit' && e.target.checked ? { wageView: true } : {})})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded disabled:opacity-40" /> 
                     {label}
                   </label>
@@ -750,6 +751,9 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [recipeDensity, setRecipeDensity] = useState(prefs.recipeDensity || 'tight');
   const [messageView, setMessageView] = useState(prefs.messageView || 'ops');
   const [motionMode, setMotionMode] = useState(prefs.motionMode || 'normal');
+  const [tableDensity, setTableDensity] = useState(prefs.tableDensity || 'compact');
+  const [confirmDestructiveActions, setConfirmDestructiveActions] = useState(prefs.confirmDestructiveActions ?? true);
+  const [showQuickDock, setShowQuickDock] = useState(prefs.showQuickDock ?? true);
   const [showMorningBrief, setShowMorningBrief] = useState(prefs.showMorningBrief ?? true);
   const [payPeriod, setPayPeriod] = useState(prefs.payPeriod || 'Bi-Weekly'); 
   const [payPeriodStart, setPayPeriodStart] = useState(prefs.payPeriodStart || 'Monday');
@@ -772,8 +776,12 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   // --- System Config State (Admin Only) ---
   const settingsEmail = (appUser?.email || '').toLowerCase().trim();
   const settingsOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const isWorkspaceOwner = Boolean(appUser?.isSuperAdmin || settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isOwner === true || appUser?.accountOwner === true || (settingsOwnerEmail && settingsEmail === settingsOwnerEmail));
-  const sys = appUser?.systemSettings || {};
+  const isWorkspaceOwner = Boolean(appUser?.isSuperAdmin || settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase() || settingsEmail === 'geoffrm1985@gmail.com' || appUser?.isOwner === true || appUser?.accountOwner === true || appUser?.owner === true || appUser?.workspaceOwner === true || String(appUser?.accountRole || '').toLowerCase().trim() === 'owner' || (settingsOwnerEmail && settingsEmail === settingsOwnerEmail));
+  const canManageWorkspaceSettings = Boolean(isWorkspaceOwner || appUser?.permissions?.settings === true);
+  const canManageBranding = Boolean(isWorkspaceOwner || appUser?.permissions?.branding === true);
+  const canManageIntegrations = Boolean(isWorkspaceOwner || appUser?.permissions?.integrations === true);
+  const sys = clientData?.systemSettings || appUser?.systemSettings || {};
+  const branding = sys.branding || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
   const [sysAddress, setSysAddress] = useState(sys.address || '');
   const [sysLat, setSysLat] = useState(sys.lat || '');
@@ -791,6 +799,19 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [sysWageEditAccess, setSysWageEditAccess] = useState(sys.wageEditAccess || []);
   const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
   const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
+  const [sysAccentColor, setSysAccentColor] = useState(sys.accentColor || branding.accentColor || '#D4A381');
+  const [sysRestaurantLogoUrl, setSysRestaurantLogoUrl] = useState(sys.restaurantLogoUrl || branding.restaurantLogoUrl || branding.logoUrl || '');
+  const [sysShowRestaurantLogo, setSysShowRestaurantLogo] = useState(sys.showRestaurantLogo ?? branding.showRestaurantLogo ?? true);
+  const [sysRestaurantGroupName, setSysRestaurantGroupName] = useState(sys.restaurantGroupName || branding.restaurantGroupName || clientData?.name || '');
+  const [sysLoginMessage, setSysLoginMessage] = useState(sys.loginMessage || branding.loginMessage || '');
+  const [sysHelpContact, setSysHelpContact] = useState(sys.helpContact || branding.helpContact || clientData?.ownerEmail || '');
+  const [sysDefaultTimezone, setSysDefaultTimezone] = useState(sys.timezone || branding.timezone || 'America/Chicago');
+  const [sysWorkspaceDateFormat, setSysWorkspaceDateFormat] = useState(sys.dateFormat || branding.dateFormat || 'MMM d, yyyy');
+  const [sysWorkspaceTimeFormat, setSysWorkspaceTimeFormat] = useState(sys.workspaceTimeFormat || branding.timeFormat || 'h:mm a');
+  const [sysCurrency, setSysCurrency] = useState(sys.currency || branding.currency || 'USD');
+  const [sysWeekStartsOn, setSysWeekStartsOn] = useState(sys.weekStartsOn || branding.weekStartsOn || 'Monday');
+  const [sysDefaultLandingTab, setSysDefaultLandingTab] = useState(sys.defaultLandingTab || branding.defaultLandingTab || 'published');
+  const [isUploadingBrandLogo, setIsUploadingBrandLogo] = useState(false);
   const [mapProviderIndex, setMapProviderIndex] = useState(0);
   const [mapLoadState, setMapLoadState] = useState('idle');
   const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
@@ -925,7 +946,7 @@ const handleEnableNotifications = async () => {
           ...prefs, defaultTab, timeFormat, payPeriod, payPeriodStart,
           notifSchedule, notifMessages, notifTrades, notifReminders, reminderTime,
           notifLevel, keywords, muteOnDaysOff, dndEnabled, dndStart, dndEnd,
-          uiDensity, recipeDensity, messageView, motionMode, showMorningBrief
+          uiDensity, recipeDensity, messageView, motionMode, tableDensity, confirmDestructiveActions, showQuickDock, showMorningBrief
         }
       });
       addToast('Preferences Saved', 'Your personal app settings are locked in.');
@@ -940,9 +961,11 @@ const handleEnableNotifications = async () => {
       const beforeSnap = await getDoc(restRef);
       const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
       const nextSystemSettings = { 
+        ...(beforeData.systemSettings || {}),
         geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
         breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime,
-        wageAccess: sysWageAccess, wageEditAccess: sysWageEditAccess, enableIpWhitelist: sysEnableIpWhitelist, ipWhitelist: sysIpWhitelist
+        wageAccess: sysWageAccess, wageEditAccess: sysWageEditAccess, enableIpWhitelist: sysEnableIpWhitelist, ipWhitelist: sysIpWhitelist,
+        timezone: sysDefaultTimezone, weekStartsOn: sysWeekStartsOn, defaultLandingTab: sysDefaultLandingTab
       };
       const historyEntry = {
         type: 'workspace_system_settings',
@@ -956,6 +979,108 @@ const handleEnableNotifications = async () => {
       await setDoc(restRef, { systemSettings: nextSystemSettings, settingsHistory: [...existingHistory, historyEntry] }, { merge: true });
       addToast('System Saved', 'Global workspace configurations updated and history snapshot saved.');
     } catch (err) { addToast('Error', err.message); }
+  };
+
+
+  const handleBrandLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!canManageBranding) return addToast('Locked', 'Only the owner or a user with Branding permission can upload a restaurant logo.');
+    if (!file.type?.startsWith('image/')) return addToast('Invalid File', 'Please choose an image file.');
+    if (file.size > 8 * 1024 * 1024) return addToast('File Too Large', 'Please choose an image under 8MB.');
+    setIsUploadingBrandLogo(true);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+      const path = `${appUser.restaurantId}/brandAssets/restaurant-logo-${Date.now()}-${safeName}`;
+      const fileRef = ref(storage, path);
+      await uploadBytes(fileRef, file, { contentType: file.type });
+      const url = await getDownloadURL(fileRef);
+      setSysRestaurantLogoUrl(url);
+      addToast('Logo Uploaded', 'Restaurant logo is ready to save. 86 Chaos branding will still stay visible.');
+    } catch (err) {
+      addToast('Upload Failed', err.message || 'Could not upload logo. Publish Storage rules if this is a new project.');
+    }
+    setIsUploadingBrandLogo(false);
+  };
+
+  const handleSaveBrandingSettings = async (e) => {
+    e.preventDefault();
+    if (!canManageBranding) return addToast('Locked', 'Only the owner or a user with Branding permission can save branding.');
+    const cleanAccent = /^#[0-9A-Fa-f]{6}$/.test(sysAccentColor) ? sysAccentColor : '#D4A381';
+    try {
+      const targetId = appUser?.restaurantId || 'legacy-sandbox';
+      const restRef = doc(db, "restaurants", targetId);
+      const beforeSnap = await getDoc(restRef);
+      const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+      const previousSettings = beforeData.systemSettings || {};
+      const nextBranding = {
+        appName: '86 Chaos',
+        lockedAppName: '86 Chaos',
+        restaurantGroupName: sysRestaurantGroupName.trim(),
+        accentColor: cleanAccent,
+        restaurantLogoUrl: sysRestaurantLogoUrl.trim(),
+        showRestaurantLogo: !!sysShowRestaurantLogo,
+        loginMessage: sysLoginMessage.trim(),
+        helpContact: sysHelpContact.trim(),
+        timezone: sysDefaultTimezone,
+        dateFormat: sysWorkspaceDateFormat,
+        timeFormat: sysWorkspaceTimeFormat,
+        currency: sysCurrency,
+        weekStartsOn: sysWeekStartsOn,
+        defaultLandingTab: sysDefaultLandingTab
+      };
+      const nextSystemSettings = {
+        ...previousSettings,
+        accentColor: cleanAccent,
+        restaurantLogoUrl: nextBranding.restaurantLogoUrl,
+        showRestaurantLogo: nextBranding.showRestaurantLogo,
+        restaurantGroupName: nextBranding.restaurantGroupName,
+        loginMessage: nextBranding.loginMessage,
+        helpContact: nextBranding.helpContact,
+        timezone: nextBranding.timezone,
+        dateFormat: nextBranding.dateFormat,
+        workspaceTimeFormat: nextBranding.timeFormat,
+        currency: nextBranding.currency,
+        weekStartsOn: nextBranding.weekStartsOn,
+        defaultLandingTab: nextBranding.defaultLandingTab,
+        branding: nextBranding
+      };
+      const historyEntry = {
+        type: 'workspace_branding_settings',
+        at: new Date().toISOString(),
+        by: appUser?.email || appUser?.name || 'Workspace Owner',
+        summary: 'Branding and display settings changed from Settings > Branding.',
+        before: previousSettings.branding || {},
+        after: nextBranding
+      };
+      const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
+      await setDoc(restRef, { systemSettings: nextSystemSettings, settingsHistory: [...existingHistory, historyEntry], updatedAt: new Date().toISOString() }, { merge: true });
+      addToast('Branding Saved', 'Accent color, logo, and display defaults were updated. 86 Chaos remains the app name.');
+    } catch (err) { addToast('Save Failed', err.message || 'Could not save branding settings.'); }
+  };
+
+  const toggleSettingsPermission = async (user, key, checked) => {
+    if (!isWorkspaceOwner) return addToast('Owner Only', 'Only the account owner can grant Settings, Branding, or Integrations access.');
+    if (!user?.id) return;
+    try {
+      const nextPermissions = { ...(user.permissions || {}), [key]: checked };
+      const response = await secureFetch('/api/staff-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update',
+          targetUid: user.id,
+          role: user.role || 'Staff',
+          isAdmin: user.isAdmin === true,
+          permissions: nextPermissions
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Permission update failed.');
+      addToast('Access Updated', `${user.name || user.email} ${checked ? 'can now' : 'can no longer'} manage ${key}.`);
+    } catch (err) {
+      addToast('Access Save Failed', err.message || 'Could not update settings access.');
+    }
   };
 
   const handlePasswordReset = async () => {
@@ -1026,14 +1151,14 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
 <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
-        {['profile', 'preferences', 'alerts'].concat((appUser?.isAdmin || isWorkspaceOwner) ? ['workspace', 'integrations'] : []).map((tab) => (
+        {['profile', 'preferences', 'alerts'].concat(canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], canManageIntegrations ? ['integrations'] : []).map((tab) => (
 <button type="button" key={tab} onClick={() => {
             if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
               return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
             }
             setSubTab(tab);
           }} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
-            {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab}
+            {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab}
             {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Beta</span>}
           </button>
         ))}
@@ -1143,10 +1268,29 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     <option value="quiet">Quiet Mode</option>
                   </select>
                 </div>
+                <div>
+                  <label className={T.label}>Table Density</label>
+                  <select value={tableDensity} onChange={e => setTableDensity(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                    <option value="compact">Compact Tables</option>
+                    <option value="comfortable">Comfortable Rows</option>
+                    <option value="large">Large Touch Rows</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={T.label}>Quick Dock</label>
+                  <select value={showQuickDock ? 'show' : 'hide'} onChange={e => setShowQuickDock(e.target.value === 'show')} className={`${T.input} py-2 text-sm`}>
+                    <option value="show">Show quick action dock</option>
+                    <option value="hide">Hide quick action dock</option>
+                  </select>
+                </div>
               </div>
               <label className="mt-3 flex items-center gap-2 p-2.5 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors">
                 <input type="checkbox" checked={showMorningBrief} onChange={e => setShowMorningBrief(e.target.checked)} className="w-4 h-4 accent-[#8F6040]" />
                 <span className="text-xs font-bold text-slate-300">Show Morning Brief / Ops summary first when available</span>
+              </label>
+              <label className="mt-2 flex items-center gap-2 p-2.5 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors">
+                <input type="checkbox" checked={confirmDestructiveActions} onChange={e => setConfirmDestructiveActions(e.target.checked)} className="w-4 h-4 accent-[#8F6040]" />
+                <span className="text-xs font-bold text-slate-300">Require confirmations before destructive actions when available</span>
               </label>
             </div>
             {appUser?.isAdmin && (
@@ -1335,7 +1479,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         </div>
       )}
 
-{subTab === 'workspace' && (appUser?.isAdmin || isWorkspaceOwner) && (
+{subTab === 'workspace' && canManageWorkspaceSettings && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
@@ -1498,6 +1642,142 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         </form>
       )}
 
+      {subTab === 'branding' && canManageBranding && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <form onSubmit={handleSaveBrandingSettings} className={`${T.card} p-3 sm:p-5 space-y-5 border-[#D4A381]/30`}>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border-b border-[#2A353D] pb-3">
+              <div>
+                <h2 className="text-base font-black text-white">Branding & Display</h2>
+                <p className="text-[10px] text-slate-400 font-bold mt-1 leading-snug">Restaurant branding can sit beside the locked 86 Chaos identity. The app name cannot be changed.</p>
+              </div>
+              <span className="bg-[#12161A] border border-[#2A353D] text-[#D4A381] text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg">Owner controlled</span>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className={T.label}>App Name</label>
+                <input type="text" value="86 Chaos" disabled className={`${T.input} py-2 text-sm opacity-60 cursor-not-allowed`} />
+                <p className="text-[9px] text-slate-500 font-bold mt-1">Locked. Imported logos never replace the 86 Chaos name or logo.</p>
+              </div>
+              <div>
+                <label className={T.label}>Accent Color</label>
+                <div className="flex gap-2">
+                  <input type="color" value={sysAccentColor} onChange={e => setSysAccentColor(e.target.value)} className="w-14 h-11 rounded-xl border border-[#2A353D] bg-[#12161A] p-1" />
+                  <input type="text" value={sysAccentColor} onChange={e => setSysAccentColor(e.target.value)} className={`${T.input} py-2 text-sm font-mono`} placeholder="#D4A381" />
+                </div>
+              </div>
+              <div>
+                <label className={T.label}>Restaurant / Group Display Name</label>
+                <input type="text" value={sysRestaurantGroupName} onChange={e => setSysRestaurantGroupName(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Cheers Chilton" />
+              </div>
+              <div>
+                <label className={T.label}>Default Timezone</label>
+                <select value={sysDefaultTimezone} onChange={e => setSysDefaultTimezone(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                  <option value="America/Chicago">America/Chicago</option>
+                  <option value="America/New_York">America/New_York</option>
+                  <option value="America/Denver">America/Denver</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles</option>
+                </select>
+              </div>
+              <div>
+                <label className={T.label}>Date Format</label>
+                <select value={sysWorkspaceDateFormat} onChange={e => setSysWorkspaceDateFormat(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                  <option value="MMM d, yyyy">Jul 6, 2026</option>
+                  <option value="MM/dd/yyyy">07/06/2026</option>
+                  <option value="yyyy-MM-dd">2026-07-06</option>
+                </select>
+              </div>
+              <div>
+                <label className={T.label}>Time Display</label>
+                <select value={sysWorkspaceTimeFormat} onChange={e => setSysWorkspaceTimeFormat(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                  <option value="h:mm a">12-hour clock</option>
+                  <option value="HH:mm">24-hour clock</option>
+                </select>
+              </div>
+              <div>
+                <label className={T.label}>Currency</label>
+                <select value={sysCurrency} onChange={e => setSysCurrency(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                  <option value="USD">USD - $</option>
+                  <option value="CAD">CAD - $</option>
+                  <option value="EUR">EUR - €</option>
+                  <option value="GBP">GBP - £</option>
+                </select>
+              </div>
+              <div>
+                <label className={T.label}>Week Starts On</label>
+                <select value={sysWeekStartsOn} onChange={e => setSysWeekStartsOn(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                  {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={T.label}>Default Staff Landing Tab</label>
+                <select value={sysDefaultLandingTab} onChange={e => setSysDefaultLandingTab(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                  <option value="published">My Schedule</option>
+                  <option value="today">Today</option>
+                  <option value="messages">Message Board</option>
+                  <option value="recipes">Recipe Book</option>
+                  <option value="team">Staff Roster</option>
+                </select>
+              </div>
+              <div>
+                <label className={T.label}>Help Center Contact</label>
+                <input type="text" value={sysHelpContact} onChange={e => setSysHelpContact(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="manager@restaurant.com or phone" />
+              </div>
+            </div>
+
+            <div className="grid lg:grid-cols-[1fr_1.2fr] gap-4">
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4 space-y-3">
+                <div className="text-xs font-black text-white">Restaurant Logo</div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2">
+                    <img src="/wisco.png" alt="86 Chaos icon" className="h-8 w-auto" />
+                    <img src="/6139.png" alt="86 Chaos" className="h-5 w-auto" />
+                  </div>
+                  {sysRestaurantLogoUrl ? <img src={sysRestaurantLogoUrl} alt="Restaurant logo preview" className="h-12 max-w-[180px] object-contain bg-white/5 border border-[#2A353D] rounded-xl p-2" /> : <div className="text-[10px] text-slate-500 font-bold">No restaurant logo uploaded yet.</div>}
+                </div>
+                <input type="text" value={sysRestaurantLogoUrl} onChange={e => setSysRestaurantLogoUrl(e.target.value)} className={`${T.input} py-2 text-xs`} placeholder="Paste logo URL or upload below" />
+                <label className={`${T.btnAlt} block text-center cursor-pointer`}>
+                  {isUploadingBrandLogo ? 'Uploading...' : 'Upload Restaurant Logo'}
+                  <input type="file" accept="image/*" onChange={handleBrandLogoUpload} disabled={isUploadingBrandLogo} className="hidden" />
+                </label>
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                  <input type="checkbox" checked={sysShowRestaurantLogo} onChange={e => setSysShowRestaurantLogo(e.target.checked)} className="w-4 h-4 accent-[#8F6040]" />
+                  Show restaurant logo beside 86 Chaos branding
+                </label>
+              </div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4 space-y-3">
+                <div className="text-xs font-black text-white">Login / Help Message</div>
+                <textarea value={sysLoginMessage} onChange={e => setSysLoginMessage(e.target.value)} rows={4} className={`${T.input} text-sm`} placeholder="Optional message for staff, like: Use your manager-issued login. Call the restaurant if locked out." />
+                <div className="text-[10px] text-slate-500 font-bold leading-snug">This can be shown in future login/help panels. Keep it generic and do not put private employee information here.</div>
+              </div>
+            </div>
+
+            <button type="submit" className={`w-full ${T.btn} py-3 text-sm`}>Save Branding & Display</button>
+          </form>
+
+          {isWorkspaceOwner && (
+            <div className={`${T.card} p-3 sm:p-5 space-y-3`}>
+              <div>
+                <h2 className="text-base font-black text-white">Settings Access</h2>
+                <p className="text-[10px] text-slate-400 font-bold mt-1">Only the account owner can choose who may change workspace settings, branding, or integrations.</p>
+              </div>
+              <div className="max-h-80 overflow-y-auto custom-scrollbar space-y-2">
+                {users.filter(u => u.isActive !== false && u.id !== appUser.id).map(u => (
+                  <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 items-center bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
+                    <div className="min-w-0"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[10px] text-slate-500 font-bold truncate">{u.role || 'Staff'} • {u.email || 'no email'}</div></div>
+                    {['settings','branding','integrations'].map(key => (
+                      <label key={key} className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                        <input type="checkbox" checked={u.permissions?.[key] === true} onChange={e => toggleSettingsPermission(u, key, e.target.checked)} className="w-3.5 h-3.5 accent-[#8F6040]" /> {key}
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* --- TRANSFER OWNERSHIP ZONE --- */}
       {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com') && (
         <form onSubmit={async (e) => {
@@ -1530,7 +1810,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
       )}
 
       {/* --- INTEGRATIONS ZONE --- */}
-      {subTab === 'integrations' && appUser?.isAdmin && (
+      {subTab === 'integrations' && canManageIntegrations && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           
           <div className={`${T.card} p-4 sm:p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
@@ -5872,6 +6152,7 @@ const HELP_ARTICLES = [
   { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
+  { id:'new-13141', title:'What changed in version 13.1.41', group:'Release Notes', keywords:'new update 13.1.41 settings preferences branding accent color logo upload permissions', body:['Settings / Preferences now includes a Branding & Display area for owner-controlled accent color, restaurant logo upload, login/help message, timezone, date/time, currency, week-start, and default landing-tab settings.', '86 Chaos remains the locked app name and the 86 Chaos logo stays visible even when a restaurant uploads its own logo.', 'Owners can grant Settings, Branding, and Integrations access from Settings without changing the System Administrator tab.', 'Accent color changes now apply to the app shell instead of only saving as unused data.'] },
   { id:'new-13140', title:'What changed in version 13.1.40', group:'Release Notes', keywords:'new update 13.1.40 owner staff delete remove deactivate roster payroll api permissions', body:['Account owners can now remove staff from the active roster through the same verified staff API used for staff creation and wage edits.', 'The removal flow keeps historical schedule and payroll records intact by deactivating the staff profile instead of deleting past records.', 'The staff API now blocks self-removal and protects account-owner profiles unless a Super Admin performs the action.', 'Staff removals write a sensitive audit event so roster changes are visible in Forensics.'] },
   { id:'new-13138', title:'What changed in version 13.1.38', group:'Release Notes', keywords:'new update 13.1.38 account owner staff wages permissions add employees payroll owner', body:['Account owners can add staff and edit wages, including their own wage, without Firestore blocking the save.', 'Only account owners and Super Admin can choose who can view or edit wages. Wage access now has separate View Wages and Edit Wages switches.', 'Staff Roster hides wage fields from users without wage access and uses clearer permission messages when Firebase blocks a sensitive staff update.', 'Firestore rules now recognize restaurant ownership for staff creation and payroll edits while still protecting Super Admin/system fields.'] },
   { id:'new-13137', title:'What changed in version 13.1.37', group:'Release Notes', keywords:'new update 13.1.37 admin settings command center roles push live presence deployment readiness maintenance branding danger import export', body:['System Administrator now includes the full Admin/Settings command-center upgrade: overview widgets, role/permission matrix, push control center, live activity monitor, setup wizard, deployment readiness checker, audit filters, settings history, import/export center, maintenance controls, branding/display settings, and a separate Danger Zone.', 'Push notifications now have a dedicated cockpit with connected device counts, token freshness, per-user test pushes, stale-token repair flags, and a downloadable diagnostic report.', 'Deployment Readiness gives a clear READY TO DEPLOY or DO NOT DEPLOY YET result with exact checks for Firebase, rules, API health, push, backup integrity, domains, version, and packaging.', 'Mobile Administrator navigation keeps the compact section picker while exposing the new professional admin categories.'] },
@@ -5896,6 +6177,7 @@ const HELP_ARTICLES = [
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
   { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
+  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload app name permissions integrations workspace', body:['Open Settings → Branding to change the workspace accent color, upload a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab.', 'The app name is locked as 86 Chaos. A restaurant logo can appear beside the 86 Chaos logo, but it never replaces the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, and Integrations access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing brand assets, publish Storage rules if uploads fail and refresh the app to confirm the accent and logo display everywhere.'] },
   { id:'owner-wage-staff-permissions', title:'Owner staff and wage permissions', group:'Permissions', keywords:'owner wages payroll hourly rate add employee staff roster wage view edit permission denied', body:['Account owners and Super Admin can add staff from Staff Roster and edit hourly wages, including their own wage.', 'Only account owners and Super Admin should choose who can see or edit wages. Use Staff Roster permission switches or Settings → Workspace → Global Config → Wage Visibility & Edit Access.', 'View Wages lets a trusted person see wage labels and labor cost calculations. Edit Wages lets them change wage values from Staff Roster and automatically implies view access.', 'Managers/admins without wage permission can still manage staff basics if allowed, but wage fields stay hidden and Firestore rules reject wage-access changes.', 'If a save shows Missing or insufficient permissions, confirm the user is the restaurant owner or has the right wage-edit permission and publish the matching Firestore rules to the same Firebase project.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },

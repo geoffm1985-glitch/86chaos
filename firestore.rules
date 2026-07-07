@@ -98,6 +98,19 @@ service cloud.firestore {
       return isSuperAdmin() || isRestaurantOwner(restId);
     }
 
+    function canManageWorkspaceSettings(restId) {
+      return isSuperAdmin() ||
+        isRestaurantOwner(restId) ||
+        (isTenantMatch(restId) && (hasPerm('settings') || hasPerm('branding') || hasPerm('integrations')));
+    }
+
+    function restaurantSettingsWriteIsSafe(restId) {
+      return canManageWorkspaceSettings(restId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'systemSettings', 'settingsHistory', 'integrations', 'updatedAt'
+        ]);
+    }
+
     function isOwnerOfRestaurantDoc() {
       return signedIn() && request.auth.token.email == resource.data.ownerEmail;
     }
@@ -125,7 +138,7 @@ service cloud.firestore {
         'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost', 'heartbeatEpochMs',
         'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
         'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
-        'device', 'host', 'theme', 'settings', 'notificationPrefs',
+        'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs',
         'forcePasswordChange', 'passwordPurgedAt', 'passwordStored'
       ]) &&
       !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys());
@@ -190,11 +203,22 @@ service cloud.firestore {
       );
     }
 
+    function settingsPermissionChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
+        request.resource.data.permissions.settings != resource.data.permissions.settings ||
+        request.resource.data.permissions.branding != resource.data.permissions.branding ||
+        request.resource.data.permissions.integrations != resource.data.permissions.integrations
+      );
+    }
+
     function newUserHasSensitiveStaffFields(restId) {
       return (request.resource.data.wage is number && request.resource.data.wage > 0) ||
         request.resource.data.isAdmin == true ||
         request.resource.data.permissions.wageView == true ||
-        request.resource.data.permissions.wageEdit == true;
+        request.resource.data.permissions.wageEdit == true ||
+        request.resource.data.permissions.settings == true ||
+        request.resource.data.permissions.branding == true ||
+        request.resource.data.permissions.integrations == true;
     }
 
     function tenantStaffUserCreateIsSafe(restId) {
@@ -218,6 +242,9 @@ service cloud.firestore {
         ) &&
         (
           !wagePermissionChanged() || canChooseWageAccess(resource.data.restaurantId)
+        ) &&
+        (
+          !settingsPermissionChanged() || canChooseWageAccess(resource.data.restaurantId)
         ) &&
         (
           !adminFlagChanged() || canChooseWageAccess(resource.data.restaurantId)
@@ -347,7 +374,8 @@ service cloud.firestore {
 
       allow update: if signedIn() && (
         isSuperAdmin() ||
-        isOwnerOfRestaurantDoc()
+        isOwnerOfRestaurantDoc() ||
+        restaurantSettingsWriteIsSafe(restaurantId)
       );
     }
 

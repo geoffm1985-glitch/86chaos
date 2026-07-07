@@ -24,7 +24,7 @@ function cleanMoney(v) {
   return Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0;
 }
 function cleanPerms(perms = {}) {
-  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'wageView', 'wageEdit'];
+  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'wageView', 'wageEdit'];
   return allowed.reduce((acc, key) => {
     acc[key] = perms?.[key] === true;
     return acc;
@@ -156,7 +156,7 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      const permissions = ctx.canChooseWageAccess ? incomingPerms : { ...incomingPerms, wageView: false, wageEdit: false };
+      const permissions = ctx.canChooseWageAccess ? incomingPerms : { ...incomingPerms, wageView: false, wageEdit: false, settings: false, branding: false, integrations: false };
       const wage = ctx.canEditWages ? cleanMoney(body.wage) : 0;
       const payload = {
         name,
@@ -193,7 +193,11 @@ module.exports = async function handler(req, res) {
       if (current.restaurantId !== ctx.restaurantId && !ctx.isSuperAdmin) return res.status(403).json({ error: 'That staff profile belongs to another workspace.' });
 
       const targetPerms = cleanPerms(current.permissions || {});
-      const nextPerms = ctx.canChooseWageAccess ? incomingPerms : { ...targetPerms, ...incomingPerms, wageView: targetPerms.wageView, wageEdit: targetPerms.wageEdit };
+      const ownerOnlyPermissionKeys = ['wageView', 'wageEdit', 'settings', 'branding', 'integrations'];
+      const nextPerms = ctx.canChooseWageAccess ? incomingPerms : { ...targetPerms, ...incomingPerms };
+      if (!ctx.canChooseWageAccess) {
+        ownerOnlyPermissionKeys.forEach((key) => { nextPerms[key] = targetPerms[key]; });
+      }
       if (nextPerms.wageEdit) nextPerms.wageView = true;
 
       const payload = {
@@ -208,7 +212,7 @@ module.exports = async function handler(req, res) {
         staffWriteSource: 'staff-member-api'
       };
       if (ctx.canChooseWageAccess) payload.isAdmin = body.isAdmin === true;
-      if (ctx.canEditWages) payload.wage = cleanMoney(body.wage);
+      if (ctx.canEditWages && Object.prototype.hasOwnProperty.call(body, 'wage')) payload.wage = cleanMoney(body.wage);
 
       await targetRef.set(payload, { merge: true });
       await writeAudit(db, ctx, payload.wage !== undefined ? 'STAFF_WAGE_UPDATE' : 'STAFF_UPDATE', targetUid, `${payload.name || targetUid} was updated by ${ctx.callerEmail}.`);
