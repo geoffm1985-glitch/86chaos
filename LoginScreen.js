@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
+import { T, db, auth, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
@@ -26,11 +26,13 @@ export default function App() {
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const [activeTabState, setActiveTabState] = useState(() => appUser?.preferences?.defaultTab || 'today');
   const [clientData, setClientData] = useState(null);
+  const [heartbeatDebug, setHeartbeatDebug] = useState(null);
   const clientFeatures = clientData?.features || {};
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [voiceScheduleSubTabTarget, setVoiceScheduleSubTabTarget] = useState(null);
   const [voiceHelpSearchTarget, setVoiceHelpSearchTarget] = useState(null);
+  const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -117,7 +119,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsLaborData = wantsToday || ['financials', 'labor', 'sales', 'ops'].includes(activeTabState);
   const wantsInventoryData = wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen;
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
-  const wantsRecipesData = activeTabState === 'recipes' || isGlobalSearchOpen;
+  const wantsRecipesData = true; // Keep recipe titles available for 86 Voice exact-recipe navigation.
   const wantsMaintenanceData = wantsToday || ['maintenance', 'ops'].includes(activeTabState);
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState);
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
@@ -126,6 +128,10 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
+  const presenceSessions = useLiveCollection('presenceSessions', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
+  // Stable per-user live presence. Unlike presenceSessions, this collection has only
+  // one document per user, so old sessions cannot push current users out of capped reads.
+  const livePresenceRecords = useLiveCollection('livePresence', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
   const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
@@ -159,7 +165,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: activeTabState === 'maintenance' ? 110 : 30, fallbackLimitCount: 25 });
   const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
   const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 75, fallbackLimitCount: 35 });
-  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 180, fallbackLimitCount: 45 });
+  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 500, fallbackLimitCount: 120 });
   
 // --- LIVE APP USER LOGIC ---
   const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true, help: true };
@@ -255,7 +261,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
 if (liveAppUser && clientData) {
      liveAppUser = { 
        ...liveAppUser, 
-       systemSettings: clientData.systemSettings || {},
+       systemSettings: { tips: true, ...(clientData.systemSettings || {}) },
        planType: clientData.planType || 'Pro',
        restaurantName: liveAppUser.restaurantName || clientData.name || clientData.businessName || clientData.restaurantName || '86 Chaos'
      };
@@ -278,11 +284,101 @@ if (liveAppUser && clientData) {
     sales: rawDemoFeatures.financials !== false && liveAppUser?.demoRole !== 'employee'
   } : clientFeatures;
   const maskDemoUser = (u, idx = 0) => ({ ...u, name: u.name || `Demo Staff ${idx+1}`, email: `employee${idx+1}@demo.hidden`, phone: 'Hidden for demo', address: 'Hidden for demo', emergencyContact: 'Hidden for demo', wage: 0, photoURL: u.photoURL || '' });
-  const displayUsers = isDemoMode ? (users || []).map(maskDemoUser) : users;
+  const parsePresenceTimeMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+    if (typeof value === 'string') { const parsed = new Date(value).getTime(); return Number.isFinite(parsed) ? parsed : 0; }
+    if (typeof value?.toDate === 'function') { const parsed = value.toDate().getTime(); return Number.isFinite(parsed) ? parsed : 0; }
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+  };
+  const mergePresenceIntoUsers = (userList = [], sessionList = []) => {
+    if (!Array.isArray(userList) || !Array.isArray(sessionList) || sessionList.length === 0) return userList || [];
+    const now = Date.now();
+    const liveWindowMs = 5 * 60 * 1000;
+    const sessionsByUser = {};
+    sessionList.forEach(session => {
+      const userId = session.userId || session.uid || session.id;
+      if (!userId) return;
+      const lastMs = Math.max(
+        parsePresenceTimeMs(session.lastHeartbeatAt),
+        parsePresenceTimeMs(session.presenceUpdatedAt),
+        parsePresenceTimeMs(session.lastActive),
+        parsePresenceTimeMs(session.lastSeen),
+        parsePresenceTimeMs(session.heartbeatEpochMs)
+      );
+      if (!lastMs) return;
+      const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: (now - lastMs) < liveWindowMs && session.onlineState !== 'offline' };
+      if (!sessionsByUser[userId]) sessionsByUser[userId] = [];
+      sessionsByUser[userId].push(enriched);
+    });
+    return (userList || []).map(user => {
+      const sessions = (sessionsByUser[user.id] || []).sort((a, b) => b._presenceLastMs - a._presenceLastMs);
+      if (sessions.length === 0) return user;
+      const liveSession = sessions.find(s => s._presenceLive);
+      const best = liveSession || sessions[0];
+      const bestTime = new Date(best._presenceLastMs).toISOString();
+      return {
+        ...user,
+        lastActive: bestTime,
+        lastSeen: bestTime,
+        lastHeartbeatAt: best.lastHeartbeatAt || bestTime,
+        presenceUpdatedAt: best.presenceUpdatedAt || bestTime,
+        onlineState: liveSession ? (best.onlineState || 'online') : (best.onlineState || user.onlineState),
+        activeTab: best.activeTab || user.activeTab,
+        activeSessionId: best.activeSessionId || user.activeSessionId,
+        activeDevice: best.activeDevice || user.activeDevice,
+        activeHost: best.activeHost || user.activeHost,
+        notificationPermission: best.notificationPermission || user.notificationPermission,
+        gpsPermission: best.gpsPermission || user.gpsPermission,
+        deviceDiagnostics: best.deviceDiagnostics || user.deviceDiagnostics,
+        presenceSessionCount: sessions.length,
+        presenceSource: liveSession ? 'live-session' : 'session-history'
+      };
+    });
+  };
+  const wageSettings = clientData?.systemSettings || {};
+  const wageViewAccess = Array.isArray(wageSettings.wageAccess) ? wageSettings.wageAccess : [];
+  const wageEditAccess = Array.isArray(wageSettings.wageEditAccess) ? wageSettings.wageEditAccess : [];
+  const sessionEmail = (liveAppUser?.email || appUser?.email || '').toLowerCase().trim();
+  const sessionOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
+  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
+  const sessionCanViewWages = Boolean(sessionIsOwner || liveAppUser?.permissions?.wageView || liveAppUser?.permissions?.wageEdit || wageViewAccess.includes(liveAppUser?.id) || wageEditAccess.includes(liveAppUser?.id));
+
+  const displayUsers = useMemo(() => {
+    const baseUsers = isDemoMode ? (users || []).map(maskDemoUser) : (users || []);
+    const sharedPresence = [...(livePresenceRecords || []), ...(presenceSessions || [])];
+    let merged = isDemoMode ? baseUsers : mergePresenceIntoUsers(baseUsers, sharedPresence);
+    // Current-device safety net: a regular employee should never see their own row drop back
+    // to a days-old timestamp while this browser is actively sending heartbeats.
+    if (!isDemoMode && appUser?.id && rId) {
+      let localMs = 0;
+      try { localMs = Number(localStorage.getItem(`chaosLastHeartbeat_${rId}_${appUser.id}`) || 0); } catch (err) {}
+      if (localMs && (Date.now() - localMs) < 5 * 60 * 1000) {
+        const localIso = new Date(localMs).toISOString();
+        merged = merged.map(u => u.id === appUser.id ? {
+          ...u,
+          lastActive: localIso,
+          lastSeen: localIso,
+          lastHeartbeatAt: localIso,
+          presenceUpdatedAt: localIso,
+          heartbeatEpochMs: localMs,
+          onlineState: 'online',
+          activeTab: activeTabState,
+          activeHost: window.location.hostname,
+          presenceSource: u.presenceSource || 'local-current-device'
+        } : u);
+      }
+    }
+    if (!isDemoMode && !sessionCanViewWages) {
+      merged = merged.map(u => ({ ...u, wage: 0, wageHidden: true }));
+    }
+    return merged;
+  }, [isDemoMode, users, presenceSessions, livePresenceRecords, appUser?.id, rId, activeTabState, sessionCanViewWages]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
-  const displayClientData = isDemoMode && clientData ? { ...clientData, ownerEmail: 'Hidden for demo', ownerPhone: 'Hidden for demo', address: 'Hidden for demo', businessAddress: 'Hidden for demo', systemSettings: { ...(clientData.systemSettings || {}), address: 'Hidden for demo', geofenceAddress: 'Hidden for demo' } } : clientData;
+  const displayClientData = isDemoMode && clientData ? { ...clientData, ownerEmail: 'Hidden for demo', ownerPhone: 'Hidden for demo', address: 'Hidden for demo', businessAddress: 'Hidden for demo', systemSettings: { tips: true, ...(clientData.systemSettings || {}), address: 'Hidden for demo', geofenceAddress: 'Hidden for demo' } } : clientData;
   const demoWritableText = /save|add|create|delete|remove|publish|apply|copy previous|smart fill|clock|send|post|approve|restore|backup|upload|scan|reset|deactivate|terminate|deploy|update|edit|fix|out/i;
   const blockDemoMutation = (e) => {
     if (!isDemoMode) return;
@@ -394,10 +490,14 @@ if (liveAppUser && clientData) {
     let handleBeforeUnload = null;
 
     if (!ghostTenant && appUser?.id) {
-      let sessionId = sessionStorage.getItem('chaosSessionId');
+      // Keep live presence sessions tied to the current user + workspace.
+      // Reusing one generic session id after account switching can make Firestore reject
+      // the heartbeat update because the old session belongs to a different user.
+      const presenceSessionKey = `chaosSessionId_${rId}_${appUser.id}`;
+      let sessionId = sessionStorage.getItem(presenceSessionKey);
       if (!sessionId) {
-        sessionId = `${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        sessionStorage.setItem('chaosSessionId', sessionId);
+        sessionId = `${rId}_${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem(presenceSessionKey, sessionId);
       }
 
       const collectDeviceDiagnostics = async () => {
@@ -423,15 +523,35 @@ if (liveAppUser && clientData) {
         return diag;
       };
 
+      const saveHeartbeatDebug = (next) => {
+        const packed = { ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id };
+        setHeartbeatDebug(packed);
+        try { localStorage.setItem(`chaosHeartbeatDebug_${rId}_${appUser.id}`, JSON.stringify(packed)); } catch (err) {}
+      };
+
       const sendHeartbeat = async (state = 'online') => {
         const stamp = new Date().toISOString();
+        const firebaseUser = await waitForAuthCurrentUser(8000);
+        if (!firebaseUser) {
+          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
+          saveHeartbeatDebug({ ok: false, channel: 'auth-wait', state, message: 'Firebase login session is not active yet on this device. Log out and back in if this keeps showing.', heartbeatEpochMs: Date.now() });
+          return;
+        }
+        const authUid = firebaseUser.uid;
+        if (appUser.id && appUser.id !== authUid) {
+          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
+          saveHeartbeatDebug({ ok: false, channel: 'auth-mismatch', state, message: `Cached app user does not match Firebase Auth user. Cached ${appUser.id}; Auth ${authUid}. Please log out and back in.`, heartbeatEpochMs: Date.now() });
+          return;
+        }
         const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
         const deviceDiagnostics = await collectDeviceDiagnostics();
+        const heartbeatEpochMs = Date.now();
         const presencePayload = {
           lastActive: stamp,
           lastSeen: stamp,
           lastHeartbeatAt: stamp,
           presenceUpdatedAt: stamp,
+          heartbeatEpochMs,
           onlineState: state,
           activeTab: activeTabState,
           activeSessionId: sessionId,
@@ -441,10 +561,92 @@ if (liveAppUser && clientData) {
           gpsPermission: deviceDiagnostics.gpsPermission,
           deviceDiagnostics
         };
-        updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: appUser.id }).catch(()=>{});
-        updateDoc(doc(db, 'users', appUser.id), presencePayload).catch((err)=>{
-          console.warn('86 Chaos presence heartbeat blocked or delayed:', err?.message || err);
-        });
+        const safeSessionId = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+        const createdAt = sessionStorage.getItem(`chaosPresenceCreatedAt_${sessionId}`) || stamp;
+        sessionStorage.setItem(`chaosPresenceCreatedAt_${sessionId}`, createdAt);
+        const livePresencePayload = {
+          ...presencePayload,
+          userId: authUid,
+          uid: authUid,
+          restaurantId: rId,
+          userName: appUser.name || '',
+          userEmail: appUser.email || '',
+          email: appUser.email || '',
+          role: appUser.role || '',
+          photoURL: appUser.photoURL || '',
+          createdAt,
+          updatedAt: stamp,
+          source: 'app-heartbeat'
+        };
+        const presenceSessionPayload = {
+          ...livePresencePayload,
+          sessionId: safeSessionId
+        };
+
+        // Local self-signal is written only after Firebase confirms the heartbeat.
+        // This prevents a stale/cached login from falsely showing Online Now when Firestore rejected the save.
+        const markVerifiedLocalHeartbeat = () => {
+          try { localStorage.setItem(`chaosLastHeartbeat_${rId}_${appUser.id}`, String(heartbeatEpochMs)); } catch (err) {}
+        };
+        const clearVerifiedLocalHeartbeat = () => {
+          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
+        };
+
+        let apiOk = false;
+        let apiMessage = '';
+        try {
+          const response = await secureFetch('/api/presence-heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              restaurantId: rId,
+              state,
+              activeTab: activeTabState,
+              sessionId: safeSessionId,
+              device,
+              deviceDiagnostics,
+              notificationPermission: deviceDiagnostics.notifications,
+              gpsPermission: deviceDiagnostics.gpsPermission,
+              heartbeatEpochMs,
+              stamp
+            })
+          });
+          const data = await response.json().catch(() => ({}));
+          apiOk = response.ok && data?.ok !== false;
+          apiMessage = data?.error || data?.message || `API ${response.status}`;
+          if (apiOk) {
+            markVerifiedLocalHeartbeat();
+            saveHeartbeatDebug({ ok: true, channel: 'api', state, message: 'Heartbeat saved by server API.', heartbeatEpochMs, apiProjectId: data?.projectId || '' });
+            return;
+          }
+        } catch (err) {
+          apiMessage = err?.message || String(err);
+        }
+
+        // Fallback for local development or a missing Vercel function. livePresence is overwritten,
+        // not merged, so old poisoned presence docs cannot keep blocking fresh writes.
+        const results = await Promise.allSettled([
+          setDoc(doc(db, 'livePresence', authUid), livePresencePayload),
+          setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload),
+          setDoc(doc(db, 'users', authUid), presencePayload, { merge: true }),
+          updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: authUid }).catch(()=>{})
+        ]);
+        const rejected = results.filter(r => r.status === 'rejected');
+        const primarySaved = results[0]?.status === 'fulfilled' || results[2]?.status === 'fulfilled';
+        if (rejected.length && !primarySaved) {
+          clearVerifiedLocalHeartbeat();
+          const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
+          console.warn('86 Chaos heartbeat fallback blocked or delayed:', errText);
+          saveHeartbeatDebug({ ok: false, channel: 'client-fallback', state, message: `${apiMessage || 'API heartbeat failed'}; fallback failed: ${errText}`, heartbeatEpochMs });
+        } else if (rejected.length && primarySaved) {
+          markVerifiedLocalHeartbeat();
+          const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
+          console.warn('86 Chaos heartbeat partially saved:', errText);
+          saveHeartbeatDebug({ ok: true, channel: 'client-fallback-partial', state, message: `Live heartbeat saved; secondary write issue: ${errText}`, heartbeatEpochMs });
+        } else {
+          markVerifiedLocalHeartbeat();
+          saveHeartbeatDebug({ ok: true, channel: 'client-fallback', state, message: `Saved by client fallback after API issue: ${apiMessage || 'unknown'}`, heartbeatEpochMs });
+        }
       };
 
       sendHeartbeat(document.hidden ? 'away' : 'online');
@@ -671,16 +873,16 @@ useEffect(() => {
 
   const renderMainContent = () => {
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'labor'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
-    if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />;
-    if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} />;
+    if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
+    if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
     if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
-    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
+    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} heartbeatDebug={heartbeatDebug} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
@@ -704,22 +906,40 @@ useEffect(() => {
     );
   };
 
-  // MAINTENANCE LOCK SCREEN (Only locks real users, Super Admins in Ghost Mode bypass this)
-  if (clientData?.billingStatus === 'Past Due' && !ghostTenant) {
+  // MAINTENANCE LOCK SCREEN
+  // Global lockdown should affect every workspace, including Cheers, but never lock out
+  // the platform owner/super-admin account that needs to lift the lockdown.
+  const maintenanceBypass = Boolean(
+    liveAppUser?.isSuperAdmin === true ||
+    (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()
+  );
+  const maintenanceEndsMs = clientData?.maintenanceEndsAt ? new Date(clientData.maintenanceEndsAt).getTime() : 0;
+  const maintenanceExpired = maintenanceEndsMs && Number.isFinite(maintenanceEndsMs) && maintenanceEndsMs <= Date.now();
+  const maintenanceAudience = clientData?.maintenanceAudience || 'everyone_except_super_admin';
+  const maintenanceAppliesToUser = maintenanceAudience === 'employees_only'
+    ? !liveAppUser?.isAdmin
+    : maintenanceAudience === 'non_admins'
+      ? !liveAppUser?.isAdmin
+      : true;
+  if (clientData?.billingStatus === 'Past Due' && !maintenanceExpired && maintenanceAppliesToUser && !ghostTenant && !maintenanceBypass) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">
           <span className="text-6xl mb-4 block">🛠️</span>
           <h1 className="text-2xl font-black text-white mb-2">Down for Maintenance</h1>
-          <p className="text-slate-400 font-medium mb-6">86 Chaos is temporarily down for maintenance for {clientData.name || 'this workspace'}. Please check back shortly or contact your management team if service does not return soon.</p>
+          <p className="text-slate-400 font-medium mb-6">{clientData.maintenanceMessage || `86 Chaos is temporarily down for maintenance for ${clientData.name || 'this workspace'}. Please check back shortly or contact your management team if service does not return soon.`}</p>
+          {clientData.maintenanceEndsAt && <div className="mb-4 bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Scheduled return: {new Date(clientData.maintenanceEndsAt).toLocaleString()}</div>}
           <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
         </div>
       </div>
     );
   }
 
+  const appAccentColor = /^#[0-9A-Fa-f]{6}$/.test(displayClientData?.systemSettings?.accentColor || '') ? displayClientData.systemSettings.accentColor : '#D4A381';
+  const appThemeStyle = { '--chaos-accent': appAccentColor };
+
 return (
-    <div onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`ui-v13-polished ui-v12-compact cockpit-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`ui-v13-polished ui-v12-compact cockpit-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -745,7 +965,13 @@ return (
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .cockpit-shell { --chaos-copper: #D4A381; --chaos-panel: #1A2126; --chaos-deck: #12161A; }
+        .cockpit-shell { --chaos-copper: var(--chaos-accent, #D4A381); --chaos-panel: #1A2126; --chaos-deck: #12161A; --chaos-accent-soft: color-mix(in srgb, var(--chaos-accent, #D4A381) 82%, white); --chaos-accent-strong: color-mix(in srgb, var(--chaos-accent, #D4A381) 78%, black); }
+        .cockpit-shell [class*="text-[#D4A381]"], .cockpit-shell [class*="hover:text-[#D4A381]"]:hover { color: var(--chaos-accent, #D4A381) !important; }
+        .cockpit-shell [class*="border-[#D4A381]"], .cockpit-shell [class*="focus:border-[#D4A381]"]:focus { border-color: var(--chaos-accent, #D4A381) !important; }
+        .cockpit-shell [class*="bg-[#8F6040]"] { background-color: var(--chaos-accent-strong) !important; }
+        .cockpit-shell [class*="accent-[#8F6040]"] { accent-color: var(--chaos-accent, #D4A381) !important; }
+        .cockpit-shell [class*="from-[#C59373]"][class*="to-[#8F6040]"] { background-image: linear-gradient(to right, var(--chaos-accent-soft), var(--chaos-accent-strong)) !important; }
+        .cockpit-shell .brand-logo-stack img { object-fit: contain; }
         .ui-v12-compact button { touch-action: manipulation; }
         .ui-v12-compact textarea { line-height: 1.35 !important; }
         .cockpit-light { position: relative; display: inline-flex; width: .55rem; height: .55rem; border-radius: 999px; box-shadow: 0 0 6px currentColor; }
@@ -805,7 +1031,7 @@ return (
       )}
 
       <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
-        <CheersLogo />
+        <CheersLogo clientData={displayClientData} />
 
         {/* DYNAMIC RESTAURANT NAME */}
         {liveAppUser && (
@@ -836,7 +1062,7 @@ return (
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
-      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} clientFeatures={displayClientFeatures} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} addToast={addToast} />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} clientFeatures={displayClientFeatures} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">

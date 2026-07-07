@@ -2,7 +2,7 @@ const admin = require('firebase-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '13.1.22';
+const APP_VERSION = '14.0.2';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -94,9 +94,9 @@ async function restoreBackupFromStorage({ adminApp, db, storagePath, actor }) {
   const [exists] = await file.exists();
   if (!exists) throw new Error(`Backup file not found in Storage: ${storagePath}`);
 
-  const [buffer] = await file.download();
-  const unzipped = zlib.gunzipSync(buffer).toString('utf8');
-  const backup = JSON.parse(unzipped);
+  const { buffer } = await downloadBackupBytes(file);
+  const parsed = parseBackupBytes(buffer);
+  const backup = parsed.backup;
   if (!backup?.collections || typeof backup.collections !== 'object') {
     throw new Error('Backup file is missing the expected collections payload.');
   }
@@ -215,36 +215,63 @@ function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-function buildIntegrityResult({ backup, downloadedBackup, expectedHash, downloadedHash, gzippedBytes, downloadedBytes, storagePath }) {
+function isGzipBuffer(buffer) {
+  return Buffer.isBuffer(buffer) && buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
+}
+
+function parseBackupBytes(buffer) {
+  const format = isGzipBuffer(buffer) ? 'gzip' : 'plain-json';
+  const text = format === 'gzip' ? zlib.gunzipSync(buffer).toString('utf8') : buffer.toString('utf8');
+  return { backup: JSON.parse(text), format };
+}
+
+async function downloadBackupBytes(file) {
+  try {
+    const [buffer] = await file.download({ decompress: false });
+    return { buffer, rawDownload: true };
+  } catch (_) {
+    const [buffer] = await file.download();
+    return { buffer, rawDownload: false };
+  }
+}
+
+function buildIntegrityResult({ backup, downloadedBackup, expectedHash, downloadedHash, gzippedBytes, downloadedBytes, storagePath, storageFormat, rawDownload }) {
   const errors = [];
+  const warnings = [];
   if (!downloadedBackup?.metadata) errors.push('Missing backup metadata after download.');
   if (!downloadedBackup?.collections || typeof downloadedBackup.collections !== 'object') errors.push('Missing collections payload after download.');
   if (downloadedBackup?.metadata?.runId !== backup.metadata.runId) errors.push('Run ID mismatch after download.');
   if (downloadedBackup?.metadata?.documentCount !== backup.metadata.documentCount) errors.push('Document count mismatch after download.');
   if (downloadedBackup?.metadata?.collectionCount !== backup.metadata.collectionCount) errors.push('Collection count mismatch after download.');
-  if (expectedHash !== downloadedHash) errors.push('SHA-256 checksum mismatch after Storage round trip.');
+  if (expectedHash !== downloadedHash) {
+    if (storageFormat === 'gzip') errors.push('SHA-256 checksum mismatch after raw Storage round trip.');
+    else warnings.push('Storage client returned readable plain JSON for a .json.gz backup; checksum comparison used parsed content instead of compressed bytes.');
+  }
   return {
     ok: errors.length === 0,
-    status: errors.length === 0 ? 'verified' : 'failed',
+    status: errors.length === 0 ? (warnings.length ? 'warning' : 'verified') : 'failed',
     verifiedAt: new Date().toISOString(),
     storagePath,
     sha256: expectedHash,
     roundTripSha256: downloadedHash,
     compressedBytes: gzippedBytes,
     downloadedBytes,
+    storageFormat,
+    rawDownload,
     documentCount: backup.metadata.documentCount || 0,
     collectionCount: backup.metadata.collectionCount || 0,
-    errors
+    errors,
+    warnings
   };
 }
 
 async function verifyUploadedBackup({ file, backup, gzipped, storagePath }) {
   const expectedHash = sha256(gzipped);
-  const [downloaded] = await file.download();
+  const { buffer: downloaded, rawDownload } = await downloadBackupBytes(file);
   const downloadedHash = sha256(downloaded);
-  let downloadedBackup = null;
+  let parsed = null;
   try {
-    downloadedBackup = JSON.parse(zlib.gunzipSync(downloaded).toString('utf8'));
+    parsed = parseBackupBytes(downloaded);
   } catch (err) {
     return {
       ok: false,
@@ -255,12 +282,15 @@ async function verifyUploadedBackup({ file, backup, gzipped, storagePath }) {
       roundTripSha256: downloadedHash,
       compressedBytes: gzipped.length,
       downloadedBytes: downloaded.length,
+      storageFormat: isGzipBuffer(downloaded) ? 'gzip' : 'unreadable',
+      rawDownload,
       documentCount: backup.metadata.documentCount || 0,
       collectionCount: backup.metadata.collectionCount || 0,
-      errors: [`Downloaded backup could not be decompressed/read: ${err.message}`]
+      errors: [`Downloaded backup could not be decompressed or parsed as JSON: ${err.message}`],
+      warnings: []
     };
   }
-  return buildIntegrityResult({ backup, downloadedBackup, expectedHash, downloadedHash, gzippedBytes: gzipped.length, downloadedBytes: downloaded.length, storagePath });
+  return buildIntegrityResult({ backup, downloadedBackup: parsed.backup, expectedHash, downloadedHash, gzippedBytes: gzipped.length, downloadedBytes: downloaded.length, storagePath, storageFormat: parsed.format, rawDownload });
 }
 
 

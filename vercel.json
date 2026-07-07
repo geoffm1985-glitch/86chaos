@@ -1,49 +1,8 @@
 {
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
-        },
-        {
-          "key": "Permissions-Policy",
-          "value": "camera=(self), geolocation=(self), microphone=(self), payment=(), usb=(), fullscreen=(self)"
-        },
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://www.gstatic.com https://www.googleapis.com https://www.google.com https://www.recaptcha.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://ui-avatars.com https://unpkg.com https://*.tile.openstreetmap.org; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://fcmregistrations.googleapis.com https://firebaseinstallations.googleapis.com https://*.cloudfunctions.net https://*.vercel.app wss://*.firebaseio.com; font-src 'self' data:; frame-src 'self' https://www.google.com https://www.recaptcha.net; object-src 'none'; base-uri 'self'; form-action 'self'"
-        }
-      ]
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/firestore-backup",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/weekly-maintenance",
-      "schedule": "0 10 * * 1"
-    }
-  ],
-  "functions": {
-    "api/scan-invoice.js": {
-      "maxDuration": 300,
-      "memory": 1024
-    },
-    "api/full-system-diagnostics.js": {
-      "maxDuration": 60,
-      "memory": 1024
-    }
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }
