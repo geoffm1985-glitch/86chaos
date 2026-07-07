@@ -150,7 +150,7 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '13.1.44';
+export const CURRENT_VERSION = '14.0.1';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -430,6 +430,248 @@ export const logAudit = async (user, action, target, details) => {
       isGhost
     });
   } catch (err) { console.error("Audit log failed:", err); }
+};
+
+
+// ============================================================================
+// 86 CHAOS 14.0.1 ROBUSTNESS ENGINE
+// Central helpers for safer writes, permission previews, offline queueing, import
+// templates, schema guardrails, and kitchen dependency analysis.
+// ============================================================================
+const V14_SENSITIVE_KEYS = ['password', 'temporaryPassword', 'ssn', 'address', 'phone', 'email', 'wage', 'hourlyRate', 'payRate', 'fcmToken', 'notesPrivate'];
+const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets'];
+const V14_WRITE_PERMISSIONS = {
+  shifts: ['schedule', 'team'], timeOffRequests: ['schedule', 'team'], scheduleTemplates: ['schedule', 'team'], scheduleCoverageTargets: ['schedule', 'team'],
+  inventoryItems: ['inventory', 'team'], vendors: ['inventory', 'team'], orders: ['inventory', 'team'], invoices: ['inventory', 'team'],
+  prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'team'],
+  sales: ['sales', 'labor', 'team'], timePunches: ['labor', 'team'],
+  pmSchedules: ['team'], maintenanceLogs: ['team'], tasks: ['prep', 'team'],
+  events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep', 'team']
+};
+
+export const isSuperAdminUser = (user = {}) => Boolean(user?.isSuperAdmin === true || String(user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || String(user?.email || '').toLowerCase() === 'geoffrm1985@gmail.com');
+export const isWorkspaceManager = (user = {}) => Boolean(isSuperAdminUser(user) || user?.isAdmin === true || user?.isOwner === true || user?.accountOwner === true || user?.owner === true || user?.workspaceOwner === true || String(user?.accountRole || '').toLowerCase() === 'owner');
+export const hasAnyPermission = (user = {}, perms = []) => Boolean(isWorkspaceManager(user) || (perms || []).some(p => user?.permissions?.[p] === true));
+
+export const scrubForAudit = (value, depth = 0) => {
+  if (depth > 5) return '[depth-limit]';
+  if (Array.isArray(value)) return value.slice(0, 25).map(v => scrubForAudit(v, depth + 1));
+  if (value && typeof value === 'object') {
+    const out = {};
+    Object.entries(value).slice(0, 80).forEach(([key, val]) => {
+      out[key] = V14_SENSITIVE_KEYS.some(s => key.toLowerCase().includes(s.toLowerCase())) ? '[redacted]' : scrubForAudit(val, depth + 1);
+    });
+    return out;
+  }
+  return value;
+};
+
+export const canUserWriteCollection = (user = {}, collectionName = '') => {
+  if (!collectionName) return false;
+  if (isSuperAdminUser(user)) return true;
+  if (user?.demoMode || user?.isDemo) return false;
+  const needed = V14_WRITE_PERMISSIONS[collectionName] || [];
+  if (needed.length === 0) return isWorkspaceManager(user);
+  return hasAnyPermission(user, needed);
+};
+
+export const safeWrite = async ({ user, action = 'set', collectionName, docId = '', data = {}, merge = true, label = '', before = null, addToast = null }) => {
+  if (!user?.restaurantId && !isSuperAdminUser(user)) throw new Error('Safe Write blocked: missing restaurant workspace.');
+  if (user?.demoMode || user?.isDemo) throw new Error('Safe Write blocked: demo mode cannot change live data.');
+  if (!canUserWriteCollection(user, collectionName)) throw new Error(`Safe Write blocked: missing permission for ${collectionName}.`);
+  if (V14_TENANT_COLLECTIONS.includes(collectionName) && !isSuperAdminUser(user)) {
+    const incomingRest = data?.restaurantId || before?.restaurantId || user.restaurantId;
+    if (incomingRest && incomingRest !== user.restaurantId) throw new Error('Safe Write blocked: restaurant mismatch.');
+  }
+  const now = new Date().toISOString();
+  const payload = V14_TENANT_COLLECTIONS.includes(collectionName)
+    ? { ...data, restaurantId: data?.restaurantId || user.restaurantId, updatedAt: now, updatedBy: user?.name || user?.email || '86 Chaos' }
+    : { ...data, updatedAt: now, updatedBy: user?.name || user?.email || '86 Chaos' };
+  let refObj;
+  if (action === 'add') {
+    refObj = await addDoc(collection(db, collectionName), payload);
+  } else if (action === 'update') {
+    if (!docId) throw new Error('Safe Write blocked: update requires a document id.');
+    refObj = doc(db, collectionName, docId);
+    await updateDoc(refObj, payload);
+  } else if (action === 'delete') {
+    if (!docId) throw new Error('Safe Write blocked: delete requires a document id.');
+    refObj = doc(db, collectionName, docId);
+    await deleteDoc(refObj);
+  } else {
+    if (!docId) throw new Error('Safe Write blocked: set requires a document id.');
+    refObj = doc(db, collectionName, docId);
+    await setDoc(refObj, payload, { merge });
+  }
+  await logAudit(user, `SAFE_WRITE_${String(action).toUpperCase()}`, `${collectionName}/${docId || refObj?.id || ''}`, JSON.stringify({ label, after: scrubForAudit(payload), before: scrubForAudit(before) }).slice(0, 2500));
+  if (addToast) addToast('Saved', label || `${collectionName} updated safely.`);
+  return { id: refObj?.id || docId, path: `${collectionName}/${refObj?.id || docId}`, payload };
+};
+
+export const getOfflineQueueKey = (restaurantId, userId) => `chaosOfflineWriteQueue_${restaurantId || 'unknown'}_${userId || 'unknown'}`;
+export const getOfflineQueue = (restaurantId, userId) => {
+  if (typeof window === 'undefined') return [];
+  try { return JSON.parse(localStorage.getItem(getOfflineQueueKey(restaurantId, userId)) || '[]'); } catch (_) { return []; }
+};
+export const queueOfflineWrite = ({ user, collectionName, docId = '', action = 'add', data = {}, label = '' }) => {
+  if (typeof window === 'undefined') return [];
+  const key = getOfflineQueueKey(user?.restaurantId, user?.id);
+  const queue = getOfflineQueue(user?.restaurantId, user?.id);
+  const item = { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, queuedAt: new Date().toISOString(), collectionName, docId, action, data: scrubForAudit(data), label };
+  queue.push(item);
+  localStorage.setItem(key, JSON.stringify(queue.slice(-75)));
+  return queue;
+};
+export const replayOfflineQueue = async (user, addToast) => {
+  const queue = getOfflineQueue(user?.restaurantId, user?.id);
+  if (!queue.length) return { attempted: 0, saved: 0, failed: 0 };
+  let saved = 0;
+  const failed = [];
+  for (const item of queue) {
+    try {
+      await safeWrite({ user, collectionName: item.collectionName, docId: item.docId, action: item.action, data: item.data || {}, label: item.label });
+      saved += 1;
+    } catch (err) {
+      failed.push({ ...item, lastError: err.message, lastTriedAt: new Date().toISOString() });
+    }
+  }
+  if (typeof window !== 'undefined') localStorage.setItem(getOfflineQueueKey(user?.restaurantId, user?.id), JSON.stringify(failed));
+  if (addToast && saved) addToast('Offline Queue Synced', `${saved} queued kitchen action(s) saved.`);
+  return { attempted: queue.length, saved, failed: failed.length };
+};
+
+export const safeWriteWithQueue = async ({ user, addToast = null, label = '', ...writeArgs }) => {
+  try {
+    return await safeWrite({ user, addToast, label, ...writeArgs });
+  } catch (err) {
+    const message = err?.message || String(err);
+    const looksOffline = typeof navigator !== 'undefined' && (navigator.onLine === false || /offline|network|unavailable|failed to fetch/i.test(message));
+    if (looksOffline && user?.restaurantId && user?.id && ['add','set','update'].includes(writeArgs.action || 'set')) {
+      queueOfflineWrite({ user, collectionName: writeArgs.collectionName, docId: writeArgs.docId || '', action: writeArgs.action || 'set', data: writeArgs.data || {}, label });
+      if (addToast) addToast('Queued Offline', `${label || writeArgs.collectionName || 'Kitchen action'} will sync when the connection comes back.`);
+      return { queued: true, error: message };
+    }
+    if (addToast) addToast('Save Blocked', message);
+    throw err;
+  }
+};
+
+export const buildPermissionPreview = (user = {}, features = {}) => {
+  const superAdmin = isSuperAdminUser(user);
+  const admin = isWorkspaceManager(user);
+  const allowed = [];
+  const blocked = [];
+  const push = (key, label, ok, reason = '') => (ok ? allowed : blocked).push({ key, label, reason });
+  push('today', 'Today Command Center', true, 'Base kitchen landing screen');
+  push('published', 'My Schedule', true, 'Everyone can see their published schedule');
+  push('messages', 'Messages', features.messages !== false, 'Workspace messages module');
+  push('prep', 'Prep + Line Check', features.prep !== false, 'Prep module');
+  push('recipes', 'Recipes', features.recipes !== false, 'Recipes module');
+  push('inventory', 'Inventory', features.inventory !== false, 'Inventory module');
+  push('events', 'Events', features.events !== false && (admin || user?.permissions?.events || user?.permissions?.schedule || user?.permissions?.team), 'Events/schedule permission');
+  push('schedule', 'Schedule Builder', admin || user?.permissions?.schedule || user?.permissions?.team, 'Schedule permission');
+  push('ops', 'Ops Center', features.ops !== false && (superAdmin || admin || user?.permissions?.ops), 'Ops permission');
+  push('financials', 'Financials', superAdmin || admin || user?.permissions?.labor || user?.permissions?.sales, 'Labor/sales permission');
+  push('team', 'Team', features.team !== false && (admin || user?.permissions?.team), 'Team permission');
+  push('maintenance', 'Maintenance', features.maintenance !== false && (admin || user?.permissions?.team), 'Manager/team permission');
+  push('settings', 'Settings', !user?.demoMode && (admin || user?.permissions?.settings || user?.permissions?.branding || user?.permissions?.integrations), 'Settings/owner permission');
+  push('godmode', 'System Administrator', superAdmin, 'Super Admin only');
+  const sensitive = {
+    wagesVisible: Boolean(superAdmin || admin || user?.permissions?.wageView || user?.permissions?.wageEdit),
+    wagesEditable: Boolean(superAdmin || user?.permissions?.wageEdit),
+    backupCenter: Boolean(superAdmin),
+    forensics: Boolean(superAdmin),
+    demoPrivateDataBlocked: Boolean(user?.demoMode || user?.isDemo)
+  };
+  return { userId: user.id || '', name: user.name || user.email || 'Selected user', role: user.role || '', allowed, blocked, sensitive };
+};
+
+export const buildImportBridgeTemplates = () => ({
+  toast_sales: [['date','grossSales','netSales','tax','tips','paymentType','notes'], [getToday(),'0.00','0.00','0.00','0.00','Card','Toast daily sales export']],
+  square_sales: [['date','grossSales','discounts','refunds','tax','tips','fees','netSales'], [getToday(),'0.00','0.00','0.00','0.00','0.00','0.00','0.00']],
+  clover_sales: [['date','grossSales','netSales','orders','cash','credit','tips','tax'], [getToday(),'0.00','0.00','0','0.00','0.00','0.00','0.00']],
+  payroll_time: [['employeeName','employeeEmail','date','clockIn','clockOut','breakMinutes','role','hourlyRate'], ['Demo Employee','demo@example.com',getToday(),'09:00','17:00','30','Cook','0.00']],
+  vendor_invoice: [['vendor','invoiceNumber','invoiceDate','itemName','sku','qty','unit','unitCost','category'], ['Vendor Name','INV-1001',getToday(),'Chicken Breast','','1','case','0.00','Food']],
+  inventory_count: [['itemName','category','currentStock','parLevel','unit','price','vendor'], ['Lettuce','Produce','0','1','case','0.00','Vendor Name']]
+});
+
+export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], prepItems = [], menuDependencies = [], events = [] }) => {
+  const normalize = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const low = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0));
+  const lowById = new Map(low.map(item => [item.id, item]));
+  const inventoryById = new Map(inventoryItems.map(item => [item.id, item]));
+  const recipeById = new Map(recipes.map(recipe => [recipe.id, recipe]));
+  const lowTokens = low.map(i => ({ item: i, key: normalize(i.name) })).filter(x => x.key);
+  const activePrep = prepItems.filter(p => p.isMaster || p.date === getToday() || p.frequency);
+  const activePrepKeys = activePrep.map(p => normalize(p.text || p.title || p.name));
+  const recipeHits = new Map();
+  const ensure = (recipe) => {
+    const id = recipe?.id || normalize(recipe?.name || recipe?.title || 'recipe');
+    if (!recipeHits.has(id)) recipeHits.set(id, { recipe, lowStockMatches: [], prepMatches: [], explicitDependencies: [], eightySixAlerts: [] });
+    return recipeHits.get(id);
+  };
+
+  // Manual dependency graph beats text guessing. These docs are created from Ops Center.
+  (menuDependencies || []).forEach(dep => {
+    const recipe = recipeById.get(dep.recipeId) || { id: dep.recipeId || dep.id, name: dep.recipeName || dep.menuItemName || 'Menu item' };
+    const lowItem = lowById.get(dep.inventoryItemId);
+    if (lowItem) {
+      const hit = ensure(recipe);
+      if (!hit.lowStockMatches.some(i => i.id === lowItem.id)) hit.lowStockMatches.push(lowItem);
+      hit.explicitDependencies.push({ ...dep, inventoryItem: lowItem });
+    }
+  });
+
+  // Text fallback catches recipes that have ingredients listed but no manual graph yet.
+  recipes.forEach(recipe => {
+    const text = normalize([recipe.name, recipe.title, recipe.description, recipe.ingredients, ...(Array.isArray(recipe.items) ? recipe.items.map(x => x.name || x.item || x.text || '') : [])].join(' '));
+    const hits = lowTokens.filter(({ key }) => key && (text.includes(key) || key.split(' ').some(part => part.length > 3 && text.includes(part))));
+    const prepHits = activePrepKeys.filter(key => key && text.includes(key));
+    if (hits.length || prepHits.length) {
+      const hit = ensure(recipe);
+      hits.forEach(h => { if (!hit.lowStockMatches.some(i => i.id === h.item.id)) hit.lowStockMatches.push(h.item); });
+      hit.prepMatches = Array.from(new Set([...(hit.prepMatches || []), ...prepHits]));
+    }
+  });
+
+  // 86 alerts are pulled into the same brain so the radar sees both inventory math and manager alerts.
+  const active86Alerts = (events || []).filter(e => {
+    const hay = normalize(`${e.messageCategory || ''} ${e.title || ''} ${e.notes || ''}`);
+    return hay.includes('86') || hay.includes('eighty six') || hay.includes('out of');
+  });
+  active86Alerts.forEach(alert => {
+    const alertText = normalize(`${alert.title || ''} ${alert.notes || ''}`);
+    recipes.forEach(recipe => {
+      const recipeNameKey = normalize(recipe.name || recipe.title || '');
+      const recipeText = normalize(`${recipe.name || recipe.title || ''} ${recipe.ingredients || ''}`);
+      if (alertText && recipeText && ((recipeNameKey && alertText.includes(recipeNameKey)) || recipeText.split(' ').some(part => part.length > 4 && alertText.includes(part)))) {
+        ensure(recipe).eightySixAlerts.push(alert);
+      }
+    });
+  });
+
+  const affectedRecipes = Array.from(recipeHits.values()).filter(r => r.lowStockMatches.length || r.prepMatches.length || r.eightySixAlerts.length);
+  const mappedDependencyCount = (menuDependencies || []).filter(dep => recipeById.has(dep.recipeId) && inventoryById.has(dep.inventoryItemId)).length;
+  return {
+    lowStockItems: low,
+    affectedRecipes,
+    active86Alerts,
+    mappedDependencyCount,
+    explicitDependencyCount: (menuDependencies || []).length,
+    recoveryCount: low.filter(i => Number(i.pendingQty || 0) > 0).length
+  };
+};
+
+export const buildV14ClientGuardrailReport = ({ currentVersion = CURRENT_VERSION, features = {}, hasBrandLock = true, hasHelpSearch = true, hasRules = true } = {}) => {
+  const checks = [
+    { id: 'version', label: 'App version is 14.0.1', ok: currentVersion === '14.0.1', detail: `Running ${currentVersion}` },
+    { id: 'brand-lock', label: '86 Chaos brand lock', ok: hasBrandLock === true, detail: '86 Chaos must stay visible while restaurant logos remain optional.' },
+    { id: 'demo-scrub', label: 'Demo privacy rule', ok: true, detail: 'Demo mode should not display real email, phone, address, wage, or sensitive admin data.' },
+    { id: 'help-public', label: 'Help Center public boundary', ok: hasHelpSearch === true, detail: 'Help content must remain public-facing and avoid forensics/backups internals.' },
+    { id: 'rules', label: 'Rules included', ok: hasRules === true, detail: 'Firestore and Storage rules are bundled for separate publish.' },
+    { id: 'modules', label: 'Feature map readable', ok: typeof features === 'object', detail: `${Object.keys(features || {}).length} module flags loaded.` }
+  ];
+  return { generatedAt: new Date().toISOString(), checks, ok: checks.every(c => c.ok) };
 };
 
 

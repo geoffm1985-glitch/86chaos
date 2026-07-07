@@ -6,10 +6,10 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
-const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
+const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const prepItems = useLiveCollection('prepItems', appUser?.restaurantId, { limitCount: 250 });
   const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
   const [subTab, setSubTab] = useState('prep');
@@ -38,6 +38,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
 
   // Permissions
   const canManageLineChecks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
+  const safePrepWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   // Local selection state (Fixes checkboxes staying checked across days)
   const [selectedPreps, setSelectedPreps] = useState([]);
@@ -65,6 +66,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
   const [lcName, setLcName] = useState('');
   const [lcCat, setLcCat] = useState('Cold Holding (≤ 41°F)');
   const [temps, setTemps] = useState({});
+  const [correctiveActions, setCorrectiveActions] = useState({});
   const [editLineCheckItem, setEditLineCheckItem] = useState(null);
 
   // --- PREP LOGIC ---
@@ -73,7 +75,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
   const handleAddPrep = async (e) => { 
     e.preventDefault(); 
     if(text.trim()) { 
-      await addDoc(collection(db, "prepItems"), { 
+      await safePrepWrite({ action: 'add', collectionName: "prepItems", label: "Prep item", data: { 
         date: isMaster ? 'MASTER' : prepDate, 
         text: text.trim(), 
         station, 
@@ -82,7 +84,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
         isMaster, 
         qty: 1,
         restaurantId: appUser.restaurantId
-      }); 
+      } }); 
       setText(''); 
     } 
   };
@@ -99,9 +101,9 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
       } else {
         dts[prepDate] = appUser.name;
       }
-      await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts }); 
+      await safePrepWrite({ action: 'update', collectionName: "prepItems", docId: item.id, label: "Prep completion", before: item, data: { completedDates: dts } }); 
     } else { 
-      await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null }); 
+      await safePrepWrite({ action: 'update', collectionName: "prepItems", docId: item.id, label: "Prep completion", before: item, data: { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null } }); 
     } 
   };
   
@@ -111,21 +113,21 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
   const handleAddLineCheck = async (e) => {
     e.preventDefault();
     if(lcName.trim()) {
-      await addDoc(collection(db, "lineCheckItems"), {
+      await safePrepWrite({ action: 'add', collectionName: "lineCheckItems", label: "Line check item", data: {
         name: lcName.trim(),
         category: lcCat,
         restaurantId: appUser.restaurantId
-      });
+      } });
       setLcName('');
     }
   };
 
   const handleSaveLineCheckEdit = async (e) => {
     e.preventDefault();
-    await updateDoc(doc(db, "lineCheckItems", editLineCheckItem.id), {
+    await safePrepWrite({ action: 'update', collectionName: "lineCheckItems", docId: editLineCheckItem.id, label: "Line check item", before: editLineCheckItem, data: {
       name: editLineCheckItem.name.trim(),
       category: editLineCheckItem.category
-    });
+    } });
     setEditLineCheckItem(null);
   };
 
@@ -134,20 +136,29 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
     if (!val) return;
     
     const status = evaluateTemp(val, item.category);
+    const correctiveAction = String(correctiveActions[item.id] || '').trim();
+    if (status === 'Danger' && !correctiveAction) {
+      alert('Corrective action is required for an out-of-range temperature. Example: moved to walk-in, discarded, reheated to safe temp, called manager.');
+      return;
+    }
     
-    await addDoc(collection(db, "tempLogs"), {
+    await safePrepWrite({ action: 'add', collectionName: "tempLogs", label: "Temperature log", data: {
       itemId: item.id,
       itemName: item.name,
       category: item.category,
       temp: parseFloat(val),
       status: status,
+      correctiveAction,
+      managerReviewRequired: status === 'Danger',
+      reviewedByManager: false,
       loggedBy: appUser.name,
       date: getToday(),
       timestamp: new Date().toISOString(),
       restaurantId: appUser.restaurantId
-    });
+    } });
     
     setTemps({...temps, [item.id]: ''});
+    setCorrectiveActions({...correctiveActions, [item.id]: ''});
   };
 
   const filteredLineChecks = lineChecks
@@ -159,10 +170,10 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
     e.preventDefault(); 
     if(taskText.trim()) { 
       if (editingTaskId) {
-        await updateDoc(doc(db, "tasks", editingTaskId), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null });
+        await safePrepWrite({ action: 'update', collectionName: "tasks", docId: editingTaskId, label: "Task", data: { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null } });
         setEditingTaskId(null);
       } else {
-        await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {}, restaurantId: appUser.restaurantId }); 
+        await safePrepWrite({ action: 'add', collectionName: "tasks", label: "Task", data: { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {}, restaurantId: appUser.restaurantId } }); 
       }
       setTaskText(''); 
     } 
@@ -202,7 +213,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
     } else { 
       updatedCompletions[periodKey] = { by: appUser.name, at: formatClockTime(new Date()) }; 
     }
-    await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
+    await safePrepWrite({ action: 'update', collectionName: "tasks", docId: task.id, label: "Task completion", before: task, data: { completions: updatedCompletions } });
   };
 
   const renderTasks = (freqFilter) => {
@@ -248,7 +259,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
                       <div className="flex items-center gap-2">
                         <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
                         {canManageLineChecks && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
-                        {canManageLineChecks && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
+                        {canManageLineChecks && <button onClick={()=>safePrepWrite({ action: "delete", collectionName: "tasks", docId: t.id, label: "Task", before: t })} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                       </div>
                     </div>
                   )
@@ -343,12 +354,15 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
                       <div className="flex items-center gap-1 bg-[#12161A] p-1 rounded-lg border border-[#2A353D]">
                         <input type="number" step="0.1" value={temps[item.id] || ''} onChange={e=>setTemps({...temps, [item.id]: e.target.value})} placeholder="°F" className="w-16 bg-transparent text-white font-black text-center text-sm outline-none" />
                         <button onClick={() => handleLogTemp(item)} disabled={!temps[item.id]} className="bg-slate-800 text-white disabled:opacity-50 px-3 py-1.5 rounded text-xs font-black uppercase hover:bg-slate-700 transition-colors">Log</button>
+                        {temps[item.id] && evaluateTemp(temps[item.id], item.category) === 'Danger' && (
+                          <input type="text" value={correctiveActions[item.id] || ''} onChange={e=>setCorrectiveActions({...correctiveActions, [item.id]: e.target.value})} placeholder="Corrective action required" className="w-full sm:w-48 bg-red-950/30 border border-red-900/50 text-red-100 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
+                        )}
                       </div>
                       
                       {canManageLineChecks && (
                         <div className="flex gap-1 border-l border-[#2A353D] pl-3">
                           <button onClick={() => setEditLineCheckItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button>
-                          <button onClick={() => { if(window.confirm(`Delete ${item.name}?`)) deleteDoc(doc(db,"lineCheckItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
+                          <button onClick={() => { if(window.confirm(`Delete ${item.name}?`)) safePrepWrite({ action: "delete", collectionName: "lineCheckItems", docId: item.id, label: "Line check item", before: item }); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
                         </div>
                       )}
                     </div>
@@ -391,9 +405,9 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
                       <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
+                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: Math.max(0, qty - 1) } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: qty + 1 } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
-                        <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                        <button onClick={()=>{ safePrepWrite({ action: "delete", collectionName: "prepItems", docId: i.id, label: "Prep item", before: i }); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
                       </div>
                     </div>
                   )})}
@@ -417,9 +431,9 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
                       if(item.isMaster){ 
                           const dts={...(item.completedDates||{})}; 
                           dts[prepDate]=appUser.name; 
-                          await updateDoc(doc(db,"prepItems",item.id),{completedDates:dts}); 
+                          await safePrepWrite({ action: "update", collectionName: "prepItems", docId: item.id, label: "Prep bulk completion", before: item, data: { completedDates:dts } }); 
                       } else {
-                          await updateDoc(doc(db,"prepItems",item.id),{isCompleted:true, completedBy:appUser.name}); 
+                          await safePrepWrite({ action: "update", collectionName: "prepItems", docId: item.id, label: "Prep bulk completion", before: item, data: { isCompleted:true, completedBy:appUser.name } }); 
                       }
                   } 
                   setSelectedPreps([]);
@@ -486,12 +500,13 @@ const [searchTerm, setSearchTerm] = useState('');
 
   // Master Permission Check for Inventory Tabs
   const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
+  const safeInventoryWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   // --- LOGIC ---
-  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
+  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await safeInventoryWrite({ action: 'add', collectionName: "inventoryItems", label: "Inventory item", data: { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId } }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
   const handleSaveEdit = async (e) => { 
     e.preventDefault(); 
-    await updateDoc(doc(db, "inventoryItems", editItem.id), { 
+    await safeInventoryWrite({ action: 'update', collectionName: "inventoryItems", docId: editItem.id, label: "Inventory item", before: editItem, data: { 
       name: editItem.name.trim(), 
       category: editItem.category || 'Other', 
       pfgCode: (editItem.pfgCode || '').trim(), 
@@ -502,16 +517,16 @@ const [searchTerm, setSearchTerm] = useState('');
       burnDefaultMode: editItem.burnDefaultMode || 'count',
       burnUnitLabel: editItem.burnUnitLabel || 'unit',
       price: parseFloat(editItem.price) || 0 
-    }); 
+    } }); 
     setEditItem(null); 
     addToast('Item Updated', 'Master file overwritten.'); 
   };
-  const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseFloat(newStock) || 0) });
-  const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseFloat(newPar) || 0) });
+  const updateStock = async (id, newStock) => await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory stock", data: { currentStock: Math.max(0, parseFloat(newStock) || 0) } });
+  const updatePar = async (id, newPar) => await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory par", data: { parLevel: Math.max(0, parseFloat(newPar) || 0) } });
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
   
-  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
-const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
+  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await safeInventoryWrite({ action: 'add', collectionName: "vendors", label: "Vendor", data: { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId } }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
+const handleSaveVendorEdit = async (e) => { e.preventDefault(); await safeInventoryWrite({ action: 'update', collectionName: "vendors", docId: editVendor.id, label: "Vendor", before: editVendor, data: { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' } }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
 const cleanNumber = (value) => {
     const n = parseFloat(String(value ?? '').replace(/[^0-9.\-]/g, ''));
@@ -640,7 +655,7 @@ const handleLogWaste = async (e) => {
     const totalCostLost = pricePerStockUnit * stockDeduction;
     const unitLabel = mode === 'weight' ? 'lb' : mode === 'stock' ? 'stock unit' : (wUnitLabel || item.burnUnitLabel || 'unit');
 
-    await addDoc(collection(db, "wasteLogs"), { 
+    await safeInventoryWrite({ action: 'add', collectionName: "wasteLogs", label: "Waste log", data: { 
       itemId: item.id, 
       itemName: item.name, 
       qty: burnAmount, 
@@ -657,14 +672,14 @@ const handleLogWaste = async (e) => {
       date: getToday(), 
       timestamp: new Date().toISOString(), 
       restaurantId: appUser.restaurantId 
-    });
+    } });
 
     if (stockDeduction > 0) {
-      await updateDoc(doc(db, "inventoryItems", item.id), { 
+      await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste stock deduction", before: item, data: { 
         currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeduction),
         ...(mode === 'weight' && weightPerStockUnit > 0 ? { weightPerStockUnit } : {}),
         ...(mode ? { burnDefaultMode: mode } : {})
-      });
+      } });
     }
 
     setWItemId(''); setWQty(''); setWSearchTerm(''); setWMode('count'); setWWeightPerStockUnit(''); setWUnitLabel('unit');
@@ -677,9 +692,9 @@ const handleLogWaste = async (e) => {
     const item = inventoryItems.find(i => i.id === log.itemId);
     if (item) {
        const stockRestoration = parseFloat(log.stockDeducted) || getBurnStockDeduction(log.qty, item, { mode: log.burnMode, weightPerStockUnit: log.weightPerStockUnit, unitsPerStockUnit: log.unitsPerStockUnit });
-       if (stockRestoration > 0) await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (parseFloat(item.currentStock)||0) + stockRestoration) });
+       if (stockRestoration > 0) await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste stock restore", before: item, data: { currentStock: Math.max(0, (parseFloat(item.currentStock)||0) + stockRestoration) } });
     }
-    await deleteDoc(doc(db, "wasteLogs", log.id));
+    await safeInventoryWrite({ action: "delete", collectionName: "wasteLogs", docId: log.id, label: "Waste log", before: log });
     addToast('Log Deleted', 'Stock restored successfully.');
   };
 
@@ -701,10 +716,10 @@ const handleLogWaste = async (e) => {
        const stockDifference = newDeduction - oldDeduction; 
        const newCostLost = (parseFloat(item.price) || 0) * newDeduction;
 
-       if (stockDifference !== 0) await updateDoc(doc(db, "inventoryItems", item.id), { 
+       if (stockDifference !== 0) await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste edit stock adjustment", before: item, data: { 
          currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDifference) 
-       });
-       await updateDoc(doc(db, "wasteLogs", log.id), { 
+       } });
+       await safeInventoryWrite({ action: "update", collectionName: "wasteLogs", docId: log.id, label: "Waste log edit", before: log, data: { 
          qty: newQty, 
          burnAmount: newQty,
          reason: log.reason, 
@@ -714,9 +729,9 @@ const handleLogWaste = async (e) => {
          weightPerStockUnit,
          burnMode: mode,
          burnQtyMode: mode === 'count' ? 'individual_units' : mode 
-       });
+       } });
     } else {
-       await updateDoc(doc(db, "wasteLogs", log.id), { qty: log.qty, reason: log.reason });
+       await safeInventoryWrite({ action: "update", collectionName: "wasteLogs", docId: log.id, label: "Waste log edit", before: log, data: { qty: log.qty, reason: log.reason } });
     }
     
     setEditWaste(null);
@@ -787,27 +802,27 @@ const executeOrder = async (method) => {
     }
     
     // Update Pending Stock
-    for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
+    for (const item of items) { await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Pending order", before: item, data: { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() } }); }
     setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
   };
 
   const handleReceiveDelivery = async (vendorId) => {
     const itemsToReceive = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
     for (const item of itemsToReceive) {
-      await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 });
+      await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Delivery received", before: item, data: { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 } });
     }
     addToast('Delivery Accepted', `Stock automatically updated for ${itemsToReceive.length} items.`);
   };
 
   const handleUpdatePendingQty = async (itemId, newQty) => {
-    await updateDoc(doc(db, "inventoryItems", itemId), { pendingQty: Math.max(0, parseInt(newQty) || 0) });
+    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: itemId, label: "Pending quantity", data: { pendingQty: Math.max(0, parseInt(newQty) || 0) } });
   };
 
   const handleCancelDelivery = async (vendorId) => {
     if (!window.confirm("Cancel this dispatched order? This will clear all pending incoming stock for this vendor.")) return;
     const itemsToCancel = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
     for (const item of itemsToCancel) {
-      await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: 0 });
+      await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Cancel pending delivery", before: item, data: { pendingQty: 0 } });
     }
     addToast('Order Canceled', 'Pending quantities cleared.');
   };
@@ -842,15 +857,15 @@ const executeOrder = async (method) => {
           if (existingVendor) {
             vId = existingVendor.id;
           } else {
-            const newVRef = await addDoc(collection(db, "vendors"), { name: vendorName, rep: "", email: "", phone: "", restaurantId: appUser.restaurantId });
+            const newVRef = await safeInventoryWrite({ action: "add", collectionName: "vendors", label: "CSV vendor", data: { name: vendorName, rep: "", email: "", phone: "", restaurantId: appUser.restaurantId } });
             vId = newVRef.id;
             vendors.push({id: vId, name: vendorName}); 
           }
 
-          await addDoc(collection(db, "inventoryItems"), {
+          await safeInventoryWrite({ action: "add", collectionName: "inventoryItems", label: "CSV inventory item", data: {
             name, category, pfgCode: code, packSize, yieldQty, price, parLevel: 0,
             lastOrderedQty: 0, lastOrderedDate: null, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, restaurantId: appUser.restaurantId
-          });
+          } });
           addedCount++;
         }
         addToast("Upload Complete", `Successfully imported ${addedCount} items.`);
@@ -1096,12 +1111,12 @@ const executeOrder = async (method) => {
   const handleApproveInvoice = async () => {
      try {
        // 1. Log the invoice record for history
-       await addDoc(collection(db, "invoices"), {
+       await safeInventoryWrite({ action: "add", collectionName: "invoices", label: "Invoice scan", data: {
          ...scannedInvoice,
          restaurantId: appUser.restaurantId,
          processedAt: new Date().toISOString(),
          processedBy: appUser.name
-       });
+       } });
 
        // 2. Resolve Vendor (Auto-Create if Missing)
        let vId = '';
@@ -1110,11 +1125,11 @@ const executeOrder = async (method) => {
        if (existingVendor) {
           vId = existingVendor.id;
        } else if (scannedInvoice.vendorName) {
-          const newVRef = await addDoc(collection(db, "vendors"), { 
+          const newVRef = await safeInventoryWrite({ action: "add", collectionName: "vendors", label: "Invoice vendor", data: { 
             name: scannedInvoice.vendorName, 
             rep: "", email: "", phone: "", 
             restaurantId: appUser.restaurantId 
-          });
+          } });
           vId = newVRef.id;
        }
 
@@ -1141,7 +1156,7 @@ if (item.matchedItemId === 'CREATE_NEW') {
              else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
 
              const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
-             await addDoc(collection(db, "inventoryItems"), {
+             await safeInventoryWrite({ action: "add", collectionName: "inventoryItems", label: "Invoice inventory item", data: {
                 name: item.itemName,
                 category: autoCat, 
                 pfgCode: incomingCode, 
@@ -1159,7 +1174,7 @@ if (item.matchedItemId === 'CREATE_NEW') {
                 lastOrderedDate: null,
                 lastInvoiceRaw: item,
                 restaurantId: appUser.restaurantId
-             });
+             } });
              newCount++;
           } else if (item.matchedItemId) {
              const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
@@ -1178,7 +1193,7 @@ if (item.matchedItemId === 'CREATE_NEW') {
                 if ((!invItem.yieldQty || Number(invItem.yieldQty) <= 1) && packProfile.count > 1) updates.yieldQty = packProfile.count;
                 updates.lastInvoiceRaw = item;
 
-                await updateDoc(doc(db, "inventoryItems", invItem.id), updates);
+                await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: invItem.id, label: "Invoice stock update", before: invItem, data: updates });
                 updateCount++;
              }
           }
@@ -1602,7 +1617,7 @@ const groupedItems = inventoryItems
             <input type="text" placeholder="Search master list by name or product number..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
           </div>
 
-          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={() => { if(window.confirm(`Are you sure you want to delete ${item.name}?`)) deleteDoc(doc(db,"inventoryItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={() => { if(window.confirm(`Are you sure you want to delete ${item.name}?`)) safeInventoryWrite({ action: "delete", collectionName: "inventoryItems", docId: item.id, label: "Inventory item", before: item }); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
         </div>
       )}
 
@@ -1617,7 +1632,7 @@ const groupedItems = inventoryItems
             </div>
             <button type="submit" className={`w-full ${T.btn} py-2`}>Save Vendor</button>
           </form>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><div className="flex justify-between items-start"><h4 className="font-black text-white text-lg">{v.name}</h4><button onClick={()=>setEditVendor(v)} className="text-slate-400 hover:text-white"><Edit size={14}/></button></div><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p><p className="text-[#D4A381] mt-2">Cut-Off: {v.cutOffDays?.length > 0 ? v.cutOffDays.join(', ') : 'None'} {v.cutOffTime ? `@ ${v.cutOffTime}` : ''}</p></div><button onClick={()=>deleteDoc(doc(db,"vendors",v.id))} className="mt-4 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><div className="flex justify-between items-start"><h4 className="font-black text-white text-lg">{v.name}</h4><button onClick={()=>setEditVendor(v)} className="text-slate-400 hover:text-white"><Edit size={14}/></button></div><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p><p className="text-[#D4A381] mt-2">Cut-Off: {v.cutOffDays?.length > 0 ? v.cutOffDays.join(', ') : 'None'} {v.cutOffTime ? `@ ${v.cutOffTime}` : ''}</p></div><button onClick={()=>safeInventoryWrite({ action: "delete", collectionName: "vendors", docId: v.id, label: "Vendor", before: v })} className="mt-4 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
         </div>
       )}
 
@@ -1762,6 +1777,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
   const [yieldMult, setYieldMult] = useState(1);
   const [editingRecipeId, setEditingRecipeId] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+  const safeRecipeWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   // --- SCREEN WAKE LOCK ENGINE ---
   const [isAwake, setIsAwake] = useState(false);
@@ -1887,14 +1903,14 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
     if (!title.trim() || !ingredients.trim() || !instructions.trim()) return addToast('Error', 'Missing fields.'); 
     try { 
       if (editingRecipeId) {
-        await updateDoc(doc(db, "recipes", editingRecipeId), { 
+        await safeRecipeWrite({ action: "update", collectionName: "recipes", docId: editingRecipeId, label: "Recipe", before: recipes.find(r => r.id === editingRecipeId), data: { 
           title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), lastUpdated: new Date().toISOString() 
-        }); 
+        } }); 
         addToast('Recipe Updated', `${title} updated successfully.`); 
       } else {
-        await addDoc(collection(db, "recipes"), { 
+        await safeRecipeWrite({ action: "add", collectionName: "recipes", label: "Recipe", data: { 
           title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId 
-        }); 
+        } }); 
         addToast('Recipe Saved', `${title} added to the book.`); 
       }
       setIsFormOpen(false); 
@@ -1902,7 +1918,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
     } catch (err) { addToast('Error', 'Could not save.'); } 
   };
   
-  const handleDelete = async (id) => { if (!window.confirm("Delete recipe?")) return; await deleteDoc(doc(db, "recipes", id)); setActiveRecipe(null); addToast('Deleted', 'Recipe removed.'); };
+  const handleDelete = async (id) => { if (!window.confirm("Delete recipe?")) return; await safeRecipeWrite({ action: "delete", collectionName: "recipes", docId: id, label: "Recipe", before: recipes.find(r => r.id === id) }); setActiveRecipe(null); addToast('Deleted', 'Recipe removed.'); };
   
   const handleInjectLegacyRecipes = async () => {
     const legacyData = [
@@ -1936,7 +1952,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
     let count = 0;
     for (const recipe of legacyData) {
       if (!recipes.find(r => r.title === recipe.title)) {
-        await addDoc(collection(db, "recipes"), { ...recipe, authorName: "System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId });
+        await safeRecipeWrite({ action: "add", collectionName: "recipes", label: "Legacy recipe", data: { ...recipe, authorName: "System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId } });
         count++;
       }
     }
@@ -2177,6 +2193,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   const [pmEquipment, setPmEquipment] = useState('');
   const [pmDays, setPmDays] = useState('30');
   const [editingPmId, setEditingPmId] = useState(null);
+  const safeMaintenanceWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   const resetForm = () => {
     setEquipment(''); setIssue(''); setUrgency('Standard'); 
@@ -2214,12 +2231,12 @@ const TabMaintenance = ({ appUser, addToast }) => {
         if (status === 'Resolved' && logs.find(l => l.id === editingLogId)?.status !== 'Resolved') {
             payload.resolvedAt = new Date().toISOString();
         }
-        await updateDoc(doc(db, "maintenanceLogs", editingLogId), payload);
+        await safeMaintenanceWrite({ action: "update", collectionName: "maintenanceLogs", docId: editingLogId, label: "Maintenance log", before: logs.find(l => l.id === editingLogId), data: payload });
         addToast('Updated', 'Maintenance log updated successfully.');
       } else {
         payload.reportedAt = new Date().toISOString();
         payload.reportedBy = appUser.name;
-        await addDoc(collection(db, "maintenanceLogs"), payload);
+        await safeMaintenanceWrite({ action: "add", collectionName: "maintenanceLogs", label: "Maintenance log", data: payload });
         addToast('Logged', 'New equipment issue reported.');
       }
       setIsModalOpen(false); resetForm();
@@ -2239,11 +2256,11 @@ const TabMaintenance = ({ appUser, addToast }) => {
     };
     try {
       if (editingPmId) {
-        await updateDoc(doc(db, "pmSchedules", editingPmId), payload);
+        await safeMaintenanceWrite({ action: "update", collectionName: "pmSchedules", docId: editingPmId, label: "PM schedule", before: pmSchedules.find(p => p.id === editingPmId), data: payload });
         addToast('Updated', 'PM Schedule updated.');
       } else {
         payload.lastCompleted = getToday(); // Default to today on creation
-        await addDoc(collection(db, "pmSchedules"), payload);
+        await safeMaintenanceWrite({ action: "add", collectionName: "pmSchedules", label: "PM schedule", data: payload });
         addToast('Created', 'New PM Schedule active.');
       }
       setIsPmModalOpen(false); resetPmForm();
@@ -2254,10 +2271,10 @@ const TabMaintenance = ({ appUser, addToast }) => {
     if(!window.confirm(`Mark ${pm.title} as completed for today?`)) return;
     try {
       // 1. Update the PM tracker
-      await updateDoc(doc(db, "pmSchedules", pm.id), { lastCompleted: getToday() });
+      await safeMaintenanceWrite({ action: "update", collectionName: "pmSchedules", docId: pm.id, label: "PM completion", before: pm, data: { lastCompleted: getToday() } });
       
       // 2. Auto-generate a historical paper trail in the main logs
-      await addDoc(collection(db, "maintenanceLogs"), {
+      await safeMaintenanceWrite({ action: "add", collectionName: "maintenanceLogs", label: "PM completion log", data: {
         equipment: pm.equipment,
         issue: `[PM COMPLETED] ${pm.title}`,
         urgency: 'Standard',
@@ -2270,7 +2287,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
         resolvedAt: new Date().toISOString(),
         updatedBy: appUser.name,
         lastUpdated: new Date().toISOString()
-      });
+      } });
       
       addToast('PM Completed', 'Schedule reset and historical log created.');
     } catch (e) { addToast('Error', e.message); }
@@ -2372,7 +2389,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
                   </div>
                   <div className="flex items-center gap-1 md:self-end">
                     <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
-                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) safeMaintenanceWrite({ action: "delete", collectionName: "maintenanceLogs", docId: log.id, label: "Maintenance log", before: log }); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
                   </div>
                 </div>
               ))}
@@ -2425,7 +2442,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
                       </button>
                       <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
                         <button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(pm.frequencyDays.toString()); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><Edit size={14}/></button>
-                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) deleteDoc(doc(db,"pmSchedules",pm.id)); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) safeMaintenanceWrite({ action: "delete", collectionName: "pmSchedules", docId: pm.id, label: "PM schedule", before: pm }); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                       </div>
                     </div>
                   </div>
@@ -2446,6 +2463,11 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId, { limitCount: 150 });
   const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
   const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
+  const [depRecipeId, setDepRecipeId] = useState('');
+  const [depInventoryItemId, setDepInventoryItemId] = useState('');
+  const [depNotes, setDepNotes] = useState('');
+  const safeOpsWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   const today = currentDate || getToday();
   const todayDate = new Date(today + 'T12:00:00');
@@ -2470,6 +2492,33 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const yesterdaySales = sales.find(s => s.date === yesterday);
   const todaySales = sales.find(s => s.date === today);
   const monthSales = sales.filter(s => (s.date || '').startsWith(monthStr));
+
+  const handleAddMenuDependency = async (e) => {
+    e.preventDefault();
+    const recipe = recipes.find(r => r.id === depRecipeId);
+    const item = inventoryItems.find(i => i.id === depInventoryItemId);
+    if (!recipe || !item) return addToast('Dependency Needed', 'Choose both a menu item/recipe and an inventory item.');
+    const alreadyExists = menuDependencies.some(dep => dep.recipeId === recipe.id && dep.inventoryItemId === item.id);
+    if (alreadyExists) return addToast('Already Mapped', 'That dependency is already in the menu graph.');
+    await safeOpsWrite({ action: 'add', collectionName: 'menuDependencies', label: 'Menu dependency', data: {
+      recipeId: recipe.id,
+      recipeName: recipe.name || recipe.title || 'Recipe',
+      inventoryItemId: item.id,
+      inventoryItemName: item.name || 'Inventory item',
+      dependencyType: 'ingredient',
+      notes: depNotes.trim(),
+      createdAt: new Date().toISOString(),
+      createdBy: appUser?.name || appUser?.email || 'Ops Center',
+      restaurantId: appUser.restaurantId
+    } });
+    setDepNotes('');
+    addToast('Dependency Mapped', `${recipe.name || recipe.title || 'Recipe'} now watches ${item.name}.`);
+  };
+
+  const handleDeleteMenuDependency = async (dep) => {
+    if (!window.confirm(`Remove dependency: ${dep.recipeName || 'Recipe'} → ${dep.inventoryItemName || 'item'}?`)) return;
+    await safeOpsWrite({ action: 'delete', collectionName: 'menuDependencies', docId: dep.id, label: 'Menu dependency', before: dep });
+  };
 
   const parseShiftHours = (start, end) => {
     if (!start || !end) return 0;
@@ -2566,16 +2615,20 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     return null;
   }).filter(Boolean).slice(0, 5);
 
+  const stockNeed = (item) => Math.max(0, Math.ceil(Number(item.parLevel || 0) - Number(item.currentStock || 0)));
+  const urgent86Items = lowStockItems.filter(i => Number(i.currentStock || 0) <= 0 || (Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) / Math.max(1, Number(i.parLevel || 1)) <= 0.25));
+  const dependencyReport = buildMenuDependencyReport({ recipes, inventoryItems, prepItems: tasks, menuDependencies, events });
+  const affectedMenuItems = dependencyReport.affectedRecipes.slice(0, 12);
+  const menuGraphCoverage = recipes.length ? Math.round((new Set(menuDependencies.map(dep => dep.recipeId)).size / recipes.length) * 100) : 0;
+
   const recommendations = [
-    lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.',
+    affectedMenuItems.length > 0 ? `Menu dependency: ${affectedMenuItems[0].recipe.name || affectedMenuItems[0].recipe.title || 'A recipe'} is affected by ${affectedMenuItems[0].lowStockMatches.map(i => i.name).join(', ')}.` : (lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.'),
     criticalMaintenance.length > 0 ? `Maintenance first: ${criticalMaintenance[0].equipment} needs attention.` : 'No high priority equipment fires showing.',
-    openTasks.length > 0 ? `Opening focus: ${openTasks.slice(0, 3).map(t => t.title).join(', ')}.` : 'Today\'s task list is buttoned up.',
+    openTasks.length > 0 ? `Opening focus: ${openTasks.slice(0, 3).map(t => t.title).join(', ')}.` : "Today's task list is buttoned up.",
     overduePm.length > 0 ? `Preventative maintenance overdue: ${overduePm.slice(0, 2).map(pm => pm.title).join(', ')}.` : 'Preventative maintenance countdowns are quiet.',
     scheduleWarnings.length > 0 ? scheduleWarnings[0] : 'No immediate schedule warnings detected.'
   ];
 
-  const stockNeed = (item) => Math.max(0, Math.ceil(Number(item.parLevel || 0) - Number(item.currentStock || 0)));
-  const urgent86Items = lowStockItems.filter(i => Number(i.currentStock || 0) <= 0 || (Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) / Math.max(1, Number(i.parLevel || 1)) <= 0.25));
   const suggestedPrepTasks = [
     ...lowStockItems.slice(0, 4).map(i => `Prep/order recovery: ${i.name} is below par by ${stockNeed(i)}.`),
     forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High forecast: add backup proteins, fries, sauces, and expo garnish before rush.' : null,
@@ -2589,11 +2642,11 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     if (items.length === 0) return addToast('Smart Order', 'No below-par items found.');
     if (!window.confirm(`Build pending order quantities for ${items.length} below-par items?`)) return;
     try {
-      await Promise.all(items.map(i => updateDoc(doc(db, 'inventoryItems', i.id), {
+      await Promise.all(items.map(i => safeOpsWrite({ action: 'update', collectionName: 'inventoryItems', docId: i.id, label: 'Smart order', before: i, data: {
         pendingQty: Math.max(Number(i.pendingQty || 0), stockNeed(i)),
         lastSmartOrderDate: getToday(),
         lastSmartOrderBy: appUser?.name || 'Ops Command Center'
-      })));
+      } })));
       await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Ops Command Center.`);
       addToast('Smart Order Built', `${items.length} item(s) queued for ordering.`);
     } catch (err) { addToast('Error', err.message); }
@@ -2606,7 +2659,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       const existingToday = new Set(tasks.filter(t => t.source === 'ops-smart-prep' && t.generatedForDate === today).map(t => t.title));
       const adds = suggestedPrepTasks
         .filter(title => !existingToday.has(title))
-        .map(title => addDoc(collection(db, 'tasks'), {
+        .map(title => safeOpsWrite({ action: 'add', collectionName: 'tasks', label: 'Smart prep task', data: {
           title,
           category: 'Smart Prep',
           frequency: 'daily',
@@ -2615,7 +2668,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           source: 'ops-smart-prep',
           completions: {},
           restaurantId: appUser.restaurantId
-        }));
+        } }));
       await Promise.all(adds);
       await logAudit(appUser, 'SMART_PREP_CREATED', 'tasks', `Created ${adds.length} smart prep tasks for ${today}.`);
       addToast('Smart Prep Created', `${adds.length} task(s) added to Prep & Tasks.`);
@@ -2627,9 +2680,9 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     const alertLines = urgent86Items.slice(0, 10).map(i => `• ${i.name}: ${Number(i.currentStock || 0)} on hand / par ${Number(i.parLevel || 0)}`);
     const text = `86 / Low Stock Watch:\n${alertLines.join('\n')}`;
     try {
-      await addDoc(collection(db, 'events'), {
-        date: new Date().toISOString(), title: text, type: 'note', author: appUser?.name || 'Ops Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
-      });
+      await safeOpsWrite({ action: 'add', collectionName: 'events', label: '86 alert', data: {
+        date: new Date().toISOString(), title: text, type: 'note', messageCategory: '86 Alert', author: appUser?.name || 'Ops Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
+      } });
       addToast('86 Alert Posted', 'Important low-stock alert posted to Message Board.');
     } catch (err) { addToast('Error', err.message); }
   };
@@ -2669,7 +2722,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const handlePostBrief = async () => {
     try {
-      await addDoc(collection(db, 'events'), {
+      await safeOpsWrite({ action: 'add', collectionName: 'events', label: 'Morning brief', data: {
         date: new Date().toISOString(),
         title: briefText(),
         type: 'note',
@@ -2677,7 +2730,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         isImportant: false,
         restaurantId: appUser.restaurantId,
         replies: []
-      });
+      } });
       addToast('Morning Brief Posted', 'Saved to the Message Board for the team.');
     } catch (err) {
       addToast('Error', err.message);
@@ -2708,10 +2761,10 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       const existingPmTitles = new Set(pmSchedules.map(p => (p.title || '').toLowerCase()));
       const taskAdds = defaultTasks
         .filter(t => !existingTaskTitles.has(t.title.toLowerCase()))
-        .map(t => addDoc(collection(db, 'tasks'), { ...t, completions: {}, restaurantId: appUser.restaurantId }));
+        .map(t => safeOpsWrite({ action: 'add', collectionName: 'tasks', label: 'Seed kitchen task', data: { ...t, completions: {}, restaurantId: appUser.restaurantId } }));
       const pmAdds = defaultPm
         .filter(p => !existingPmTitles.has(p.title.toLowerCase()))
-        .map(p => addDoc(collection(db, 'pmSchedules'), { ...p, lastCompleted: getToday(), lastUpdatedBy: appUser.name, restaurantId: appUser.restaurantId }));
+        .map(p => safeOpsWrite({ action: 'add', collectionName: 'pmSchedules', label: 'Seed PM schedule', data: { ...p, lastCompleted: getToday(), lastUpdatedBy: appUser.name, restaurantId: appUser.restaurantId } }));
       await Promise.all([...taskAdds, ...pmAdds]);
       addToast('Kitchen Ops Seeded', `Added ${taskAdds.length + pmAdds.length} operating standards.`);
     } catch (err) {
@@ -2725,6 +2778,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     { label: 'Health Score', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Strong shift posture' : healthScore >= 70 ? 'Watch the weak spots' : 'Needs manager attention' },
     { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
     { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
+    { label: 'Menu Impact', value: `${affectedMenuItems.length}`, detail: affectedMenuItems.length ? 'Recipes affected by low stock' : 'No affected recipes found' },
     { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
     { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} on clock` : 'Nobody clocked in' },
     { label: 'Waste Today', value: `${todayWaste.length}`, detail: wasteCost ? `$${wasteCost.toFixed(2)} logged` : 'No cost logged' }
@@ -2906,6 +2960,54 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
             <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>
           </div>
         </div>
+        <div className="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-3">
+          <form onSubmit={handleAddMenuDependency} className="xl:col-span-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="font-black text-white text-sm">Dependency Graph Editor</div>
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Manual recipe → inventory links make 86 alerts smarter than text guessing.</div>
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{menuGraphCoverage}% mapped</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <select value={depRecipeId} onChange={e => setDepRecipeId(e.target.value)} className={T.input}>
+                <option value="">Choose recipe/menu item</option>
+                {recipes.slice().sort((a,b)=>String(a.title || a.name || '').localeCompare(String(b.title || b.name || ''))).map(r => <option key={r.id} value={r.id}>{r.title || r.name || 'Recipe'}</option>)}
+              </select>
+              <select value={depInventoryItemId} onChange={e => setDepInventoryItemId(e.target.value)} className={T.input}>
+                <option value="">Choose inventory item</option>
+                {inventoryItems.slice().sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''))).map(i => <option key={i.id} value={i.id}>{i.name || 'Inventory item'}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2">
+              <input value={depNotes} onChange={e => setDepNotes(e.target.value)} className={T.input} placeholder="Optional note, station, substitute, or recovery hint" />
+              <button className={T.btn}>Map Dependency</button>
+            </div>
+          </form>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+            <div className="font-black text-white text-sm">Graph Status</div>
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Links</div><div className="text-xl font-black text-white">{menuDependencies.length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Collisions</div><div className="text-xl font-black text-orange-300">{affectedMenuItems.length}</div></div>
+            </div>
+            <div className="mt-3 max-h-28 overflow-y-auto custom-scrollbar space-y-1">
+              {menuDependencies.length === 0 && <div className="text-xs text-slate-500 font-bold">No manual links yet. Start with your best sellers and 86-prone ingredients.</div>}
+              {menuDependencies.slice(0, 8).map(dep => <div key={dep.id} className="flex items-center justify-between gap-2 bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-300"><span className="truncate">{dep.recipeName} → {dep.inventoryItemName}</span><button type="button" onClick={() => handleDeleteMenuDependency(dep)} className="text-red-400 hover:text-red-300 flex-shrink-0">Remove</button></div>)}
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 bg-[#0B0E11] border border-[#2A353D] rounded-xl overflow-hidden">
+          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Dependency Radar</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">v14.0.1 graph</span></div>
+          <div className="divide-y divide-[#2A353D] max-h-[260px] overflow-y-auto custom-scrollbar">
+            {affectedMenuItems.length === 0 && <div className="p-4 text-xs font-bold text-slate-500">No dependency collisions detected. Map recipes to ingredients above, or add ingredient names to recipes to sharpen the radar.</div>}
+            {affectedMenuItems.map(({ recipe, lowStockMatches, prepMatches, explicitDependencies, eightySixAlerts }) => (
+              <div key={recipe.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="min-w-0"><div className="font-black text-white text-sm truncate">{recipe.name || recipe.title || 'Recipe'}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lowStockMatches.length ? `Affected by ${lowStockMatches.map(i => i.name).join(', ')}` : 'Affected by 86/prep signal'}</div><div className="text-[10px] text-slate-600 font-bold mt-1">{explicitDependencies?.length ? 'Manual graph link • ' : 'Text match • '}{prepMatches?.length ? `${prepMatches.length} prep signal(s) • ` : ''}{eightySixAlerts?.length ? `${eightySixAlerts.length} active 86 alert(s)` : ''}</div></div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-orange-300">{lowStockMatches.some(i => Number(i.pendingQty || 0) > 0) ? 'Recovery pending' : 'Needs action'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -2915,6 +3017,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
   const today = getToday();
   const profile = getHomeProfile(appUser);
+  const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
   const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
   const myShift = todaysShifts.find(s => s.employeeId === appUser.id);
   const activePunches = timePunches.filter(p => ['clocked_in','on_break'].includes(p.status));
@@ -2947,32 +3050,36 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
 
   const quickCreate = async (kind) => {
     try {
-      let refDoc = null;
+      let undoMeta = null;
       if (kind === '86') {
         const item = prompt('What item is 86\'d or low?');
         if (!item) return;
-        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] });
+        const result = await safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Today quick 86 alert', data: { restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] } });
+        undoMeta = { collectionName: 'events', id: result.id, before: result.payload };
         addToast('86 Alert Posted', item);
       }
       if (kind === 'prep') {
         const item = prompt('Prep task to add for today?');
         if (!item) return;
-        refDoc = await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: item, station: 'General', isCompleted: false, qty: 1, createdAt: new Date().toISOString(), createdBy: appUser.name });
+        const result = await safeTodayWrite({ action: 'add', collectionName: 'prepItems', label: 'Today quick prep', data: { restaurantId: appUser.restaurantId, date: today, text: item, station: 'General', isCompleted: false, qty: 1, createdAt: new Date().toISOString(), createdBy: appUser.name } });
+        undoMeta = { collectionName: 'prepItems', id: result.id, before: result.payload };
         addToast('Prep Added', item);
       }
       if (kind === 'maintenance') {
         const issue = prompt('Maintenance issue?');
         if (!issue) return;
-        refDoc = await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'General', issue, urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: appUser.name });
+        const result = await safeTodayWrite({ action: 'add', collectionName: 'maintenanceLogs', label: 'Today quick maintenance', data: { restaurantId: appUser.restaurantId, equipment: 'General', issue, urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: appUser.name } });
+        undoMeta = { collectionName: 'maintenanceLogs', id: result.id, before: result.payload };
         addToast('Maintenance Added', issue);
       }
       if (kind === 'message') {
         const msg = prompt('Message to post?');
         if (!msg) return;
-        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: msg, messageCategory: 'Shift Note', author: appUser.name, isImportant: false, date: new Date().toISOString(), replies: [] });
+        const result = await safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Today quick message', data: { restaurantId: appUser.restaurantId, type: 'note', title: msg, messageCategory: 'Shift Note', author: appUser.name, isImportant: false, date: new Date().toISOString(), replies: [] } });
+        undoMeta = { collectionName: 'events', id: result.id, before: result.payload };
         addToast('Message Posted', msg.slice(0, 60));
       }
-      if (refDoc) registerUndo?.({ label: `Undo ${kind}`, action: async () => { await deleteDoc(refDoc); addToast('Undone', 'The last quick action was removed.'); } });
+      if (undoMeta?.id) registerUndo?.({ label: `Undo ${kind}`, action: async () => { await safeTodayWrite({ action: 'delete', collectionName: undoMeta.collectionName, docId: undoMeta.id, label: `Undo ${kind}`, before: undoMeta.before }); addToast('Undone', 'The last quick action was removed.'); } });
     } catch (err) { addToast('Could not save', err.message || 'Permission or connection issue.'); }
   };
 
@@ -2981,14 +3088,14 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     if (!window.confirm('Add a complete demo set to this workspace? This adds sample recipes, prep, inventory, messages, events, and maintenance.')) return;
     const stamp = new Date().toISOString();
     await Promise.all([
-      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: 'DEMO: Tonight has live music and heavy dinner volume expected.', messageCategory: 'Announcement', author: '86 Demo', isImportant: true, date: stamp, replies: [], readBy: [] }),
-      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'special_event', title: 'DEMO: Patio Rush / Live Music', date: today, time: '19:00', notes: 'Expect extra bar and fryer volume.', addedBy: '86 Demo' }),
-      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Portion burger patties', station: 'Grill', qty: 24, isCompleted: false }),
-      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Backup ranch and blue cheese', station: 'Cold', qty: 2, isCompleted: false }),
-      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Chicken Breast', category: 'Protein', parLevel: 3, currentStock: 1, pendingQty: 0, price: 84, packSize: '40 lb case', yieldQty: 1, isStarred: true }),
-      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Fries', category: 'Frozen', parLevel: 5, currentStock: 2, pendingQty: 0, price: 33, packSize: 'Case', yieldQty: 1, isStarred: true }),
-      addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'DEMO Fryer #2', issue: 'Filter due before dinner rush', urgency: 'High', status: 'Reported', reportedAt: stamp, reportedBy: '86 Demo' }),
-      addDoc(collection(db, 'recipes'), { restaurantId: appUser.restaurantId, title: 'DEMO House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 gallon', ingredients: 'Mayo\nButtermilk\nRanch seasoning', instructions: 'Whisk. Label. Chill.', authorName: '86 Demo', lastUpdated: stamp })
+      safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Seed demo announcement', data: { restaurantId: appUser.restaurantId, type: 'note', title: 'DEMO: Tonight has live music and heavy dinner volume expected.', messageCategory: 'Announcement', author: '86 Demo', isImportant: true, date: stamp, replies: [], readBy: [] } }),
+      safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Seed demo event', data: { restaurantId: appUser.restaurantId, type: 'special_event', title: 'DEMO: Patio Rush / Live Music', date: today, time: '19:00', notes: 'Expect extra bar and fryer volume.', addedBy: '86 Demo' } }),
+      safeTodayWrite({ action: 'add', collectionName: 'prepItems', label: 'Seed demo prep', data: { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Portion burger patties', station: 'Grill', qty: 24, isCompleted: false } }),
+      safeTodayWrite({ action: 'add', collectionName: 'prepItems', label: 'Seed demo prep', data: { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Backup ranch and blue cheese', station: 'Cold', qty: 2, isCompleted: false } }),
+      safeTodayWrite({ action: 'add', collectionName: 'inventoryItems', label: 'Seed demo inventory', data: { restaurantId: appUser.restaurantId, name: 'DEMO Chicken Breast', category: 'Protein', parLevel: 3, currentStock: 1, pendingQty: 0, price: 84, packSize: '40 lb case', yieldQty: 1, isStarred: true } }),
+      safeTodayWrite({ action: 'add', collectionName: 'inventoryItems', label: 'Seed demo inventory', data: { restaurantId: appUser.restaurantId, name: 'DEMO Fries', category: 'Frozen', parLevel: 5, currentStock: 2, pendingQty: 0, price: 33, packSize: 'Case', yieldQty: 1, isStarred: true } }),
+      safeTodayWrite({ action: 'add', collectionName: 'maintenanceLogs', label: 'Seed demo maintenance', data: { restaurantId: appUser.restaurantId, equipment: 'DEMO Fryer #2', issue: 'Filter due before dinner rush', urgency: 'High', status: 'Reported', reportedAt: stamp, reportedBy: '86 Demo' } }),
+      safeTodayWrite({ action: 'add', collectionName: 'recipes', label: 'Seed demo recipe', data: { restaurantId: appUser.restaurantId, title: 'DEMO House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 gallon', ingredients: 'Mayo\nButtermilk\nRanch seasoning', instructions: 'Whisk. Label. Chill.', authorName: '86 Demo', lastUpdated: stamp } })
     ]);
     addToast('Demo Mode Seeded', 'Sample operating data was added to this workspace.');
   };

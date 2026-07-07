@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -2249,6 +2249,19 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [maintenanceEndsAt, setMaintenanceEndsAt] = useState('');
   const [brandingWorkspaceId, setBrandingWorkspaceId] = useState('');
   const [brandingForm, setBrandingForm] = useState({ appName: '86 Chaos', restaurantGroupName: '', accentColor: '#D4A381', restaurantLogoUrl: '', showRestaurantLogo: true, loginMessage: '', helpContact: '', timezone: 'America/Chicago', dateFormat: 'MMM d, yyyy', timeFormat: 'h:mm a' });
+  const [v14WorkspaceId, setV14WorkspaceId] = useState('');
+  const [v14StorageReport, setV14StorageReport] = useState(null);
+  const [v14SchemaReport, setV14SchemaReport] = useState(null);
+  const [v14BackupPreview, setV14BackupPreview] = useState(null);
+  const [v14BackupPath, setV14BackupPath] = useState('');
+  const [v14Backups, setV14Backups] = useState([]);
+  const [v14BackupsLoadedAt, setV14BackupsLoadedAt] = useState('');
+  const [v14SelectedCollections, setV14SelectedCollections] = useState([]);
+  const [v14RestoreConfirm, setV14RestoreConfirm] = useState('');
+  const [v14PermissionUserId, setV14PermissionUserId] = useState('');
+  const [v14GuardrailReport, setV14GuardrailReport] = useState(null);
+  const [v14BusyTool, setV14BusyTool] = useState('');
+
 
 // Form States
   const [rName, setRName] = useState(''); const [rAddress, setRAddress] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
@@ -3531,7 +3544,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'scan-invoice', 'send-push', 'send-schedule-alert', 'import-cheers-july-schedule'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'send-push', 'send-schedule-alert', 'import-cheers-july-schedule', 'presence-heartbeat', 'staff-member', 'voice-command', 'alerts'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -3846,7 +3859,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
-    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', '14.0 Robustness Suite is the hardening bay for Safe Write Engine status, Storage Doctor, Schema Doctor, Backup Preview, Permission Simulator, Import Bridge, and Release Guardrails.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'Version 14.0.1 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.1 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.1 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Ops smart actions, Today quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Ops Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
     { title: 'Live Activity: why online users may not appear', group: 'Admin Tab Guide', keywords: 'live users online heartbeat presence last active last seen firestore rules gps notification active tab auth session', body: ['A live user appears when their browser saves a verified presence heartbeat. The app now waits for the Firebase login session before it marks the current device as online, so stale cached sessions cannot falsely show Online Now.', 'The Staff Roster My Live Presence Check tells you whether the heartbeat was saved by the server API, saved by the client fallback, waiting for auth, or blocked by permissions.', 'If it says Firebase login is not active, log out and back in on that device. If it says permission-denied, publish the included Firestore rules to the same Firebase project used by that deployment.', 'System Administrator → Live Activity reads the same livePresence and presenceSessions sources as Staff Roster. A user should appear within the three-minute live window after leaving the app open for about 30 seconds.', 'For preview testing, confirm Vercel Preview server variables and the browser Firebase config point at the same Firebase project. Mixed Preview/Production Firebase credentials make heartbeat tokens verify against the wrong project.'] },
     { title: 'Dashboard / Command Deck: what the numbers mean', group: 'Admin Tab Guide', keywords: 'dashboard command deck metrics backup countdown action queue mrr crashes stale clients push adoption', body: ['Online Now counts users with a fresh heartbeat in the last few minutes.', 'Crashes shows recent crash reports and should be used with Support before editing code or rules.', 'Backup info shows the last backup and the countdown to the next automatic backup.', 'MRR, trial, stale client, push opt-in, and sticky-rate cards are operating signals, not accounting books. Use them to spot accounts that need attention.', 'The Administrator Action Queue is the shortest path to urgent problems. Click a card to jump to the relevant admin section.'] },
@@ -4305,6 +4319,7 @@ Type RESTORE to continue.`);
     { title:'Overview', summary:'Status, readiness, and active users', tabs:[
       {id:'overview', label:'Command Center', short:'Home'},
       {id:'health', label:'Health Dashboard', short:'Health'},
+      {id:'v14', label:'14.0 Robustness Suite', short:'V14'},
       {id:'deployment', label:'Deployment Readiness', short:'Deploy'},
       {id:'live', label:'Live Activity Monitor', short:'Live'}
     ]},
@@ -4334,12 +4349,104 @@ Type RESTORE to continue.`);
   ];
   const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
-  const mobilePrimaryTabs = ['overview', 'health', 'deployment', 'live', 'roles', 'push', 'setup', 'data', 'maintenance', 'manual'];
+  const mobilePrimaryTabs = ['overview', 'health', 'v14', 'deployment', 'live', 'roles', 'push', 'setup', 'data', 'maintenance', 'manual'];
 
   const jumpToAdminIssue = (target) => {
     setSubTab(target || 'overview');
     setTimeout(() => document.getElementById(`admin-${target || 'overview'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
+
+  const v14TargetRestaurantId = v14WorkspaceId || editingRest?.id || appUser?.restaurantId || restaurants[0]?.id || '';
+  const v14PermissionUser = allUsers.find(u => u.id === v14PermissionUserId) || allUsers.find(u => u.restaurantId === v14TargetRestaurantId) || allUsers[0] || null;
+  const v14PermissionRestaurant = restaurants.find(r => r.id === (v14PermissionUser?.restaurantId || v14TargetRestaurantId)) || {};
+  const v14PermissionPreview = v14PermissionUser ? buildPermissionPreview(v14PermissionUser, v14PermissionRestaurant?.features || {}) : null;
+  const v14OfflineQueueCount = (() => {
+    if (typeof window === 'undefined') return 0;
+    try {
+      return Object.keys(localStorage).filter(k => k.startsWith('chaosOfflineWriteQueue_')).reduce((sum, key) => sum + (JSON.parse(localStorage.getItem(key) || '[]').length || 0), 0);
+    } catch (_) { return 0; }
+  })();
+
+  const runV14StorageDoctor = async () => {
+    if (!v14TargetRestaurantId) return addToast('Choose Workspace', 'Pick a workspace before running Storage Doctor.');
+    setV14BusyTool('storage');
+    try {
+      const response = await secureFetch('/api/storage-doctor', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ restaurantId: v14TargetRestaurantId }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Storage Doctor failed.');
+      setV14StorageReport(data);
+      addToast(data.ok ? 'Storage Doctor Passed' : 'Storage Needs Attention', `${data.checks?.filter(c => !c.ok).length || 0} issue(s) found.`);
+    } catch (err) { addToast('Storage Doctor Error', err.message); }
+    finally { setV14BusyTool(''); }
+  };
+
+  const runV14SchemaDoctor = async (repair = false) => {
+    if (!v14TargetRestaurantId) return addToast('Choose Workspace', 'Pick a workspace before running Schema Doctor.');
+    if (repair && !window.confirm('Run safe repair for repairable schema issues? This will stamp missing restaurantId values for the selected workspace, clamp negative inventory counts, and lock 86 Chaos branding.')) return;
+    setV14BusyTool(repair ? 'schema-repair' : 'schema');
+    try {
+      const response = await secureFetch('/api/schema-doctor', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ restaurantId: v14TargetRestaurantId, repair }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Schema Doctor failed.');
+      setV14SchemaReport(data);
+      addToast(repair ? 'Schema Repair Complete' : 'Schema Scan Complete', `${data.issueCount || 0} issue(s), ${data.repairs?.length || 0} repair(s).`);
+    } catch (err) { addToast('Schema Doctor Error', err.message); }
+    finally { setV14BusyTool(''); }
+  };
+
+  const loadV14Backups = async () => {
+    setV14BusyTool('backups');
+    try {
+      const response = await secureFetch('/api/list-backups?includeUsage=0');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not list backups.');
+      const backups = Array.isArray(data.backups) ? data.backups : [];
+      setV14Backups(backups);
+      setV14BackupsLoadedAt(new Date().toISOString());
+      if (!v14BackupPath && backups[0]?.path) setV14BackupPath(backups[0].path);
+      addToast('Backups Loaded', `${backups.length} backup(s) ready to select.`);
+    } catch (err) { addToast('Backup List Error', err.message); }
+    finally { setV14BusyTool(''); }
+  };
+
+  const runV14BackupPreview = async (restore = false) => {
+    if (!v14BackupPath.trim()) return addToast('Backup Path Needed', 'Paste or choose a Firebase Storage backup path first.');
+    if (restore && v14RestoreConfirm !== 'RESTORE') return addToast('Type RESTORE', 'Selective restore requires typing RESTORE.');
+    if (restore && v14SelectedCollections.length === 0) return addToast('Choose Collections', 'Select at least one collection to restore.');
+    if (restore && !window.confirm(`Selective restore ${v14SelectedCollections.join(', ')} from this backup?`)) return;
+    setV14BusyTool(restore ? 'restore' : 'preview');
+    try {
+      const response = await secureFetch('/api/backup-preview', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ storagePath: v14BackupPath.trim(), selectedCollections: v14SelectedCollections, action: restore ? 'restoreSelected' : 'preview', confirmText: v14RestoreConfirm }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Backup preview failed.');
+      setV14BackupPreview(data);
+      if (!restore && data.rows?.length && v14SelectedCollections.length === 0) setV14SelectedCollections(data.rows.slice(0, 6).map(r => r.collectionName));
+      addToast(restore ? 'Selective Restore Complete' : 'Backup Preview Ready', restore ? `${data.restored?.restoredDocuments || 0} document(s) restored.` : `${data.totalDocs || 0} document(s) inspected.`);
+    } catch (err) { addToast('Backup Tool Error', err.message); }
+    finally { setV14BusyTool(''); }
+  };
+
+  const downloadV14ImportTemplates = () => {
+    const templates = buildImportBridgeTemplates();
+    const prefix = `86chaos-v14-import-templates`;
+    const payload = Object.entries(templates).map(([name, rows]) => `### ${name}.csv\n${rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')}`).join('\n\n');
+    downloadTextFile(`${prefix}.txt`, payload, 'text/plain;charset=utf-8;');
+    addToast('Templates Downloaded', 'Import Bridge templates downloaded as a single text pack.');
+  };
+
+  const runV14Guardrails = () => {
+    const report = buildV14ClientGuardrailReport({ currentVersion: CURRENT_VERSION, features: restaurants.find(r => r.id === v14TargetRestaurantId)?.features || {}, hasBrandLock: true, hasHelpSearch: true, hasRules: true });
+    setV14GuardrailReport(report);
+    addToast(report.ok ? 'Guardrails Passed' : 'Guardrails Need Work', `${report.checks.filter(c => !c.ok).length} issue(s).`);
+  };
+
+  const V14JsonPanel = ({ title, data }) => (
+    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 overflow-hidden">
+      <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{title}</div>
+      <pre className="text-[10px] text-slate-300 whitespace-pre-wrap break-words max-h-[280px] overflow-y-auto custom-scrollbar">{data ? JSON.stringify(data, null, 2) : 'No report yet.'}</pre>
+    </div>
+  );
+
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
@@ -5218,6 +5325,104 @@ Type RESTORE to continue.`);
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* --- TAB: V14 ROBUSTNESS SUITE --- */}
+      {subTab === 'v14' && (
+        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]" id="admin-v14">
+          <div className="cockpit-panel rounded-2xl p-5 border border-[#D4A381]/30 bg-gradient-to-br from-[#1A2126] to-[#0B0E11]">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#D4A381] mb-2">Version 14.0.1</div>
+                <h2 className="text-2xl sm:text-3xl font-black text-white">Robustness Suite</h2>
+                <p className="text-sm text-slate-400 font-bold mt-2 max-w-3xl">Safe writes, upload diagnostics, schema repair, restore preview, permission simulation, import templates, offline queue status, and release guardrails in one admin cockpit.</p>
+              </div>
+              <div className="min-w-[260px]">
+                <label className={T.label}>Target Workspace</label>
+                <select value={v14WorkspaceId} onChange={e => setV14WorkspaceId(e.target.value)} className={T.input}>
+                  <option value="">Auto / current workspace</option>
+                  {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
+                </select>
+                <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">Using: {v14TargetRestaurantId || 'none selected'}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className={`${T.card} p-4`}>
+              <div className="flex items-center justify-between gap-3"><h3 className="font-black text-white">Safe Write Engine</h3><SignalPip tone="emerald" label="ARMED" /></div>
+              <p className="text-xs text-slate-400 font-bold mt-2">The v14.0.1 shared write helpers are now wired into major kitchen forms for inventory, waste, prep, line checks, recipes, maintenance, smart prep, 86 alerts, and the menu dependency graph.</p>
+              <div className="grid grid-cols-2 gap-2 mt-4">
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Offline Queue</div><div className="text-2xl font-black text-white">{v14OfflineQueueCount}</div></div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">API Route</div><div className="text-sm font-black text-emerald-300 mt-2">/api/safe-write</div></div>
+              </div>
+            </div>
+
+            <div className={`${T.card} p-4`}>
+              <div className="flex items-center justify-between gap-3"><h3 className="font-black text-white">Upload & Storage Doctor</h3><SignalPip tone={v14StorageReport?.ok === false ? 'red' : v14StorageReport?.ok ? 'emerald' : 'amber'} label={v14StorageReport ? (v14StorageReport.ok ? 'PASS' : 'CHECK') : 'READY'} hot={v14StorageReport?.ok === false}/></div>
+              <p className="text-xs text-slate-400 font-bold mt-2">Tests Vercel Admin credentials, project, bucket, restaurant lookup, and a real write/read/delete cycle so logo and invoice uploads stop being mystery soup.</p>
+              <button onClick={runV14StorageDoctor} disabled={v14BusyTool === 'storage'} className={`${T.btn} mt-4 w-full flex items-center justify-center gap-2`}>{v14BusyTool === 'storage' && <Loader2 size={14} className="animate-spin"/>} Run Storage Doctor</button>
+            </div>
+
+            <div className={`${T.card} p-4`}>
+              <div className="flex items-center justify-between gap-3"><h3 className="font-black text-white">Schema Doctor</h3><SignalPip tone={v14SchemaReport?.high ? 'red' : v14SchemaReport ? 'emerald' : 'amber'} label={v14SchemaReport ? `${v14SchemaReport.issueCount || 0} ISSUES` : 'READY'} hot={!!v14SchemaReport?.high}/></div>
+              <p className="text-xs text-slate-400 font-bold mt-2">Scans tenant data for missing restaurant IDs, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards.</p>
+              <div className="grid grid-cols-2 gap-2 mt-4"><button onClick={() => runV14SchemaDoctor(false)} disabled={!!v14BusyTool} className={T.btnAlt}>Dry Run</button><button onClick={() => runV14SchemaDoctor(true)} disabled={!!v14BusyTool} className={T.btn}>Repair Safe Items</button></div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className={`${T.card} p-4 space-y-3`}>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-black text-white">Point-in-Time Restore Preview</h3>
+                <button type="button" onClick={loadV14Backups} disabled={v14BusyTool === 'backups'} className={T.btnAlt}>{v14BusyTool === 'backups' ? 'Loading…' : 'Load Backups'}</button>
+              </div>
+              <p className="text-xs text-slate-400 font-bold">Select a backup from Firebase Storage, preview it, then restore only chosen collections after typing RESTORE.</p>
+              <select value={v14BackupPath} onChange={e => { setV14BackupPath(e.target.value); setV14BackupPreview(null); setV14SelectedCollections([]); }} className={T.input}>
+                <option value="">Choose backup snapshot</option>
+                {v14Backups.map(b => <option key={b.path} value={b.path}>{new Date(b.createdAt || b.updatedAt || Date.now()).toLocaleString()} • {b.mode || 'backup'} • {b.documentCount || 0} docs • {b.name}</option>)}
+              </select>
+              <details className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <summary className="cursor-pointer text-[10px] font-black uppercase tracking-widest text-slate-400">Advanced manual path fallback</summary>
+                <input value={v14BackupPath} onChange={e => setV14BackupPath(e.target.value)} className={`${T.input} mt-3`} placeholder="backups/firestore/manual/...json.gz" />
+              </details>
+              <div className="text-[10px] text-slate-500 font-bold truncate">Selected: {v14BackupPath || 'none'} {v14BackupsLoadedAt ? `• List loaded ${new Date(v14BackupsLoadedAt).toLocaleTimeString()}` : ''}</div>
+              <div className="grid grid-cols-2 gap-2"><button onClick={() => runV14BackupPreview(false)} disabled={!!v14BusyTool || !v14BackupPath} className={T.btnAlt}>Preview Backup</button><button onClick={() => runV14BackupPreview(true)} disabled={!!v14BusyTool || !v14BackupPath} className="bg-red-900/30 border border-red-700 text-red-200 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Selective Restore</button></div>
+              {v14BackupPreview?.warnings?.length > 0 && <div className="bg-amber-950/20 border border-amber-900/50 rounded-xl p-3 text-xs font-bold text-amber-200 space-y-1">{v14BackupPreview.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}</div>}
+              {v14BackupPreview?.rows?.length > 0 && <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 max-h-[260px] overflow-y-auto custom-scrollbar space-y-1">
+                <div className="flex gap-2 mb-2"><button type="button" onClick={() => setV14SelectedCollections(v14BackupPreview.rows.map(r => r.collectionName))} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Select All</button><button type="button" onClick={() => setV14SelectedCollections([])} className="text-[9px] font-black uppercase tracking-widest text-slate-500">Clear</button></div>
+                {v14BackupPreview.rows.map(row => <label key={row.collectionName} className="flex items-center justify-between gap-3 text-xs font-bold text-slate-300 bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><span>{row.collectionName} <span className="text-slate-500">({row.count})</span>{row.sensitiveFields?.length ? <span className="text-amber-400 ml-2">sensitive</span> : null}</span><input type="checkbox" checked={v14SelectedCollections.includes(row.collectionName)} onChange={e => setV14SelectedCollections(prev => e.target.checked ? Array.from(new Set([...prev, row.collectionName])) : prev.filter(x => x !== row.collectionName))}/></label>)}
+              </div>}
+              <input value={v14RestoreConfirm} onChange={e => setV14RestoreConfirm(e.target.value)} className={T.input} placeholder="Type RESTORE only when intentionally restoring selected collections" />
+            </div>
+
+            <div className={`${T.card} p-4 space-y-3`}>
+              <h3 className="font-black text-white">Permission Simulator</h3>
+              <p className="text-xs text-slate-400 font-bold">Preview what a user can see, what is blocked, and whether sensitive admin/wage/backup areas are protected.</p>
+              <select value={v14PermissionUserId} onChange={e => setV14PermissionUserId(e.target.value)} className={T.input}>
+                <option value="">Auto-select user</option>
+                {allUsers.filter(u => !v14TargetRestaurantId || u.restaurantId === v14TargetRestaurantId).slice(0, 300).map(u => <option key={u.id} value={u.id}>{u.name || u.email || u.id} • {restaurants.find(r => r.id === u.restaurantId)?.name || u.restaurantId}</option>)}
+              </select>
+              {v14PermissionPreview ? <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-[#0B0E11] border border-emerald-900/40 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-emerald-300 mb-2">Allowed</div>{v14PermissionPreview.allowed.map(x => <div key={x.key} className="text-xs font-bold text-slate-300 py-1">✓ {x.label}</div>)}</div>
+                <div className="bg-[#0B0E11] border border-red-900/40 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300 mb-2">Blocked</div>{v14PermissionPreview.blocked.map(x => <div key={x.key} className="text-xs font-bold text-slate-400 py-1">× {x.label}</div>)}</div>
+              </div> : <div className="text-xs text-slate-500 font-bold">No user selected.</div>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className={`${T.card} p-4`}><h3 className="font-black text-white">Import Bridge</h3><p className="text-xs text-slate-400 font-bold mt-2">Downloads starter templates for Toast/Square/Clover sales, payroll/time, vendor invoices, and inventory counts.</p><button onClick={downloadV14ImportTemplates} className={`${T.btn} mt-4 w-full`}>Download Templates</button></div>
+            <div className={`${T.card} p-4`}><h3 className="font-black text-white">Release Guardrail Tests</h3><p className="text-xs text-slate-400 font-bold mt-2">Runs client-side checks for version, 86 brand lock, demo privacy rule, Help Center boundary, and bundled rules.</p><button onClick={runV14Guardrails} className={`${T.btnAlt} mt-4 w-full`}>Run Guardrails</button></div>
+            <div className={`${T.card} p-4`}><h3 className="font-black text-white">Kitchen Dependency Engine</h3><p className="text-xs text-slate-400 font-bold mt-2">Ops Center now cross-checks low-stock inventory against recipes and prep to surface affected menu items and recovery signals.</p><button onClick={() => setActiveTab('ops')} className={`${T.btnAlt} mt-4 w-full`}>Open Ops Center</button></div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <V14JsonPanel title="Storage Doctor Report" data={v14StorageReport} />
+            <V14JsonPanel title="Schema Doctor Report" data={v14SchemaReport} />
+            <V14JsonPanel title="Backup Preview / Guardrails" data={v14BackupPreview || v14GuardrailReport} />
           </div>
         </div>
       )}
@@ -6246,6 +6451,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-1401', title:'What changed in version 14.0.1', group:'Release Notes', keywords:'new update 14.0.1 safer saves backup picker menu dependency graph kitchen operations', body:['86 Chaos 14.0.1 makes major kitchen saves safer across inventory, prep, recipes, maintenance, Today quick actions, and Ops Center tools.', 'Ops Center now has a dependency graph editor so managers can link recipes/menu items to inventory items and catch affected menu items sooner.', 'System Administrator backup preview now includes a backup picker, so protected users can choose a backup snapshot instead of typing the full Storage path.', 'Point-in-time restore still keeps safety confirmation before selected collections can be restored.'] },
   { id:'new-13134', title:'What changed in version 13.1.34', group:'Release Notes', keywords:'new update 13.1.34 geofence map pin drop tiles loading gray half image settings workspace', body:['The geofence pin-drop map in Settings → Workspace → Global Config now loads more reliably on desktop and mobile.', 'The app forces the map to resize after the settings panel renders, after browser resize events, and after returning to the tab so gray or half-loaded tiles are less likely.', 'A Refresh Map button was added, and the map can switch tile providers if the current map tiles fail to load.'] },
   { id:'new-13133', title:'What changed in version 13.1.33', group:'Release Notes', keywords:'new update 13.1.33 geofence gps map lookup settings coordinates', body:['Geofence address lookup now uses a safer app-side map lookup instead of relying only on the browser reaching the map service directly.', 'If live map lookup is unavailable, saved latitude and longitude values remain usable and the app gives clearer guidance instead of a vague map-service error.', 'The geofence map tile source was refreshed for better loading in Settings.'] },
   { id:'new-13132', title:'What changed in version 13.1.32', group:'Release Notes', keywords:'new update 13.1.32 live status activity backup verification reliability', body:['Live staff status is more reliable on phones after login or refresh.', 'Backup verification now recognizes readable backup data even when cloud storage returns it already decompressed.', 'Administrator troubleshooting text was updated for live status and backup integrity checks.'] },

@@ -2,7 +2,7 @@ const admin = require('firebase-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '13.1.37';
+const APP_VERSION = '14.0.1';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
