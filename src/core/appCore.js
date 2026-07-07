@@ -150,7 +150,7 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '14.0.1';
+export const CURRENT_VERSION = '14.0.2';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -434,7 +434,7 @@ export const logAudit = async (user, action, target, details) => {
 
 
 // ============================================================================
-// 86 CHAOS 14.0.1 ROBUSTNESS ENGINE
+// 86 CHAOS 14.0.2 ROBUSTNESS ENGINE
 // Central helpers for safer writes, permission previews, offline queueing, import
 // templates, schema guardrails, and kitchen dependency analysis.
 // ============================================================================
@@ -664,7 +664,7 @@ export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], p
 
 export const buildV14ClientGuardrailReport = ({ currentVersion = CURRENT_VERSION, features = {}, hasBrandLock = true, hasHelpSearch = true, hasRules = true } = {}) => {
   const checks = [
-    { id: 'version', label: 'App version is 14.0.1', ok: currentVersion === '14.0.1', detail: `Running ${currentVersion}` },
+    { id: 'version', label: 'App version is 14.0.2', ok: currentVersion === '14.0.2', detail: `Running ${currentVersion}` },
     { id: 'brand-lock', label: '86 Chaos brand lock', ok: hasBrandLock === true, detail: '86 Chaos must stay visible while restaurant logos remain optional.' },
     { id: 'demo-scrub', label: 'Demo privacy rule', ok: true, detail: 'Demo mode should not display real email, phone, address, wage, or sensitive admin data.' },
     { id: 'help-public', label: 'Help Center public boundary', ok: hasHelpSearch === true, detail: 'Help content must remain public-facing and avoid forensics/backups internals.' },

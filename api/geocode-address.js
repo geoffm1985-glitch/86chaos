@@ -38,7 +38,7 @@ async function geocodeNominatim(q) {
     headers: {
       'Accept': 'application/json',
       'Accept-Language': 'en-US,en;q=0.9',
-      'User-Agent': '86Chaos-Geocoder/14.0.1 (https://app.86chaos.com)'
+      'User-Agent': '86Chaos-Geocoder/14.0.2 (https://app.86chaos.com)'
     }
   });
   if (!response.ok) throw new Error(`Nominatim ${response.status}`);

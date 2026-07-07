@@ -38,7 +38,36 @@ const getRoleFromScheduleStaffList = (role, scheduleRoleOptions = []) => {
   return fuzzy || scheduleRoleOptions[0] || clean;
 };
 
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null }) => {
+const mergeWorkspaceSettings = (appUser = {}, clientData = {}) => ({
+  ...(appUser?.systemSettings || {}),
+  ...(clientData?.systemSettings || {})
+});
+
+const settingBool = (value, fallback = false) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (['false', '0', 'off', 'no', 'disabled'].includes(v)) return false;
+    if (['true', '1', 'on', 'yes', 'enabled'].includes(v)) return true;
+  }
+  return Boolean(value);
+};
+
+const isTipDeclarationEnabled = (appUser = {}, clientData = {}) => {
+  const settings = mergeWorkspaceSettings(appUser, clientData);
+  const raw = settings.tips ?? settings.mandatoryTipDeclaration ?? settings.tipDeclarationRequired ?? settings.tipDeclarationEnabled;
+  // The workspace setting has always defaulted to ON in Settings. Treat missing legacy
+  // fields as enabled so old restaurant docs cannot silently let employees bypass tips.
+  return settingBool(raw, true);
+};
+
+const normalizeTipAmount = (value) => {
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100) / 100;
+};
+
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
@@ -115,7 +144,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
 
   const getClockOutGeofenceReview = async () => {
-    const settings = appUser?.systemSettings || {};
+    const settings = mergeWorkspaceSettings(appUser, clientData);
     if (!settings.geofence) return { status: 'not_required', update: {}, alertNeeded: false };
     const targetLat = parseFloat(settings.lat);
     const targetLon = parseFloat(settings.lon);
@@ -223,12 +252,13 @@ const handleClockIn = async () => {
       }
     };
 
-    if (appUser?.systemSettings?.geofence) {
+    const workspaceSettings = mergeWorkspaceSettings(appUser, clientData);
+    if (workspaceSettings.geofence) {
       if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
       
-      const targetLat = parseFloat(appUser.systemSettings.lat);
-      const targetLon = parseFloat(appUser.systemSettings.lon);
-      const allowedRadius = parseInt(appUser.systemSettings.geofenceRadius) || 300; // Default to 300 feet
+      const targetLat = parseFloat(workspaceSettings.lat);
+      const targetLon = parseFloat(workspaceSettings.lon);
+      const allowedRadius = parseInt(workspaceSettings.geofenceRadius) || 300; // Default to 300 feet
       
       if (!targetLat || !targetLon) return addToast('Geofence Error', 'Location coordinates are not set in Workspace settings yet.');
       
@@ -269,7 +299,7 @@ const handleClockIn = async () => {
 
   const initiateClockOut = () => {
     if (clockActionBusy) return;
-    if (appUser?.systemSettings?.tips) { setIsTipModalOpen(true); } 
+    if (isTipDeclarationEnabled(appUser, clientData)) { setIsTipModalOpen(true); } 
     else { finalizeClockOut(); }
   };
 
@@ -292,11 +322,19 @@ Clock out anyway?`);
         if (!proceed) return;
       }
       const clockOutStamp = new Date().toISOString();
+      const cashTipsDeclared = normalizeTipAmount(tipCash);
+      const creditTipsDeclared = normalizeTipAmount(tipCredit);
+      const tipRequired = isTipDeclarationEnabled(appUser, clientData);
       const punchUpdate = { 
         clockOutTime: clockOutStamp, 
         status: 'clocked_out',
-        cashTips: parseFloat(tipCash) || 0,
-        creditTips: parseFloat(tipCredit) || 0,
+        cashTips: cashTipsDeclared,
+        creditTips: creditTipsDeclared,
+        totalDeclaredTips: cashTipsDeclared + creditTipsDeclared,
+        tipDeclarationRequired: tipRequired,
+        tipDeclarationCompleted: tipRequired,
+        tipDeclaredAt: tipRequired ? clockOutStamp : null,
+        tipDeclarationVersion: '14.0.2',
         breakMinutes: finalBreakMins,
         breakStartTime: null,
         ...(geofenceReview.update || {})
@@ -447,7 +485,7 @@ const handleOfferSwap = async (shift) => {
       
       <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
         <form onSubmit={finalizeClockOut} className="space-y-4">
-          <p className="text-xs text-slate-300 font-bold mb-2">Please declare your tips for this shift before clocking out.</p>
+          <p className="text-xs text-slate-300 font-bold mb-2">Please declare your tips for this shift before clocking out. Enter 0 if you did not receive tips.</p>
           <div>
             <label className={T.label}>Cash Tips ($)</label>
             <input type="number" step="0.01" min="0" value={tipCash} onChange={e=>setTipCash(e.target.value)} className={T.input} placeholder="0.00"/>
@@ -498,7 +536,7 @@ const handleOfferSwap = async (shift) => {
                   <span>{clockActionBusy && clockActionType === 'out' ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
                   <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(effectiveActivePunch.clockInTime)}</span>
                 </button>
-                {appUser?.systemSettings?.breaks && (
+                {mergeWorkspaceSettings(appUser, clientData).breaks && (
                   effectiveActivePunch.status === 'on_break' ? (
                     <button onClick={handleEndBreak} className="w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
                   ) : (
