@@ -7,32 +7,82 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function userPath() {
+      return /databases/(default)/documents/users/$(request.auth.uid);
+    }
+
+    function hasUserDoc() {
+      return signedIn() && firestore.exists(userPath());
+    }
+
     function userDoc() {
-      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+      return firestore.get(userPath()).data;
+    }
+
+    function restaurantPath(restaurantId) {
+      return /databases/(default)/documents/restaurants/$(restaurantId);
+    }
+
+    function hasRestaurantDoc(restaurantId) {
+      return restaurantId is string && firestore.exists(restaurantPath(restaurantId));
+    }
+
+    function restaurantDoc(restaurantId) {
+      return firestore.get(restaurantPath(restaurantId)).data;
+    }
+
+    function isMasterEmail() {
+      return signedIn() && (
+        request.auth.token.email == 'geoffrm1985@gmail.com' ||
+        request.auth.token.email == 'geoffm1985@gmail.com'
+      );
     }
 
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
-        request.auth.token.email == 'geoffm1985@gmail.com' ||
-        (signedIn() && userDoc().isSuperAdmin == true)
+        isMasterEmail() ||
+        (hasUserDoc() && (userDoc().isSuperAdmin == true || userDoc().systemAccess.superAdmin == true))
       );
     }
 
     function isTenantMatch(restaurantId) {
-      return signedIn() && userDoc().restaurantId == restaurantId;
+      return signedIn() && hasUserDoc() && userDoc().restaurantId == restaurantId;
+    }
+
+    function isRestaurantOwner(restaurantId) {
+      return signedIn() && (
+        isSuperAdmin() ||
+        (
+          hasRestaurantDoc(restaurantId) && (
+            restaurantDoc(restaurantId).ownerEmail == request.auth.token.email ||
+            restaurantDoc(restaurantId).ownerEmailLower == request.auth.token.email ||
+            restaurantDoc(restaurantId).ownerUserEmail == request.auth.token.email ||
+            restaurantDoc(restaurantId).ownerUserId == request.auth.uid ||
+            restaurantDoc(restaurantId).ownerUid == request.auth.uid
+          )
+        ) ||
+        (
+          isTenantMatch(restaurantId) && (
+            userDoc().isOwner == true ||
+            userDoc().accountOwner == true ||
+            userDoc().owner == true ||
+            userDoc().workspaceOwner == true ||
+            userDoc().accountRole == 'owner'
+          )
+        )
+      );
     }
 
     function canManageBrandAssets(restaurantId) {
       return isSuperAdmin() ||
+        isRestaurantOwner(restaurantId) ||
         (isTenantMatch(restaurantId) && (
-          userDoc().isOwner == true ||
-          userDoc().accountOwner == true ||
-          userDoc().owner == true ||
-          userDoc().workspaceOwner == true ||
-          userDoc().accountRole == 'owner' ||
           userDoc().isAdmin == true ||
-          (userDoc().permissions is map && (userDoc().permissions.branding == true || userDoc().permissions.settings == true))
+          (userDoc().permissions is map && (
+            userDoc().permissions.branding == true ||
+            userDoc().permissions.settings == true
+          ))
         ));
     }
 
@@ -67,15 +117,14 @@ service firebase.storage {
     }
 
     // Restaurant-scoped branding/logo assets.
+    // 86 Chaos branding is locked in the app. This path is only for customer restaurant logos.
     match /{restaurantId}/brandAssets/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
       allow write: if canManageBrandAssets(restaurantId) && isAllowedImage();
     }
 
-
-
-    // Legacy Cheers branding path from older Settings builds. New builds do not
-    // expose restaurant-logo display, but this keeps an older deployed client from
+    // Legacy Cheers branding path from older Settings builds. Current builds use
+    // restaurant-scoped brandAssets, but this keeps older deployed clients from
     // hitting storage/unauthorized while the update rolls out.
     match /cheers-restaurant-assets/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch('cheers_chilton_01');
