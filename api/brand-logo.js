@@ -29,6 +29,22 @@ function masterEmails() {
     'geoffrm1985@gmail.com'
   ].filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
 }
+function memberDocId(uid, restaurantId) {
+  return `${cleanString(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${cleanString(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
+}
+function hasWorkspace(user, restaurantId) {
+  return Boolean(user?.restaurantId === restaurantId || user?.activeRestaurantId === restaurantId || user?.defaultRestaurantId === restaurantId || user?.workspaceIds?.includes?.(restaurantId) || user?.memberships?.[restaurantId]?.isActive === true);
+}
+async function loadMembership(db, uid, email, restaurantId) {
+  const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
+  if (direct.exists && direct.data()?.isActive !== false) return direct.data();
+  if (email) {
+    const snap = await db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).where('email', '==', norm(email)).limit(1).get();
+    if (!snap.empty && snap.docs[0].data()?.isActive !== false) return snap.docs[0].data();
+  }
+  return null;
+}
+
 function allowedImageType(contentType) {
   return ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/svg+xml'].includes(norm(contentType));
 }
@@ -66,8 +82,7 @@ async function verifyCaller(req, db, auth) {
     }
   }
 
-  const permissions = caller?.permissions || {};
-  const userRestaurantId = cleanString(caller?.restaurantId);
+  const userRestaurantId = cleanString(caller?.activeRestaurantId || caller?.restaurantId || caller?.defaultRestaurantId);
   const isSuperAdmin = Boolean(
     decoded.superAdmin === true ||
     caller?.isSuperAdmin === true ||
@@ -75,15 +90,19 @@ async function verifyCaller(req, db, auth) {
     masterEmails().includes(callerEmail)
   );
 
-  return { decoded, caller: caller || {}, callerDocId, callerEmail, userRestaurantId, permissions, isSuperAdmin };
+  return { decoded, caller: caller || {}, callerDocId, callerEmail, userRestaurantId, permissions: caller?.permissions || {}, isSuperAdmin, hasWorkspace: (restaurantId) => hasWorkspace(caller || {}, restaurantId), loadMembership: (restaurantId) => loadMembership(db, decoded.uid, callerEmail, restaurantId) };
 }
 
-function canManageBrandingFor(ctx, restaurant, targetRestaurantId) {
+function canManageBrandingFor(ctx, restaurant, targetRestaurantId, membership = null) {
   const restaurantOwnerEmail = norm(restaurant?.ownerEmail || restaurant?.ownerEmailLower || restaurant?.ownerUserEmail);
   const ownerId = cleanString(restaurant?.ownerUid || restaurant?.ownerUserId);
+  const memberPerms = membership?.permissions || {};
   const callerOwnsTarget = Boolean(
     ctx.isSuperAdmin ||
-    (ctx.userRestaurantId === targetRestaurantId && (
+    (ctx.hasWorkspace(targetRestaurantId) && (
+      membership?.isOwner === true ||
+      membership?.accountOwner === true ||
+      membership?.workspaceOwner === true ||
       ctx.caller?.isOwner === true ||
       ctx.caller?.accountOwner === true ||
       ctx.caller?.owner === true ||
@@ -97,8 +116,11 @@ function canManageBrandingFor(ctx, restaurant, targetRestaurantId) {
   return Boolean(
     ctx.isSuperAdmin ||
     callerOwnsTarget ||
-    (ctx.userRestaurantId === targetRestaurantId && (
+    (ctx.hasWorkspace(targetRestaurantId) && (
+      membership?.isAdmin === true ||
       ctx.caller?.isAdmin === true ||
+      memberPerms.branding === true ||
+      memberPerms.settings === true ||
       ctx.permissions?.branding === true ||
       ctx.permissions?.settings === true
     ))
@@ -133,13 +155,14 @@ module.exports = async function handler(req, res) {
     const body = req.body || {};
     const targetRestaurantId = safeFilenamePart(body.restaurantId || ctx.userRestaurantId, 'restaurant').replace(/\.+/g, '_');
     if (!targetRestaurantId) return res.status(400).json({ error: 'Missing restaurant workspace for logo upload.' });
-    if (!ctx.isSuperAdmin && ctx.userRestaurantId !== targetRestaurantId) {
-      return res.status(403).json({ error: 'Logo uploads can only be saved inside your own workspace.' });
+    const membership = ctx.hasWorkspace(targetRestaurantId) ? (ctx.caller?.memberships?.[targetRestaurantId] || null) : await ctx.loadMembership(targetRestaurantId);
+    if (!ctx.isSuperAdmin && !membership && !ctx.hasWorkspace(targetRestaurantId)) {
+      return res.status(403).json({ error: 'Logo uploads can only be saved inside an active workspace membership.' });
     }
 
     const restSnap = await db.collection('restaurants').doc(targetRestaurantId).get();
     const restaurant = restSnap.exists ? restSnap.data() : {};
-    if (!canManageBrandingFor(ctx, restaurant, targetRestaurantId)) {
+    if (!canManageBrandingFor(ctx, restaurant, targetRestaurantId, membership)) {
       return res.status(403).json({ error: 'Only the account owner, Super Admin, workspace admin, or a user with Branding/Settings permission can upload a restaurant logo.' });
     }
 

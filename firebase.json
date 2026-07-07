@@ -1,4 +1,8 @@
-export * from './auth';
-export * from './schedule';
-export * from './operations';
-export * from './management';
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}

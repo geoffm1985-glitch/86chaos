@@ -7,6 +7,60 @@ import { T, db, auth, messaging, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCol
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
 
+const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
+const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
+const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
+  const accountProfile = currentUser.accountProfile || {
+    id: currentUser.id,
+    name: currentUser.name,
+    email: currentUser.email,
+    phone: currentUser.phone,
+    photoURL: currentUser.photoURL,
+    isSuperAdmin: currentUser.isSuperAdmin,
+    systemAccess: currentUser.systemAccess,
+    defaultRestaurantId: currentUser.defaultRestaurantId || currentUser.restaurantId,
+    workspaceIds: currentUser.workspaceIds || [],
+    memberships: currentUser.memberships || {}
+  };
+  const userId = currentUser.id || workspace.userId || workspace.uid || accountProfile.id;
+  return {
+    ...currentUser,
+    id: userId,
+    userId,
+    accountProfile: { ...accountProfile, id: userId },
+    restaurantId: workspace.restaurantId || currentUser.restaurantId,
+    restaurantName: safeWorkspaceName(workspace),
+    membershipId: workspace.membershipId || workspace.id || currentUser.membershipId || '',
+    name: workspace.name || currentUser.name || accountProfile.name || 'Staff',
+    email: normalizeEmail(workspace.email || currentUser.email || accountProfile.email),
+    phone: workspace.phone || currentUser.phone || accountProfile.phone || '',
+    role: workspace.role || currentUser.role || 'Staff',
+    wage: workspace.wage ?? currentUser.wage ?? 0,
+    photoURL: workspace.photoURL || currentUser.photoURL || accountProfile.photoURL || '',
+    isAdmin: workspace.isAdmin === true || currentUser.isSuperAdmin === true,
+    isOwner: workspace.isOwner === true || workspace.accountOwner === true || workspace.workspaceOwner === true || currentUser.isOwner === true,
+    accountOwner: workspace.accountOwner === true || currentUser.accountOwner === true,
+    workspaceOwner: workspace.workspaceOwner === true || currentUser.workspaceOwner === true,
+    permissions: { ...(currentUser.permissions || {}), ...(workspace.permissions || {}) },
+    activeRestaurantId: workspace.restaurantId || currentUser.activeRestaurantId || currentUser.restaurantId,
+    defaultRestaurantId: currentUser.defaultRestaurantId || workspace.restaurantId || currentUser.restaurantId,
+    availableWorkspaces: currentUser.availableWorkspaces || [],
+    workspaceSwitcherReady: true
+  };
+};
+const userFromWorkspaceMember = (member = {}, accountUser = {}) => ({
+  ...accountUser,
+  ...Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id')),
+  id: member.userId || member.uid || accountUser.id || member.id,
+  userId: member.userId || member.uid || accountUser.id || member.id,
+  membershipId: member.membershipId || member.id || '',
+  restaurantId: member.restaurantId || accountUser.restaurantId,
+  restaurantName: safeWorkspaceName(member),
+  permissions: { ...(accountUser.permissions || {}), ...(member.permissions || {}) },
+  isAdmin: member.isAdmin === true || accountUser.isSuperAdmin === true || (accountUser.restaurantId === member.restaurantId && accountUser.isAdmin === true),
+  isActive: member.isActive !== false && accountUser.isActive !== false
+});
+
 export default function App() {
   const [appUser, setAppUser] = useState(() => { 
     try {
@@ -33,6 +87,7 @@ export default function App() {
   const [voiceScheduleSubTabTarget, setVoiceScheduleSubTabTarget] = useState(null);
   const [voiceHelpSearchTarget, setVoiceHelpSearchTarget] = useState(null);
   const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
+  const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -128,6 +183,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
+  const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: !!rId, limitCount: activeTabState === 'team' ? 400 : 180, fallbackLimitCount: 80 });
   const presenceSessions = useLiveCollection('presenceSessions', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
   // Stable per-user live presence. Unlike presenceSessions, this collection has only
   // one document per user, so old sessions cannot push current users out of capped reads.
@@ -169,7 +225,21 @@ const [currentDate, setCurrentDate] = useState(getToday());
   
 // --- LIVE APP USER LOGIC ---
   const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true, help: true };
-  const realAppUser = appUser ? (appUser.id === 'dev-backdoor' ? appUser : (users?.find(u => u.id === appUser.id) || appUser)) : null;
+  const workspaceMemberForAppUser = useMemo(() => {
+    if (!appUser?.id && !appUser?.email) return null;
+    const emailKey = normalizeEmail(appUser?.email);
+    return (workspaceMembers || []).find(m =>
+      (m.userId && m.userId === appUser.id) ||
+      (m.uid && m.uid === appUser.id) ||
+      (emailKey && normalizeEmail(m.email) === emailKey)
+    ) || null;
+  }, [workspaceMembers, appUser?.id, appUser?.email]);
+  const accountUserFromTenantList = appUser ? (users?.find(u => u.id === appUser.id) || null) : null;
+  const realAppUser = appUser ? (
+    appUser.id === 'dev-backdoor'
+      ? appUser
+      : (workspaceMemberForAppUser ? userFromWorkspaceMember(workspaceMemberForAppUser, accountUserFromTenantList || appUser) : (accountUserFromTenantList || appUser))
+  ) : null;
   let liveAppUser = realAppUser;
 
   if (ghostTenant && realAppUser) {
@@ -346,7 +416,14 @@ if (liveAppUser && clientData) {
   const sessionCanViewWages = Boolean(sessionIsOwner || liveAppUser?.permissions?.wageView || liveAppUser?.permissions?.wageEdit || wageViewAccess.includes(liveAppUser?.id) || wageEditAccess.includes(liveAppUser?.id));
 
   const displayUsers = useMemo(() => {
-    const baseUsers = isDemoMode ? (users || []).map(maskDemoUser) : (users || []);
+    const accountById = new Map((users || []).map(u => [u.id, u]));
+    const memberUsers = (workspaceMembers || [])
+      .filter(m => m.isActive !== false)
+      .map(m => userFromWorkspaceMember(m, accountById.get(m.userId || m.uid) || {}));
+    const memberIds = new Set(memberUsers.map(u => u.id).filter(Boolean));
+    const legacyUsers = (users || []).filter(u => !memberIds.has(u.id) && u.isActive !== false);
+    const combinedUsers = memberUsers.length ? [...memberUsers, ...legacyUsers] : (users || []);
+    const baseUsers = isDemoMode ? combinedUsers.map(maskDemoUser) : combinedUsers;
     const sharedPresence = [...(livePresenceRecords || []), ...(presenceSessions || [])];
     let merged = isDemoMode ? baseUsers : mergePresenceIntoUsers(baseUsers, sharedPresence);
     // Current-device safety net: a regular employee should never see their own row drop back
@@ -374,7 +451,7 @@ if (liveAppUser && clientData) {
       merged = merged.map(u => ({ ...u, wage: 0, wageHidden: true }));
     }
     return merged;
-  }, [isDemoMode, users, presenceSessions, livePresenceRecords, appUser?.id, rId, activeTabState, sessionCanViewWages]);
+  }, [isDemoMode, users, workspaceMembers, presenceSessions, livePresenceRecords, appUser?.id, rId, activeTabState, sessionCanViewWages]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -626,7 +703,7 @@ if (liveAppUser && clientData) {
         // Fallback for local development or a missing Vercel function. livePresence is overwritten,
         // not merged, so old poisoned presence docs cannot keep blocking fresh writes.
         const results = await Promise.allSettled([
-          setDoc(doc(db, 'livePresence', authUid), livePresencePayload),
+          setDoc(doc(db, 'livePresence', `${String(rId).replace(/[^A-Za-z0-9_-]/g, '_')}_${authUid}`), livePresencePayload),
           setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload),
           setDoc(doc(db, 'users', authUid), presencePayload, { merge: true }),
           updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: authUid }).catch(()=>{})
@@ -776,6 +853,59 @@ useEffect(() => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, title, message }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
+  };
+
+  const availableWorkspaces = useMemo(() => {
+    const byId = new Map();
+    const addWorkspace = (w = {}) => {
+      const restaurantId = w.restaurantId || w.id;
+      if (!restaurantId) return;
+      byId.set(restaurantId, {
+        ...w,
+        restaurantId,
+        restaurantName: safeWorkspaceName(w),
+        membershipId: w.membershipId || w.id || `${appUser?.id || 'user'}_${restaurantId}`,
+        userId: w.userId || appUser?.id,
+        email: normalizeEmail(w.email || appUser?.email),
+        name: w.name || appUser?.name || 'Staff',
+        isActive: w.isActive !== false
+      });
+    };
+    (appUser?.availableWorkspaces || []).forEach(addWorkspace);
+    if (appUser?.memberships && typeof appUser.memberships === 'object') {
+      Object.entries(appUser.memberships).forEach(([restaurantId, membership]) => addWorkspace({ ...(membership || {}), restaurantId }));
+    }
+    if (appUser?.restaurantId) addWorkspace({ ...appUser, restaurantId: appUser.restaurantId, restaurantName: appUser.restaurantName || clientData?.name || appUser.restaurantName });
+    return Array.from(byId.values()).filter(w => w.isActive !== false);
+  }, [appUser, clientData?.name]);
+
+  const switchWorkspace = (workspace) => {
+    if (!workspace?.restaurantId || workspace.restaurantId === rId) {
+      setIsWorkspaceSwitcherOpen(false);
+      return;
+    }
+    const nextUser = buildWorkspaceUser({ ...appUser, availableWorkspaces }, workspace);
+    try {
+      localStorage.setItem(`chaosActiveRestaurantId_${nextUser.id}`, workspace.restaurantId);
+      sessionStorage.setItem('chaosWorkspaceSwitchedAt', new Date().toISOString());
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('chaosLastHeartbeat_') || k.startsWith('chaosHeartbeatDebug_')) localStorage.removeItem(k);
+      });
+    } catch (_) {}
+    if (nextUser.id && nextUser.id !== 'dev-backdoor') {
+      updateDoc(doc(db, 'users', nextUser.id), {
+        activeRestaurantId: workspace.restaurantId,
+        lastWorkspaceId: workspace.restaurantId,
+        lastWorkspaceSwitchedAt: new Date().toISOString()
+      }).catch(() => {});
+    }
+    setGhostTenant(null);
+    setClientData(null);
+    setAppUser(nextUser);
+    setActiveTabState(nextUser.preferences?.defaultTab || 'today');
+    try { window.history.replaceState({ tab: nextUser.preferences?.defaultTab || 'today' }, '', `?tab=${nextUser.preferences?.defaultTab || 'today'}`); } catch (_) {}
+    setIsWorkspaceSwitcherOpen(false);
+    addToast('Workspace Switched', `Now working in ${safeWorkspaceName(workspace)}.`);
   };
 
 // --- AUTO-ASK + TOKEN REPAIR FOR PUSH NOTIFICATIONS ---
@@ -1033,12 +1163,17 @@ return (
       <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo clientData={displayClientData} />
 
-        {/* DYNAMIC RESTAURANT NAME */}
+        {/* ACTIVE WORKSPACE NAME / SWITCHER */}
         {liveAppUser && (
           <div className="flex-1 text-center px-4 truncate mt-1">
-            <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-slate-500">
-              {liveAppUser.restaurantName || "Cheers"}
-            </span>
+            <button
+              type="button"
+              onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
+              className={`max-w-full truncate text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
+              title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
+            >
+              {liveAppUser.restaurantName || "Cheers"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
+            </button>
           </div>
         )}
 
@@ -1109,6 +1244,35 @@ return (
             className={T.input} 
           />
           <button onClick={() => setIsDateModalOpen(false)} className={`w-full ${T.btn}`}>Close</button>
+        </div>
+      </Modal>
+
+
+      <Modal isOpen={isWorkspaceSwitcherOpen} onClose={() => setIsWorkspaceSwitcherOpen(false)} title="Switch Workspace">
+        <div className="space-y-3">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-xs font-bold text-slate-300">
+            One login can belong to more than one restaurant. Pick the workplace you are clocking in, scheduling, or managing right now.
+          </div>
+          {availableWorkspaces.map(workspace => {
+            const selected = workspace.restaurantId === rId;
+            return (
+              <button
+                key={workspace.restaurantId}
+                type="button"
+                onClick={() => selected ? setIsWorkspaceSwitcherOpen(false) : switchWorkspace(workspace)}
+                className={`w-full text-left rounded-xl border p-3 transition-all ${selected ? 'bg-[#D4A381]/10 border-[#D4A381] text-white' : 'bg-[#12161A] border-[#2A353D] text-slate-300 hover:border-[#D4A381]'}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-black text-sm truncate">{safeWorkspaceName(workspace)}</div>
+                    <div className="text-[10px] uppercase tracking-widest font-bold text-slate-500 truncate">{workspace.role || 'Staff'}{workspace.isAdmin ? ' • Admin' : ''}</div>
+                  </div>
+                  {selected && <span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Current</span>}
+                </div>
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => setIsWorkspaceSwitcherOpen(false)} className={`w-full ${T.btnAlt}`}>Close</button>
         </div>
       </Modal>
 
