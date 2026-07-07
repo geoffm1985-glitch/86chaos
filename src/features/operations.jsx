@@ -2997,7 +2997,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
         </div>
         <div className="mt-4 bg-[#0B0E11] border border-[#2A353D] rounded-xl overflow-hidden">
-          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Dependency Radar</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">v14.0.1 graph</span></div>
+          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Dependency Radar</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">v14.0.2 graph</span></div>
           <div className="divide-y divide-[#2A353D] max-h-[260px] overflow-y-auto custom-scrollbar">
             {affectedMenuItems.length === 0 && <div className="p-4 text-xs font-bold text-slate-500">No dependency collisions detected. Map recipes to ingredients above, or add ingredient names to recipes to sharpen the radar.</div>}
             {affectedMenuItems.map(({ recipe, lowStockMatches, prepMatches, explicitDependencies, eightySixAlerts }) => (

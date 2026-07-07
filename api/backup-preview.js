@@ -84,7 +84,7 @@ module.exports = async function handler(req, res) {
       }
       await commit();
       restored = { restoredDocuments, skippedDocuments, selectedCollections, finishedAt: new Date().toISOString() };
-      await db.collection('system').doc('backupStatus').set({ lastSelectiveRestoreAt: restored.finishedAt, lastSelectiveRestorePath: storagePath, lastSelectiveRestoreCollections: selectedCollections, lastSelectiveRestoreDocuments: restoredDocuments, actor: auth.email || auth.uid, version: '14.0.1' }, { merge: true });
+      await db.collection('system').doc('backupStatus').set({ lastSelectiveRestoreAt: restored.finishedAt, lastSelectiveRestorePath: storagePath, lastSelectiveRestoreCollections: selectedCollections, lastSelectiveRestoreDocuments: restoredDocuments, actor: auth.email || auth.uid, version: '14.0.2' }, { merge: true });
     }
     const result = { ok: true, action, restored, storagePath, bucket: bucket.name, storageFormat, metadata: backup?.metadata || {}, totalDocs, collectionCount: rows.length, restaurantIds: Array.from(restaurantIds), warnings, rows: rows.sort((a,b)=>b.count-a.count), durationMs: Date.now() - started, generatedAt: new Date().toISOString() };
     await writeAudit(db, auth, action === 'restoreSelected' ? 'SELECTIVE_RESTORE' : 'BACKUP_PREVIEW', storagePath, `${action} ${storagePath}; docs ${totalDocs}; collections ${rows.length}.`, auth.restaurantId || 'system');

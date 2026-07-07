@@ -400,7 +400,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-2">
-               <Toggle label="Mandatory Tip Declaration" desc="Force tipped employees to declare cash & credit tips before they can clock out." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
+               <Toggle label="Mandatory Tip Declaration" desc="Force staff to declare cash & credit tips before they can clock out. Entering 0 is allowed when no tips were received." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />
                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
                  <div>
                    <div className="text-xs font-bold text-white">Overtime Alert Threshold</div>

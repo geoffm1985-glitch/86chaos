@@ -44,6 +44,7 @@ module.exports = async function handler(req, res) {
           const ss = data.systemSettings || {};
           const branding = ss.branding || data.branding || {};
           if ((branding.appName && branding.appName !== '86 Chaos') || (ss.appName && ss.appName !== '86 Chaos')) issues.push(serializeIssue('warning', collectionName, id, '86 Chaos app name is not locked in branding settings.', true, 'systemSettings.branding.appName'));
+          if (!Object.prototype.hasOwnProperty.call(ss, 'tips')) issues.push(serializeIssue('warning', collectionName, id, 'Mandatory tip declaration is missing from workspace settings. Legacy docs default to enabled at runtime, but repair should stamp it explicitly.', true, 'systemSettings.tips'));
           if (data.demoMode === true || data.isDemo === true) {
             const priv = hasPrivateDemoField(data);
             if (priv.length) issues.push(serializeIssue('high', collectionName, id, `Demo workspace contains private top-level fields: ${priv.join(', ')}`, false, 'demoPrivacy'));
@@ -75,6 +76,10 @@ module.exports = async function handler(req, res) {
         if (issue.collection === 'restaurants' && issue.field === 'systemSettings.branding.appName') {
           batch.set(db.collection('restaurants').doc(issue.id), { systemSettings: { branding: { appName: '86 Chaos' }, appName: '86 Chaos' }, updatedAt: new Date().toISOString() }, { merge: true });
           repairs.push(`Locked 86 Chaos branding for ${issue.id}`); batchCount += 1;
+        }
+        if (issue.collection === 'restaurants' && issue.field === 'systemSettings.tips') {
+          batch.set(db.collection('restaurants').doc(issue.id), { systemSettings: { tips: true }, updatedAt: new Date().toISOString() }, { merge: true });
+          repairs.push(`Stamped mandatory tip declaration default for ${issue.id}`); batchCount += 1;
         }
         if (issue.field === 'restaurantId' && targetRestaurantId && isTenantCollection(issue.collection)) {
           batch.set(db.collection(issue.collection).doc(issue.id), { restaurantId: targetRestaurantId, schemaRepairedAt: new Date().toISOString(), schemaRepairSource: 'v14-schema-doctor' }, { merge: true });
