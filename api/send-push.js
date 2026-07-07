@@ -43,7 +43,7 @@ export default async function handler(req, res) {
   // --- END OF BOUNCER ---
 
   try {
-    const { restaurantId, title, body, type, authorName, isCritical, textContent } = req.body;
+    const { restaurantId, targetUserId, targetUserIds, title, body, type, authorName, isCritical, textContent } = req.body;
     if (!restaurantId) return res.status(400).json({ error: 'Missing restaurant ID' });
 
     const callerSnap = await db.collection('users').doc(decoded.uid).get();
@@ -68,6 +68,7 @@ export default async function handler(req, res) {
     }
 
     const usersSnap = await db.collection('users').where('restaurantId', '==', restaurantId).get();
+    const targetSet = new Set([...(Array.isArray(targetUserIds) ? targetUserIds : []), targetUserId].filter(Boolean));
     
     // Grab today's shifts to calculate "Smart Mute: Days Off"
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('T')[0];
@@ -84,10 +85,11 @@ export default async function handler(req, res) {
     const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
     const currentTimeVal = now.getHours() + (now.getMinutes() / 60);
 
-    const tokens = [];
+    const tokenRecords = [];
 
     usersSnap.forEach(doc => {
       const u = doc.data();
+      if (targetSet.size && !targetSet.has(doc.id)) return;
       if (!u.fcmToken) return;
 
       const prefs = u.preferences || {};
@@ -141,18 +143,41 @@ export default async function handler(req, res) {
          if (inDnd) return;
       }
 
-      tokens.push(u.fcmToken);
+      tokenRecords.push({ userId: doc.id, token: u.fcmToken });
     });
 
-    if (tokens.length === 0) return res.status(200).json({ message: 'No devices eligible to receive this alert.' });
+    if (tokenRecords.length === 0) return res.status(200).json({ success: false, sentCount: 0, failedCount: 0, missingTokens: true, message: 'No devices eligible to receive this alert.' });
 
     const messagePayload = {
       notification: { title, body },
-      tokens: tokens,
+      tokens: tokenRecords.map(t => t.token),
     };
 
     const response = await getMessaging().sendEachForMulticast(messagePayload);
-    return res.status(200).json({ success: true, sentCount: response.successCount });
+    const staleCodes = new Set([
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-registration-token',
+      'messaging/invalid-argument'
+    ]);
+    const cleanup = [];
+    const failures = [];
+    response.responses.forEach((r, idx) => {
+      if (r.success) return;
+      const record = tokenRecords[idx];
+      const code = r.error?.code || 'unknown';
+      failures.push({ userId: record?.userId, code, message: r.error?.message || '' });
+      if (record?.userId && staleCodes.has(code)) {
+        cleanup.push(db.collection('users').doc(record.userId).set({ fcmToken: null, pushNeedsRepair: true, pushRepairFlaggedAt: new Date().toISOString(), lastPushFailureCode: code }, { merge: true }));
+      }
+    });
+    await Promise.allSettled(cleanup);
+    await db.collection('system').doc('backupStatus').set({
+      lastPushResult: `${response.successCount} sent / ${response.failureCount} failed`,
+      lastPushAt: new Date().toISOString(),
+      lastPushTargetRestaurantId: restaurantId,
+      lastPushFailures: failures.slice(0, 25)
+    }, { merge: true }).catch(() => {});
+    return res.status(200).json({ success: response.successCount > 0, sentCount: response.successCount, failedCount: response.failureCount, staleTokensCleaned: cleanup.length, failures });
 
   } catch (error) {
     console.error('Push Error:', error);
