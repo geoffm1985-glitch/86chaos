@@ -1,7 +1,7 @@
 import React from 'react';
-import { X, Clock, MessageSquare, Calendar, ClipboardList, BookOpen, Package, Users, TrendingUp, Shield, Settings, Bug, LogOut } from 'lucide-react';
+import { X, Clock, MessageSquare, Calendar, ClipboardList, BookOpen, Package, Users, TrendingUp, Shield, Settings, Bug, LogOut, Globe, Repeat } from 'lucide-react';
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {}, T, getAvatar, MASTER_ADMIN_EMAIL }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {}, T, getAvatar, MASTER_ADMIN_EMAIL, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
@@ -9,6 +9,15 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups like Cheers)
   const isEnabled = (feat) => clientFeatures[feat] !== false;
+
+  const activeWorkspaceLabel = activeWorkspaceName || appUser?.restaurantName || appUser?.workspaceName || appUser?.businessName || 'Current Restaurant';
+  const switchableWorkspaceCount = Array.isArray(availableWorkspaces) ? availableWorkspaces.filter(w => w?.isActive !== false).length : 0;
+  const canSwitchWorkspace = switchableWorkspaceCount > 1 && typeof onOpenWorkspaceSwitcher === 'function' && !appUser?.isDemo;
+  const openWorkspaceSwitcherFromMenu = () => {
+    if (!canSwitchWorkspace) return;
+    onClose?.();
+    window.setTimeout(() => onOpenWorkspaceSwitcher(), 0);
+  };
 
   // Dynamic Module Checks
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Schedule & Time Clock', icon: <Clock size={18}/> });  
@@ -38,6 +47,17 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div>
                  <div className="text-white font-black text-lg tracking-tight leading-none">{appUser.name}</div>
                  <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
+                 <button
+                   type="button"
+                   onClick={openWorkspaceSwitcherFromMenu}
+                   disabled={!canSwitchWorkspace}
+                   className={`mt-2 max-w-[170px] flex items-center gap-1.5 rounded-lg border ${T.border} bg-[#0B0E11] px-2 py-1 text-left text-[10px] font-black uppercase tracking-wider ${canSwitchWorkspace ? 'text-[#D4A381] hover:border-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
+                   title={canSwitchWorkspace ? 'Change restaurant workspace' : 'Current restaurant workspace'}
+                 >
+                   <Globe size={11} className="flex-shrink-0" />
+                   <span className="truncate">{activeWorkspaceLabel}</span>
+                   {canSwitchWorkspace && <Repeat size={10} className="flex-shrink-0 opacity-80" />}
+                 </button>
                </div>
              </div>
              <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
