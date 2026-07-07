@@ -9,21 +9,176 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
+const normEmail = (value) => String(value || '').toLowerCase().trim();
+const safeWsName = (w = {}) => w.restaurantName || w.name || w.businessName || w.restaurantId || '86 Chaos Workspace';
+const membershipDocId = (uid, restaurantId) => `${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId || '').replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
+const buildActiveUserForWorkspace = (baseUser = {}, workspace = {}) => {
+  const safeBase = { ...baseUser };
+  delete safeBase.password;
+  const accountProfile = {
+    id: safeBase.id,
+    name: safeBase.name,
+    email: safeBase.email,
+    phone: safeBase.phone,
+    photoURL: safeBase.photoURL,
+    isSuperAdmin: safeBase.isSuperAdmin,
+    systemAccess: safeBase.systemAccess,
+    defaultRestaurantId: safeBase.defaultRestaurantId || safeBase.restaurantId,
+    workspaceIds: safeBase.workspaceIds || [],
+    memberships: safeBase.memberships || {}
+  };
+  return {
+    ...safeBase,
+    id: safeBase.id || workspace.userId || workspace.uid,
+    userId: safeBase.id || workspace.userId || workspace.uid,
+    accountProfile,
+    restaurantId: workspace.restaurantId || safeBase.restaurantId,
+    restaurantName: safeWsName(workspace),
+    membershipId: workspace.membershipId || workspace.id || membershipDocId(safeBase.id, workspace.restaurantId),
+    name: workspace.name || safeBase.name || 'Staff',
+    email: normEmail(workspace.email || safeBase.email),
+    phone: workspace.phone || safeBase.phone || '',
+    role: workspace.role || safeBase.role || 'Staff',
+    wage: workspace.wage ?? safeBase.wage ?? 0,
+    photoURL: workspace.photoURL || safeBase.photoURL || '',
+    permissions: { ...(safeBase.permissions || {}), ...(workspace.permissions || {}) },
+    isAdmin: workspace.isAdmin === true || safeBase.isSuperAdmin === true,
+    isOwner: workspace.isOwner === true || workspace.accountOwner === true || workspace.workspaceOwner === true || safeBase.isOwner === true,
+    accountOwner: workspace.accountOwner === true || safeBase.accountOwner === true,
+    workspaceOwner: workspace.workspaceOwner === true || safeBase.workspaceOwner === true,
+    isActive: workspace.isActive !== false && safeBase.isActive !== false,
+    activeRestaurantId: workspace.restaurantId || safeBase.activeRestaurantId || safeBase.restaurantId,
+    defaultRestaurantId: safeBase.defaultRestaurantId || workspace.restaurantId || safeBase.restaurantId,
+    workspaceSwitcherReady: true
+  };
+};
+
 const LoginScreen = ({ setAppUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [workspaceChoices, setWorkspaceChoices] = useState([]);
+  const [workspaceUser, setWorkspaceUser] = useState(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
   
   // New state to hold the user temporarily if they need to change their password
   const [pendingUser, setPendingUser] = useState(null);
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
 
+
+  const loadWorkspaceChoices = async (baseUser, firebaseUser) => {
+    const options = new Map();
+    const uid = firebaseUser?.uid || baseUser.id;
+    const emailKey = normEmail(firebaseUser?.email || baseUser.email);
+    const addOption = async (raw = {}) => {
+      const restaurantId = raw.restaurantId || raw.id;
+      if (!restaurantId || raw.isActive === false) return;
+      let rest = {};
+      try {
+        const restSnap = await getDoc(doc(db, 'restaurants', restaurantId));
+        if (restSnap.exists()) rest = { id: restSnap.id, ...restSnap.data() };
+      } catch (_) {}
+      options.set(restaurantId, {
+        ...raw,
+        userId: raw.userId || uid,
+        uid,
+        email: normEmail(raw.email || emailKey),
+        name: raw.name || baseUser.name || firebaseUser?.displayName || 'Staff',
+        restaurantId,
+        restaurantName: raw.restaurantName || rest.name || rest.businessName || rest.restaurantName || baseUser.restaurantName || restaurantId,
+        planType: rest.planType || raw.planType || baseUser.planType || 'Pro',
+        membershipId: raw.membershipId || raw.id || membershipDocId(uid, restaurantId),
+        permissions: { ...(baseUser.restaurantId === restaurantId ? (baseUser.permissions || {}) : {}), ...(raw.permissions || {}) },
+        isAdmin: raw.isAdmin === true || (baseUser.restaurantId === restaurantId && baseUser.isAdmin === true),
+        isOwner: raw.isOwner === true || raw.accountOwner === true || raw.workspaceOwner === true || (baseUser.restaurantId === restaurantId && (baseUser.isOwner === true || baseUser.accountOwner === true || baseUser.workspaceOwner === true))
+      });
+    };
+
+    try {
+      const apiRes = await secureFetch('/api/workspace-memberships', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailKey, userId: uid })
+      });
+      const apiData = await apiRes.json().catch(() => ({}));
+      if (apiRes.ok && Array.isArray(apiData.workspaces)) {
+        for (const workspace of apiData.workspaces) await addOption({ ...workspace, membershipSource: workspace.membershipSource || 'workspace-memberships-api' });
+      } else if (!apiRes.ok) {
+        console.warn('Workspace membership API failed:', apiData?.error || apiRes.statusText);
+      }
+    } catch (err) {
+      console.warn('Workspace membership API unavailable, falling back to browser queries:', err?.message || err);
+    }
+
+    if (baseUser.memberships && typeof baseUser.memberships === 'object') {
+      for (const [restaurantId, membership] of Object.entries(baseUser.memberships)) await addOption({ ...(membership || {}), restaurantId });
+    }
+    try {
+      const byUid = await getDocs(query(collection(db, 'workspaceMembers'), where('userId', '==', uid)));
+      for (const d of byUid.docs) await addOption({ id: d.id, ...d.data() });
+    } catch (err) {
+      console.warn('Workspace membership lookup by user failed:', err?.message || err);
+    }
+    if (emailKey) {
+      try {
+        const byEmail = await getDocs(query(collection(db, 'workspaceMembers'), where('email', '==', emailKey)));
+        for (const d of byEmail.docs) await addOption({ id: d.id, ...d.data() });
+      } catch (err) {
+        console.warn('Workspace membership lookup by email failed:', err?.message || err);
+      }
+    }
+    if (baseUser.restaurantId) await addOption({ ...baseUser, restaurantId: baseUser.restaurantId, restaurantName: baseUser.restaurantName });
+    return Array.from(options.values()).filter(w => w.isActive !== false);
+  };
+
+  const finishLoginWithWorkspace = async (baseUser, firebaseUser, { forcePicker = false } = {}) => {
+    setWorkspaceLoading(true);
+    try {
+      const choices = await loadWorkspaceChoices(baseUser, firebaseUser);
+      if (!choices.length) throw new Error('This login is not attached to an active restaurant workspace. Ask a manager to add this account.');
+      const savedRestaurantId = localStorage.getItem(`chaosActiveRestaurantId_${baseUser.id}`);
+      const preferred = choices.find(w => w.restaurantId === savedRestaurantId) || choices.find(w => w.restaurantId === baseUser.activeRestaurantId) || choices.find(w => w.restaurantId === baseUser.defaultRestaurantId) || choices.find(w => w.restaurantId === baseUser.restaurantId) || choices[0];
+      if (choices.length > 1 && forcePicker) {
+        setWorkspaceUser(baseUser);
+        setWorkspaceChoices(choices);
+        return;
+      }
+      localStorage.setItem('chaosRememberMe', rememberMe);
+      localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
+      updateDoc(doc(db, 'users', baseUser.id), {
+        activeRestaurantId: preferred.restaurantId,
+        lastWorkspaceId: preferred.restaurantId,
+        lastWorkspaceSwitchedAt: new Date().toISOString()
+      }).catch(() => {});
+      setAppUser({ ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices });
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  };
+
+  const chooseWorkspace = (workspace) => {
+    if (!workspaceUser) return;
+    localStorage.setItem('chaosRememberMe', rememberMe);
+    localStorage.setItem(`chaosActiveRestaurantId_${workspaceUser.id}`, workspace.restaurantId);
+    try { sessionStorage.setItem(`chaosWorkspacePickerSeen_${workspaceUser.id}`, 'true'); } catch (_) {}
+    updateDoc(doc(db, 'users', workspaceUser.id), {
+      activeRestaurantId: workspace.restaurantId,
+      lastWorkspaceId: workspace.restaurantId,
+      lastWorkspaceSwitchedAt: new Date().toISOString()
+    }).catch(() => {});
+    setAppUser({ ...buildActiveUserForWorkspace(workspaceUser, workspace), availableWorkspaces: workspaceChoices });
+    setWorkspaceChoices([]);
+    setWorkspaceUser(null);
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
+    setWorkspaceChoices([]);
+    setWorkspaceUser(null);
     
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -34,13 +189,13 @@ const LoginScreen = ({ setAppUser }) => {
       
       if (userDocSnap.exists()) {
         const userData = { id: firebaseUser.uid, ...userDocSnap.data() };
+        delete userData.password;
         
         // INTERCEPT: If the flag is true, hold them in the pending state
         if (userData.forcePasswordChange) {
           setPendingUser(userData);
         } else {
-          localStorage.setItem('chaosRememberMe', rememberMe);
-          setAppUser(userData); // Let them into the OS
+          await finishLoginWithWorkspace(userData, firebaseUser, { forcePicker: true });
         }
       } else {
         setLoginError('Login successful, but user profile is missing in the database.');
@@ -69,9 +224,8 @@ const LoginScreen = ({ setAppUser }) => {
       });
       
       // 3. Unlock the system without caching the password in app state.
-      localStorage.setItem('chaosRememberMe', rememberMe);
       const { password, ...safePendingUser } = pendingUser;
-      setAppUser({ ...safePendingUser, forcePasswordChange: false });
+      await finishLoginWithWorkspace({ ...safePendingUser, forcePasswordChange: false }, auth.currentUser, { forcePicker: true });
       
     } catch (error) {
       setLoginError(error.message);
@@ -103,8 +257,41 @@ const LoginScreen = ({ setAppUser }) => {
         
         <img src="/6139.png" alt="86 Chaos OS Logo" className="h-24 w-auto rounded-xl shadow-lg border border-[#2A353D] mb-8 object-contain bg-[#12161A] p-2" />
         
-        {/* IF THEY NEED TO CHANGE PASSWORD, RENDER THIS FORM */}
-        {pendingUser ? (
+        {workspaceLoading && (
+          <div className="w-full mb-4 p-3 rounded-xl border border-[#2A353D] bg-[#0B0E11]/80 text-center text-xs font-black text-[#D4A381] uppercase tracking-widest flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading workspaces
+          </div>
+        )}
+
+        {workspaceUser && workspaceChoices.length > 0 ? (
+          <div className="w-full space-y-4 animate-[slideIn_0.2s_ease-out]">
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-black text-white leading-tight">Choose Workspace</h2>
+              <p className="text-xs text-slate-400 font-bold mt-1">Pick which restaurant you are working in right now.</p>
+            </div>
+            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">{loginError}</div>}
+            <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+              {workspaceChoices.map((workspace) => (
+                <button
+                  key={workspace.restaurantId}
+                  type="button"
+                  onClick={() => chooseWorkspace(workspace)}
+                  className="w-full text-left p-4 rounded-2xl bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381] transition-all group"
+                >
+                  <p className="text-white font-black text-sm group-hover:text-[#D4A381]">{workspace.restaurantName || workspace.restaurantId}</p>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">{workspace.role || 'Staff'} • {workspace.restaurantId}</p>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => { setWorkspaceChoices([]); setWorkspaceUser(null); }}
+              className="w-full py-3 rounded-xl border border-[#2A353D] text-slate-400 text-xs font-black uppercase tracking-widest hover:text-white hover:border-slate-500"
+            >
+              Back to Login
+            </button>
+          </div>
+        ) : pendingUser ? (
           <form onSubmit={handleForcePasswordChange} className="w-full space-y-4 animate-[slideIn_0.2s_ease-out]">
             <div className="text-center mb-4">
               <h2 className="text-xl font-black text-white leading-tight">Welcome, {pendingUser.name.split(' ')[0]}!</h2>
@@ -142,8 +329,8 @@ const LoginScreen = ({ setAppUser }) => {
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Remember Me</span>
             </label>
             
-            <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
-              Unlock System
+            <button type="submit" disabled={workspaceLoading} className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] disabled:opacity-60 disabled:cursor-wait text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
+              {workspaceLoading ? 'Checking Workspaces...' : 'Unlock System'}
             </button>
 <div className="pt-3 text-center flex flex-col gap-2">
               <button type="button" onClick={handleForgotCredentials} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">

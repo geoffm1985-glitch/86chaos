@@ -28,28 +28,6 @@ function safeSessionId(value, uid) {
   return raw || `${uid}_${Date.now()}`;
 }
 
-function memberDocId(uid, restaurantId) {
-  return `${safeString(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${safeString(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
-}
-function hasMembership(user, uid, email, restaurantId) {
-  return Boolean(
-    user?.restaurantId === restaurantId ||
-    user?.activeRestaurantId === restaurantId ||
-    user?.defaultRestaurantId === restaurantId ||
-    user?.workspaceIds?.includes?.(restaurantId) ||
-    user?.memberships?.[restaurantId]?.isActive === true
-  );
-}
-async function loadMembership(db, uid, email, restaurantId) {
-  const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
-  if (direct.exists && direct.data()?.isActive !== false) return direct.data();
-  if (email) {
-    const byEmail = await db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).where('email', '==', String(email).toLowerCase().trim()).limit(1).get();
-    if (!byEmail.empty && byEmail.docs[0].data()?.isActive !== false) return byEmail.docs[0].data();
-  }
-  return null;
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
@@ -67,17 +45,13 @@ module.exports = async function handler(req, res) {
     if (!userSnap.exists) return res.status(404).json({ ok: false, error: 'User profile was not found for this login.' });
 
     const user = userSnap.data() || {};
-    const restaurantId = safeString(req.body?.restaurantId || user.activeRestaurantId || user.restaurantId || user.defaultRestaurantId);
+    const restaurantId = safeString(req.body?.restaurantId || user.restaurantId);
     if (!restaurantId) return res.status(400).json({ ok: false, error: 'Missing restaurant ID for heartbeat.' });
 
     const isSuperAdmin = decoded.superAdmin === true || user.isSuperAdmin === true;
-    const mappedMembership = user.memberships?.[restaurantId] || null;
-    const loadedMembership = mappedMembership || await loadMembership(db, uid, decoded.email, restaurantId);
-    const hasWorkspace = hasMembership(user, uid, decoded.email, restaurantId) || !!loadedMembership;
-    if (!isSuperAdmin && !hasWorkspace) {
-      return res.status(403).json({ ok: false, error: 'Heartbeat restaurant does not match an active workspace membership for this login.' });
+    if (!isSuperAdmin && user.restaurantId !== restaurantId) {
+      return res.status(403).json({ ok: false, error: 'Heartbeat restaurant does not match this user profile.' });
     }
-    const membership = loadedMembership || mappedMembership || null;
 
     const now = new Date();
     const stamp = safeString(req.body?.stamp || now.toISOString());
@@ -109,18 +83,18 @@ module.exports = async function handler(req, res) {
       userId: uid,
       uid,
       restaurantId,
-      userName: safeString(membership?.name || user.name || decoded.name || ''),
-      userEmail: safeString(membership?.email || user.email || decoded.email || ''),
-      email: safeString(membership?.email || user.email || decoded.email || ''),
-      role: safeString(membership?.role || user.role || ''),
-      photoURL: safeString(membership?.photoURL || user.photoURL || ''),
+      userName: safeString(user.name || decoded.name || ''),
+      userEmail: safeString(user.email || decoded.email || ''),
+      email: safeString(user.email || decoded.email || ''),
+      role: safeString(user.role || ''),
+      photoURL: safeString(user.photoURL || ''),
       createdAt: user.createdAt || stamp,
       updatedAt: stamp,
       source: 'api-heartbeat'
     };
 
     const batch = db.batch();
-    batch.set(db.collection('livePresence').doc(memberDocId(uid, restaurantId)), livePresence);
+    batch.set(db.collection('livePresence').doc(uid), livePresence);
     batch.set(db.collection('presenceSessions').doc(sessionId), { ...livePresence, sessionId });
     batch.set(userRef, basePresence, { merge: true });
     batch.set(db.collection('restaurants').doc(restaurantId), {

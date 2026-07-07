@@ -1,193 +1,169 @@
 import React, { useState } from 'react';
-import { collection, doc, updateDoc, setDoc } from 'firebase/firestore';
-import { initializeApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { Edit, Trash2 } from 'lucide-react';
+import { collection, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { Shield, Trash2, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 
-const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiveCollection, getAvatar }) => {
-  const canManageTeam = appUser.isAdmin || appUser.permissions?.team;
-  const [name, setName] = useState(''); 
-  const [email, setEmail] = useState(''); 
-  const [phone, setPhone] = useState(''); 
-  const [role, setRole] = useState('Bartender'); 
-  const [wage, setWage] = useState(''); 
-  const [photoURL, setPhotoURL] = useState(''); 
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [perms, setPerms] = useState({ schedule: false, inventory: false, prep: false, sales: false, team: false });
-  const [editingUserId, setEditingUserId] = useState(null);
+const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], db, T, getToday, getDaysInMonth, formatDisplayDate, formatShortTime, getHoliday, formatDisplayMonth }) => {
+  const [calMonth, setCalMonth] = useState(getToday().substring(0, 7)); 
+  const [selectedDates, setSelectedDates] = useState([]); 
+  const [isPartial, setIsPartial] = useState(false); 
+  const [startTime, setStartTime] = useState('09:00'); 
+  const [endTime, setEndTime] = useState('17:00');
 
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
-  const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
-  const roles = dbRoles.length > 0 ? dbRoles.map(r => r.name).sort() : DEFAULT_ROLES;
+  // Filter requests specific to the logged-in user
+  const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(a.date) - new Date(b.date)); 
+  const myFutureRequests = myRequests.filter(r => r.date >= getToday());
+  const allFutureRequests = timeOffRequests.filter(r => r.date >= getToday()).sort((a,b) => new Date(a.date) - new Date(b.date));
   
-  const generateTempPass = () => Math.random().toString(36).slice(-6);
+  const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
+  const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
 
-  const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
+  // Pull in the events for the current calendar month
+  const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(calMonth));
+
+  const changeMonth = (offset) => { 
+    const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); 
   };
 
-  const handleEditClick = (u) => {
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleSave = async (e) => { 
-    e.preventDefault(); if (!name.trim() || !email.trim() || !phone.trim()) return; 
+  const handleToggleDate = (d) => { 
+    if (d < getToday()) return addToast('Locked', 'Cannot request past dates.'); 
     
-    if (editingUserId) {
-        try {
-            await updateDoc(doc(db, "users", editingUserId), {
-                name: name.trim(), phone: phone.trim(), role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, photoURL: photoURL.trim()
-            });
-            addToast('Updated', `${name}'s profile has been updated.`);
-            resetForm();
-        } catch(err) { addToast('Error', err.message); }
-        return;
-    }
-
-    const tPass = generateTempPass(); 
-    try { 
-      const secondaryApp = initializeApp(firebaseConfig, "TeamBuilderApp_" + Date.now());
-      const secondaryAuth = getAuth(secondaryApp);
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), tPass);
-      const newAuthUid = userCredential.user.uid;
-      
-      await secondaryAuth.signOut();
-
-      await setDoc(doc(db, "users", newAuthUid), { 
-        name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
-        forcePasswordChange: true, passwordStored: false, passwordPurgedAt: new Date().toISOString(), photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
-      }); 
-      
-      const welcomeMsg = `Welcome to 86chaos!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
-      
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile && phone.trim()) {
-        const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?';
-        window.location.href = `sms:${phone.trim()}${smsChar}body=${encodeURIComponent(welcomeMsg)}`;
-      } else {
-        window.location.href = `mailto:${email.toLowerCase().trim()}?subject=${encodeURIComponent("Your 86 Chaos Account")}&body=${encodeURIComponent(welcomeMsg)}`;
+    // Check if they already requested this day
+    const existingReq = myRequests.find(r => r.date === d); 
+    if (existingReq) { 
+      if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) {
+        deleteDoc(doc(db, "timeOffRequests", existingReq.id));
+        addToast('Canceled', 'Time off request removed.');
       }
-
-      addToast('Staff Added', `Account created successfully.`); 
-      resetForm();
-    } catch (err) { 
-      console.error(err); 
-      addToast('Error', err.message || 'Failed to create user account.');
+      return; 
     } 
+    
+    setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]); 
+  };
+  
+  const handleSubmit = async (e) => { 
+    e.preventDefault(); 
+    if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.'); 
+    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); 
+    
+    for (const d of selectedDates) { 
+      await addDoc(collection(db, "timeOffRequests"), { 
+        userId: appUser.id, userName: appUser.name, date: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, submittedAt: new Date().toISOString(), restaurantId: appUser.restaurantId 
+      }); 
+    } 
+    addToast('Recorded', `Logged ${selectedDates.length} days off.`); 
+    setSelectedDates([]); 
+    setIsPartial(false); 
   };
 
-  const handleDeactivate = async (u) => { 
-    if (!window.confirm(`Terminate ${u.name}? They will be removed from the active roster but their historical schedule data will be preserved.`)) return; 
-    await updateDoc(doc(db, "users", u.id), { isActive: false }); 
-    addToast('Terminated', `${u.name} deactivated.`); 
-  };
-
-  const handlePasswordReset = async (u) => {
-    if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
-    try {
-      await sendPasswordResetEmail(auth, u.email);
-      addToast('Sent', `Reset email sent to ${u.email}`);
-    } catch(err) { addToast('Error', err.message); }
-  };
-
-  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
-
-return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-24">
-      
-      {canManageTeam && (
-        <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-2`}>
-          {editingUserId && (
-            <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
-              <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
-              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit ✖</button>
-            </div>
-          )}
-          
-          <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className={T.input} required placeholder="e.g. Gordon Ramsay" /></div>
-          
-          <div>
-            <label className={T.label}>Email {editingUserId && <span className="text-slate-500 lowercase normal-case ml-1">(Cannot be changed after creation)</span>}</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+      {appUser?.isAdmin && (
+        <div className={`${T.card} overflow-hidden mb-6`}>
+          <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
+            <h3 className="font-black text-sm text-white flex items-center gap-2"><Shield size={14} className="text-red-500"/> Master Override Log</h3>
+            <span className={`text-[10px] font-bold ${T.muted}`}>Delete a record to allow scheduling.</span>
           </div>
-
-          
-          <div><label className={T.label}>Phone</label><input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} className={T.input} required /></div>
-          
-          <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-          
-          {/* STRICTLY LOCKED TO ADMINS */}
-          {appUser?.isAdmin && (
-            <div>
-              <label className={T.label}>Hourly Wage ($)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
-                <input type="number" step="0.01" min="0" value={wage} onChange={e=>setWage(e.target.value)} className={`${T.input} pl-8`} placeholder="Ex: 15.50" />
+          <div className={`max-h-48 overflow-y-auto custom-scrollbar divide-y ${T.border}`}>
+            {allFutureRequests.length === 0 && <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No upcoming time off for any staff.</div>}
+            {allFutureRequests.map(r => (
+              <div key={r.id} className={T.row}>
+                <div className="flex-1">
+                  <div className="font-black text-sm text-white leading-tight">{r.userName}</div>
+                  <div className={`text-[10px] font-bold ${T.muted} mt-0.5`}>{formatDisplayDate(r.date)} {r.isPartial && <span className={`ml-1 text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}</div>
+                </div>
+                <button onClick={() => { if(window.confirm("Force delete this request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-400 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
+      )}
 
-         {appUser?.isAdmin && (
-            <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
-              <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
-              <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
-            </label>
-          )}
-          
-          {!isAdmin && (
-            <div className="p-4 bg-[#12161A] rounded-xl border border-[#2A353D]">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions:</p>
-              <div className="flex flex-wrap gap-4">
-                {Object.keys(perms).map(k => (
-                  <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
-                    <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
-                    {k.replace('team', 'team mgmt').replace('prep', 'recipe/prep')}
-                  </label>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className={`md:col-span-2 ${T.card} overflow-hidden`}>
+          <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
+            <button onClick={() => changeMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button>
+            <h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3>
+            <button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button>
+          </div>
+          <div className={`grid grid-cols-7 border-t ${T.border}`}>
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`py-1.5 text-center text-[9px] font-black ${T.copper} uppercase border-b border-[#2A353D] bg-[#12161A]`}>{d}</div>)}
+            {Array.from({length: firstDayOffset}).map((_,i) => <div key={`empty-${i}`} className={`p-1 border-b border-r ${T.border} bg-[#1A2126] min-h-[45px]`} />)}
+            {monthDays.map(d => {
+              const isSelected = selectedDates.includes(d); 
+              const existingReq = myRequests.find(r => r.date === d); 
+              const isPast = d < getToday();
+              const holiday = getHoliday(d);
+              const dayEvents = monthEvents.filter(e => e.date === d);
+
+              return (
+                <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}>
+                  <span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                  
+                  {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
+                  {dayEvents.map(ev => (
+                    <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>
+                      {ev.title}
+                    </span>
+                  ))}
+
+                  {existingReq && <span className="text-[7px] font-black uppercase text-red-500 mt-auto mb-1">Off</span>}
+                  {isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="md:col-span-1">
+          <div className={`${T.card} p-4 sm:p-5 sticky top-20`}>
+            <h3 className="font-black text-base mb-1 text-white">Log Availability</h3>
+            <p className={`text-[10px] font-bold ${T.muted} mb-4 leading-tight`}>Tap days on the calendar to mark yourself unavailable.</p>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}>
+                <input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />
+                Partial Day Only?
+              </label>
+              {isPartial && (
+                <div className={`grid grid-cols-2 gap-2 p-3 bg-[#12161A] rounded-xl border ${T.border}`}>
+                  <div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required/></div>
+                  <div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required/></div>
+                </div>
+              )}
+              <button type="submit" disabled={selectedDates.length === 0} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button>
+            </form>
+
+            {/* --- NEW SECTION: MY PENDING REQUESTS --- */}
+            <div className="mt-6 pt-6 border-t border-[#2A353D]">
+              <h3 className="font-black text-sm text-white mb-3">My Pending Requests</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                {myFutureRequests.length === 0 && <div className="text-xs font-bold text-slate-500 text-center py-2 border border-dashed border-[#2A353D] rounded-xl">No upcoming requests.</div>}
+                {myFutureRequests.map(r => (
+                  <div key={r.id} className="flex items-center justify-between bg-[#12161A] p-2.5 rounded-xl border border-[#2A353D] hover:border-[#D4A381]/50 transition-colors">
+                    <div>
+                      <div className="text-xs font-bold text-white">{formatDisplayDate(r.date)}</div>
+                      {r.isPartial ? (
+                        <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-wider mt-0.5">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</div>
+                      ) : (
+                        <div className="text-[9px] text-red-400 font-black uppercase tracking-wider mt-0.5">Full Day Off</div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { if(window.confirm(`Cancel your request for ${formatDisplayDate(r.date)}?`)) deleteDoc(doc(db,"timeOffRequests",r.id)); }}
+                      className="text-slate-400 hover:text-red-500 p-2 transition-colors bg-[#1A2126] rounded-lg border border-[#2A353D]"
+                    >
+                      <Trash2 size={14}/>
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
-          )}
-          
-          <button type="submit" className={`w-full ${T.btn}`}>{editingUserId ? 'UPDATE STAFF PROFILE' : 'ADD STAFF'}</button>
-        </form>
-      )}
-      
-      <div className={`${T.card} overflow-hidden`}>
-        <div className="divide-y divide-[#2A353D]">
-          {activeUsers.length === 0 && <div className={`p-6 text-center text-sm font-bold ${T.muted}`}>No active staff found.</div>}
-          
-          {activeUsers.map(u => (
-            <div key={u.id} className="p-2.5 border-b border-[#2A353D] hover:bg-[#12161A] transition-colors flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3 overflow-hidden">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs flex-shrink-0 ${u.isAdmin ? 'bg-red-900/50 border border-red-500/50' : 'bg-[#1A2126] border border-[#2A353D]'}`}>
-                  {u.name.charAt(0)}
-                </div>
-                <div className="min-w-0">
-                  <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
-                    {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
-                    {appUser?.isAdmin && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
-                  </div>
-                </div>
-              </div>
-              
-           {(appUser?.isAdmin || (canManageTeam && !u.isAdmin)) && (
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button onClick={() => handlePasswordReset(u)} className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-blue-400 transition-colors bg-[#12161A] rounded border border-[#2A353D]">Reset</button>
-                  <button onClick={() => handleEditClick(u)} className="p-1 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Edit size={12}/></button>
-                  <button onClick={() => handleDeactivate(u)} className="p-1 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded border border-[#2A353D]"><Trash2 size={12}/></button>
-                </div>
-              )}
-            </div>
-          ))}
+
+          </div>
         </div>
       </div>
-
     </div>
   );
 };
 
-export default TabTeam;
+export default TabTimeOff;

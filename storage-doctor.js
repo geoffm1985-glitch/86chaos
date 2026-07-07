@@ -3,31 +3,6 @@ const zlib = require('zlib');
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
-function memberDocId(uid, restaurantId) { return `${clean(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${clean(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240); }
-function userHasWorkspace(user, restaurantId) { return Boolean(user?.restaurantId === restaurantId || user?.activeRestaurantId === restaurantId || user?.defaultRestaurantId === restaurantId || user?.workspaceIds?.includes?.(restaurantId) || user?.memberships?.[restaurantId]?.isActive === true); }
-async function readWorkspaceMember(db, uid, email, restaurantId) {
-  if (!restaurantId) return null;
-  const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
-  if (direct.exists && direct.data()?.isActive !== false) return { id: direct.id, ...direct.data() };
-  if (email) {
-    const snap = await db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).where('email', '==', norm(email)).limit(1).get();
-    if (!snap.empty && snap.docs[0].data()?.isActive !== false) return { id: snap.docs[0].id, ...snap.docs[0].data() };
-  }
-  return null;
-}
-function profileForWorkspace(user, member, restaurantId) {
-  const legacy = user?.restaurantId === restaurantId || user?.activeRestaurantId === restaurantId || user?.defaultRestaurantId === restaurantId;
-  const source = member || (legacy ? user : {});
-  return {
-    ...(user || {}),
-    ...(source || {}),
-    id: user?.id,
-    restaurantId,
-    permissions: { ...((legacy && user?.permissions) || {}), ...(source?.permissions || {}) },
-    isAdmin: source?.isAdmin === true || (legacy && user?.isAdmin === true),
-    isOwner: source?.isOwner === true || source?.accountOwner === true || source?.workspaceOwner === true || (legacy && (user?.isOwner === true || user?.accountOwner === true || user?.workspaceOwner === true || norm(user?.accountRole) === 'owner'))
-  };
-}
 function masterEmails() {
   return [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS, 'geoffm1985@gmail.com', 'geoffrm1985@gmail.com']
     .filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
@@ -72,13 +47,11 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
       if (!byEmail.empty) { userSnap = byEmail.docs[0]; userDocId = userSnap.id; user = userSnap.data(); }
     }
     const isSuperAdmin = Boolean(decoded.superAdmin === true || user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || masterEmails().includes(email));
-    const restaurantId = clean(targetRestaurantId || user?.activeRestaurantId || user?.restaurantId || user?.defaultRestaurantId || '');
-    const member = restaurantId && !isSuperAdmin ? (userHasWorkspace(user, restaurantId) ? (user?.memberships?.[restaurantId] || null) : await readWorkspaceMember(db, decoded.uid, email, restaurantId)) : null;
-    const workspaceUser = profileForWorkspace({ ...(user || {}), id: userDocId }, member, restaurantId);
-    const permissions = workspaceUser?.permissions || {};
-    const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && (isSuperAdmin || member || userHasWorkspace(user, restaurantId)) && (workspaceUser?.isAdmin === true || workspaceUser?.isOwner === true || workspaceUser?.accountOwner === true || permissions.settings === true || permissions.team === true));
+    const restaurantId = clean(targetRestaurantId || user?.restaurantId || '');
+    const permissions = user?.permissions || {};
+    const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && user?.restaurantId === restaurantId && (user?.isAdmin === true || user?.isOwner === true || user?.accountOwner === true || permissions.settings === true || permissions.team === true));
     if (!isSuperAdmin && !tenantAdmin) return { ok: false, status: 403, error: 'System Administrator access is required for this tool.' };
-    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions };
+    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: user || {}, isSuperAdmin, restaurantId, permissions };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }
@@ -105,4 +78,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, readBody, authorize, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace };
+module.exports = { admin, initAdmin, readBody, authorize, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails };

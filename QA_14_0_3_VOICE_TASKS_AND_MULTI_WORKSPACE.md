@@ -38,59 +38,6 @@ const getRoleFromScheduleStaffList = (role, scheduleRoleOptions = []) => {
   return fuzzy || scheduleRoleOptions[0] || clean;
 };
 
-
-const parseScheduleTimeParts = (value, fallback = { hours: 0, minutes: 0 }) => {
-  const raw = String(value || '').trim().toUpperCase();
-  if (!raw) return fallback;
-  if (raw === 'CLOSE' || raw === 'CL') return { hours: 23, minutes: 59, seconds: 59 };
-  if (raw === 'OPEN') return { hours: 0, minutes: 0, seconds: 0 };
-
-  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(A|P|AM|PM)?$/);
-  if (!match) return fallback;
-
-  let hours = Number.parseInt(match[1], 10);
-  const minutes = Number.parseInt(match[2] || '0', 10);
-  const meridian = match[3] || '';
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return fallback;
-
-  if (meridian.startsWith('P') && hours < 12) hours += 12;
-  if (meridian.startsWith('A') && hours === 12) hours = 0;
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return fallback;
-
-  return { hours, minutes, seconds: 0 };
-};
-
-const buildScheduleDateTime = (dateKey, timeValue, fallback) => {
-  if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) return null;
-  const [year, month, day] = String(dateKey).split('-').map(Number);
-  const parts = parseScheduleTimeParts(timeValue, fallback);
-  return new Date(year, month - 1, day, parts.hours, parts.minutes, parts.seconds || 0, 0);
-};
-
-const getShiftStartDateTime = (shift) => buildScheduleDateTime(shift?.date, shift?.startTime, { hours: 0, minutes: 0, seconds: 0 });
-
-const getShiftEndDateTime = (shift) => {
-  const startAt = getShiftStartDateTime(shift);
-  const endAt = buildScheduleDateTime(shift?.date, shift?.endTime, { hours: 23, minutes: 59, seconds: 59 });
-  if (!endAt) return null;
-  if (startAt && endAt.getTime() <= startAt.getTime()) endAt.setDate(endAt.getDate() + 1);
-  return endAt;
-};
-
-const isShiftStillCurrentOrUpcoming = (shift, now = new Date()) => {
-  if (!shift?.date) return false;
-  const endAt = getShiftEndDateTime(shift);
-  if (!endAt) return String(shift.date) >= formatDate(now);
-  return endAt.getTime() > now.getTime();
-};
-
-const compareShiftsByStartDateTime = (a, b) => {
-  const aStart = getShiftStartDateTime(a)?.getTime() || 0;
-  const bStart = getShiftStartDateTime(b)?.getTime() || 0;
-  if (aStart !== bStart) return aStart - bStart;
-  return String(a?.role || '').localeCompare(String(b?.role || ''));
-};
-
 const mergeWorkspaceSettings = (appUser = {}, clientData = {}) => ({
   ...(appUser?.systemSettings || {}),
   ...(clientData?.systemSettings || {})
@@ -129,17 +76,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [clockActionBusy, setClockActionBusy] = useState(false);
   const [clockActionType, setClockActionType] = useState(null);
   const [clockActionPunch, setClockActionPunch] = useState(null);
-  const [scheduleNow, setScheduleNow] = useState(() => new Date());
   const recentlyClockedOutRef = useRef({});
-
-  useEffect(() => {
-    const refreshScheduleNow = () => setScheduleNow(new Date());
-    refreshScheduleNow();
-    const tick = setInterval(refreshScheduleNow, 30000);
-    const onVisibility = () => { if (!document.hidden) refreshScheduleNow(); };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => { clearInterval(tick); document.removeEventListener('visibilitychange', onVisibility); };
-  }, []);
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
@@ -454,8 +391,8 @@ Clock out anyway?`);
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts
-    .filter(s => s.employeeId === appUser.id && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
-    .sort(compareShiftsByStartDateTime)[0];
+    .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
+    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date))[0];
 
   const activeMonthShifts = shifts
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)

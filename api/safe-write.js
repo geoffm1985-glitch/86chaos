@@ -10,8 +10,8 @@ const PERMS = {
 };
 function canWrite(ctx, collectionName, restaurantId) {
   if (ctx.isSuperAdmin) return true;
-  if (!restaurantId || ctx.user?.restaurantId !== restaurantId) return false;
-  if (ctx.user?.isAdmin || ctx.user?.isOwner || ctx.user?.accountOwner) return true;
+  if (!restaurantId || ctx.restaurantId !== restaurantId) return false;
+  if (ctx.user?.isAdmin || ctx.user?.isOwner || ctx.user?.accountOwner || ctx.user?.workspaceOwner) return true;
   return (PERMS[collectionName] || []).some(p => ctx.permissions?.[p] === true);
 }
 module.exports = async function handler(req, res) {

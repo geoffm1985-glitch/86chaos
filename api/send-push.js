@@ -68,6 +68,37 @@ export default async function handler(req, res) {
     }
 
     const usersSnap = await db.collection('users').where('restaurantId', '==', restaurantId).get();
+    const pushUserMap = new Map();
+    usersSnap.forEach(doc => pushUserMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+    // Multi-workspace support: employees may belong to this restaurant through workspaceMembers
+    // even when their legacy users.restaurantId points at another job. Pull their account doc
+    // so the saved FCM token can still receive this workspace's alerts.
+    try {
+      const membersSnap = await db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).get();
+      const memberIds = [];
+      const memberEmails = [];
+      membersSnap.forEach(memberDoc => {
+        const m = memberDoc.data() || {};
+        if (m.isActive === false) return;
+        if (m.userId || m.uid) memberIds.push(m.userId || m.uid);
+        if (m.email) memberEmails.push(String(m.email).toLowerCase().trim());
+      });
+      const uniqueMemberIds = [...new Set(memberIds.filter(Boolean))].slice(0, 200);
+      await Promise.all(uniqueMemberIds.map(async id => {
+        if (pushUserMap.has(id)) return;
+        const snap = await db.collection('users').doc(id).get();
+        if (snap.exists) pushUserMap.set(snap.id, { id: snap.id, ...snap.data(), restaurantId });
+      }));
+      const uniqueEmails = [...new Set(memberEmails.filter(Boolean))].slice(0, 50);
+      await Promise.all(uniqueEmails.map(async email => {
+        const snap = await db.collection('users').where('email', '==', email).limit(1).get();
+        snap.forEach(doc => { if (!pushUserMap.has(doc.id)) pushUserMap.set(doc.id, { id: doc.id, ...doc.data(), restaurantId }); });
+      }));
+    } catch (membershipErr) {
+      console.warn('Push route workspaceMembers lookup skipped:', membershipErr?.message || membershipErr);
+    }
+    const allPushUsers = [...pushUserMap.values()];
     const targetSet = new Set([...(Array.isArray(targetUserIds) ? targetUserIds : []), targetUserId].filter(Boolean));
     
     // Grab today's shifts to calculate "Smart Mute: Days Off"
@@ -87,9 +118,8 @@ export default async function handler(req, res) {
 
     const tokenRecords = [];
 
-    usersSnap.forEach(doc => {
-      const u = doc.data();
-      if (targetSet.size && !targetSet.has(doc.id)) return;
+    allPushUsers.forEach(u => {
+      if (targetSet.size && !targetSet.has(u.id)) return;
       if (!u.fcmToken) return;
 
       const prefs = u.preferences || {};
@@ -143,7 +173,7 @@ export default async function handler(req, res) {
          if (inDnd) return;
       }
 
-      tokenRecords.push({ userId: doc.id, token: u.fcmToken });
+      tokenRecords.push({ userId: u.id, token: u.fcmToken });
     });
 
     if (tokenRecords.length === 0) return res.status(200).json({ success: false, sentCount: 0, failedCount: 0, missingTokens: true, message: 'No devices eligible to receive this alert.' });

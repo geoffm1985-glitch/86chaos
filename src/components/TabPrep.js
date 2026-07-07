@@ -110,12 +110,27 @@ const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint
     await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
   };
 
+  const canManageRecurringTasks = () => {
+    const role = String(appUser?.role || '').toLowerCase();
+    return Boolean(
+      appUser?.isAdmin ||
+      appUser?.isSuperAdmin ||
+      appUser?.isOwner ||
+      appUser?.accountOwner ||
+      appUser?.owner ||
+      appUser?.workspaceOwner ||
+      appUser?.permissions?.team ||
+      ['general manager', 'manager', 'kitchen manager', 'bar manager', 'schedule manager', 'operations manager', 'store manager', 'owner', 'shift lead', 'lead', 'supervisor'].includes(role) ||
+      /\b(manager|owner|supervisor|lead|gm)\b/.test(role)
+    );
+  };
+
   const renderTasks = (freqFilter) => {
     const filteredTasks = tasks.filter(t => t.frequency === freqFilter);
     const grouped = filteredTasks.reduce((acc, t) => { if(!acc[t.category]) acc[t.category]=[]; acc[t.category].push(t); return acc; }, { 'Cleaning': [], 'General': [] });
     const periodKey = getTaskPeriodKey(freqFilter);
     
-    const canManageTasks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
+    const canManageTasks = canManageRecurringTasks();
     return (
       <div className="space-y-4 mt-4">
         {canManageTasks && (

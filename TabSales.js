@@ -4,7 +4,30 @@ import { Bell, Calendar, Repeat, Clock } from 'lucide-react';
 import TabMonth from './TabMonth';
 import TabTimeOff from './TabTimeOff';
 
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, db, Modal, T, getToday, getMonthStr, formatDisplayDate, formatShortTime, getDaysInMonth, formatDisplayMonth, getHoliday }) => {
+
+const settingBool = (value, fallback = false) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (['false', '0', 'off', 'no', 'disabled'].includes(v)) return false;
+    if (['true', '1', 'on', 'yes', 'enabled'].includes(v)) return true;
+  }
+  return Boolean(value);
+};
+
+const isTipDeclarationEnabled = (appUser = {}, clientData = {}) => {
+  const settings = { ...(appUser?.systemSettings || {}), ...(clientData?.systemSettings || {}) };
+  const raw = settings.tips ?? settings.mandatoryTipDeclaration ?? settings.tipDeclarationRequired ?? settings.tipDeclarationEnabled;
+  return settingBool(raw, true);
+};
+
+const normalizeTipAmount = (value) => {
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100) / 100;
+};
+
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, db, Modal, T, getToday, getMonthStr, formatDisplayDate, formatShortTime, getDaysInMonth, formatDisplayMonth, getHoliday, clientData = null }) => {
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
   
@@ -89,7 +112,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
   const initiateClockOut = () => {
     if (clockActionBusy) return;
-    if (appUser?.systemSettings?.tips) { setIsTipModalOpen(true); } 
+    if (isTipDeclarationEnabled(appUser, clientData)) { setIsTipModalOpen(true); } 
     else { finalizeClockOut(); }
   };
 
@@ -104,6 +127,9 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
          finalBreakMins += (new Date() - breakStart) / 60000;
       }
       const clockOutTime = new Date().toISOString();
+      const cashTipsDeclared = normalizeTipAmount(tipCash);
+      const creditTipsDeclared = normalizeTipAmount(tipCredit);
+      const tipRequired = isTipDeclarationEnabled(appUser, clientData);
       setClockActionType('out');
       setClockActionPunch(punchToClose);
       setClockActionBusy(true);
@@ -111,8 +137,13 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
       await updateDoc(doc(db, "timePunches", punchToClose.id), { 
         clockOutTime, 
         status: 'clocked_out',
-        cashTips: parseFloat(tipCash) || 0,
-        creditTips: parseFloat(tipCredit) || 0,
+        cashTips: cashTipsDeclared,
+        creditTips: creditTipsDeclared,
+        totalDeclaredTips: cashTipsDeclared + creditTipsDeclared,
+        tipDeclarationRequired: tipRequired,
+        tipDeclarationCompleted: tipRequired,
+        tipDeclaredAt: tipRequired ? clockOutTime : null,
+        tipDeclarationVersion: '14.0.2',
         breakMinutes: finalBreakMins,
         breakStartTime: null
       });
@@ -183,7 +214,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
       
       <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
         <form onSubmit={finalizeClockOut} className="space-y-4">
-          <p className="text-xs text-slate-300 font-bold mb-2">Please declare your tips for this shift before clocking out.</p>
+          <p className="text-xs text-slate-300 font-bold mb-2">Please declare your tips for this shift before clocking out. Enter 0 if you did not receive tips.</p>
           <div>
             <label className={T.label}>Cash Tips ($)</label>
             <input type="number" step="0.01" min="0" value={tipCash} onChange={e=>setTipCash(e.target.value)} className={T.input} placeholder="0.00"/>

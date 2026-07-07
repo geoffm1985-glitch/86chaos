@@ -43,7 +43,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
   );
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, addToast }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   const [menuSearch, setMenuSearch] = useState('');
 
   if (!isOpen) return null;
@@ -83,6 +83,14 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const q = menuSearch.trim().toLowerCase();
   const visibleTabs = q ? tabs.filter(t => `${t.label} ${t.id}`.toLowerCase().includes(q)) : tabs;
   const visibleActions = q ? menuActions.filter(a => `${a.label} ${a.keywords}`.toLowerCase().includes(q)).slice(0, 8) : [];
+  const activeWorkspaceLabel = activeWorkspaceName || appUser?.restaurantName || appUser?.workspaceName || appUser?.businessName || 'Current Restaurant';
+  const switchableWorkspaceCount = Array.isArray(availableWorkspaces) ? availableWorkspaces.filter(w => w?.isActive !== false).length : 0;
+  const canSwitchWorkspace = switchableWorkspaceCount > 1 && typeof onOpenWorkspaceSwitcher === 'function' && !appUser?.isDemo;
+  const openWorkspaceSwitcherFromMenu = () => {
+    if (!canSwitchWorkspace) return;
+    onClose?.();
+    window.setTimeout(() => onOpenWorkspaceSwitcher(), 0);
+  };
 
   return (
     <>
@@ -97,6 +105,17 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div>
                    <div className="text-white font-black text-lg tracking-tight leading-none">{appUser.name}</div>
                    <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
+                   <button
+                     type="button"
+                     onClick={openWorkspaceSwitcherFromMenu}
+                     disabled={!canSwitchWorkspace}
+                     className={`mt-2 max-w-[170px] flex items-center gap-1.5 rounded-lg border ${T.border} bg-[#0B0E11] px-2 py-1 text-left text-[10px] font-black uppercase tracking-wider ${canSwitchWorkspace ? 'text-[#D4A381] hover:border-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
+                     title={canSwitchWorkspace ? 'Change restaurant workspace' : 'Current restaurant workspace'}
+                   >
+                     <Globe size={11} className="flex-shrink-0" />
+                     <span className="truncate">{activeWorkspaceLabel}</span>
+                     {canSwitchWorkspace && <Repeat size={10} className="flex-shrink-0 opacity-80" />}
+                   </button>
                  </div>
                </div>
                <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
@@ -408,6 +427,59 @@ const parsePrepVoicePayload = (text = '') => {
   itemText = cleanVoiceItemName(itemText.replace(/\s+/g, ' ').trim()) || 'Prep task';
   return { amount, unit: unit || 'item', itemText };
 };
+const VOICE_WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+const getVoiceWeekdayName = (text = '') => {
+  const q = normalizeVoiceText(text);
+  const day = VOICE_WEEKDAYS.find(d => new RegExp(`\\b${d}\\b`).test(q));
+  return day ? day.charAt(0).toUpperCase() + day.slice(1) : '';
+};
+const getCurrentWeekdayName = () => VOICE_WEEKDAYS[new Date().getDay()].charAt(0).toUpperCase() + VOICE_WEEKDAYS[new Date().getDay()].slice(1);
+const getCurrentMonthDay = () => String(new Date().getDate());
+const parseVoiceMonthlyDate = (text = '') => {
+  const q = normalizeVoiceText(text);
+  const match = q.match(/\b([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/);
+  if (match?.[1]) return String(Math.min(31, Math.max(1, parseInt(match[1], 10))));
+  return '';
+};
+const titleCaseVoiceTask = (text = '') => String(text || '').trim().split(' ').filter(Boolean).map(w => w.length <= 2 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+const inferVoiceTaskCategory = (title = '') => /\b(clean|sanitize|sweep|mop|scrub|wash|wipe|dust|degrease|dish|bathroom|restroom|floor|hood|fryer|grill)\b/i.test(title) ? 'Cleaning' : 'General';
+const parseRecurringTaskVoicePayload = (text = '') => {
+  const q = normalizeVoiceText(text);
+  if (!/\b(add|create|make|put|new)\b/.test(q) || !/\b(task|tasks)\b/.test(q)) return null;
+  let frequency = '';
+  if (/\b(daily|day|every day|each day)\b/.test(q)) frequency = 'daily';
+  if (/\b(weekly|week|every week|each week)\b/.test(q)) frequency = 'weekly';
+  if (/\b(monthly|month|every month|each month)\b/.test(q)) frequency = 'monthly';
+  if (!frequency) return null;
+
+  const weekday = getVoiceWeekdayName(q);
+  const monthlyDate = parseVoiceMonthlyDate(q);
+  const numberWords = Object.keys(VOICE_NUMBER_WORDS).join('|');
+  let taskTitle = q
+    .replace(/\b(add|create|make|put|new|please|task|tasks|to|into|onto|list|recurring|repeat|repeating|daily|weekly|monthly|day|week|month|every|each|on|for|the|a|an|called|named)\b/g, ' ')
+    .replace(/\b(cleaning|general)\s+task\b/g, ' ')
+    .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/g, ' ')
+    .replace(new RegExp(`\\b(${numberWords})\\b`, 'g'), ' ')
+    .replace(/\b([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  taskTitle = cleanVoiceItemName(taskTitle) || '';
+  if (!taskTitle) return null;
+
+  const title = titleCaseVoiceTask(taskTitle);
+  return {
+    title,
+    frequency,
+    category: inferVoiceTaskCategory(taskTitle),
+    targetDay: frequency === 'weekly' ? (weekday || getCurrentWeekdayName()) : null,
+    targetDate: frequency === 'monthly' ? (monthlyDate || getCurrentMonthDay()) : null
+  };
+};
+const describeRecurringTaskSchedule = (task = {}) => {
+  if (task.frequency === 'weekly') return `weekly on ${task.targetDay || getCurrentWeekdayName()}`;
+  if (task.frequency === 'monthly') return `monthly on day ${task.targetDate || getCurrentMonthDay()}`;
+  return 'daily';
+};
 const parseNextWeekday = (phrase = '') => {
   const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
   const q = normalizeVoiceText(phrase);
@@ -422,6 +494,20 @@ const parseNextWeekday = (phrase = '') => {
 
 const isVoiceSuperAdmin = (user = {}) => Boolean((user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || user?.isSuperAdmin === true);
 const isVoiceAdmin = (user = {}) => Boolean(isVoiceSuperAdmin(user) || user?.isAdmin === true);
+const isVoiceManagerOrAdmin = (user = {}) => {
+  const role = normalizeVoiceText(user?.role || '');
+  const perms = user?.permissions || {};
+  return Boolean(
+    isVoiceAdmin(user) ||
+    user?.isOwner === true ||
+    user?.accountOwner === true ||
+    user?.owner === true ||
+    user?.workspaceOwner === true ||
+    perms.team === true ||
+    ['general manager', 'manager', 'kitchen manager', 'bar manager', 'schedule manager', 'operations manager', 'store manager', 'owner', 'shift lead', 'lead', 'supervisor'].includes(role) ||
+    /\b(manager|owner|supervisor|lead|gm)\b/.test(role)
+  );
+};
 const voiceFeatureEnabled = (features = {}, feature) => !feature || features?.[feature] !== false;
 const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today') => {
   const perms = user?.permissions || {};
@@ -588,6 +674,19 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       return { intent:'eighty_six_alert', label:`Send 86 alert: ${itemName}`, item, itemName, summary:`Post an important 86 alert for ${itemName}. Inventory stock will not be changed.`, needsConfirmation:false };
     }
 
+    // Recurring daily/weekly/monthly tasks. Only managers/admins can add these.
+    // Keep this ahead of prep parsing so “add weekly task clean fryer” becomes a recurring task, not a one-off prep item.
+    const parsedRecurringTask = parseRecurringTaskVoicePayload(raw);
+    if (parsedRecurringTask) {
+      return {
+        intent:'create_task',
+        label:`Create ${parsedRecurringTask.frequency} task`,
+        ...parsedRecurringTask,
+        summary:`Add ${describeRecurringTaskSchedule(parsedRecurringTask)} task: ${parsedRecurringTask.title}. Managers/admins only.`,
+        needsConfirmation:false
+      };
+    }
+
     // Prep tasks. Only the useful item name goes into the prep name field.
     // Quantities are stored separately so “prep 2 of ranch” becomes qty=2, text=Ranch.
     if (/\b(prep|prepare)\b/.test(q) || /we need\s+(.+)/.test(q) || /add\s+(.+)\s+to\s+prep/.test(q)) {
@@ -649,7 +748,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     setPending(action);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'create_prep', 'eighty_six_alert'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'create_prep', 'create_task', 'eighty_six_alert'];
     if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
       await executeAction(action, text, true);
     }
@@ -739,6 +838,38 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         addToast('86 Alert Sent', `${itemName} was posted as an important alert. Inventory was not changed.`);
         setActiveTab('messages'); if (closeWhenDone) setOpen(false); return;
       }
+      if (actionToRun.intent === 'create_task') {
+        if (!isVoiceManagerOrAdmin(appUser)) {
+          addToast('Access Blocked', 'Only managers or admins can add recurring daily, weekly, or monthly tasks by voice.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        if (!voiceFeatureEnabled(clientFeatures, 'prep')) {
+          addToast('Prep & Tasks Disabled', 'The Prep & Tasks module is disabled for this workspace.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        const title = String(actionToRun.title || 'Task').trim();
+        const frequency = ['daily', 'weekly', 'monthly'].includes(actionToRun.frequency) ? actionToRun.frequency : 'daily';
+        const payload = {
+          restaurantId: appUser.restaurantId,
+          title,
+          category: actionToRun.category || inferVoiceTaskCategory(title),
+          frequency,
+          targetDay: frequency === 'weekly' ? (actionToRun.targetDay || getCurrentWeekdayName()) : null,
+          targetDate: frequency === 'monthly' ? String(actionToRun.targetDate || getCurrentMonthDay()) : null,
+          completions: {},
+          createdAt: new Date().toISOString(),
+          createdBy: appUser.name || appUser.email || 'Voice Command',
+          createdById: appUser.id || '',
+          source: '86_voice_recurring_task',
+          voiceCommand: sourceText
+        };
+        await addDoc(collection(db, 'tasks'), payload);
+        await logAudit(appUser, 'VOICE_RECURRING_TASK', `${frequency}: ${title}`, sourceText);
+        addToast('Task Added', `${title} was added as a ${describeRecurringTaskSchedule(payload)} task.`);
+        setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
+      }
       if (actionToRun.intent === 'create_prep') {
         const text = String(actionToRun.itemText || 'Prep task').trim();
         await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date:getToday(), text, station:'Voice', isCompleted:false, qty: actionToRun.amount || 1, unit: actionToRun.unit || 'item', createdAt:new Date().toISOString(), createdBy: appUser.name || appUser.email || 'Voice Command', voiceCommand: sourceText });
@@ -787,7 +918,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         <button type="button" onClick={startListening} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
-        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "open beer cheese recipe", "prep 2 pans tomatoes", "open Friday schedule"' />
+        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "add weekly task clean fryer Monday", "prep 2 pans tomatoes", "open Friday schedule"' />
         <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
         {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
@@ -824,9 +955,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>Fixed the employee time clock loading labels so Clock In and Clock Out no longer briefly display the opposite action while saving.</p>
+    <p>My Schedule now rolls forward automatically after a scheduled shift ends, so an ended shift does not stay pinned as the next shift.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Clock In label','Clock Out label','No refresh needed','Employee punch flow'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Next shift fixed','Auto refresh','No manual reload','Time clock safer'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>
