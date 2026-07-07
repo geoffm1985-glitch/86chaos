@@ -11,9 +11,14 @@ service firebase.storage {
       return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
     }
 
+    function restaurantDoc(restaurantId) {
+      return firestore.get(/databases/(default)/documents/restaurants/$(restaurantId)).data;
+    }
+
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
+        request.auth.token.email == 'geoffrm1985@gmail.com' ||
         request.auth.token.email == 'geoffm1985@gmail.com' ||
         (signedIn() && userDoc().isSuperAdmin == true)
       );
@@ -25,6 +30,7 @@ service firebase.storage {
 
     function canManageBrandAssets(restaurantId) {
       return isSuperAdmin() ||
+        (signedIn() && request.auth.token.email == restaurantDoc(restaurantId).ownerEmail) ||
         (isTenantMatch(restaurantId) && (
           userDoc().isOwner == true ||
           userDoc().accountOwner == true ||
@@ -74,8 +80,8 @@ service firebase.storage {
 
 
 
-    // Legacy Cheers branding path from older Settings builds. New builds do not
-    // expose restaurant-logo display, but this keeps an older deployed client from
+    // Legacy Cheers branding path from older Settings builds. Current builds use
+    // restaurant-scoped brandAssets, but this keeps older deployed clients from
     // hitting storage/unauthorized while the update rolls out.
     match /cheers-restaurant-assets/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch('cheers_chilton_01');
