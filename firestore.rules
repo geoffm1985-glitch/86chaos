@@ -254,13 +254,13 @@ service cloud.firestore {
     function commonTenantWriteAllowed(collectionName) {
       return collectionName in [
         'events', 'messages', 'shiftSwaps', 'tasks', 'timePunches',
-        'tempLogs', 'wasteLogs', 'maintenanceLogs'
+        'tempLogs', 'wasteLogs', 'maintenanceLogs', 'offlineWriteReceipts'
       ];
     }
 
     function kitchenWriteAllowed(collectionName) {
       return collectionName in [
-        'prepItems', 'prepCategories', 'lineCheckItems', 'recipes'
+        'prepItems', 'prepCategories', 'lineCheckItems', 'recipes', 'menuDependencies'
       ] && (isAdmin() || hasPerm('prep') || hasPerm('team'));
     }
 

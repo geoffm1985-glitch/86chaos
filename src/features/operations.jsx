@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
@@ -65,6 +65,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
   const [lcName, setLcName] = useState('');
   const [lcCat, setLcCat] = useState('Cold Holding (≤ 41°F)');
   const [temps, setTemps] = useState({});
+  const [correctiveActions, setCorrectiveActions] = useState({});
   const [editLineCheckItem, setEditLineCheckItem] = useState(null);
 
   // --- PREP LOGIC ---
@@ -134,6 +135,11 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
     if (!val) return;
     
     const status = evaluateTemp(val, item.category);
+    const correctiveAction = String(correctiveActions[item.id] || '').trim();
+    if (status === 'Danger' && !correctiveAction) {
+      alert('Corrective action is required for an out-of-range temperature. Example: moved to walk-in, discarded, reheated to safe temp, called manager.');
+      return;
+    }
     
     await addDoc(collection(db, "tempLogs"), {
       itemId: item.id,
@@ -141,6 +147,9 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
       category: item.category,
       temp: parseFloat(val),
       status: status,
+      correctiveAction,
+      managerReviewRequired: status === 'Danger',
+      reviewedByManager: false,
       loggedBy: appUser.name,
       date: getToday(),
       timestamp: new Date().toISOString(),
@@ -148,6 +157,7 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
     });
     
     setTemps({...temps, [item.id]: ''});
+    setCorrectiveActions({...correctiveActions, [item.id]: ''});
   };
 
   const filteredLineChecks = lineChecks
@@ -343,6 +353,9 @@ const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
                       <div className="flex items-center gap-1 bg-[#12161A] p-1 rounded-lg border border-[#2A353D]">
                         <input type="number" step="0.1" value={temps[item.id] || ''} onChange={e=>setTemps({...temps, [item.id]: e.target.value})} placeholder="°F" className="w-16 bg-transparent text-white font-black text-center text-sm outline-none" />
                         <button onClick={() => handleLogTemp(item)} disabled={!temps[item.id]} className="bg-slate-800 text-white disabled:opacity-50 px-3 py-1.5 rounded text-xs font-black uppercase hover:bg-slate-700 transition-colors">Log</button>
+                        {temps[item.id] && evaluateTemp(temps[item.id], item.category) === 'Danger' && (
+                          <input type="text" value={correctiveActions[item.id] || ''} onChange={e=>setCorrectiveActions({...correctiveActions, [item.id]: e.target.value})} placeholder="Corrective action required" className="w-full sm:w-48 bg-red-950/30 border border-red-900/50 text-red-100 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
+                        )}
                       </div>
                       
                       {canManageLineChecks && (
@@ -2567,7 +2580,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   }).filter(Boolean).slice(0, 5);
 
   const recommendations = [
-    lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.',
+    affectedMenuItems.length > 0 ? `Menu dependency: ${affectedMenuItems[0].recipe.name || affectedMenuItems[0].recipe.title || 'A recipe'} is affected by ${affectedMenuItems[0].lowStockMatches.map(i => i.name).join(', ')}.` : (lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.'),
     criticalMaintenance.length > 0 ? `Maintenance first: ${criticalMaintenance[0].equipment} needs attention.` : 'No high priority equipment fires showing.',
     openTasks.length > 0 ? `Opening focus: ${openTasks.slice(0, 3).map(t => t.title).join(', ')}.` : 'Today\'s task list is buttoned up.',
     overduePm.length > 0 ? `Preventative maintenance overdue: ${overduePm.slice(0, 2).map(pm => pm.title).join(', ')}.` : 'Preventative maintenance countdowns are quiet.',
@@ -2576,6 +2589,8 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const stockNeed = (item) => Math.max(0, Math.ceil(Number(item.parLevel || 0) - Number(item.currentStock || 0)));
   const urgent86Items = lowStockItems.filter(i => Number(i.currentStock || 0) <= 0 || (Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) / Math.max(1, Number(i.parLevel || 1)) <= 0.25));
+  const dependencyReport = buildMenuDependencyReport({ recipes, inventoryItems, prepItems: tasks });
+  const affectedMenuItems = dependencyReport.affectedRecipes.slice(0, 8);
   const suggestedPrepTasks = [
     ...lowStockItems.slice(0, 4).map(i => `Prep/order recovery: ${i.name} is below par by ${stockNeed(i)}.`),
     forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High forecast: add backup proteins, fries, sauces, and expo garnish before rush.' : null,
@@ -2725,6 +2740,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     { label: 'Health Score', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Strong shift posture' : healthScore >= 70 ? 'Watch the weak spots' : 'Needs manager attention' },
     { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
     { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
+    { label: 'Menu Impact', value: `${affectedMenuItems.length}`, detail: affectedMenuItems.length ? 'Recipes affected by low stock' : 'No affected recipes found' },
     { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
     { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} on clock` : 'Nobody clocked in' },
     { label: 'Waste Today', value: `${todayWaste.length}`, detail: wasteCost ? `$${wasteCost.toFixed(2)} logged` : 'No cost logged' }
@@ -2904,6 +2920,18 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
             <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">86 Watch</div>
             <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>
+          </div>
+        </div>
+        <div className="mt-4 bg-[#0B0E11] border border-[#2A353D] rounded-xl overflow-hidden">
+          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Dependency Radar</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">v14 engine</span></div>
+          <div className="divide-y divide-[#2A353D] max-h-[260px] overflow-y-auto custom-scrollbar">
+            {affectedMenuItems.length === 0 && <div className="p-4 text-xs font-bold text-slate-500">No recipe/inventory dependency collisions detected. Add ingredient names to recipes to make this sharper.</div>}
+            {affectedMenuItems.map(({ recipe, lowStockMatches }) => (
+              <div key={recipe.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="min-w-0"><div className="font-black text-white text-sm truncate">{recipe.name || recipe.title || 'Recipe'}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Affected by {lowStockMatches.map(i => i.name).join(', ')}</div></div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-orange-300">{lowStockMatches.some(i => Number(i.pendingQty || 0) > 0) ? 'Recovery pending' : 'Needs action'}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
