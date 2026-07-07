@@ -3566,7 +3566,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'send-push', 'send-schedule-alert', 'import-cheers-july-schedule', 'presence-heartbeat', 'staff-member', 'voice-command', 'alerts'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'send-push', 'send-schedule-alert', 'import-cheers-july-schedule', 'presence-heartbeat', 'push-token-repair', 'staff-member', 'voice-command', 'alerts'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -3764,13 +3764,67 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     addToast('Push Report', 'Push diagnostic report downloaded.');
   };
 
+  const buildPushRepairLink = (user) => {
+    if (typeof window === 'undefined') return 'https://app.86chaos.com/?pushRepair=1';
+    const url = new URL(window.location.origin || 'https://app.86chaos.com');
+    url.searchParams.set('pushRepair', '1');
+    if (user?.restaurantId) url.searchParams.set('restaurantId', user.restaurantId);
+    return url.toString();
+  };
+
+  const callPushRepairAction = async (action, user = null, extra = {}) => {
+    const targetIds = user?.id ? [user.id] : [];
+    const restaurantId = user?.restaurantId || extra.restaurantId || '';
+    try {
+      const response = await secureFetch('/api/push-token-repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, restaurantId, targetUserIds: targetIds, targetUserId: user?.id || '', repairLink: user ? buildPushRepairLink(user) : '', ...extra })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) throw new Error(result.error || `Push repair failed: ${response.status}`);
+      return result;
+    } catch (err) {
+      addToast('Push Repair Error', err.message || 'Could not update push repair status.');
+      return null;
+    }
+  };
+
   const flagStalePushTokensForRepair = async () => {
     if (!stalePushUsers.length) return addToast('All Clear', 'No stale push tokens found.');
-    if (!window.confirm(`Flag ${stalePushUsers.length} stale push token(s) for repair? This does not delete the user.`)) return;
+    if (!window.confirm(`Clear and repair ${stalePushUsers.length} stale push token(s)? Users will be prompted to reconnect next time they open the app.`)) return;
+    const result = await callPushRepairAction('prune-stale', null, { maxAgeDays: 30 });
+    if (result) addToast('Stale Tokens Queued', `${result.pruned ?? result.updated ?? stalePushUsers.length} stale token(s) cleared and marked for repair.`);
+  };
+
+  const requestPushRepairForUser = async (user) => {
+    if (!user?.id) return;
+    const result = await callPushRepairAction('request-repair', user);
+    if (result) addToast('Reconnect Requested', `${user.name || user.email || 'User'} will be prompted to reconnect notifications.`);
+  };
+
+  const forceRefreshPushForUser = async (user) => {
+    if (!user?.id) return;
+    if (!window.confirm(`Clear ${user.name || user.email || 'this user'}'s saved push token and force a fresh device re-sync?`)) return;
+    const result = await callPushRepairAction('force-refresh', user);
+    if (result) addToast('Force Refresh Queued', `${user.name || user.email || 'User'} will refresh service worker and token on next app open.`);
+  };
+
+  const clearPushRepairFlagForUser = async (user) => {
+    if (!user?.id) return;
+    const result = await callPushRepairAction('clear-repair-flag', user);
+    if (result) addToast('Repair Flag Cleared', `${user.name || user.email || 'User'} repair flag cleared.`);
+  };
+
+  const copyPushRepairLinkForUser = async (user) => {
+    const link = buildPushRepairLink(user);
     try {
-      await Promise.all(stalePushUsers.slice(0, 200).map(u => updateDoc(doc(db, 'users', u.id), { pushNeedsRepair: true, pushRepairFlaggedAt: new Date().toISOString() })));
-      addToast('Repair Flagged', `${stalePushUsers.length} stale token(s) marked for repair.`);
-    } catch (err) { addToast('Repair Error', err.message || 'Could not flag stale tokens.'); }
+      await navigator.clipboard.writeText(link);
+      await callPushRepairAction('request-repair', user);
+      addToast('Reconnect Link Copied', 'Send this link to the employee. Their device still has to open it and reconnect.');
+    } catch (err) {
+      addToast('Copy Link Failed', link);
+    }
   };
 
   const applyMaintenanceMode = async () => {
@@ -3883,6 +3937,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const adminManualArticles = [
     { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', '14.0 Robustness Suite is the hardening bay for Safe Write Engine status, Storage Doctor, Schema Doctor, Backup Preview, Permission Simulator, Import Bridge, and Release Guardrails.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
     { title: 'Version 14.0.6 Client Save & Roster Cleanup', group: 'System Administrator', keywords: 'v14 14.0.6 client manage save configuration unsupported undefined staff roster read only banner', body: ['System Administrator workspace saves now clean unsupported undefined values before writing to Firestore, preventing the invalid data error when managing a client.', 'Staff Roster keeps the same manager/admin edit protections, but the regular-staff read-only banner was removed so the roster view is cleaner.'] },
+    { title: 'Version 14.0.9 Push Token Repair Center', group: 'System Administrator', keywords: 'v14 14.0.9 push token repair stale missing notifications reconnect service worker admin', body: ['System Administrator → Push now includes the Push Token Repair Center with Request Reconnect, Force Refresh, Copy Link, Clear Flag, Send Test, and Prune + Repair Stale actions.', 'Missing tokens cannot be created from the server. The admin tool queues the repair and the employee device creates the Firebase Messaging token when they open the app or reconnect link.', 'Force Refresh clears stale tokens, refreshes the service worker on the employee device at next open, and records repair status/failure details for easier troubleshooting.'] },
     { title: 'Version 14.0.8 Menu Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.8 multi workspace drawer menu switch restaurant current workspace two jobs', body: ['The side menu now shows the active restaurant directly under the signed-in user name and role so employees can confirm which job they are in before clocking in or posting changes.', 'If the account has more than one active workspace, that restaurant line becomes a Change control that opens the workspace switcher without digging through the header.'] },
     { title: 'Version 14.0.4 Multi-Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.4 multi workspace switcher multiple jobs tenant memberships staff roster presence heartbeat one login', body: ['86 Chaos now supports one Firebase login belonging to multiple restaurant workspaces through workspaceMembers membership records.', 'After login, employees with more than one active workspace choose which restaurant they are entering. The header also includes a Switch control when multiple workspaces are available.', 'Staff Roster can link an existing email to the current workspace instead of forcing duplicate accounts or resetting that person\'s password.', 'Removing a staff member removes only the current workspace membership. The Firebase Auth login stays active when the person still belongs to another restaurant.', 'Live Users and presence heartbeats are stored per workspace/user pair so activity from one job does not overwrite another job. Publish Firestore rules with this build.'] },
     { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Ops smart actions, Today quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Ops Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
@@ -5113,8 +5168,56 @@ Type RESTORE to continue.`);
             <CockpitMetric label="Browser Permission" value={envReport.notifications} detail={`This admin device • ${envReport.host}`} tone={envReport.notifications === 'granted' ? 'emerald' : 'amber'} />
             <CockpitMetric label="Last Push Result" value={backupStatus?.lastPushResult || 'Not logged'} detail="Server route returns exact sent/failed counts when supported" tone="blue" />
           </div>
-          <div className={`${T.card} p-4 flex flex-col sm:flex-row gap-2 sm:items-center justify-between`}><div><h2 className="font-black text-white">Push Notification Control Center</h2><p className="text-xs text-slate-400 font-bold mt-1">See tokens, permissions, stale devices, and send a critical test to one user.</p></div><div className="flex flex-wrap gap-2"><button onClick={flagStalePushTokensForRepair} className={T.btnAlt}>Repair All Stale Tokens</button><button onClick={exportPushDiagnostics} className={T.btn}>Export Push Diagnostic Report</button></div></div>
-          <div className={`${T.card} overflow-hidden`}><div className={`bg-[#12161A] p-3 border-b ${T.border} text-[10px] font-black uppercase tracking-widest text-[#D4A381]`}>Connected devices by user</div><div className={`divide-y ${T.border} max-h-[62vh] overflow-y-auto custom-scrollbar`}>{pushRows.map(u => { const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace'; return <div key={u.id} className="p-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-3 hover:bg-[#12161A]/55"><div className="min-w-0"><div className="font-black text-white text-sm truncate">{u.name || u.email || 'Unnamed User'}</div><div className="text-[10px] font-bold text-slate-400 truncate">{restName} • {u.email || 'no email'} • Devices: {u.deviceCount}</div><div className="grid sm:grid-cols-4 gap-2 mt-2 text-[10px] font-bold"><div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Permission</div><div className="text-white">{u.notificationPermission || u.pushTokenPermission || 'unknown'}</div></div><div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Last Sync</div><div className="text-white">{getExactTime(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt)}</div></div><div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Host</div><div className="text-white truncate">{u.pushTokenHost || u.activeHost || 'unknown'}</div></div><div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Result</div><div className={u.fcmToken ? (u.tokenFresh ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}>{u.pushStatus}</div></div></div></div><button onClick={() => sendPushTestToUser(u)} disabled={!u.fcmToken} className="px-3 py-2 bg-blue-900/20 border border-blue-900/50 text-blue-300 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Send Test To This User</button></div>})}</div></div>
+          <div className={`${T.card} p-4 flex flex-col sm:flex-row gap-2 sm:items-center justify-between`}>
+            <div>
+              <h2 className="font-black text-white">Push Token Repair Center</h2>
+              <p className="text-xs text-slate-400 font-bold mt-1">Repair missing/stale tokens, copy reconnect links, and clear dead device records without pretending the server can create a token for someone else's phone.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={flagStalePushTokensForRepair} className={T.btnAlt}>Prune + Repair Stale</button>
+              <button onClick={exportPushDiagnostics} className={T.btn}>Export Push Diagnostic Report</button>
+            </div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-3">
+            <div className={`${T.card} p-3 border-amber-900/40 bg-amber-900/10`}><div className="text-[9px] uppercase tracking-widest text-amber-300 font-black">Missing Token</div><p className="text-[10px] text-slate-300 font-bold mt-1">Permission can say granted while no FCM token exists. Use Request Reconnect or Copy Link, then the employee must open the app on that device.</p></div>
+            <div className={`${T.card} p-3 border-orange-900/40 bg-orange-900/10`}><div className="text-[9px] uppercase tracking-widest text-orange-300 font-black">Stale Token</div><p className="text-[10px] text-slate-300 font-bold mt-1">Force Refresh clears the saved token, asks the device to refresh its service worker, and queues a fresh token sync on next open.</p></div>
+            <div className={`${T.card} p-3 border-emerald-900/40 bg-emerald-900/10`}><div className="text-[9px] uppercase tracking-widest text-emerald-300 font-black">Connected</div><p className="text-[10px] text-slate-300 font-bold mt-1">Send Test validates the saved token through the server route. Bad tokens are automatically flagged by the push send route.</p></div>
+          </div>
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`bg-[#12161A] p-3 border-b ${T.border} text-[10px] font-black uppercase tracking-widest text-[#D4A381]`}>Connected devices by user</div>
+            <div className={`divide-y ${T.border} max-h-[62vh] overflow-y-auto custom-scrollbar`}>
+              {pushRows.map(u => {
+                const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
+                const needsRepair = u.pushNeedsRepair || u.pushForceServiceWorkerRefresh || u.pushStatus === 'missing token' || u.pushStatus === 'stale token';
+                return (
+                  <div key={u.id} className="p-3 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-3 hover:bg-[#12161A]/55">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-black text-white text-sm truncate">{u.name || u.email || 'Unnamed User'}</div>
+                        {u.pushNeedsRepair && <span className="px-2 py-0.5 rounded-full bg-amber-900/30 border border-amber-900/60 text-amber-300 text-[8px] font-black uppercase tracking-widest">Repair queued</span>}
+                        {u.pushForceServiceWorkerRefresh && <span className="px-2 py-0.5 rounded-full bg-orange-900/30 border border-orange-900/60 text-orange-300 text-[8px] font-black uppercase tracking-widest">Force refresh</span>}
+                      </div>
+                      <div className="text-[10px] font-bold text-slate-400 truncate">{restName} • {u.email || 'no email'} • Devices: {u.deviceCount}</div>
+                      <div className="grid sm:grid-cols-4 gap-2 mt-2 text-[10px] font-bold">
+                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Permission</div><div className="text-white">{u.notificationPermission || u.pushTokenPermission || 'unknown'}</div></div>
+                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Last Sync</div><div className="text-white">{getExactTime(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt)}</div></div>
+                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Host</div><div className="text-white truncate">{u.pushTokenHost || u.activeHost || 'unknown'}</div></div>
+                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Result</div><div className={u.fcmToken ? (u.tokenFresh ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}>{u.pushStatus}</div></div>
+                      </div>
+                      {(u.lastPushRepairError || u.lastPushFailureCode || u.pushRepairStatus) && <div className="mt-2 text-[10px] font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">Repair status: <span className="text-slate-200">{u.pushRepairStatus || 'not queued'}</span>{u.lastPushFailureCode ? ` • failure ${u.lastPushFailureCode}` : ''}{u.lastPushRepairError ? ` • ${u.lastPushRepairError}` : ''}</div>}
+                    </div>
+                    <div className="grid grid-cols-2 xl:grid-cols-1 gap-2 min-w-[190px]">
+                      <button onClick={() => sendPushTestToUser(u)} disabled={!u.fcmToken} className="px-3 py-2 bg-blue-900/20 border border-blue-900/50 text-blue-300 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Send Test</button>
+                      <button onClick={() => requestPushRepairForUser(u)} className="px-3 py-2 bg-amber-900/20 border border-amber-900/50 text-amber-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Request Reconnect</button>
+                      <button onClick={() => forceRefreshPushForUser(u)} className="px-3 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Force Refresh</button>
+                      <button onClick={() => copyPushRepairLinkForUser(u)} className="px-3 py-2 bg-cyan-900/20 border border-cyan-900/50 text-cyan-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Copy Link</button>
+                      {needsRepair && <button onClick={() => clearPushRepairFlagForUser(u)} className="px-3 py-2 bg-slate-800/60 border border-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest col-span-2 xl:col-span-1">Clear Flag</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -6478,6 +6581,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 
 const HELP_ARTICLES = [
   { id:'new-1406', title:'What changed in version 14.0.6', group:'Release Notes', keywords:'new update 14.0.6 client management save staff roster read only banner', body:['Workspace management saves are more reliable and no longer fail when an old workspace setting contains an empty unsupported value.', 'Staff Roster keeps manager/admin-only editing, but the read-only notice banner was removed for regular staff.'] },
+  { id:'new-1409', title:'What changed in version 14.0.9', group:'Release Notes', keywords:'new update 14.0.9 push notifications repair reconnect stale missing token', body:['Push notification diagnostics now include repair actions for missing or stale device tokens.', 'Managers with access can request a reconnect or send an employee a reconnect link. The employee still has to open the app on their own device so browser notifications can safely reconnect.'] },
   { id:'new-1408', title:'What changed in version 14.0.8', group:'Release Notes', keywords:'new update 14.0.8 menu drawer restaurant workspace switcher multiple restaurants two jobs', body:['The side menu now shows the active restaurant under the employee name and role.', 'Employees with more than one active restaurant can tap that restaurant line to open the workspace switcher and change restaurants.'] },
   { id:'new-1405', title:'What changed in version 14.0.5', group:'Release Notes', keywords:'new update 14.0.5 next shift schedule time clock my schedule ended shift rollover', body:['My Schedule now checks the scheduled end time before choosing the next shift.', 'A shift that already ended today no longer stays pinned as the next shift.', 'The card refreshes while the screen is open and refreshes when the app returns from the background, so employees should not need to reload just to see the next shift.'] },
   { id:'new-1404', title:'What changed in version 14.0.4', group:'Release Notes', keywords:'new update 14.0.4 multi workspace switcher multiple jobs restaurants one login staff roster', body:['Employees who work at more than one restaurant using 86 Chaos can now use one login and choose the workspace they are entering.', 'The app header shows the active restaurant and offers Switch when more than one workspace is available.', 'Managers can add an existing 86 Chaos email to their staff roster without creating a duplicate login or changing that employee\'s password.', 'Removing someone from Staff Roster now removes only that restaurant membership when the person still belongs to another workspace.'] },

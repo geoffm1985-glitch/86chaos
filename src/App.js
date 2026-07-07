@@ -89,6 +89,8 @@ export default function App() {
   const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   const [workspaceMembershipRefreshKey] = useState(0);
+  const [isPushRepairing, setIsPushRepairing] = useState(false);
+  const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -951,13 +953,89 @@ useEffect(() => {
   };
 
 // --- AUTO-ASK + TOKEN REPAIR FOR PUSH NOTIFICATIONS ---
+  const getActiveVapidKey = () => (typeof window !== 'undefined' && window.location.hostname === 'app.86chaos.com')
+    ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
+    : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
+
+  const repairPushOnThisDevice = async (source = 'manual') => {
+    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window) || !messaging) {
+      addToast('Push Repair Blocked', 'Push repair is only available from the real logged-in device.');
+      return false;
+    }
+    setIsPushRepairing(true);
+    try {
+      let permission = Notification.permission;
+      if (permission === 'default') permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        await updateDoc(doc(db, 'users', liveAppUser.id), {
+          notificationPermission: permission,
+          pushTokenPermission: permission,
+          pushRepairStatus: permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted',
+          lastPushRepairError: 'Browser notification permission is not granted.',
+          lastPushTokenSyncAt: new Date().toISOString()
+        }).catch(() => {});
+        addToast('Notifications Blocked', 'This device needs browser notification permission before 86 Chaos can save a push token.');
+        return false;
+      }
+
+      let registration = null;
+      if ('serviceWorker' in navigator) {
+        if (liveAppUser?.pushForceServiceWorkerRefresh) {
+          const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
+          await Promise.all((regs || []).filter(reg => (reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || '').includes('firebase-messaging-sw')).map(reg => reg.unregister().catch(() => false)));
+        }
+        registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { updateViaCache: 'none' }).catch(() => null);
+        if (registration?.update) await registration.update().catch(() => null);
+      }
+
+      const tokenOptions = { vapidKey: getActiveVapidKey() };
+      if (registration) tokenOptions.serviceWorkerRegistration = registration;
+      const currentToken = await getToken(messaging, tokenOptions);
+      if (!currentToken) throw new Error('Firebase returned no push token for this browser.');
+
+      const stamp = new Date().toISOString();
+      await updateDoc(doc(db, 'users', liveAppUser.id), {
+        fcmToken: currentToken,
+        fcmTokenUpdatedAt: stamp,
+        lastPushTokenSyncAt: stamp,
+        notificationPermission: permission,
+        pushTokenPermission: permission,
+        pushTokenHost: window.location.hostname,
+        pushNeedsRepair: false,
+        pushForceServiceWorkerRefresh: false,
+        pushRepairStatus: 'connected',
+        pushRepairCompletedAt: stamp,
+        pushRepairCompletedHost: window.location.hostname,
+        lastPushRepairError: null,
+        lastPushFailureCode: null
+      });
+      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
+      setPushRepairDismissed(true);
+      addToast(source === 'auto' ? 'Push Reconnected' : 'Notifications Fixed', 'This device is connected for 86 Chaos push notifications.');
+      return true;
+    } catch (err) {
+      console.warn('86 Chaos push repair failed:', err?.message || err);
+      await updateDoc(doc(db, 'users', liveAppUser.id), {
+        notificationPermission: Notification.permission,
+        pushTokenPermission: Notification.permission,
+        pushRepairStatus: 'repair-failed',
+        lastPushRepairError: err?.message || String(err),
+        lastPushTokenSyncAt: new Date().toISOString()
+      }).catch(() => {});
+      addToast('Push Repair Failed', err?.message || 'Could not reconnect push notifications on this device.');
+      return false;
+    } finally {
+      setIsPushRepairing(false);
+    }
+  };
+
+  const pushRepairRequestedByLink = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('pushRepair') === '1';
+  const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && (pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true));
+
   useEffect(() => {
-    if (!liveAppUser?.id || ghostTenant || typeof window === 'undefined' || !('Notification' in window) || !messaging) return;
+    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window) || !messaging) return;
 
     let canceled = false;
-    const activeVapidKey = window.location.hostname === 'app.86chaos.com'
-      ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
-      : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
 
     const syncPushToken = async (permission, showToast = false) => {
       if (canceled || permission !== 'granted') {
@@ -965,6 +1043,7 @@ useEffect(() => {
           updateDoc(doc(db, 'users', liveAppUser.id), {
             notificationPermission: permission,
             pushTokenPermission: permission,
+            pushRepairStatus: permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted',
             lastPushTokenSyncAt: new Date().toISOString()
           }).catch(() => {});
         }
@@ -972,18 +1051,34 @@ useEffect(() => {
       }
 
       try {
+        let registration = null;
         if ('serviceWorker' in navigator) {
-          await navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => null);
+          if (liveAppUser?.pushForceServiceWorkerRefresh) {
+            const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
+            await Promise.all((regs || []).filter(reg => (reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || '').includes('firebase-messaging-sw')).map(reg => reg.unregister().catch(() => false)));
+          }
+          registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { updateViaCache: 'none' }).catch(() => null);
+          if (registration?.update) await registration.update().catch(() => null);
         }
-        const currentToken = await getToken(messaging, { vapidKey: activeVapidKey });
+        const tokenOptions = { vapidKey: getActiveVapidKey() };
+        if (registration) tokenOptions.serviceWorkerRegistration = registration;
+        const currentToken = await getToken(messaging, tokenOptions);
         if (!currentToken || canceled) return;
+        const stamp = new Date().toISOString();
         await updateDoc(doc(db, 'users', liveAppUser.id), {
           fcmToken: currentToken,
-          fcmTokenUpdatedAt: new Date().toISOString(),
-          lastPushTokenSyncAt: new Date().toISOString(),
+          fcmTokenUpdatedAt: stamp,
+          lastPushTokenSyncAt: stamp,
           notificationPermission: permission,
           pushTokenPermission: permission,
-          pushTokenHost: window.location.hostname
+          pushTokenHost: window.location.hostname,
+          pushNeedsRepair: false,
+          pushForceServiceWorkerRefresh: false,
+          pushRepairStatus: 'connected',
+          pushRepairCompletedAt: stamp,
+          pushRepairCompletedHost: window.location.hostname,
+          lastPushRepairError: null,
+          lastPushFailureCode: null
         });
         if (showToast) addToast('Push Ready', 'Push notifications are enabled for this device.');
       } catch (err) {
@@ -991,6 +1086,8 @@ useEffect(() => {
         updateDoc(doc(db, 'users', liveAppUser.id), {
           notificationPermission: permission,
           pushTokenPermission: permission,
+          pushRepairStatus: 'sync-failed',
+          lastPushRepairError: err?.message || String(err),
           lastPushTokenSyncAt: new Date().toISOString()
         }).catch(() => {});
       }
@@ -1004,14 +1101,15 @@ useEffect(() => {
         } catch (err) {
           console.warn('86 Chaos notification permission request failed:', err?.message || err);
         }
+      } else if (pushRepairRequested || Notification.permission === 'granted') {
+        await syncPushToken(Notification.permission, pushRepairRequested);
       } else {
         await syncPushToken(Notification.permission, false);
       }
-    }, 2500);
+    }, pushRepairRequested ? 600 : 2500);
 
     return () => { canceled = true; clearTimeout(timer); };
-  }, [liveAppUser?.id, ghostTenant]);
-                      
+  }, [liveAppUser?.id, liveAppUser?.pushNeedsRepair, liveAppUser?.pushForceServiceWorkerRefresh, ghostTenant, isDemoMode]);                      
   // --- FOREGROUND NOTIFICATION CATCHER ---
   useEffect(() => {
     if (!messaging) return;
@@ -1199,6 +1297,19 @@ return (
           >
             REFRESH NOW
           </button>
+        </div>
+      )}
+
+      {pushRepairRequested && !pushRepairDismissed && (
+        <div className="bg-amber-500 text-slate-950 text-[11px] sm:text-xs font-black px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sticky top-0 z-[9998] shadow-2xl uppercase tracking-wider border-b border-amber-300">
+          <div className="flex items-center gap-2 min-w-0">
+            <Bell size={15} className="flex-shrink-0" />
+            <span className="truncate">Reconnect notifications on this device so your restaurant can send alerts.</span>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={() => repairPushOnThisDevice('manual')} disabled={isPushRepairing} className="bg-slate-950 text-amber-200 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md disabled:opacity-60">{isPushRepairing ? 'FIXING...' : 'FIX NOW'}</button>
+            <button onClick={() => setPushRepairDismissed(true)} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">LATER</button>
+          </div>
         </div>
       )}
 

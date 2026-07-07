@@ -119,6 +119,8 @@ service cloud.firestore {
         'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost', 'heartbeatEpochMs',
         'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
         'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
+        'pushNeedsRepair', 'pushForceServiceWorkerRefresh', 'pushRepairStatus', 'pushRepairCompletedAt',
+        'pushRepairCompletedHost', 'lastPushRepairError', 'lastPushFailureCode',
         'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs', 'activeRestaurantId', 'lastWorkspaceId',
         'forcePasswordChange', 'passwordPurgedAt', 'passwordStored', 'lastWorkspaceSwitchedAt'
       ]) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys());
