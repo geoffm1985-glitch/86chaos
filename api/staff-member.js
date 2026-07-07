@@ -215,6 +215,58 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, action: 'update', uid: targetUid, staff: { id: targetUid, ...current, ...payload } });
     }
 
+
+    if (action === 'deactivate' || action === 'delete') {
+      const targetUid = cleanString(body.targetUid);
+      if (!targetUid) return res.status(400).json({ error: 'targetUid is required.' });
+      const targetRef = db.collection('users').doc(targetUid);
+      const targetSnap = await targetRef.get();
+      if (!targetSnap.exists) return res.status(404).json({ error: 'Staff profile was not found.' });
+      const current = targetSnap.data() || {};
+      if (current.restaurantId !== ctx.restaurantId && !ctx.isSuperAdmin) return res.status(403).json({ error: 'That staff profile belongs to another workspace.' });
+      if (targetUid === ctx.decoded.uid || targetUid === ctx.callerDocId) {
+        return res.status(400).json({ error: 'You cannot remove your own staff account from here. Use another owner/Super Admin account for ownership changes.' });
+      }
+      const targetEmail = norm(current.email);
+      const targetIsOwner = Boolean(
+        current?.isOwner === true ||
+        current?.accountOwner === true ||
+        current?.owner === true ||
+        current?.workspaceOwner === true ||
+        norm(current?.accountRole) === 'owner' ||
+        targetUid === ctx.restaurant?.ownerUid ||
+        targetUid === ctx.restaurant?.ownerUserId ||
+        targetEmail && (
+          targetEmail === norm(ctx.restaurant?.ownerEmail) ||
+          targetEmail === norm(ctx.restaurant?.ownerEmailLower) ||
+          targetEmail === norm(ctx.restaurant?.ownerUserEmail)
+        )
+      );
+      if (targetIsOwner && !ctx.isSuperAdmin) {
+        return res.status(403).json({ error: 'Only a Super Admin can remove an account-owner profile.' });
+      }
+
+      const now = new Date().toISOString();
+      const payload = {
+        isActive: false,
+        deactivatedAt: now,
+        deactivatedBy: ctx.callerDocId || ctx.decoded.uid,
+        deactivatedByEmail: ctx.callerEmail || '',
+        staffWriteSource: 'staff-member-api',
+        updatedAt: now
+      };
+      await targetRef.set(payload, { merge: true });
+      let authDisabled = false;
+      try {
+        await auth.updateUser(targetUid, { disabled: true });
+        authDisabled = true;
+      } catch (authErr) {
+        console.warn('staff-member deactivate could not disable auth user:', authErr?.code || authErr?.message || authErr);
+      }
+      await writeAudit(db, ctx, 'STAFF_DEACTIVATE', targetUid, `${current.name || current.email || targetUid} was removed from the active roster by ${ctx.callerEmail}. Auth disabled: ${authDisabled ? 'yes' : 'no'}.`);
+      return res.status(200).json({ ok: true, action: 'deactivate', uid: targetUid, authDisabled, staff: { id: targetUid, ...current, ...payload } });
+    }
+
     return res.status(400).json({ error: 'Unsupported staff action.' });
   } catch (err) {
     console.error('staff-member API error:', err);

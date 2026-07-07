@@ -209,10 +209,11 @@ const TabTeam = ({ users, appUser, clientData, addToast, heartbeatDebug }) => {
 
 const handleDeactivate = async (u) => { 
     if (!canManageTeam) return addToast('Read Only', 'Only managers/admins/account owners can remove staff accounts.');
+    if (u.id === appUser?.id) return addToast('Blocked', 'You cannot remove your own staff account from here. Use another owner/Super Admin account for ownership changes.');
     const superDelete = isSuperAdminUser;
-    if (!window.confirm(superDelete ? `Terminate ${u.name}? This will permanently delete their global account from the entire system.` : `Deactivate ${u.name}? They will leave the active roster, but historical schedule and payroll records stay intact.`)) return; 
+    if (!window.confirm(superDelete ? `Terminate ${u.name}? This will permanently delete their global account from the entire system.` : `Remove ${u.name} from the active roster? Historical schedule and payroll records will stay intact.`)) return; 
     
-    addToast(superDelete ? 'Terminating' : 'Deactivating', `${superDelete ? 'Erasing' : 'Removing'} ${u.name} from the active roster...`);
+    addToast(superDelete ? 'Terminating' : 'Removing', `${superDelete ? 'Erasing' : 'Removing'} ${u.name} from the active roster...`);
     try {
       if (superDelete) {
         await secureFetch('/api/delete-user', {
@@ -223,8 +224,14 @@ const handleDeactivate = async (u) => {
         await deleteDoc(doc(db, "users", u.id)); 
         addToast('Terminated', `${u.name}'s account has been completely erased.`); 
       } else {
-        await updateDoc(doc(db, "users", u.id), { isActive: false, deactivatedAt: new Date().toISOString(), deactivatedBy: appUser.id || null });
-        addToast('Deactivated', `${u.name} was removed from the active roster.`);
+        const response = await secureFetch('/api/staff-member', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'deactivate', targetUid: u.id })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff removal failed.');
+        addToast('Removed', `${u.name} was removed from the active roster.`);
       }
     } catch (err) {
       addToast('Error', err?.message || 'Could not update staff status.');
@@ -5865,7 +5872,7 @@ const HELP_ARTICLES = [
   { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13139', title:'What changed in version 13.1.39', group:'Release Notes', keywords:'new update 13.1.39 owner staff wages add employee payroll api permissions', body:['Staff Roster saves now use a verified server route so account-owner staff changes are not blocked by client Firestore rules.', 'Account owners can add staff, repair an existing auth-only employee account, and edit wages including their own wage.', 'Only account owners and Super Admin can choose View Wages or Edit Wages access. Managers with staff permissions can still edit basic profile details without touching payroll controls.', 'The staff save API writes an audit event for staff creation and wage changes so sensitive payroll updates are visible in Forensics.'] },
+  { id:'new-13140', title:'What changed in version 13.1.40', group:'Release Notes', keywords:'new update 13.1.40 owner staff delete remove deactivate roster payroll api permissions', body:['Account owners can now remove staff from the active roster through the same verified staff API used for staff creation and wage edits.', 'The removal flow keeps historical schedule and payroll records intact by deactivating the staff profile instead of deleting past records.', 'The staff API now blocks self-removal and protects account-owner profiles unless a Super Admin performs the action.', 'Staff removals write a sensitive audit event so roster changes are visible in Forensics.'] },
   { id:'new-13138', title:'What changed in version 13.1.38', group:'Release Notes', keywords:'new update 13.1.38 account owner staff wages permissions add employees payroll owner', body:['Account owners can add staff and edit wages, including their own wage, without Firestore blocking the save.', 'Only account owners and Super Admin can choose who can view or edit wages. Wage access now has separate View Wages and Edit Wages switches.', 'Staff Roster hides wage fields from users without wage access and uses clearer permission messages when Firebase blocks a sensitive staff update.', 'Firestore rules now recognize restaurant ownership for staff creation and payroll edits while still protecting Super Admin/system fields.'] },
   { id:'new-13137', title:'What changed in version 13.1.37', group:'Release Notes', keywords:'new update 13.1.37 admin settings command center roles push live presence deployment readiness maintenance branding danger import export', body:['System Administrator now includes the full Admin/Settings command-center upgrade: overview widgets, role/permission matrix, push control center, live activity monitor, setup wizard, deployment readiness checker, audit filters, settings history, import/export center, maintenance controls, branding/display settings, and a separate Danger Zone.', 'Push notifications now have a dedicated cockpit with connected device counts, token freshness, per-user test pushes, stale-token repair flags, and a downloadable diagnostic report.', 'Deployment Readiness gives a clear READY TO DEPLOY or DO NOT DEPLOY YET result with exact checks for Firebase, rules, API health, push, backup integrity, domains, version, and packaging.', 'Mobile Administrator navigation keeps the compact section picker while exposing the new professional admin categories.'] },
   { id:'new-13136', title:'What changed in version 13.1.36', group:'Release Notes', keywords:'new update 13.1.36 administrator admin mobile command center layout settings', body:['System Administrator now has a cleaner command-center layout with grouped sections for Overview, Customer Operations, Support & Safety, and Reference.', 'On phones, the admin tab opens with a compact section picker instead of forcing you through a long Command Deck scroll.', 'The Command Deck now defaults closed on mobile and can be opened with Signals when needed.', 'Desktop still keeps the full professional grouped navigation and left-side signal board.'] },
