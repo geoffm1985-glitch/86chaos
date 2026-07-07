@@ -3,9 +3,10 @@ import { collection, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { Edit, Trash2 } from 'lucide-react';
+import { secureFetch } from '../core/appCore';
 
 const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiveCollection, getAvatar }) => {
-  const canManageTeam = Boolean(appUser?.isSuperAdmin === true || appUser?.isAdmin === true);
+  const canManageTeam = Boolean(appUser?.isSuperAdmin === true || appUser?.isAdmin === true || appUser?.isOwner === true || appUser?.accountOwner === true || appUser?.permissions?.team === true);
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
@@ -37,11 +38,27 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
     if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can change staff profiles.');
     if (!name.trim() || !email.trim() || !phone.trim()) return; 
     
+    const staffPayload = {
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone.trim(),
+      role,
+      wage: parseFloat(wage) || 0,
+      isAdmin,
+      permissions: perms,
+      photoURL: photoURL.trim(),
+      restaurantId: appUser.restaurantId
+    };
+
     if (editingUserId) {
         try {
-            await updateDoc(doc(db, "users", editingUserId), {
-                name: name.trim(), phone: phone.trim(), role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, photoURL: photoURL.trim()
+            const response = await secureFetch('/api/staff-member', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'update', targetUid: editingUserId, ...staffPayload })
             });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff profile save failed.');
             addToast('Updated', `${name}'s profile has been updated.`);
             resetForm();
         } catch(err) { addToast('Error', err.message); }
@@ -50,20 +67,23 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
 
     const tPass = generateTempPass(); 
     try { 
-      const secondaryApp = initializeApp(firebaseConfig, "TeamBuilderApp_" + Date.now());
-      const secondaryAuth = getAuth(secondaryApp);
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), tPass);
-      const newAuthUid = userCredential.user.uid;
+      const response = await secureFetch('/api/staff-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', tempPassword: tPass, ...staffPayload })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff account creation failed.');
+      const oneTimePassword = result?.tempPassword || tPass;
       
-      await secondaryAuth.signOut();
+      const welcomeMsg = `Welcome to 86chaos!
 
-      await setDoc(doc(db, "users", newAuthUid), { 
-        name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
-        forcePasswordChange: true, passwordStored: false, passwordPurgedAt: new Date().toISOString(), photoURL: photoURL.trim(), restaurantId: appUser.restaurantId 
-      }); 
-      
-      const welcomeMsg = `Welcome to 86chaos!\n\nAccess the 86 Chaos OS here: https://app.86chaos.com\n\nUsername: ${email.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in and update your password.`;
+Access the 86 Chaos OS here: https://app.86chaos.com
+
+Username: ${email.toLowerCase().trim()}
+Temporary Password: ${oneTimePassword}
+
+Please log in and update your password.`;
       
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile && phone.trim()) {

@@ -91,11 +91,15 @@ const TabTeam = ({ users, appUser, clientData, addToast, heartbeatDebug }) => {
   const normalizedEmail = (appUser?.email || '').toLowerCase().trim();
   const ownerEmail = (clientData?.ownerEmail || appUser?.ownerEmail || '').toLowerCase().trim();
   const ownerUserId = clientData?.ownerUserId || clientData?.ownerUid || '';
-  const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || normalizedEmail === MASTER_ADMIN_EMAIL.toLowerCase());
+  const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || normalizedEmail === MASTER_ADMIN_EMAIL.toLowerCase() || normalizedEmail === 'geoffrm1985@gmail.com');
   const isAccountOwner = Boolean(
     isSuperAdminUser ||
     appUser?.isOwner === true ||
     appUser?.accountOwner === true ||
+    appUser?.owner === true ||
+    appUser?.workspaceOwner === true ||
+    String(appUser?.accountRole || '').toLowerCase().trim() === 'owner' ||
+    ((appUser?.ownerEmail || '').toLowerCase().trim() && normalizedEmail && (appUser?.ownerEmail || '').toLowerCase().trim() === normalizedEmail) ||
     (ownerEmail && normalizedEmail && ownerEmail === normalizedEmail) ||
     (ownerUserId && appUser?.id && ownerUserId === appUser.id)
   );
@@ -154,20 +158,27 @@ const TabTeam = ({ users, appUser, clientData, addToast, heartbeatDebug }) => {
     if (!canManageTeam) return addToast('Read Only', 'Only managers/admins/account owners can change staff profiles.');
     if (!name.trim() || !email.trim() || !phone.trim()) return; 
     
+    const staffPayload = {
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone.trim(),
+      role,
+      wage: parseFloat(wage) || 0,
+      photoURL: photoURL.trim(),
+      isAdmin,
+      permissions: { ...DEFAULT_PERMISSIONS, ...(perms || {}) },
+      restaurantId: appUser.restaurantId
+    };
+
     if (editingUserId) {
         try {
-            const currentTarget = users.find(u => u.id === editingUserId) || {};
-            const nextPerms = { ...DEFAULT_PERMISSIONS, ...(currentTarget.permissions || {}), ...(perms || {}) };
-            if (!canChooseWageAccess) {
-              nextPerms.wageView = currentTarget.permissions?.wageView === true;
-              nextPerms.wageEdit = currentTarget.permissions?.wageEdit === true;
-            }
-            const updatePayload = {
-                name: name.trim(), phone: phone.trim(), role, photoURL: photoURL.trim(), permissions: nextPerms
-            };
-            if (canChooseWageAccess) updatePayload.isAdmin = isAdmin;
-            if (canEditWages) updatePayload.wage = parseFloat(wage) || 0;
-            await updateDoc(doc(db, "users", editingUserId), updatePayload);
+            const response = await secureFetch('/api/staff-member', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'update', targetUid: editingUserId, ...staffPayload })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff profile save failed.');
             addToast('Updated', `${name}'s profile has been updated.`);
             resetForm();
         } catch(err) {
@@ -179,26 +190,16 @@ const TabTeam = ({ users, appUser, clientData, addToast, heartbeatDebug }) => {
 
     const tPass = generateTempPass(); 
     try { 
-      const secondaryApp = initializeApp(firebaseConfig, "TeamBuilderApp_" + Date.now());
-      const secondaryAuth = getAuth(secondaryApp);
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email.toLowerCase().trim(), tPass);
-      const newAuthUid = userCredential.user.uid;
-      
-      await secondaryAuth.signOut();
-
-      const newStaffPerms = { ...DEFAULT_PERMISSIONS, ...(perms || {}) };
-      if (!canChooseWageAccess) {
-        newStaffPerms.wageView = false;
-        newStaffPerms.wageEdit = false;
-      }
-      await setDoc(doc(db, "users", newAuthUid), { 
-        name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        role, wage: canEditWages ? (parseFloat(wage) || 0) : 0, isAdmin: canChooseWageAccess ? isAdmin : false, permissions: newStaffPerms, isActive: true, 
-        forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId,
-        passwordStored: false, passwordPurgedAt: new Date().toISOString(), createdBy: appUser.id || null, createdByEmail: appUser.email || null, createdAt: new Date().toISOString()
+      const response = await secureFetch('/api/staff-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', tempPassword: tPass, ...staffPayload })
       });
-      setCreatedLogin({ kind:'employee', name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: tPass });
-      addToast('Staff Added', `Account created successfully. Copy or print the one-time login info.`); 
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff account creation failed.');
+      const oneTimePassword = result?.tempPassword || tPass;
+      setCreatedLogin({ kind:'employee', name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: oneTimePassword });
+      addToast('Staff Added', result?.reusedExistingAuth ? 'Existing auth account repaired and linked. Copy or print the one-time login info.' : 'Account created successfully. Copy or print the one-time login info.'); 
       resetForm();
     } catch (err) { 
       console.error(err); 
@@ -5864,6 +5865,7 @@ const HELP_ARTICLES = [
   { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
+  { id:'new-13139', title:'What changed in version 13.1.39', group:'Release Notes', keywords:'new update 13.1.39 owner staff wages add employee payroll api permissions', body:['Staff Roster saves now use a verified server route so account-owner staff changes are not blocked by client Firestore rules.', 'Account owners can add staff, repair an existing auth-only employee account, and edit wages including their own wage.', 'Only account owners and Super Admin can choose View Wages or Edit Wages access. Managers with staff permissions can still edit basic profile details without touching payroll controls.', 'The staff save API writes an audit event for staff creation and wage changes so sensitive payroll updates are visible in Forensics.'] },
   { id:'new-13138', title:'What changed in version 13.1.38', group:'Release Notes', keywords:'new update 13.1.38 account owner staff wages permissions add employees payroll owner', body:['Account owners can add staff and edit wages, including their own wage, without Firestore blocking the save.', 'Only account owners and Super Admin can choose who can view or edit wages. Wage access now has separate View Wages and Edit Wages switches.', 'Staff Roster hides wage fields from users without wage access and uses clearer permission messages when Firebase blocks a sensitive staff update.', 'Firestore rules now recognize restaurant ownership for staff creation and payroll edits while still protecting Super Admin/system fields.'] },
   { id:'new-13137', title:'What changed in version 13.1.37', group:'Release Notes', keywords:'new update 13.1.37 admin settings command center roles push live presence deployment readiness maintenance branding danger import export', body:['System Administrator now includes the full Admin/Settings command-center upgrade: overview widgets, role/permission matrix, push control center, live activity monitor, setup wizard, deployment readiness checker, audit filters, settings history, import/export center, maintenance controls, branding/display settings, and a separate Danger Zone.', 'Push notifications now have a dedicated cockpit with connected device counts, token freshness, per-user test pushes, stale-token repair flags, and a downloadable diagnostic report.', 'Deployment Readiness gives a clear READY TO DEPLOY or DO NOT DEPLOY YET result with exact checks for Firebase, rules, API health, push, backup integrity, domains, version, and packaging.', 'Mobile Administrator navigation keeps the compact section picker while exposing the new professional admin categories.'] },
   { id:'new-13136', title:'What changed in version 13.1.36', group:'Release Notes', keywords:'new update 13.1.36 administrator admin mobile command center layout settings', body:['System Administrator now has a cleaner command-center layout with grouped sections for Overview, Customer Operations, Support & Safety, and Reference.', 'On phones, the admin tab opens with a compact section picker instead of forcing you through a long Command Deck scroll.', 'The Command Deck now defaults closed on mobile and can be opened with Signals when needed.', 'Desktop still keeps the full professional grouped navigation and left-side signal board.'] },

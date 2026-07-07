@@ -30,6 +30,7 @@ service cloud.firestore {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
         request.auth.token.email == 'geoffm1985@gmail.com' ||
+        request.auth.token.email == 'geoffrm1985@gmail.com' ||
         (hasUserDoc() && userData().isSuperAdmin == true)
       );
     }
@@ -51,10 +52,21 @@ service cloud.firestore {
     }
 
     function isRestaurantOwner(restId) {
-      return signedIn() && hasRestaurantDoc(restId) && (
-        restaurantData(restId).ownerEmail == request.auth.token.email ||
-        restaurantData(restId).ownerUserId == request.auth.uid ||
-        restaurantData(restId).ownerUid == request.auth.uid
+      return signedIn() && (
+        (
+          hasRestaurantDoc(restId) && (
+            restaurantData(restId).ownerEmail == request.auth.token.email ||
+            restaurantData(restId).ownerEmailLower == request.auth.token.email ||
+            restaurantData(restId).ownerUserEmail == request.auth.token.email ||
+            restaurantData(restId).ownerUserId == request.auth.uid ||
+            restaurantData(restId).ownerUid == request.auth.uid
+          )
+        ) ||
+        (
+          hasUserDoc() &&
+          userData().restaurantId == restId &&
+          (userData().isOwner == true || userData().accountOwner == true || userData().owner == true || userData().workspaceOwner == true || userData().accountRole == 'owner')
+        )
       );
     }
 
@@ -94,6 +106,11 @@ service cloud.firestore {
       return [
         'restaurantId',
         'isSuperAdmin',
+        'isOwner',
+        'accountOwner',
+        'owner',
+        'workspaceOwner',
+        'accountRole',
         'superAdminClaimUpdatedAt',
         'superAdminClaimUpdatedBy',
         'systemAccess',
