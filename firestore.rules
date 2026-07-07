@@ -261,7 +261,7 @@ service cloud.firestore {
     function kitchenWriteAllowed(collectionName) {
       return collectionName in [
         'prepItems', 'prepCategories', 'lineCheckItems', 'recipes', 'menuDependencies'
-      ] && (isAdmin() || hasPerm('prep') || hasPerm('team'));
+      ] && (isAdmin() || hasPerm('prep') || hasPerm('team') || (collectionName == 'menuDependencies' && hasPerm('inventory')));
     }
 
     function inventoryWriteAllowed(collectionName) {
@@ -272,7 +272,7 @@ service cloud.firestore {
 
     function scheduleWriteAllowed(collectionName) {
       return collectionName in [
-        'shifts', 'timeOffRequests'
+        'shifts', 'timeOffRequests', 'scheduleTemplates', 'scheduleCoverageTargets'
       ] && (isAdmin() || hasPerm('schedule') || hasPerm('team'));
     }
 

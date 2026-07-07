@@ -1,7 +1,7 @@
 const { initAdmin, readBody, authorize, writeAudit, clean } = require('./_chaos-admin');
 
 const PERMS = {
-  shifts: ['schedule','team'], timeOffRequests: ['schedule','team'],
+  shifts: ['schedule','team'], timeOffRequests: ['schedule','team'], scheduleTemplates: ['schedule','team'], scheduleCoverageTargets: ['schedule','team'],
   inventoryItems: ['inventory','team'], vendors: ['inventory','team'], orders: ['inventory','team'], invoices: ['inventory','team'],
   prepItems: ['prep','team'], prepCategories: ['prep','team'], lineCheckItems: ['prep','team'], recipes: ['prep','team'], menuDependencies: ['prep','inventory','team'],
   sales: ['sales','labor','team'], timePunches: ['labor','team'],

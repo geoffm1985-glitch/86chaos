@@ -150,7 +150,7 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '14.0.0';
+export const CURRENT_VERSION = '14.0.1';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -434,14 +434,14 @@ export const logAudit = async (user, action, target, details) => {
 
 
 // ============================================================================
-// 86 CHAOS 14.0.0 ROBUSTNESS ENGINE
+// 86 CHAOS 14.0.1 ROBUSTNESS ENGINE
 // Central helpers for safer writes, permission previews, offline queueing, import
 // templates, schema guardrails, and kitchen dependency analysis.
 // ============================================================================
 const V14_SENSITIVE_KEYS = ['password', 'temporaryPassword', 'ssn', 'address', 'phone', 'email', 'wage', 'hourlyRate', 'payRate', 'fcmToken', 'notesPrivate'];
-const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','offlineWriteReceipts'];
+const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets'];
 const V14_WRITE_PERMISSIONS = {
-  shifts: ['schedule', 'team'], timeOffRequests: ['schedule', 'team'],
+  shifts: ['schedule', 'team'], timeOffRequests: ['schedule', 'team'], scheduleTemplates: ['schedule', 'team'], scheduleCoverageTargets: ['schedule', 'team'],
   inventoryItems: ['inventory', 'team'], vendors: ['inventory', 'team'], orders: ['inventory', 'team'], invoices: ['inventory', 'team'],
   prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'team'],
   sales: ['sales', 'labor', 'team'], timePunches: ['labor', 'team'],
@@ -540,6 +540,22 @@ export const replayOfflineQueue = async (user, addToast) => {
   return { attempted: queue.length, saved, failed: failed.length };
 };
 
+export const safeWriteWithQueue = async ({ user, addToast = null, label = '', ...writeArgs }) => {
+  try {
+    return await safeWrite({ user, addToast, label, ...writeArgs });
+  } catch (err) {
+    const message = err?.message || String(err);
+    const looksOffline = typeof navigator !== 'undefined' && (navigator.onLine === false || /offline|network|unavailable|failed to fetch/i.test(message));
+    if (looksOffline && user?.restaurantId && user?.id && ['add','set','update'].includes(writeArgs.action || 'set')) {
+      queueOfflineWrite({ user, collectionName: writeArgs.collectionName, docId: writeArgs.docId || '', action: writeArgs.action || 'set', data: writeArgs.data || {}, label });
+      if (addToast) addToast('Queued Offline', `${label || writeArgs.collectionName || 'Kitchen action'} will sync when the connection comes back.`);
+      return { queued: true, error: message };
+    }
+    if (addToast) addToast('Save Blocked', message);
+    throw err;
+  }
+};
+
 export const buildPermissionPreview = (user = {}, features = {}) => {
   const superAdmin = isSuperAdminUser(user);
   const admin = isWorkspaceManager(user);
@@ -579,23 +595,76 @@ export const buildImportBridgeTemplates = () => ({
   inventory_count: [['itemName','category','currentStock','parLevel','unit','price','vendor'], ['Lettuce','Produce','0','1','case','0.00','Vendor Name']]
 });
 
-export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], prepItems = [] }) => {
+export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], prepItems = [], menuDependencies = [], events = [] }) => {
   const normalize = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const low = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0));
+  const lowById = new Map(low.map(item => [item.id, item]));
+  const inventoryById = new Map(inventoryItems.map(item => [item.id, item]));
+  const recipeById = new Map(recipes.map(recipe => [recipe.id, recipe]));
   const lowTokens = low.map(i => ({ item: i, key: normalize(i.name) })).filter(x => x.key);
-  const activePrepKeys = prepItems.filter(p => p.isMaster || p.date === getToday() || p.frequency).map(p => normalize(p.text || p.title || p.name));
-  const affectedRecipes = recipes.map(recipe => {
+  const activePrep = prepItems.filter(p => p.isMaster || p.date === getToday() || p.frequency);
+  const activePrepKeys = activePrep.map(p => normalize(p.text || p.title || p.name));
+  const recipeHits = new Map();
+  const ensure = (recipe) => {
+    const id = recipe?.id || normalize(recipe?.name || recipe?.title || 'recipe');
+    if (!recipeHits.has(id)) recipeHits.set(id, { recipe, lowStockMatches: [], prepMatches: [], explicitDependencies: [], eightySixAlerts: [] });
+    return recipeHits.get(id);
+  };
+
+  // Manual dependency graph beats text guessing. These docs are created from Ops Center.
+  (menuDependencies || []).forEach(dep => {
+    const recipe = recipeById.get(dep.recipeId) || { id: dep.recipeId || dep.id, name: dep.recipeName || dep.menuItemName || 'Menu item' };
+    const lowItem = lowById.get(dep.inventoryItemId);
+    if (lowItem) {
+      const hit = ensure(recipe);
+      if (!hit.lowStockMatches.some(i => i.id === lowItem.id)) hit.lowStockMatches.push(lowItem);
+      hit.explicitDependencies.push({ ...dep, inventoryItem: lowItem });
+    }
+  });
+
+  // Text fallback catches recipes that have ingredients listed but no manual graph yet.
+  recipes.forEach(recipe => {
     const text = normalize([recipe.name, recipe.title, recipe.description, recipe.ingredients, ...(Array.isArray(recipe.items) ? recipe.items.map(x => x.name || x.item || x.text || '') : [])].join(' '));
     const hits = lowTokens.filter(({ key }) => key && (text.includes(key) || key.split(' ').some(part => part.length > 3 && text.includes(part))));
     const prepHits = activePrepKeys.filter(key => key && text.includes(key));
-    return { recipe, lowStockMatches: hits.map(h => h.item), prepMatches: prepHits };
-  }).filter(r => r.lowStockMatches.length || r.prepMatches.length);
-  return { lowStockItems: low, affectedRecipes, recoveryCount: low.filter(i => Number(i.pendingQty || 0) > 0).length };
+    if (hits.length || prepHits.length) {
+      const hit = ensure(recipe);
+      hits.forEach(h => { if (!hit.lowStockMatches.some(i => i.id === h.item.id)) hit.lowStockMatches.push(h.item); });
+      hit.prepMatches = Array.from(new Set([...(hit.prepMatches || []), ...prepHits]));
+    }
+  });
+
+  // 86 alerts are pulled into the same brain so the radar sees both inventory math and manager alerts.
+  const active86Alerts = (events || []).filter(e => {
+    const hay = normalize(`${e.messageCategory || ''} ${e.title || ''} ${e.notes || ''}`);
+    return hay.includes('86') || hay.includes('eighty six') || hay.includes('out of');
+  });
+  active86Alerts.forEach(alert => {
+    const alertText = normalize(`${alert.title || ''} ${alert.notes || ''}`);
+    recipes.forEach(recipe => {
+      const recipeNameKey = normalize(recipe.name || recipe.title || '');
+      const recipeText = normalize(`${recipe.name || recipe.title || ''} ${recipe.ingredients || ''}`);
+      if (alertText && recipeText && ((recipeNameKey && alertText.includes(recipeNameKey)) || recipeText.split(' ').some(part => part.length > 4 && alertText.includes(part)))) {
+        ensure(recipe).eightySixAlerts.push(alert);
+      }
+    });
+  });
+
+  const affectedRecipes = Array.from(recipeHits.values()).filter(r => r.lowStockMatches.length || r.prepMatches.length || r.eightySixAlerts.length);
+  const mappedDependencyCount = (menuDependencies || []).filter(dep => recipeById.has(dep.recipeId) && inventoryById.has(dep.inventoryItemId)).length;
+  return {
+    lowStockItems: low,
+    affectedRecipes,
+    active86Alerts,
+    mappedDependencyCount,
+    explicitDependencyCount: (menuDependencies || []).length,
+    recoveryCount: low.filter(i => Number(i.pendingQty || 0) > 0).length
+  };
 };
 
 export const buildV14ClientGuardrailReport = ({ currentVersion = CURRENT_VERSION, features = {}, hasBrandLock = true, hasHelpSearch = true, hasRules = true } = {}) => {
   const checks = [
-    { id: 'version', label: 'App version is 14.0.0', ok: currentVersion === '14.0.0', detail: `Running ${currentVersion}` },
+    { id: 'version', label: 'App version is 14.0.1', ok: currentVersion === '14.0.1', detail: `Running ${currentVersion}` },
     { id: 'brand-lock', label: '86 Chaos brand lock', ok: hasBrandLock === true, detail: '86 Chaos must stay visible while restaurant logos remain optional.' },
     { id: 'demo-scrub', label: 'Demo privacy rule', ok: true, detail: 'Demo mode should not display real email, phone, address, wage, or sensitive admin data.' },
     { id: 'help-public', label: 'Help Center public boundary', ok: hasHelpSearch === true, detail: 'Help content must remain public-facing and avoid forensics/backups internals.' },
