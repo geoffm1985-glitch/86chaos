@@ -735,6 +735,53 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
   );
 };
 
+
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = () => reject(new Error('Could not read the logo file.'));
+  reader.readAsDataURL(file);
+});
+
+const prepareRestaurantLogoUpload = async (file) => {
+  if (!file) throw new Error('Choose a logo image first.');
+  const originalType = (file.type || '').toLowerCase();
+  if (originalType === 'image/svg+xml' || originalType === 'image/gif') {
+    const dataUrl = await readFileAsDataUrl(file);
+    return { dataUrl, contentType: originalType };
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('The logo image could not be opened.'));
+    });
+    img.src = objectUrl;
+    await loaded;
+
+    const maxSide = 900;
+    const ratio = Math.min(1, maxSide / Math.max(img.width || maxSide, img.height || maxSide));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round((img.width || maxSide) * ratio));
+    canvas.height = Math.max(1, Math.round((img.height || maxSide) * ratio));
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    let contentType = originalType === 'image/webp' ? 'image/webp' : 'image/png';
+    let dataUrl = canvas.toDataURL(contentType, 0.9);
+    if (dataUrl.length > 3_500_000) {
+      contentType = 'image/jpeg';
+      dataUrl = canvas.toDataURL(contentType, 0.86);
+    }
+    return { dataUrl, contentType };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+};
+
 const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
 
@@ -991,18 +1038,41 @@ const handleEnableNotifications = async () => {
     if (!appUser?.restaurantId) return addToast('Missing Workspace', 'No restaurant workspace was found for this upload.');
     setIsUploadingBrandLogo(true);
     try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
-      const path = `${appUser.restaurantId}/brandAssets/restaurant-logo-${Date.now()}-${safeName}`;
-      const fileRef = ref(storage, path);
-      await uploadBytes(fileRef, file, { contentType: file.type });
-      const url = await getDownloadURL(fileRef);
-      setSysRestaurantLogoUrl(url);
+      const preparedLogo = await prepareRestaurantLogoUpload(file);
+      const response = await secureFetch('/api/brand-logo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          fileName: file.name,
+          contentType: preparedLogo.contentType,
+          dataUrl: preparedLogo.dataUrl
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.url) throw new Error(result?.error || 'Secure logo upload route did not return a logo URL.');
+      setSysRestaurantLogoUrl(result.url);
       setSysShowRestaurantLogo(true);
       addToast('Logo Uploaded', 'Restaurant logo is ready to save. 86 Chaos branding will still stay visible.');
     } catch (err) {
-      addToast('Upload Failed', err.message || 'Could not upload logo. Publish Storage rules if this is a new project.');
+      console.warn('Secure restaurant logo upload failed; trying direct Storage upload once.', err);
+      try {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+        const path = `${appUser.restaurantId}/brandAssets/restaurant-logo-${Date.now()}-${safeName}`;
+        const fileRef = ref(storage, path);
+        await uploadBytes(fileRef, file, { contentType: file.type });
+        const url = await getDownloadURL(fileRef);
+        setSysRestaurantLogoUrl(url);
+        setSysShowRestaurantLogo(true);
+        addToast('Logo Uploaded', 'Restaurant logo is ready to save. 86 Chaos branding will still stay visible.');
+      } catch (fallbackErr) {
+        addToast('Upload Failed', fallbackErr?.code === 'storage/unauthorized'
+          ? 'Logo upload was blocked by Firebase Storage rules. Deploy this build and publish the included storage.rules file.'
+          : (err.message || fallbackErr.message || 'Could not upload logo.'));
+      }
     }
     setIsUploadingBrandLogo(false);
+    if (e?.target) e.target.value = '';
   };
 
   const handleSaveBrandingSettings = async (e) => {
@@ -3790,7 +3860,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Workspaces', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Workspaces and click the workspace name or People button.', 'The workspace drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and status state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that workspace or user sees.'] },
     { title: 'Admin/Settings command-center upgrade', group: 'System Administrator', keywords: 'admin overview command center roles permissions push live presence setup wizard deployment readiness audit settings history import export maintenance branding danger zone', body: ['System Administrator is organized into Overview, Customer Operations, Support & Safety, Platform Settings, and Reference.', 'Command Center shows system status, active users, backup status, push health, recent admin actions, and deployment readiness on one landing page.', 'Permission & Role Manager is the platform guide for who should be able to edit staff, schedules, financials, inventory, recipes, diagnostics, and forensics.', 'Push Control Center is where you troubleshoot tokens, browser permission, token freshness, per-user test pushes, repair flags, and push diagnostic exports.', 'Deployment Readiness should be run before production deploys. It gives READY TO DEPLOY or DO NOT DEPLOY YET with exact reasons.'] },
-    { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings keep the app name locked as 86 Chaos, store restaurant/group display name, customer logo URL/display preference, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record. The customer logo can appear beside 86 Chaos, but cannot replace or hide it.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
+    { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings keep the app name locked as 86 Chaos, store restaurant/group display name, customer logo URL/display preference, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record. Customer logo uploads use a secure server route first, with Firebase Storage rules as fallback protection. The customer logo can appear beside 86 Chaos, but cannot replace or hide it.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
     { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
@@ -6198,6 +6268,7 @@ const HELP_ARTICLES = [
   { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
+  { id:'new-13144', title:'What changed in version 13.1.44', group:'Release Notes', keywords:'new update 13.1.44 settings branding restaurant logo upload locked 86 chaos brand', body:['Restaurant logo uploads now use the secure app upload path first, so owners and approved branding managers are not blocked by stale browser Storage rules.', 'The restaurant/customer logo can still be shown beside 86 Chaos branding.', '86 Chaos branding remains locked and always visible. The customer logo cannot replace or hide it.', 'The upload message now explains what to deploy if Firebase blocks the fallback upload.'] },
   { id:'new-13143', title:'What changed in version 13.1.43', group:'Release Notes', keywords:'new update 13.1.43 settings branding restaurant logo upload storage locked 86 chaos brand', body:['Restaurant/customer logo upload and display controls are available again in Settings → Branding.', '86 Chaos branding is locked and always displayed. The restaurant logo can only appear beside it and can never replace it.', 'Saving Branding & Display now preserves the restaurant logo URL and display choice while still saving accent color, help contact, login/help message, timezone, date/time, currency, week-start, and default staff landing-tab controls.', 'Restaurant logo upload permissions were tightened so approved branding managers can upload logos without the old permission error.'] },
   { id:'new-13140', title:'What changed in version 13.1.40', group:'Release Notes', keywords:'new update 13.1.40 owner staff delete remove deactivate roster payroll api permissions', body:['Account owners can now remove staff from the active roster through the same verified staff API used for staff creation and wage edits.', 'The removal flow keeps historical schedule and payroll records intact by deactivating the staff profile instead of deleting past records.', 'The staff API now blocks self-removal and protects account-owner profiles unless a Super Admin performs the action.', 'Staff removals write a sensitive audit event so roster changes are visible in Forensics.'] },
   { id:'new-13138', title:'What changed in version 13.1.38', group:'Release Notes', keywords:'new update 13.1.38 account owner staff wages permissions add employees payroll owner', body:['Account owners can add staff and edit wages, including their own wage, without Firestore blocking the save.', 'Only account owners and Super Admin can choose who can view or edit wages. Wage access now has separate View Wages and Edit Wages switches.', 'Staff Roster hides wage fields from users without wage access and uses clearer permission messages when Firebase blocks a sensitive staff update.', 'Firestore rules now recognize restaurant ownership for staff creation and payroll edits while still protecting Super Admin/system fields.'] },
@@ -6223,7 +6294,7 @@ const HELP_ARTICLES = [
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
   { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
-  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, and Integrations access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
+  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, and Integrations access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
   { id:'owner-wage-staff-permissions', title:'Owner staff and wage permissions', group:'Permissions', keywords:'owner wages payroll hourly rate add employee staff roster wage view edit permission denied', body:['Account owners and Super Admin can add staff from Staff Roster and edit hourly wages, including their own wage.', 'Only account owners and Super Admin should choose who can see or edit wages. Use Staff Roster permission switches or Settings → Workspace → Global Config → Wage Visibility & Edit Access.', 'View Wages lets a trusted person see wage labels and labor cost calculations. Edit Wages lets them change wage values from Staff Roster and automatically implies view access.', 'Managers/admins without wage permission can still manage staff basics if allowed, but wage fields stay hidden and Firestore rules reject wage-access changes.', 'If a save shows Missing or insufficient permissions, confirm the user is the restaurant owner or has the right wage-edit permission and publish the matching Firestore rules to the same Firebase project.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
