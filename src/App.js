@@ -88,6 +88,7 @@ export default function App() {
   const [voiceHelpSearchTarget, setVoiceHelpSearchTarget] = useState(null);
   const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
+  const [workspaceMembershipRefreshKey] = useState(0);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -879,6 +880,46 @@ useEffect(() => {
     return Array.from(byId.values()).filter(w => w.isActive !== false);
   }, [appUser, clientData?.name]);
 
+  useEffect(() => {
+    if (!appUser?.id || appUser.id === 'dev-backdoor' || ghostTenant || isDemoMode) return;
+    let canceled = false;
+    const refreshMemberships = async () => {
+      try {
+        const res = await secureFetch('/api/workspace-memberships', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: appUser.email, userId: appUser.id })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !Array.isArray(data.workspaces) || canceled) return;
+        const nextWorkspaces = data.workspaces.filter(w => w?.restaurantId && w.isActive !== false);
+        if (!nextWorkspaces.length) return;
+        const active = nextWorkspaces.find(w => w.restaurantId === appUser.restaurantId) || nextWorkspaces.find(w => w.restaurantId === data.activeRestaurantId) || nextWorkspaces[0];
+        setAppUser(prev => {
+          if (!prev?.id || prev.id !== appUser.id) return prev;
+          const merged = buildWorkspaceUser({ ...prev, availableWorkspaces: nextWorkspaces }, active);
+          return { ...merged, availableWorkspaces: nextWorkspaces, workspaceSwitcherReady: true };
+        });
+        const seenKey = `chaosWorkspacePickerSeen_${appUser.id}`;
+        if (nextWorkspaces.length > 1 && sessionStorage.getItem(seenKey) !== 'true') {
+          sessionStorage.setItem(seenKey, 'true');
+          setIsWorkspaceSwitcherOpen(true);
+        }
+      } catch (err) {
+        console.warn('Workspace membership refresh failed:', err?.message || err);
+      }
+    };
+    refreshMemberships();
+    return () => { canceled = true; };
+  }, [appUser?.id, workspaceMembershipRefreshKey]);
+
+  const closeWorkspaceSwitcher = () => {
+    if (appUser?.id) {
+      try { sessionStorage.setItem(`chaosWorkspacePickerSeen_${appUser.id}`, 'true'); } catch (_) {}
+    }
+    setIsWorkspaceSwitcherOpen(false);
+  };
+
   const switchWorkspace = (workspace) => {
     if (!workspace?.restaurantId || workspace.restaurantId === rId) {
       setIsWorkspaceSwitcherOpen(false);
@@ -888,6 +929,7 @@ useEffect(() => {
     try {
       localStorage.setItem(`chaosActiveRestaurantId_${nextUser.id}`, workspace.restaurantId);
       sessionStorage.setItem('chaosWorkspaceSwitchedAt', new Date().toISOString());
+      sessionStorage.setItem(`chaosWorkspacePickerSeen_${nextUser.id}`, 'true');
       Object.keys(localStorage).forEach(k => {
         if (k.startsWith('chaosLastHeartbeat_') || k.startsWith('chaosHeartbeatDebug_')) localStorage.removeItem(k);
       });
@@ -1248,7 +1290,7 @@ return (
       </Modal>
 
 
-      <Modal isOpen={isWorkspaceSwitcherOpen} onClose={() => setIsWorkspaceSwitcherOpen(false)} title="Switch Workspace">
+      <Modal isOpen={isWorkspaceSwitcherOpen} onClose={closeWorkspaceSwitcher} title="Switch Workspace">
         <div className="space-y-3">
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-xs font-bold text-slate-300">
             One login can belong to more than one restaurant. Pick the workplace you are clocking in, scheduling, or managing right now.
@@ -1272,7 +1314,7 @@ return (
               </button>
             );
           })}
-          <button type="button" onClick={() => setIsWorkspaceSwitcherOpen(false)} className={`w-full ${T.btnAlt}`}>Close</button>
+          <button type="button" onClick={closeWorkspaceSwitcher} className={`w-full ${T.btnAlt}`}>Close</button>
         </div>
       </Modal>
 

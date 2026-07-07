@@ -1,11 +1,11 @@
 # 86 Chaos
 
-Current version: 14.0.6
+Current version: 14.0.7
 
-This build fixes System Administrator client-management saves that could fail when an old workspace record contained an unsupported empty/undefined value, and it removes the read-only notice banner from Staff Roster while keeping manager/admin-only editing protection in place.
+This build fixes the multi-workspace picker so an employee/account that belongs to more than one restaurant is discovered through a server-side membership lookup, not just browser Firestore queries. The login picker should appear for multi-restaurant accounts, and remembered sessions now refresh memberships and show the header switcher.
 
-See `README_14_0_6_RELEASE_NOTES.md` and `QA_14_0_6_CLIENT_SAVE_ROSTER_CLEANUP.md` for this build.
+See `README_14_0_7_RELEASE_NOTES.md` and `QA_14_0_7_WORKSPACE_PICKER_RELIABILITY.md` for this build.
 
 ## Deployment notes
 
-Deploy through GitHub/Vercel as usual. No new Vercel environment variables are required. No Firestore or Storage rule changes are required specifically for this fix, but keep the bundled 14.x rules published if your live Firebase project is behind.
+Deploy through GitHub/Vercel as usual. This build adds one Vercel API route: `/api/workspace-memberships`. No new environment variables are required if the existing Firebase Admin credentials are already configured. No Firestore or Storage rule changes are required specifically for this fix.

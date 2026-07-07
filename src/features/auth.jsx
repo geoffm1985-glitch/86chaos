@@ -97,6 +97,22 @@ const LoginScreen = ({ setAppUser }) => {
       });
     };
 
+    try {
+      const apiRes = await secureFetch('/api/workspace-memberships', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailKey, userId: uid })
+      });
+      const apiData = await apiRes.json().catch(() => ({}));
+      if (apiRes.ok && Array.isArray(apiData.workspaces)) {
+        for (const workspace of apiData.workspaces) await addOption({ ...workspace, membershipSource: workspace.membershipSource || 'workspace-memberships-api' });
+      } else if (!apiRes.ok) {
+        console.warn('Workspace membership API failed:', apiData?.error || apiRes.statusText);
+      }
+    } catch (err) {
+      console.warn('Workspace membership API unavailable, falling back to browser queries:', err?.message || err);
+    }
+
     if (baseUser.memberships && typeof baseUser.memberships === 'object') {
       for (const [restaurantId, membership] of Object.entries(baseUser.memberships)) await addOption({ ...(membership || {}), restaurantId });
     }
@@ -147,6 +163,7 @@ const LoginScreen = ({ setAppUser }) => {
     if (!workspaceUser) return;
     localStorage.setItem('chaosRememberMe', rememberMe);
     localStorage.setItem(`chaosActiveRestaurantId_${workspaceUser.id}`, workspace.restaurantId);
+    try { sessionStorage.setItem(`chaosWorkspacePickerSeen_${workspaceUser.id}`, 'true'); } catch (_) {}
     updateDoc(doc(db, 'users', workspaceUser.id), {
       activeRestaurantId: workspace.restaurantId,
       lastWorkspaceId: workspace.restaurantId,
