@@ -337,6 +337,14 @@ if (liveAppUser && clientData) {
       };
     });
   };
+  const wageSettings = clientData?.systemSettings || {};
+  const wageViewAccess = Array.isArray(wageSettings.wageAccess) ? wageSettings.wageAccess : [];
+  const wageEditAccess = Array.isArray(wageSettings.wageEditAccess) ? wageSettings.wageEditAccess : [];
+  const sessionEmail = (liveAppUser?.email || appUser?.email || '').toLowerCase().trim();
+  const sessionOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
+  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
+  const sessionCanViewWages = Boolean(sessionIsOwner || liveAppUser?.permissions?.wageView || liveAppUser?.permissions?.wageEdit || wageViewAccess.includes(liveAppUser?.id) || wageEditAccess.includes(liveAppUser?.id));
+
   const displayUsers = useMemo(() => {
     const baseUsers = isDemoMode ? (users || []).map(maskDemoUser) : (users || []);
     const sharedPresence = [...(livePresenceRecords || []), ...(presenceSessions || [])];
@@ -362,8 +370,11 @@ if (liveAppUser && clientData) {
         } : u);
       }
     }
+    if (!isDemoMode && !sessionCanViewWages) {
+      merged = merged.map(u => ({ ...u, wage: 0, wageHidden: true }));
+    }
     return merged;
-  }, [isDemoMode, users, presenceSessions, livePresenceRecords, appUser?.id, rId, activeTabState]);
+  }, [isDemoMode, users, presenceSessions, livePresenceRecords, appUser?.id, rId, activeTabState, sessionCanViewWages]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -871,7 +882,7 @@ useEffect(() => {
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
     if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
-    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} heartbeatDebug={heartbeatDebug} />;
+    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} heartbeatDebug={heartbeatDebug} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
@@ -902,13 +913,22 @@ useEffect(() => {
     liveAppUser?.isSuperAdmin === true ||
     (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()
   );
-  if (clientData?.billingStatus === 'Past Due' && !ghostTenant && !maintenanceBypass) {
+  const maintenanceEndsMs = clientData?.maintenanceEndsAt ? new Date(clientData.maintenanceEndsAt).getTime() : 0;
+  const maintenanceExpired = maintenanceEndsMs && Number.isFinite(maintenanceEndsMs) && maintenanceEndsMs <= Date.now();
+  const maintenanceAudience = clientData?.maintenanceAudience || 'everyone_except_super_admin';
+  const maintenanceAppliesToUser = maintenanceAudience === 'employees_only'
+    ? !liveAppUser?.isAdmin
+    : maintenanceAudience === 'non_admins'
+      ? !liveAppUser?.isAdmin
+      : true;
+  if (clientData?.billingStatus === 'Past Due' && !maintenanceExpired && maintenanceAppliesToUser && !ghostTenant && !maintenanceBypass) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">
           <span className="text-6xl mb-4 block">🛠️</span>
           <h1 className="text-2xl font-black text-white mb-2">Down for Maintenance</h1>
-          <p className="text-slate-400 font-medium mb-6">86 Chaos is temporarily down for maintenance for {clientData.name || 'this workspace'}. Please check back shortly or contact your management team if service does not return soon.</p>
+          <p className="text-slate-400 font-medium mb-6">{clientData.maintenanceMessage || `86 Chaos is temporarily down for maintenance for ${clientData.name || 'this workspace'}. Please check back shortly or contact your management team if service does not return soon.`}</p>
+          {clientData.maintenanceEndsAt && <div className="mb-4 bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Scheduled return: {new Date(clientData.maintenanceEndsAt).toLocaleString()}</div>}
           <button onClick={() => { localStorage.removeItem('86chaosUser'); setAppUser(null); }} className="w-full bg-red-900/20 text-red-500 font-black py-3 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all uppercase tracking-widest">Log Out</button>
         </div>
       </div>

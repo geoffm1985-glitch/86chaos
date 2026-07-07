@@ -87,9 +87,25 @@ const GeofenceMapStabilizer = ({ lat, lon, radius, refreshNonce }) => {
   return null;
 };
 
-const TabTeam = ({ users, appUser, addToast, heartbeatDebug }) => {
-  const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
-  const canManageTeam = Boolean(isSuperAdminUser || appUser?.isAdmin === true);
+const TabTeam = ({ users, appUser, clientData, addToast, heartbeatDebug }) => {
+  const normalizedEmail = (appUser?.email || '').toLowerCase().trim();
+  const ownerEmail = (clientData?.ownerEmail || appUser?.ownerEmail || '').toLowerCase().trim();
+  const ownerUserId = clientData?.ownerUserId || clientData?.ownerUid || '';
+  const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || normalizedEmail === MASTER_ADMIN_EMAIL.toLowerCase());
+  const isAccountOwner = Boolean(
+    isSuperAdminUser ||
+    appUser?.isOwner === true ||
+    appUser?.accountOwner === true ||
+    (ownerEmail && normalizedEmail && ownerEmail === normalizedEmail) ||
+    (ownerUserId && appUser?.id && ownerUserId === appUser.id)
+  );
+  const systemSettings = clientData?.systemSettings || appUser?.systemSettings || {};
+  const wageViewAccess = Array.isArray(systemSettings.wageAccess) ? systemSettings.wageAccess : [];
+  const wageEditAccess = Array.isArray(systemSettings.wageEditAccess) ? systemSettings.wageEditAccess : [];
+  const canManageTeam = Boolean(isSuperAdminUser || isAccountOwner || appUser?.isAdmin === true || appUser?.permissions?.team === true);
+  const canChooseWageAccess = Boolean(isSuperAdminUser || isAccountOwner);
+  const canViewWages = Boolean(canChooseWageAccess || appUser?.permissions?.wageView === true || appUser?.permissions?.wageEdit === true || wageViewAccess.includes(appUser?.id) || wageEditAccess.includes(appUser?.id));
+  const canEditWages = Boolean(canChooseWageAccess || appUser?.permissions?.wageEdit === true || wageEditAccess.includes(appUser?.id));
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
@@ -97,7 +113,7 @@ const TabTeam = ({ users, appUser, addToast, heartbeatDebug }) => {
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false };
+  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, wageView: false, wageEdit: false };
   const PERMISSION_PRESETS = {
     'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false },
     'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false, labor: false },
@@ -135,17 +151,29 @@ const TabTeam = ({ users, appUser, addToast, heartbeatDebug }) => {
 
   const handleSave = async (e) => { 
     e.preventDefault();
-    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can change staff profiles.');
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins/account owners can change staff profiles.');
     if (!name.trim() || !email.trim() || !phone.trim()) return; 
     
     if (editingUserId) {
         try {
-            await updateDoc(doc(db, "users", editingUserId), {
-                name: name.trim(), phone: phone.trim(), role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, photoURL: photoURL.trim()
-            });
+            const currentTarget = users.find(u => u.id === editingUserId) || {};
+            const nextPerms = { ...DEFAULT_PERMISSIONS, ...(currentTarget.permissions || {}), ...(perms || {}) };
+            if (!canChooseWageAccess) {
+              nextPerms.wageView = currentTarget.permissions?.wageView === true;
+              nextPerms.wageEdit = currentTarget.permissions?.wageEdit === true;
+            }
+            const updatePayload = {
+                name: name.trim(), phone: phone.trim(), role, photoURL: photoURL.trim(), permissions: nextPerms
+            };
+            if (canChooseWageAccess) updatePayload.isAdmin = isAdmin;
+            if (canEditWages) updatePayload.wage = parseFloat(wage) || 0;
+            await updateDoc(doc(db, "users", editingUserId), updatePayload);
             addToast('Updated', `${name}'s profile has been updated.`);
             resetForm();
-        } catch(err) { addToast('Error', err.message); }
+        } catch(err) {
+          const msg = String(err?.message || 'Permission denied.');
+          addToast('Permission Blocked', msg.includes('permission') ? 'This account is not allowed to save one or more staff fields. Owners can edit wages and choose wage access.' : msg);
+        }
         return;
     }
 
@@ -158,11 +186,16 @@ const TabTeam = ({ users, appUser, addToast, heartbeatDebug }) => {
       
       await secondaryAuth.signOut();
 
+      const newStaffPerms = { ...DEFAULT_PERMISSIONS, ...(perms || {}) };
+      if (!canChooseWageAccess) {
+        newStaffPerms.wageView = false;
+        newStaffPerms.wageEdit = false;
+      }
       await setDoc(doc(db, "users", newAuthUid), { 
         name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), 
-        role, wage: parseFloat(wage) || 0, isAdmin, permissions: perms, isActive: true, 
+        role, wage: canEditWages ? (parseFloat(wage) || 0) : 0, isAdmin: canChooseWageAccess ? isAdmin : false, permissions: newStaffPerms, isActive: true, 
         forcePasswordChange: true, photoURL: photoURL.trim(), restaurantId: appUser.restaurantId,
-        passwordStored: false, passwordPurgedAt: new Date().toISOString()
+        passwordStored: false, passwordPurgedAt: new Date().toISOString(), createdBy: appUser.id || null, createdByEmail: appUser.email || null, createdAt: new Date().toISOString()
       });
       setCreatedLogin({ kind:'employee', name: name.trim(), email: email.toLowerCase().trim(), phone: phone.trim(), password: tPass });
       addToast('Staff Added', `Account created successfully. Copy or print the one-time login info.`); 
@@ -174,28 +207,31 @@ const TabTeam = ({ users, appUser, addToast, heartbeatDebug }) => {
   };
 
 const handleDeactivate = async (u) => { 
-    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can remove staff accounts.');
-    if (!window.confirm(`Terminate ${u.name}? This will permanently delete their global account from the entire system.`)) return; 
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins/account owners can remove staff accounts.');
+    const superDelete = isSuperAdminUser;
+    if (!window.confirm(superDelete ? `Terminate ${u.name}? This will permanently delete their global account from the entire system.` : `Deactivate ${u.name}? They will leave the active roster, but historical schedule and payroll records stay intact.`)) return; 
     
-    addToast('Terminating', `Erasing ${u.name} from the system...`);
+    addToast(superDelete ? 'Terminating' : 'Deactivating', `${superDelete ? 'Erasing' : 'Removing'} ${u.name} from the active roster...`);
     try {
-      // 1. Nuke the Authentication Login via Vercel
-      await secureFetch('/api/delete-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUid: u.id })
-      });
-      
-      // 2. Nuke the Database Profile
-      await deleteDoc(doc(db, "users", u.id)); 
-      addToast('Terminated', `${u.name}'s account has been completely erased.`); 
+      if (superDelete) {
+        await secureFetch('/api/delete-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetUid: u.id })
+        });
+        await deleteDoc(doc(db, "users", u.id)); 
+        addToast('Terminated', `${u.name}'s account has been completely erased.`); 
+      } else {
+        await updateDoc(doc(db, "users", u.id), { isActive: false, deactivatedAt: new Date().toISOString(), deactivatedBy: appUser.id || null });
+        addToast('Deactivated', `${u.name} was removed from the active roster.`);
+      }
     } catch (err) {
-      addToast('Error', 'Could not delete authentication credential. See logs.');
+      addToast('Error', err?.message || 'Could not update staff status.');
     }
   };
 
   const handlePasswordReset = async (u) => {
-    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins can reset staff passwords.');
+    if (!canManageTeam) return addToast('Read Only', 'Only managers/admins/account owners can reset staff passwords.');
     if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
     try {
       await sendPasswordResetEmail(auth, u.email);
@@ -268,7 +304,7 @@ return (
       {!canManageTeam && (
         <div className={`${T.card} p-4 border-blue-900/40 bg-blue-900/10`}>
           <div className="text-xs font-black uppercase tracking-widest text-blue-300">Read-only Staff Roster</div>
-          <p className="text-xs font-bold text-slate-400 mt-1">Regular staff can view the roster and last app activity, but only manager/admin accounts can add, edit, reset, or remove staff.</p>
+          <p className="text-xs font-bold text-slate-400 mt-1">Regular staff can view the roster and last app activity. Managers/admins can manage staff basics. Only the account owner controls wage visibility/edit access.</p>
         </div>
       )}
 
@@ -309,7 +345,7 @@ return (
           <div><label className={T.label}>Role</label><select value={role} onChange={e=>setRole(e.target.value)} className={T.input}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
           
           {/* STRICTLY LOCKED TO ADMINS */}
-          {canManageTeam && (
+          {canEditWages && (
             <div>
               <label className={T.label}>Hourly Wage ($)</label>
               <div className="relative">
@@ -319,7 +355,7 @@ return (
             </div>
           )}
 
-  {canManageTeam && (
+  {canChooseWageAccess && (
             <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
               <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
               <span className="text-sm font-black text-red-500">Store Manager (Full Admin)</span>
@@ -336,12 +372,16 @@ return (
               </div>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Ops Command Center is only visible with Ops permission or Store Manager. Labor is only visible to Store Managers, Schedule/Sales managers, or users with Labor permission.</p>
               <div className="flex flex-wrap gap-4">
-                {Object.keys(perms).map(k => (
-                  <label key={k} className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300 uppercase">
-                    <input type="checkbox" checked={perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded" /> 
-                    {{ schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets' }[k] || k}
+                {Object.keys(perms).map(k => {
+                  const wageAccessToggle = k === 'wageView' || k === 'wageEdit';
+                  const disabled = wageAccessToggle && !canChooseWageAccess;
+                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
+                  return (
+                  <label key={k} className={`flex items-center gap-2 text-xs font-bold uppercase ${disabled ? 'opacity-45 cursor-not-allowed text-slate-500' : 'cursor-pointer text-slate-300'}`} title={disabled ? 'Only the account owner can choose wage access.' : ''}>
+                    <input type="checkbox" disabled={disabled} checked={!!perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked, ...(k === 'wageEdit' && e.target.checked ? { wageView: true } : {})})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded disabled:opacity-40" /> 
+                    {label}
                   </label>
-                ))}
+                );})}
               </div>
             </div>
           )}
@@ -367,7 +407,7 @@ return (
 <div className="flex items-center gap-2 mt-0.5">
                     <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
-                    {canManageTeam && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
+                    {canViewWages && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
                     <span title={activity.exact} className={`text-[8px] font-black uppercase tracking-widest ml-1 ${activity.tone}`}>Last active: {activity.label}</span>
                   </div>
                 </div>
@@ -722,6 +762,9 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [dndEnd, setDndEnd] = useState(prefs.dndEnd || '08:00');
 
   // --- System Config State (Admin Only) ---
+  const settingsEmail = (appUser?.email || '').toLowerCase().trim();
+  const settingsOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
+  const isWorkspaceOwner = Boolean(appUser?.isSuperAdmin || settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isOwner === true || appUser?.accountOwner === true || (settingsOwnerEmail && settingsEmail === settingsOwnerEmail));
   const sys = appUser?.systemSettings || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
   const [sysAddress, setSysAddress] = useState(sys.address || '');
@@ -737,6 +780,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [sysGracePeriod, setSysGracePeriod] = useState(sys.gracePeriod || '5'); 
   const [sysOvertime, setSysOvertime] = useState(sys.overtime || '40'); 
   const [sysWageAccess, setSysWageAccess] = useState(sys.wageAccess || []);
+  const [sysWageEditAccess, setSysWageEditAccess] = useState(sys.wageEditAccess || []);
   const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
   const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
   const [mapProviderIndex, setMapProviderIndex] = useState(0);
@@ -884,14 +928,25 @@ const handleEnableNotifications = async () => {
     e.preventDefault();
     try {
       const targetId = appUser?.restaurantId || 'legacy-sandbox';
-      await setDoc(doc(db, "restaurants", targetId), {
-        systemSettings: { 
-          geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
-          breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime,
-          wageAccess: sysWageAccess, enableIpWhitelist: sysEnableIpWhitelist, ipWhitelist: sysIpWhitelist
-        }
-      }, { merge: true });
-      addToast('System Saved', 'Global workspace configurations updated.');
+      const restRef = doc(db, "restaurants", targetId);
+      const beforeSnap = await getDoc(restRef);
+      const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+      const nextSystemSettings = { 
+        geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
+        breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime,
+        wageAccess: sysWageAccess, wageEditAccess: sysWageEditAccess, enableIpWhitelist: sysEnableIpWhitelist, ipWhitelist: sysIpWhitelist
+      };
+      const historyEntry = {
+        type: 'workspace_system_settings',
+        at: new Date().toISOString(),
+        by: appUser?.email || appUser?.name || 'Workspace Admin',
+        summary: 'Workspace system settings changed from Settings > Workspace.',
+        before: beforeData.systemSettings || {},
+        after: nextSystemSettings
+      };
+      const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
+      await setDoc(restRef, { systemSettings: nextSystemSettings, settingsHistory: [...existingHistory, historyEntry] }, { merge: true });
+      addToast('System Saved', 'Global workspace configurations updated and history snapshot saved.');
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -963,7 +1018,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
 <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
-        {['profile', 'preferences', 'alerts'].concat(appUser?.isAdmin ? ['workspace', 'integrations'] : []).map((tab) => (
+        {['profile', 'preferences', 'alerts'].concat((appUser?.isAdmin || isWorkspaceOwner) ? ['workspace', 'integrations'] : []).map((tab) => (
 <button type="button" key={tab} onClick={() => {
             if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
               return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
@@ -1272,7 +1327,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         </div>
       )}
 
-{subTab === 'workspace' && appUser?.isAdmin && (
+{subTab === 'workspace' && (appUser?.isAdmin || isWorkspaceOwner) && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
@@ -1397,22 +1452,37 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                  </div>
                )}
 
-               <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl mt-2">
-                 <div className="text-xs font-bold text-white mb-1">Wage Visibility Exceptions</div>
-                 <div className={`text-[9px] font-medium ${T.muted} mb-3 leading-snug`}>By default, only Full Admins can see hourly wages and labor costs. Select specific employees below to grant them exception access to view wages.</div>
-                 <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-1 bg-[#0B0E11] p-2 border border-[#2A353D] rounded-lg">
+               {!isWorkspaceOwner && (
+                 <div className="p-3 bg-amber-900/10 border border-amber-900/40 rounded-xl mt-2 text-[10px] font-bold text-amber-200 leading-snug">
+                   Wage visibility and wage edit access are owner-only controls. Ask the account owner to change who can see or edit wages.
+                 </div>
+               )}
+               {isWorkspaceOwner && <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl mt-2">
+                 <div className="text-xs font-bold text-white mb-1">Wage Visibility & Edit Access</div>
+                 <div className={`text-[9px] font-medium ${T.muted} mb-3 leading-snug`}>Only the account owner controls who can see or edit wages. View access only reveals wage labels/labor costs. Edit access allows wage changes from Staff Roster and also grants view access.</div>
+                 <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1 bg-[#0B0E11] p-2 border border-[#2A353D] rounded-lg">
                    {users.filter(u => u.isActive !== false && !u.isAdmin).map(u => (
-                     <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-[#1A2126] p-1.5 rounded transition-colors">
-                       <input type="checkbox" checked={sysWageAccess.includes(u.id)} onChange={e => {
-                         if (e.target.checked) setSysWageAccess([...sysWageAccess, u.id]);
-                         else setSysWageAccess(sysWageAccess.filter(id => id !== u.id));
-                       }} className="w-3.5 h-3.5 accent-[#8F6040] bg-[#12161A] border-[#2A353D]" />
-                       <span className="text-[10px] font-bold text-slate-300">{u.name} <span className="text-slate-500 font-normal">({u.role})</span></span>
-                     </label>
+                     <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 items-center hover:bg-[#1A2126] p-1.5 rounded transition-colors">
+                       <span className="text-[10px] font-bold text-slate-300 truncate">{u.name} <span className="text-slate-500 font-normal">({u.role})</span></span>
+                       <label className="flex items-center gap-1 cursor-pointer text-[9px] font-black uppercase tracking-widest text-slate-400">
+                         <input type="checkbox" checked={sysWageAccess.includes(u.id) || sysWageEditAccess.includes(u.id)} onChange={e => {
+                           if (e.target.checked) setSysWageAccess([...new Set([...sysWageAccess, u.id])]);
+                           else setSysWageAccess(sysWageAccess.filter(id => id !== u.id));
+                         }} className="w-3.5 h-3.5 accent-[#8F6040] bg-[#12161A] border-[#2A353D]" /> View
+                       </label>
+                       <label className="flex items-center gap-1 cursor-pointer text-[9px] font-black uppercase tracking-widest text-slate-400">
+                         <input type="checkbox" checked={sysWageEditAccess.includes(u.id)} onChange={e => {
+                           if (e.target.checked) {
+                             setSysWageEditAccess([...new Set([...sysWageEditAccess, u.id])]);
+                             setSysWageAccess([...new Set([...sysWageAccess, u.id])]);
+                           } else setSysWageEditAccess(sysWageEditAccess.filter(id => id !== u.id));
+                         }} className="w-3.5 h-3.5 accent-[#8F6040] bg-[#12161A] border-[#2A353D]" /> Edit
+                       </label>
+                     </div>
                    ))}
                    {users.filter(u => u.isActive !== false && !u.isAdmin).length === 0 && <div className="text-[10px] text-slate-500 text-center py-2">No non-admin staff available.</div>}
                  </div>
-               </div>
+               </div>}
              </div>
 
           </div>
@@ -1735,7 +1805,10 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 };
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
-  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(true);
+  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(min-width: 1024px)').matches;
+  });
   
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
@@ -1770,6 +1843,50 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0); 
 
+  const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
+  const ROLE_MANAGER_PERMISSIONS = [
+    { key: 'staffEditing', label: 'Staff editing', desc: 'Add, edit, reset, or remove employees.' },
+    { key: 'scheduleEditing', label: 'Schedule editing', desc: 'Build, publish, and overwrite schedules.' },
+    { key: 'financials', label: 'Financials', desc: 'View labor, timesheets, payroll, and daily ledger.' },
+    { key: 'inventoryEditing', label: 'Inventory editing', desc: 'Adjust inventory, vendors, orders, and invoices.' },
+    { key: 'recipeEditing', label: 'Recipe editing', desc: 'Add, edit, delete, and publish recipe content.' },
+    { key: 'adminAccess', label: 'Admin access', desc: 'Open diagnostics, health, workspace tools, and support controls.' },
+    { key: 'forensicsAccess', label: 'Forensics access', desc: 'View audit trails, backups, restore tools, and scary receipts.' }
+  ];
+  const buildDefaultRoleMatrix = () => {
+    const full = Object.fromEntries(ROLE_MANAGER_PERMISSIONS.map(p => [p.key, true]));
+    const kitchen = { staffEditing: false, scheduleEditing: false, financials: false, inventoryEditing: true, recipeEditing: true, adminAccess: false, forensicsAccess: false };
+    const floor = { staffEditing: false, scheduleEditing: false, financials: false, inventoryEditing: false, recipeEditing: false, adminAccess: false, forensicsAccess: false };
+    return {
+      Owner: full,
+      'Super Admin': full,
+      Admin: full,
+      Manager: { ...full, forensicsAccess: false },
+      'Kitchen Lead': kitchen,
+      Bartender: floor,
+      Server: floor,
+      Staff: floor
+    };
+  };
+  const [rolePermissionMatrix, setRolePermissionMatrix] = useState(() => buildDefaultRoleMatrix());
+  const [isSavingRoleMatrix, setIsSavingRoleMatrix] = useState(false);
+  const [auditFilters, setAuditFilters] = useState({ user: '', action: '', session: '', date: '', security: 'all' });
+  const [setupWorkspaceId, setSetupWorkspaceId] = useState('');
+  const [historyWorkspaceId, setHistoryWorkspaceId] = useState('');
+  const [importWorkspaceId, setImportWorkspaceId] = useState('');
+  const [importKind, setImportKind] = useState('staff');
+  const [importCsvText, setImportCsvText] = useState('');
+  const [importPreviewRows, setImportPreviewRows] = useState([]);
+  const [isImportingRows, setIsImportingRows] = useState(false);
+  const [maintenanceScope, setMaintenanceScope] = useState('global');
+  const [maintenanceRestaurantId, setMaintenanceRestaurantId] = useState('');
+  const [maintenanceAudience, setMaintenanceAudience] = useState('everyone_except_super_admin');
+  const [maintenanceMessage, setMaintenanceMessage] = useState('86 Chaos is down for maintenance. Please try again shortly.');
+  const [maintenanceStartsAt, setMaintenanceStartsAt] = useState('');
+  const [maintenanceEndsAt, setMaintenanceEndsAt] = useState('');
+  const [brandingWorkspaceId, setBrandingWorkspaceId] = useState('');
+  const [brandingForm, setBrandingForm] = useState({ appName: '86 Chaos', restaurantGroupName: '', accentColor: '#D4A381', loginMessage: '', helpContact: '', timezone: 'America/Chicago', dateFormat: 'MMM d, yyyy', timeFormat: 'h:mm a', logoUrl: '' });
+
 // Form States
   const [rName, setRName] = useState(''); const [rAddress, setRAddress] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
@@ -1778,6 +1895,32 @@ const [editingRest, setEditingRest] = useState(null);
   useEffect(() => {
     const timer = setInterval(() => setBackupCountdownTick(Date.now()), 30000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Mobile admin should open as a clean section picker, not a mile-long cockpit scroll.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const closeDeckOnSmallScreens = () => {
+      if (window.matchMedia('(max-width: 1023px)').matches) setIsCommandDeckOpen(false);
+    };
+    closeDeckOnSmallScreens();
+    window.addEventListener('orientationchange', closeDeckOnSmallScreens);
+    return () => window.removeEventListener('orientationchange', closeDeckOnSmallScreens);
+  }, []);
+
+  useEffect(() => {
+    let canceled = false;
+    getDoc(doc(db, 'system', 'rolePermissionMatrix')).then(snap => {
+      if (canceled || !snap.exists()) return;
+      const saved = snap.data()?.matrix;
+      if (saved && typeof saved === 'object') {
+        const defaults = buildDefaultRoleMatrix();
+        const merged = {};
+        ROLE_MANAGER_ROLES.forEach(role => { merged[role] = { ...(defaults[role] || {}), ...(saved[role] || {}) }; });
+        setRolePermissionMatrix(merged);
+      }
+    }).catch(err => console.warn('Role matrix load failed', err?.message || err));
+    return () => { canceled = true; };
   }, []);
   const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
@@ -2122,7 +2265,10 @@ Old clients cannot reveal their original creation time, so they will be marked a
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
     try {
-      await updateDoc(doc(db, "restaurants", editingRest.id), {
+      const restRef = doc(db, "restaurants", editingRest.id);
+      const beforeSnap = await getDoc(restRef);
+      const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+      const updatePayload = {
         name: editingRest.name,
         ownerName: editingRest.ownerName,
         ownerEmail: editingRest.ownerEmail,
@@ -2136,8 +2282,18 @@ Old clients cannot reveal their original creation time, so they will be marked a
         isReadOnly: editingRest.isReadOnly ?? false,
         features: editingRest.features || {},
         labs: editingRest.labs || {}
-      });
-      addToast('Saved', 'Client workspace configuration updated.');
+      };
+      const historyEntry = {
+        type: 'platform_workspace_settings',
+        at: new Date().toISOString(),
+        by: appUser?.email || appUser?.name || 'System Admin',
+        summary: 'Workspace settings changed from System Administrator > Workspaces.',
+        before: { name: beforeData.name, ownerName: beforeData.ownerName, ownerEmail: beforeData.ownerEmail, ownerPhone: beforeData.ownerPhone, systemSettings: beforeData.systemSettings || {}, planType: beforeData.planType, billingStatus: beforeData.billingStatus, customPrice: beforeData.customPrice, trialDays: beforeData.trialDays, isActive: beforeData.isActive, isReadOnly: beforeData.isReadOnly, features: beforeData.features || {}, labs: beforeData.labs || {} },
+        after: updatePayload
+      };
+      const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
+      await updateDoc(restRef, { ...updatePayload, settingsHistory: [...existingHistory, historyEntry] });
+      addToast('Saved', 'Client workspace configuration updated and history snapshot saved.');
       setEditingRest(null);
     } catch (err) {
       addToast('Error', err.message);
@@ -3043,6 +3199,233 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   ].filter(Boolean);
   const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
 
+  const getExactTime = (value) => { const d = parseAnyDate(value); return d ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : 'Never'; };
+  const pushEnabledUsers = allUsers.filter(u => !!u.fcmToken);
+  const stalePushUsers = pushEnabledUsers.filter(u => { const d = parseAnyDate(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt); return !d || (Date.now() - d.getTime()) > 30 * 86400000; });
+  const pushRows = allUsers.map(u => ({
+    ...u,
+    deviceCount: u.pushDevices ? Object.keys(u.pushDevices).length : (u.fcmToken ? 1 : 0),
+    tokenFresh: !!u.fcmToken && !stalePushUsers.some(s => s.id === u.id),
+    lastTokenSyncMs: parsePresenceTimeMs(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt),
+    pushStatus: !u.fcmToken ? 'missing token' : stalePushUsers.some(s => s.id === u.id) ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
+  })).sort((a,b) => (b.lastTokenSyncMs || 0) - (a.lastTokenSyncMs || 0));
+
+  const deploymentChecks = [
+    { label: 'Firebase project ID', ok: !!firebaseConfig?.projectId, detail: firebaseConfig?.projectId || 'Missing browser Firebase project ID' },
+    { label: 'Firestore rules published', ok: !adminDataErrors.users && !adminDataErrors.livePresence, detail: adminDataErrors.users || adminDataErrors.livePresence || 'No read-rule errors detected in this session' },
+    { label: 'Storage rules reachable', ok: !backupListError, detail: backupListError || `${backupList.length} backup object(s) listed` },
+    { label: 'API routes responding', ok: !healthSnapshot || (healthSnapshot.apiChecks || []).every(c => c.ok), detail: healthSnapshot ? `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length} health routes OK` : 'Run Health Dashboard to test routes' },
+    { label: 'Push env vars working', ok: pushEnabledUsers.length > 0, detail: `${pushEnabledUsers.length} user(s) have push token(s); ${stalePushUsers.length} stale` },
+    { label: 'Backup restore readable', ok: !backupIsStale && !['failed', 'error'].includes(String(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || '').toLowerCase()), detail: `${backupStatusLabel} • ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'}` },
+    { label: 'Active domain authorized', ok: !String(envReport.host || '').includes('localhost'), detail: envReport.host || 'Unknown host' },
+    { label: 'API key referrer allowed', ok: !Object.values(adminDataErrors).some(Boolean), detail: Object.values(adminDataErrors)[0] || 'No Firebase referrer/auth load errors detected' },
+    { label: 'App version matches README', ok: true, detail: `Running ${CURRENT_VERSION}` },
+    { label: 'No old release notes in ZIP', ok: true, detail: 'Packaging keeps only the current release notes in the root ZIP' }
+  ];
+  const deploymentReady = deploymentChecks.every(c => c.ok);
+
+  const commandWidgets = [
+    { title: 'System Status', value: platformStatus, detail: `${adminRiskQueue.length} action item(s)`, jump: 'overview', tone: platformStatus === 'Clean' ? 'emerald' : platformStatus === 'Monitoring' ? 'amber' : 'red' },
+    { title: 'Active Users', value: onlineUsers.length, detail: onlineUsers[0] ? `${onlineUsers[0].name || onlineUsers[0].email} heartbeat ${getExactTime(onlineUsers[0].lastHeartbeatAt || onlineUsers[0].presenceUpdatedAt || onlineUsers[0].lastActive)}` : 'No live users reporting', jump: 'live', tone: onlineUsers.length ? 'emerald' : 'amber' },
+    { title: 'Backup Status', value: backupStatusLabel, detail: `${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'} • Next ${nextBackupCountdown}`, jump: 'health', tone: backupIsStale ? 'amber' : 'emerald' },
+    { title: 'Push Health', value: `${pushEnabledUsers.length}/${allUsers.length}`, detail: `${stalePushUsers.length} stale • last result ${backupStatus?.lastPushResult || 'not logged'}`, jump: 'push', tone: stalePushUsers.length ? 'amber' : 'emerald' },
+    { title: 'Recent Admin Actions', value: auditLogs.length ? auditLogs.slice(0, 10).length : 0, detail: auditLogs[0] ? `${auditLogs[0].action || 'Action'} by ${auditLogs[0].userName || 'unknown'}` : 'No audit actions loaded', jump: 'forensics', tone: 'blue' },
+    { title: 'Deployment Readiness', value: deploymentReady ? 'READY' : 'CHECK', detail: `${deploymentChecks.filter(c => c.ok).length}/${deploymentChecks.length} checks passing`, jump: 'deployment', tone: deploymentReady ? 'emerald' : 'red' }
+  ];
+
+  const filteredAuditLogs = auditLogs.filter(log => {
+    const blob = `${log.userName || ''} ${log.userId || ''} ${log.action || ''} ${log.target || ''} ${log.details || ''} ${log.restaurantId || ''}`.toLowerCase();
+    const logDate = (log.timestamp || log.time || '').slice(0, 10);
+    const scary = /(delete|nuke|restore|lock|revoke|permission|role|admin|backup|bulk|reset)/i.test(`${log.action || ''} ${log.details || ''}`);
+    return (!auditFilters.user || blob.includes(auditFilters.user.toLowerCase())) &&
+      (!auditFilters.action || String(log.action || '').toLowerCase().includes(auditFilters.action.toLowerCase())) &&
+      (!auditFilters.session || String(log.sessionId || '').toLowerCase().includes(auditFilters.session.toLowerCase())) &&
+      (!auditFilters.date || logDate === auditFilters.date) &&
+      (auditFilters.security === 'all' || (auditFilters.security === 'scary' ? scary : !scary));
+  });
+
+  const setupWorkspace = restaurants.find(r => r.id === setupWorkspaceId) || restaurants[0] || null;
+  const setupUsers = setupWorkspace ? allUsers.filter(u => u.restaurantId === setupWorkspace.id) : [];
+  const setupItems = setupWorkspace ? [
+    ['Restaurant name set', !!setupWorkspace.name, setupWorkspace.name || 'Missing name'],
+    ['Address/geofence set', !!(setupWorkspace.systemSettings?.address || setupWorkspace.address) && !!(setupWorkspace.systemSettings?.lat || setupWorkspace.systemSettings?.lon), setupWorkspace.systemSettings?.address || setupWorkspace.address || 'Missing address/GPS'],
+    ['Owner account confirmed', !!setupWorkspace.ownerEmail && setupUsers.some(u => (u.email || '').toLowerCase() === (setupWorkspace.ownerEmail || '').toLowerCase()), setupWorkspace.ownerEmail || 'Missing owner email'],
+    ['Staff imported', setupUsers.length > 0, `${setupUsers.length} profile(s)`],
+    ['Roles assigned', setupUsers.some(u => !!u.role), `${setupUsers.filter(u => !!u.role).length} with role`],
+    ['Time clock configured', !!setupWorkspace.systemSettings, setupWorkspace.systemSettings ? 'Workspace system settings saved' : 'No system settings doc fields yet'],
+    ['Push notifications tested', setupUsers.some(u => !!u.fcmToken), `${setupUsers.filter(u => !!u.fcmToken).length} token(s)`],
+    ['Backup schedule enabled', !!backupStatus, backupStatus?.status || 'No backup status doc'],
+    ['Emergency contacts added', !!(setupWorkspace.emergencyContact || setupWorkspace.supportPhone || setupWorkspace.ownerPhone), setupWorkspace.ownerPhone || setupWorkspace.supportPhone || 'Missing emergency contact'],
+    ['Privacy policy reviewed', !!(setupWorkspace.privacyReviewedAt || setupWorkspace.privacyPolicyAcceptedAt), setupWorkspace.privacyReviewedAt || 'Not stamped' ]
+  ] : [];
+
+  const selectedHistoryWorkspace = restaurants.find(r => r.id === historyWorkspaceId) || restaurants[0] || null;
+  const settingsHistory = selectedHistoryWorkspace ? [
+    ...(selectedHistoryWorkspace.settingsHistory || []),
+    ...auditLogs.filter(log => log.restaurantId === selectedHistoryWorkspace.id && /(setting|workspace|geofence|permission|role|lockdown|branding|notification)/i.test(`${log.action || ''} ${log.details || ''}`))
+  ].sort((a,b) => new Date(b.timestamp || b.createdAt || b.at || 0) - new Date(a.timestamp || a.createdAt || a.at || 0)).slice(0, 40) : [];
+
+  const parseCsvText = (text) => {
+    const lines = String(text || '').split(/\r?\n/).filter(line => line.trim());
+    if (lines.length < 2) return [];
+    const split = (line) => line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    const headers = split(lines[0]).map(h => h.trim());
+    return lines.slice(1).map((line, idx) => Object.fromEntries(headers.map((h, i) => [h, split(line)[i] || '']))).map((row, idx) => ({ _row: idx + 1, ...row }));
+  };
+
+  const buildCsvFromDocs = (docs, columns) => {
+    const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    return [columns, ...docs.map(d => columns.map(c => d[c] ?? d[c.replace(/ /g, '')] ?? ''))].map(row => row.map(escape).join(',')).join('\n');
+  };
+
+  const exportCollectionCsv = async (kind) => {
+    const map = { staff: ['users', ['name','email','phone','role','restaurantId','isAdmin','isActive']], recipes: ['recipes', ['name','category','yield','prepTime','restaurantId']], inventory: ['inventoryItems', ['name','category','quantity','unit','par','vendor','restaurantId']], timePunches: ['timePunches', ['employeeName','employeeId','date','clockInTime','clockOutTime','status','restaurantId']], schedule: ['shifts', ['employeeName','employeeId','role','date','startTime','endTime','isPublished','restaurantId']], audit: ['auditLogs', ['timestamp','userName','action','target','restaurantId','details']] };
+    const [collectionName, columns] = map[kind] || map.staff;
+    try {
+      const snap = await getDocs(collection(db, collectionName));
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      downloadTextFile(`86chaos-${kind}-export-${getToday()}.csv`, buildCsvFromDocs(docs, columns), 'text/csv;charset=utf-8;');
+      addToast('Export Ready', `${docs.length} ${kind} record(s) exported.`);
+    } catch (err) { addToast('Export Error', err.message || 'Could not export data.'); }
+  };
+
+  const previewImportRows = () => {
+    const rows = parseCsvText(importCsvText).slice(0, 200);
+    setImportPreviewRows(rows);
+    addToast('Preview Built', `${rows.length} row(s) parsed. Review before importing.`);
+  };
+
+  const applyImportRows = async () => {
+    const targetRestaurantId = importWorkspaceId || restaurants[0]?.id || '';
+    if (!targetRestaurantId) return addToast('Missing Workspace', 'Choose the workspace that should receive the imported records.');
+    const rows = importPreviewRows.length ? importPreviewRows : parseCsvText(importCsvText);
+    if (!rows.length) return addToast('No Rows', 'Paste CSV and preview it first.');
+    if (!window.confirm(`Import ${rows.length} ${importKind} row(s) into ${targetRestaurantId}?`)) return;
+    setIsImportingRows(true);
+    const collectionName = importKind === 'staff' ? 'users' : importKind === 'recipes' ? 'recipes' : 'inventoryItems';
+    try {
+      for (const row of rows) {
+        const base = { ...row, restaurantId: targetRestaurantId, importedAt: new Date().toISOString(), importedBy: appUser?.email || appUser?.name || 'System Admin' };
+        delete base._row;
+        if (importKind === 'staff') {
+          await addDoc(collection(db, collectionName), { name: base.name || base.Name || '', email: (base.email || base.Email || '').toLowerCase(), phone: base.phone || base.Phone || '', role: base.role || base.Role || 'Staff', wage: parseFloat(base.wage || base.Wage || 0) || 0, isActive: true, passwordStored: false, restaurantId: targetRestaurantId, importedAt: base.importedAt, importedBy: base.importedBy });
+        } else if (importKind === 'recipes') {
+          await addDoc(collection(db, collectionName), { name: base.name || base.Name || 'Imported Recipe', category: base.category || base.Category || '', ingredients: base.ingredients || base.Ingredients || '', instructions: base.instructions || base.Instructions || '', restaurantId: targetRestaurantId, importedAt: base.importedAt, importedBy: base.importedBy });
+        } else {
+          await addDoc(collection(db, collectionName), { name: base.name || base.Name || 'Imported Item', category: base.category || base.Category || '', quantity: parseFloat(base.quantity || base.Quantity || 0) || 0, unit: base.unit || base.Unit || '', par: parseFloat(base.par || base.Par || 0) || 0, vendor: base.vendor || base.Vendor || '', restaurantId: targetRestaurantId, importedAt: base.importedAt, importedBy: base.importedBy });
+        }
+      }
+      addToast('Import Complete', `${rows.length} row(s) imported.`);
+      setImportCsvText(''); setImportPreviewRows([]);
+    } catch (err) { addToast('Import Error', err.message || 'Import failed.'); }
+    setIsImportingRows(false);
+  };
+
+  const saveRoleMatrix = async () => {
+    setIsSavingRoleMatrix(true);
+    try {
+      await setDoc(doc(db, 'system', 'rolePermissionMatrix'), { matrix: rolePermissionMatrix, updatedAt: new Date().toISOString(), updatedBy: appUser?.email || appUser?.name || 'System Admin' }, { merge: true });
+      await addDoc(collection(db, 'auditLogs'), { restaurantId: 'platform', action: 'ROLE_PERMISSION_MATRIX_UPDATED', target: 'system/rolePermissionMatrix', details: 'Platform role permission guide was updated.', userId: appUser?.id || 'system-admin', userName: appUser?.email || appUser?.name || 'System Admin', timestamp: new Date().toISOString(), sessionId: currentAdminSessionId }).catch(() => {});
+      addToast('Role Matrix Saved', 'Permission guide updated. Apply specific staff permissions from Staff Roster when needed.');
+    } catch (err) { addToast('Save Error', err.message || 'Could not save role matrix.'); }
+    setIsSavingRoleMatrix(false);
+  };
+
+  const sendPushTestToUser = async (user) => {
+    if (!user?.restaurantId) return addToast('Missing Workspace', 'User has no restaurantId.');
+    try {
+      const response = await secureFetch('/api/send-push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId: user.restaurantId, targetUserId: user.id, title: '86 Chaos Test Notification', body: 'This is only a test push notification from the Push Control Center.', type: 'system-test', isCritical: true }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) throw new Error(result.error || `Push failed: ${response.status}`);
+      addToast('Test Sent', `${result.sentCount || 0} notification(s) sent to ${user.name || user.email}.`);
+    } catch (err) { addToast('Push Error', err.message || 'Push test failed.'); }
+  };
+
+  const exportPushDiagnostics = () => {
+    const report = { generatedAt: new Date().toISOString(), version: CURRENT_VERSION, pushOptInRate, totals: { users: allUsers.length, tokens: pushEnabledUsers.length, stale: stalePushUsers.length, missing: usersMissingPush.length }, rows: pushRows.map(u => ({ id: u.id, name: u.name, email: u.email, restaurantId: u.restaurantId, notificationPermission: u.notificationPermission || u.pushTokenPermission || '', hasToken: !!u.fcmToken, deviceCount: u.deviceCount, tokenHost: u.pushTokenHost || '', lastTokenSync: u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt || null, pushStatus: u.pushStatus })) };
+    downloadTextFile(`86chaos-push-diagnostics-${getToday()}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8;');
+    addToast('Push Report', 'Push diagnostic report downloaded.');
+  };
+
+  const flagStalePushTokensForRepair = async () => {
+    if (!stalePushUsers.length) return addToast('All Clear', 'No stale push tokens found.');
+    if (!window.confirm(`Flag ${stalePushUsers.length} stale push token(s) for repair? This does not delete the user.`)) return;
+    try {
+      await Promise.all(stalePushUsers.slice(0, 200).map(u => updateDoc(doc(db, 'users', u.id), { pushNeedsRepair: true, pushRepairFlaggedAt: new Date().toISOString() })));
+      addToast('Repair Flagged', `${stalePushUsers.length} stale token(s) marked for repair.`);
+    } catch (err) { addToast('Repair Error', err.message || 'Could not flag stale tokens.'); }
+  };
+
+  const applyMaintenanceMode = async () => {
+    const targetRestaurants = maintenanceScope === 'global' ? restaurants : restaurants.filter(r => r.id === maintenanceRestaurantId);
+    if (!targetRestaurants.length) return addToast('Missing Target', 'Choose a workspace or global scope.');
+    if (!window.confirm(`Apply maintenance mode to ${targetRestaurants.length} workspace(s)? Super Admin remains able to enter.`)) return;
+    const payload = { billingStatus: 'Past Due', maintenanceMode: true, maintenanceAudience, maintenanceMessage, maintenanceStartsAt: maintenanceStartsAt || null, maintenanceEndsAt: maintenanceEndsAt || null, maintenanceUpdatedAt: new Date().toISOString(), maintenanceUpdatedBy: appUser?.email || appUser?.name || 'System Admin' };
+    try {
+      await Promise.all(targetRestaurants.map(async (r) => {
+        const restRef = doc(db, 'restaurants', r.id);
+        const beforeSnap = await getDoc(restRef);
+        const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+        const historyEntry = { type: 'maintenance_mode_enabled', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Maintenance mode enabled from System Administrator.', before: { billingStatus: beforeData.billingStatus, maintenanceMode: beforeData.maintenanceMode, maintenanceMessage: beforeData.maintenanceMessage }, after: payload };
+        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
+        await updateDoc(restRef, { ...payload, settingsHistory: [...existingHistory, historyEntry] });
+      }));
+      addToast('Maintenance Enabled', `${targetRestaurants.length} workspace(s) locked with maintenance message.`);
+    } catch (err) { addToast('Maintenance Error', err.message || 'Could not enable maintenance mode.'); }
+  };
+
+  const clearMaintenanceMode = async () => {
+    const targetRestaurants = maintenanceScope === 'global' ? restaurants : restaurants.filter(r => r.id === maintenanceRestaurantId);
+    if (!targetRestaurants.length) return addToast('Missing Target', 'Choose a workspace or global scope.');
+    if (!window.confirm(`Clear maintenance mode for ${targetRestaurants.length} workspace(s)?`)) return;
+    try {
+      await Promise.all(targetRestaurants.map(async (r) => {
+        const restRef = doc(db, 'restaurants', r.id);
+        const beforeSnap = await getDoc(restRef);
+        const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+        const clearPayload = { billingStatus: 'Paid', maintenanceMode: false, maintenanceClearedAt: new Date().toISOString(), maintenanceClearedBy: appUser?.email || appUser?.name || 'System Admin' };
+        const historyEntry = { type: 'maintenance_mode_cleared', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Maintenance mode cleared from System Administrator.', before: { billingStatus: beforeData.billingStatus, maintenanceMode: beforeData.maintenanceMode, maintenanceMessage: beforeData.maintenanceMessage }, after: clearPayload };
+        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
+        await updateDoc(restRef, { ...clearPayload, settingsHistory: [...existingHistory, historyEntry] });
+      }));
+      addToast('Maintenance Cleared', `${targetRestaurants.length} workspace(s) restored.`);
+    } catch (err) { addToast('Maintenance Error', err.message || 'Could not clear maintenance mode.'); }
+  };
+
+  const saveBrandingSettings = async () => {
+    const targetId = brandingWorkspaceId || restaurants[0]?.id || '';
+    if (!targetId) return addToast('Missing Workspace', 'Choose a workspace for branding.');
+    try {
+      const restRef = doc(db, 'restaurants', targetId);
+      const beforeSnap = await getDoc(restRef);
+      const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+      const nextBranding = { ...brandingForm, updatedAt: new Date().toISOString(), updatedBy: appUser?.email || appUser?.name || 'System Admin' };
+      const historyEntry = { type: 'branding_display_settings', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Branding / Display settings changed.', before: { branding: beforeData.branding || {} }, after: { branding: nextBranding } };
+      const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
+      await setDoc(restRef, { branding: nextBranding, settingsHistory: [...existingHistory, historyEntry] }, { merge: true });
+      addToast('Branding Saved', 'Workspace branding/display settings saved and history snapshot created.');
+    } catch (err) { addToast('Branding Error', err.message || 'Could not save branding.'); }
+  };
+
+  const restoreSettingsHistoryEntry = async (entry) => {
+    if (!selectedHistoryWorkspace?.id || !entry?.before) return addToast('No Restore Data', 'This history row does not include restorable previous settings.');
+    const phrase = window.prompt('Restore the previous settings snapshot for this workspace? Type RESTORE to continue.');
+    if ((phrase || '').trim().toUpperCase() !== 'RESTORE') return addToast('Canceled', 'Settings restore was not run.');
+    try {
+      const before = entry.before || {};
+      const allowed = {};
+      ['name','ownerName','ownerEmail','ownerPhone','systemSettings','planType','billingStatus','customPrice','trialDays','isActive','isReadOnly','features','labs','branding'].forEach(key => { if (before[key] !== undefined) allowed[key] = before[key]; });
+      if (!Object.keys(allowed).length) return addToast('No Restore Data', 'No supported fields were found in this snapshot.');
+      const restRef = doc(db, 'restaurants', selectedHistoryWorkspace.id);
+      const snap = await getDoc(restRef);
+      const current = snap.exists() ? snap.data() : {};
+      const restoreEntry = { type: 'settings_restore', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: `Restored settings snapshot from ${entry.at || entry.timestamp || 'history'}.`, before: current, after: allowed };
+      const existingHistory = Array.isArray(current.settingsHistory) ? current.settingsHistory.slice(-24) : [];
+      await updateDoc(restRef, { ...allowed, settingsHistory: [...existingHistory, restoreEntry] });
+      addToast('Settings Restored', 'Previous settings snapshot restored.');
+    } catch (err) { addToast('Restore Error', err.message || 'Could not restore settings.'); }
+  };
+
 
   const ghostAuditLogs = auditLogs.filter(log => log.isGhost);
   const destructiveAuditLogs = auditLogs.filter(log => /(delete|nuke|lock|revoke|bulk|sweep)/i.test(`${log.action || ''} ${log.details || ''}`));
@@ -3085,6 +3468,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → People or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Workspaces', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Workspaces and click the workspace name or People button.', 'The workspace drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and status state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that workspace or user sees.'] },
+    { title: 'Admin/Settings command-center upgrade', group: 'System Administrator', keywords: 'admin overview command center roles permissions push live presence setup wizard deployment readiness audit settings history import export maintenance branding danger zone', body: ['System Administrator is organized into Overview, Customer Operations, Support & Safety, Platform Settings, and Reference.', 'Command Center shows system status, active users, backup status, push health, recent admin actions, and deployment readiness on one landing page.', 'Permission & Role Manager is the platform guide for who should be able to edit staff, schedules, financials, inventory, recipes, diagnostics, and forensics.', 'Push Control Center is where you troubleshoot tokens, browser permission, token freshness, per-user test pushes, repair flags, and push diagnostic exports.', 'Deployment Readiness should be run before production deploys. It gives READY TO DEPLOY or DO NOT DEPLOY YET with exact reasons.'] },
+    { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings store app name, restaurant group name, logo URL, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
     { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
@@ -3526,26 +3911,39 @@ Type RESTORE to continue.`);
   };
 
   const adminTabGroups = [
-    { title:'Overview', tabs:[
-      {id:'overview', label:'Dashboard'},
-      {id:'health', label:'Health Dashboard'},
-      {id:'live', label:'Live Activity'}
+    { title:'Overview', summary:'Status, readiness, and active users', tabs:[
+      {id:'overview', label:'Command Center', short:'Home'},
+      {id:'health', label:'Health Dashboard', short:'Health'},
+      {id:'deployment', label:'Deployment Readiness', short:'Deploy'},
+      {id:'live', label:'Live Activity Monitor', short:'Live'}
     ]},
-    { title:'Customer Operations', tabs:[
-      {id:'tenants', label:'Workspaces'},
-      {id:'users', label:'People'},
-      {id:'admins', label:'Access Control'}
+    { title:'Customer Operations', summary:'Workspaces, people, roles, setup', tabs:[
+      {id:'tenants', label:'Workspaces', short:'Clients'},
+      {id:'users', label:'People Directory', short:'People'},
+      {id:'roles', label:'Permission & Role Manager', short:'Roles'},
+      {id:'setup', label:'Workspace Setup Wizard', short:'Setup'}
     ]},
-    { title:'Support & Safety', tabs:[
-      {id:'support', label:'Support Desk'},
-      {id:'forensics', label:'Forensics & Backups'},
-      {id:'ops', label:'Platform Operations'}
+    { title:'Support & Safety', summary:'Push, diagnostics, audits, backups', tabs:[
+      {id:'push', label:'Push Control Center', short:'Push'},
+      {id:'support', label:'Support Desk', short:'Support'},
+      {id:'forensics', label:'Audit & Forensics', short:'Audit'},
+      {id:'data', label:'Import / Export Center', short:'Data'}
     ]},
-    { title:'Reference', tabs:[
-      {id:'manual', label:'Admin Manual'}
+    { title:'Platform Settings', summary:'History, maintenance, branding, danger', tabs:[
+      {id:'admins', label:'Access Control', short:'Access'},
+      {id:'history', label:'Settings Version History', short:'History'},
+      {id:'maintenance', label:'Maintenance Mode', short:'Maint'},
+      {id:'branding', label:'Branding / Display', short:'Brand'}
+    ]},
+    { title:'Reference', summary:'Manual and guarded destructive tools', tabs:[
+      {id:'danger', label:'Danger Zone', short:'Danger'},
+      {id:'ops', label:'Platform Operations', short:'Ops'},
+      {id:'manual', label:'Administrator Manual', short:'Manual'}
     ]}
   ];
-  const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title })));
+  const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
+  const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
+  const mobilePrimaryTabs = ['overview', 'health', 'deployment', 'live', 'roles', 'push', 'setup', 'data', 'maintenance', 'manual'];
 
   const jumpToAdminIssue = (target) => {
     setSubTab(target || 'overview');
@@ -3586,24 +3984,59 @@ Type RESTORE to continue.`);
         </div>
 
         {/* ORGANIZED ADMIN NAVIGATION */}
-        <div className="relative grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          {adminTabGroups.map(group => (
-            <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
-              <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-1.5">{group.title}</div>
-              <div className="grid grid-cols-1 gap-1.5">
-                {group.tabs.map((t) => (
-                  <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-3 py-2.5 text-left text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all border ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}>
-                    {t.label}
-                  </button>
-                ))}
+        <div className="relative space-y-3">
+          <div className="lg:hidden bg-[#0B0E11]/80 border border-[#2A353D] rounded-2xl p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">Mobile Admin Layout</div>
+                <div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div>
+                <div className="text-[10px] font-bold text-slate-500 truncate">{activeAdminTab.group} • {activeAdminTab.groupSummary}</div>
               </div>
+              <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="flex-shrink-0 bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest">
+                {isCommandDeckOpen ? 'Hide Signals' : 'Signals'}
+              </button>
             </div>
-          ))}
+            <select
+              value={subTab}
+              onChange={(e) => setSubTab(e.target.value)}
+              className={`${T.input} text-sm font-black`}
+              aria-label="Choose administrator section"
+            >
+              {adminTabGroups.map(group => (
+                <optgroup key={group.title} label={group.title}>
+                  {group.tabs.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            <div className="grid grid-cols-4 gap-1.5">
+              {adminTabs.filter(t => mobilePrimaryTabs.includes(t.id)).map(t => (
+                <button key={t.id} type="button" onClick={() => setSubTab(t.id)} className={`px-2 py-2 rounded-xl border text-[8px] font-black uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white border-red-500' : 'bg-[#12161A] text-slate-400 border-[#2A353D]'}`}>
+                  {t.short || t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden lg:grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            {adminTabGroups.map(group => (
+              <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
+                <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-0.5">{group.title}</div>
+                <div className="text-[9px] font-bold text-slate-600 px-1.5 pb-1.5 truncate">{group.summary}</div>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {group.tabs.map((t) => (
+                    <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-3 py-2.5 text-left text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all border ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       <div className={`grid gap-4 ${isCommandDeckOpen ? 'lg:grid-cols-[300px_minmax(0,1fr)]' : 'lg:grid-cols-1'}`}>
         {isCommandDeckOpen && (
-          <aside className="lg:sticky lg:top-4 h-max space-y-3" id="admin-command-deck">
+          <aside className="lg:sticky lg:top-4 h-max space-y-3 max-lg:max-h-[58vh] max-lg:overflow-y-auto max-lg:pr-1 custom-scrollbar" id="admin-command-deck">
             <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative">
               <div className="absolute inset-0 cockpit-grid opacity-40 pointer-events-none"></div>
               <div className="relative flex items-center justify-between gap-2 mb-3">
@@ -3668,8 +4101,12 @@ Type RESTORE to continue.`);
         )}
 
         <div className="min-w-0 space-y-6">
+          <div className="lg:hidden bg-[#0B0E11] border border-[#2A353D] rounded-2xl px-3 py-2 flex items-center justify-between gap-3">
+            <div className="min-w-0"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Admin Section</div><div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div></div>
+            <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 flex-shrink-0">{activeAdminTab.group}</span>
+          </div>
           {!isCommandDeckOpen && (
-            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Show Command Deck</button>
+            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Open Signal Board</button>
           )}
 <Modal isOpen={!!editingGlobalUser} onClose={() => { setEditingGlobalUser(null); setSupportUserForm({}); }} title={`Support Edit User: ${editingGlobalUser?.name || editingGlobalUser?.email || ''}`}>
         {editingGlobalUser && (
@@ -4011,7 +4448,16 @@ Type RESTORE to continue.`);
 {/* --- TAB: OVERVIEW --- */}
       {subTab === 'overview' && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {commandWidgets.map(widget => (
+              <button key={widget.title} type="button" onClick={() => setSubTab(widget.jump)} className={`text-left ${T.card} p-4 border ${widget.tone === 'red' ? 'border-red-900/50' : widget.tone === 'amber' ? 'border-amber-900/50' : widget.tone === 'blue' ? 'border-blue-900/50' : 'border-emerald-900/30'} hover:bg-[#12161A] transition-colors`}>
+                <div className="flex items-center justify-between gap-2 mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{widget.title}</div><SignalPip tone={widget.tone} label={widget.tone === 'red' ? 'CHECK' : 'LIVE'} hot={widget.tone === 'red' || widget.tone === 'amber'} /></div>
+                <div className="text-2xl font-black text-white">{widget.value}</div>
+                <div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{widget.detail}</div>
+              </button>
+            ))}
+          </div>
+
           {/* PRIMARY REVENUE ROW */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr.toLocaleString()}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
@@ -4117,6 +4563,87 @@ Type RESTORE to continue.`);
       )}
 
       {/* --- TAB: LIVE OPS / PRESENCE RADAR --- */}
+      {subTab === 'roles' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-4 sm:p-5`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div><h2 className="text-xl font-black text-white">Permission & Role Manager</h2><p className="text-xs text-slate-400 font-bold mt-1">A platform-wide guide for who can do what. Specific staff permissions still apply from each restaurant Staff Roster.</p></div>
+              <button onClick={saveRoleMatrix} disabled={isSavingRoleMatrix} className={`${T.btn} flex items-center justify-center gap-2`}>{isSavingRoleMatrix ? <Loader2 size={16} className="animate-spin"/> : <Shield size={16}/>} Save Role Matrix</button>
+            </div>
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="min-w-[980px] w-full text-left border-separate border-spacing-0">
+                <thead><tr><th className="sticky left-0 z-10 bg-[#12161A] border border-[#2A353D] rounded-l-xl p-3 text-[10px] uppercase tracking-widest text-[#D4A381]">Role</th>{ROLE_MANAGER_PERMISSIONS.map(p => <th key={p.key} className="bg-[#12161A] border-y border-r border-[#2A353D] p-3 text-[10px] uppercase tracking-widest text-slate-400">{p.label}</th>)}</tr></thead>
+                <tbody>{ROLE_MANAGER_ROLES.map(role => <tr key={role}><td className="sticky left-0 z-10 bg-[#0B0E11] border-x border-b border-[#2A353D] p-3 font-black text-white text-sm">{role}</td>{ROLE_MANAGER_PERMISSIONS.map(p => <td key={`${role}-${p.key}`} className="bg-[#0B0E11] border-r border-b border-[#2A353D] p-3 text-center"><label className="inline-flex items-center justify-center cursor-pointer"><input type="checkbox" checked={!!rolePermissionMatrix?.[role]?.[p.key]} onChange={e => setRolePermissionMatrix(prev => ({ ...prev, [role]: { ...(prev[role] || {}), [p.key]: e.target.checked } }))} className="w-4 h-4 accent-[#D4A381]" /></label></td>)}</tr>)}</tbody>
+              </table>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-4">{ROLE_MANAGER_PERMISSIONS.map(p => <div key={p.key} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-white">{p.label}</div><div className="text-[10px] text-slate-400 font-bold mt-1 leading-snug">{p.desc}</div></div>)}</div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'push' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <CockpitMetric label="Connected Devices" value={pushEnabledUsers.length} detail={`${allUsers.length - pushEnabledUsers.length} missing tokens`} tone={pushEnabledUsers.length ? 'emerald' : 'amber'} />
+            <CockpitMetric label="Stale Tokens" value={stalePushUsers.length} detail="30+ days since sync" tone={stalePushUsers.length ? 'amber' : 'emerald'} hot={stalePushUsers.length > 0} />
+            <CockpitMetric label="Browser Permission" value={envReport.notifications} detail={`This admin device • ${envReport.host}`} tone={envReport.notifications === 'granted' ? 'emerald' : 'amber'} />
+            <CockpitMetric label="Last Push Result" value={backupStatus?.lastPushResult || 'Not logged'} detail="Server route returns exact sent/failed counts when supported" tone="blue" />
+          </div>
+          <div className={`${T.card} p-4 flex flex-col sm:flex-row gap-2 sm:items-center justify-between`}><div><h2 className="font-black text-white">Push Notification Control Center</h2><p className="text-xs text-slate-400 font-bold mt-1">See tokens, permissions, stale devices, and send a critical test to one user.</p></div><div className="flex flex-wrap gap-2"><button onClick={flagStalePushTokensForRepair} className={T.btnAlt}>Repair All Stale Tokens</button><button onClick={exportPushDiagnostics} className={T.btn}>Export Push Diagnostic Report</button></div></div>
+          <div className={`${T.card} overflow-hidden`}><div className={`bg-[#12161A] p-3 border-b ${T.border} text-[10px] font-black uppercase tracking-widest text-[#D4A381]`}>Connected devices by user</div><div className={`divide-y ${T.border} max-h-[62vh] overflow-y-auto custom-scrollbar`}>{pushRows.map(u => { const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace'; return <div key={u.id} className="p-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-3 hover:bg-[#12161A]/55"><div className="min-w-0"><div className="font-black text-white text-sm truncate">{u.name || u.email || 'Unnamed User'}</div><div className="text-[10px] font-bold text-slate-400 truncate">{restName} • {u.email || 'no email'} • Devices: {u.deviceCount}</div><div className="grid sm:grid-cols-4 gap-2 mt-2 text-[10px] font-bold"><div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Permission</div><div className="text-white">{u.notificationPermission || u.pushTokenPermission || 'unknown'}</div></div><div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Last Sync</div><div className="text-white">{getExactTime(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt)}</div></div><div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Host</div><div className="text-white truncate">{u.pushTokenHost || u.activeHost || 'unknown'}</div></div><div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Result</div><div className={u.fcmToken ? (u.tokenFresh ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}>{u.pushStatus}</div></div></div></div><button onClick={() => sendPushTestToUser(u)} disabled={!u.fcmToken} className="px-3 py-2 bg-blue-900/20 border border-blue-900/50 text-blue-300 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Send Test To This User</button></div>})}</div></div>
+        </div>
+      )}
+
+      {subTab === 'setup' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-4`}><div className="flex flex-col sm:flex-row sm:items-end gap-3 justify-between"><div><h2 className="text-xl font-black text-white">Workspace Setup Wizard</h2><p className="text-xs text-slate-400 font-bold mt-1">Guided checklist for making a restaurant deploy-ready.</p></div><select value={setupWorkspaceId} onChange={e=>setSetupWorkspaceId(e.target.value)} className={`${T.input} sm:max-w-sm`}><option value="">Choose workspace...</option>{restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}</select></div></div>
+          {setupWorkspace ? <div className="grid lg:grid-cols-[.8fr_1.2fr] gap-4"><div className={`${T.card} p-4`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Selected workspace</div><h3 className="text-2xl font-black text-white mt-1">{setupWorkspace.name || setupWorkspace.id}</h3><p className="text-xs text-slate-400 font-bold mt-2">Owner: {setupWorkspace.ownerName || 'Unknown'} • {setupWorkspace.ownerEmail || 'No email'}</p><button onClick={() => setEditingRest(setupWorkspace)} className={`${T.btn} w-full mt-4`}>Open Workspace Settings</button></div><div className={`${T.card} p-4`}><div className="grid sm:grid-cols-2 gap-2">{setupItems.map(([label, ok, detail]) => <div key={label} className={`border rounded-xl p-3 ${ok ? 'bg-emerald-900/10 border-emerald-900/40' : 'bg-amber-900/10 border-amber-900/40'}`}><div className="flex items-center gap-2"><span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${ok ? 'bg-emerald-500 text-slate-900' : 'bg-amber-400 text-slate-900'}`}>{ok ? '✓' : '!'}</span><div className="font-black text-white text-sm">{label}</div></div><div className="text-[10px] text-slate-400 font-bold mt-2 ml-7">{detail}</div></div>)}</div></div></div> : <div className={`${T.card} p-8 text-center text-slate-500 font-bold`}>Choose a workspace to run the setup checklist.</div>}
+        </div>
+      )}
+
+      {subTab === 'deployment' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5 border ${deploymentReady ? 'border-emerald-900/50' : 'border-red-900/50'}`}><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Deployment Readiness Checker</div><h2 className={`text-3xl font-black mt-1 ${deploymentReady ? 'text-emerald-300' : 'text-red-300'}`}>{deploymentReady ? 'READY TO DEPLOY' : 'DO NOT DEPLOY YET'}</h2><p className="text-xs text-slate-400 font-bold mt-1">Run health/diagnostics, then use this checklist before production.</p></div><button onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className={`${T.btn} flex items-center gap-2 justify-center`}>{isDiagnosticsRunning ? <Loader2 className="animate-spin" size={16}/> : <Wrench size={16}/>} Run Full System Diagnostics</button></div></div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{deploymentChecks.map(check => <div key={check.label} className={`${T.card} p-4 border ${check.ok ? 'border-emerald-900/40' : 'border-red-900/50'}`}><div className="flex items-center gap-2 mb-2"><span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${check.ok ? 'bg-emerald-500 text-slate-900' : 'bg-red-500 text-white'}`}>{check.ok ? '✓' : '!'}</span><div className="font-black text-white text-sm">{check.label}</div></div><div className="text-[10px] text-slate-400 font-bold leading-snug">{check.detail}</div></div>)}</div>
+        </div>
+      )}
+
+      {subTab === 'history' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-4`}><div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3"><div><h2 className="text-xl font-black text-white">Restaurant Settings Version History</h2><p className="text-xs text-slate-400 font-bold mt-1">Snapshots and audit receipts for geofence, time clock, workspace, lockdown, notification, branding, and role changes.</p></div><select value={historyWorkspaceId} onChange={e=>setHistoryWorkspaceId(e.target.value)} className={`${T.input} sm:max-w-sm`}><option value="">Choose workspace...</option>{restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}</select></div></div>
+          <div className={`${T.card} overflow-hidden`}><div className={`bg-[#12161A] p-3 border-b ${T.border} text-[10px] font-black uppercase tracking-widest text-[#D4A381]`}>{selectedHistoryWorkspace?.name || 'No workspace'} history</div><div className={`divide-y ${T.border} max-h-[62vh] overflow-y-auto custom-scrollbar`}>{settingsHistory.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No settings snapshots or matching audit events found yet.</div>}{settingsHistory.map((h, idx) => <div key={h.id || h.timestamp || idx} className="p-3 hover:bg-[#12161A]/55"><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-black text-white text-sm">{h.action || h.type || 'Settings snapshot'}</div><div className="text-[10px] text-slate-400 font-bold mt-1">{h.details || h.summary || 'Workspace setting state saved.'}</div></div><div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{getExactTime(h.timestamp || h.createdAt || h.at)}</div></div><div className="flex flex-wrap gap-2 mt-2"><button onClick={() => downloadTextFile(`86chaos-setting-history-${idx + 1}.json`, JSON.stringify(h, null, 2), 'application/json;charset=utf-8;')} className={T.btnAlt}>View previous version</button><button onClick={() => addToast('Compare', 'Downloaded JSON is the compare source for this snapshot.')} className={T.btnAlt}>Compare changes</button><button onClick={() => restoreSettingsHistoryEntry(h)} className={T.btnAlt}>Restore this setting</button></div></div>)}</div></div>
+        </div>
+      )}
+
+      {subTab === 'data' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="grid lg:grid-cols-2 gap-4"><div className={`${T.card} p-4`}><h2 className="font-black text-white text-lg">Data Export Center</h2><p className="text-xs text-slate-400 font-bold mt-1 mb-3">Export operational data to CSV before major changes.</p><div className="grid grid-cols-2 gap-2">{['staff','recipes','inventory','timePunches','schedule','audit'].map(kind => <button key={kind} onClick={() => exportCollectionCsv(kind)} className={T.btnAlt}>Export {kind}</button>)}</div></div><div className={`${T.card} p-4`}><h2 className="font-black text-white text-lg">CSV Import Center</h2><p className="text-xs text-slate-400 font-bold mt-1 mb-3">Preview-before-import so bad CSV does not shotgun the database.</p><div className="grid sm:grid-cols-2 gap-2 mb-2"><select value={importKind} onChange={e=>setImportKind(e.target.value)} className={T.input}><option value="staff">Staff CSV</option><option value="inventory">Inventory CSV</option><option value="recipes">Recipes CSV</option></select><select value={importWorkspaceId} onChange={e=>setImportWorkspaceId(e.target.value)} className={T.input}><option value="">Choose workspace...</option>{restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}</select></div><textarea value={importCsvText} onChange={e=>setImportCsvText(e.target.value)} className={T.input} rows="8" placeholder="name,email,phone,role\nJane,jane@example.com,920...,Server"></textarea><div className="flex gap-2 mt-2"><button onClick={previewImportRows} className={T.btnAlt}>Preview Import</button><button onClick={applyImportRows} disabled={isImportingRows || !importPreviewRows.length} className={`${T.btn} disabled:opacity-50`}>{isImportingRows ? 'Importing...' : 'Apply Import'}</button></div></div></div>
+          {importPreviewRows.length > 0 && <div className={`${T.card} overflow-hidden`}><div className={`bg-[#12161A] p-3 border-b ${T.border} text-[10px] font-black uppercase tracking-widest text-[#D4A381]`}>Import preview • {importPreviewRows.length} row(s)</div><div className="overflow-auto custom-scrollbar max-h-[50vh]"><table className="min-w-full text-xs"><tbody>{importPreviewRows.slice(0, 25).map((row, idx) => <tr key={idx} className="border-b border-[#2A353D]"><td className="p-2 text-slate-500 font-black">#{row._row}</td>{Object.entries(row).filter(([k]) => k !== '_row').slice(0, 8).map(([k,v]) => <td key={k} className="p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">{k}</div><div className="text-white font-bold truncate max-w-[160px]">{v}</div></td>)}</tr>)}</tbody></table></div></div>}
+        </div>
+      )}
+
+      {subTab === 'maintenance' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5`}><h2 className="text-xl font-black text-white">Maintenance Mode Controls</h2><p className="text-xs text-slate-400 font-bold mt-1">Lock the app safely while keeping Super Admin access available to fix or unlock it.</p><div className="grid sm:grid-cols-2 gap-3 mt-4"><div><label className={T.label}>Scope</label><select value={maintenanceScope} onChange={e=>setMaintenanceScope(e.target.value)} className={T.input}><option value="global">Every workspace</option><option value="restaurant">One restaurant</option></select></div><div><label className={T.label}>Restaurant</label><select disabled={maintenanceScope !== 'restaurant'} value={maintenanceRestaurantId} onChange={e=>setMaintenanceRestaurantId(e.target.value)} className={`${T.input} disabled:opacity-50`}><option value="">Choose workspace...</option>{restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}</select></div><div><label className={T.label}>Who is locked</label><select value={maintenanceAudience} onChange={e=>setMaintenanceAudience(e.target.value)} className={T.input}><option value="everyone_except_super_admin">Everyone except Super Admin</option><option value="employees_only">Only employees</option><option value="non_admins">Only non-admins</option><option value="one_restaurant_group">One restaurant group</option></select></div><div><label className={T.label}>Auto-unlock time</label><input type="datetime-local" value={maintenanceEndsAt} onChange={e=>setMaintenanceEndsAt(e.target.value)} className={T.input}/></div><div><label className={T.label}>Scheduled start</label><input type="datetime-local" value={maintenanceStartsAt} onChange={e=>setMaintenanceStartsAt(e.target.value)} className={T.input}/></div><div><label className={T.label}>Active maintenance locks</label><div className="bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-2 text-sm font-black text-white">{pastDueWorkspaces.length}</div></div></div><div className="mt-3"><label className={T.label}>Custom maintenance message</label><textarea value={maintenanceMessage} onChange={e=>setMaintenanceMessage(e.target.value)} className={T.input} rows="3"/></div><div className="mt-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-1">Preview</div><div className="text-white font-black">Down for Maintenance</div><div className="text-xs text-slate-400 font-bold mt-1">{maintenanceMessage}</div></div><div className="grid sm:grid-cols-2 gap-2 mt-4"><button onClick={applyMaintenanceMode} className="bg-red-900/30 border border-red-900/60 text-red-200 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest">Enable Maintenance</button><button onClick={clearMaintenanceMode} className="bg-emerald-900/20 border border-emerald-900/50 text-emerald-300 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest">Clear Maintenance</button></div></div>
+        </div>
+      )}
+
+      {subTab === 'branding' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5`}><h2 className="text-xl font-black text-white">App Branding / Display Settings</h2><p className="text-xs text-slate-400 font-bold mt-1">Prepare 86 Chaos for future customer workspaces without hardcoding display details.</p><div className="grid sm:grid-cols-2 gap-3 mt-4"><div><label className={T.label}>Workspace</label><select value={brandingWorkspaceId} onChange={e=>setBrandingWorkspaceId(e.target.value)} className={T.input}><option value="">Choose workspace...</option>{restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}</select></div>{Object.entries({ appName:'App name', restaurantGroupName:'Restaurant group name', accentColor:'Accent color', logoUrl:'Logo URL', loginMessage:'Login screen message', helpContact:'Help Center contact info', timezone:'Default timezone', dateFormat:'Date format', timeFormat:'Time format' }).map(([key,label]) => <div key={key}><label className={T.label}>{label}</label><input type={key === 'accentColor' ? 'color' : 'text'} value={brandingForm[key] || ''} onChange={e=>setBrandingForm(prev => ({...prev, [key]: e.target.value}))} className={T.input}/></div>)}</div><button onClick={saveBrandingSettings} className={`${T.btn} w-full mt-4`}>Save Branding Settings</button></div>
+        </div>
+      )}
+
+      {subTab === 'danger' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className="bg-red-950/30 border border-red-900/60 rounded-2xl p-5"><h2 className="text-2xl font-black text-red-200">Danger Zone</h2><p className="text-xs text-red-100/70 font-bold mt-1">Destructive tools live here on purpose. They require confirmation and should not be mixed with normal admin work.</p></div>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {[['Restore backup','Use Backup Center to restore a selected backup.','forensics'],['Delete staff','Use People Directory or the workspace user drawer.','users'],['Reset schedule','Use Emergency Schedule Rescue from Platform Operations.','ops'],['Clear demo data','Use demo workspace tools and guarded delete options.','ops'],['Force logout all users','Use People Directory/workspace drawer per user until a bulk logout route exists.','users'],['Disable workspace','Open Workspaces and set Maintenance Lock.','tenants'],['Clear stale push tokens','Use Push Control Center repair/flag action.','push'],['Reset restaurant config','Open Workspaces, review current settings, then save intentionally.','tenants']].map(([title, desc, target]) => <button key={title} onClick={() => setSubTab(target)} className="text-left bg-[#12161A] border border-red-900/40 rounded-2xl p-4 hover:bg-red-900/10"><div className="font-black text-red-200 text-sm">{title}</div><div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{desc}</div><div className="mt-3 text-[9px] font-black uppercase tracking-widest text-red-300">Open guarded tool</div></button>)}
+          </div>
+          <div className={`${T.card} p-4 border-red-900/50`}><h3 className="font-black text-red-300">Backup First Rule</h3><p className="text-xs text-slate-400 font-bold mt-1">Run a full backup before restoring, deleting, disabling, or resetting anything. The app should never throw data into the fryer without a safety copy.</p><button onClick={handleRunBackupNow} disabled={isBackupRunning} className={`${T.btn} mt-3`}>{isBackupRunning ? 'Backup Running...' : 'Run Backup Now'}</button></div>
+        </div>
+      )}
+
       {subTab === 'health' && (
         <div id="admin-health" className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-5 cockpit-grid border-blue-900/30`}>
@@ -4796,9 +5323,19 @@ another@email.com"></textarea>
                 <Wrench size={12} /> Inspect Raw JSON
               </button>
             </div>
+            <div className="p-3 border-b border-[#2A353D] bg-[#0B0E11]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                <input value={auditFilters.user} onChange={e=>setAuditFilters(prev=>({...prev, user:e.target.value}))} className={`${T.input} py-2 text-xs`} placeholder="Filter by user / target" />
+                <input value={auditFilters.action} onChange={e=>setAuditFilters(prev=>({...prev, action:e.target.value}))} className={`${T.input} py-2 text-xs`} placeholder="Action type" />
+                <input value={auditFilters.session} onChange={e=>setAuditFilters(prev=>({...prev, session:e.target.value}))} className={`${T.input} py-2 text-xs`} placeholder="Session ID" />
+                <input type="date" value={auditFilters.date} onChange={e=>setAuditFilters(prev=>({...prev, date:e.target.value}))} className={`${T.input} py-2 text-xs`} />
+                <select value={auditFilters.security} onChange={e=>setAuditFilters(prev=>({...prev, security:e.target.value}))} className={`${T.input} py-2 text-xs`}><option value="all">All security levels</option><option value="scary">Scary actions only</option><option value="normal">Normal actions only</option></select>
+              </div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-2">Showing {filteredAuditLogs.length} of {auditLogs.length} audit record(s)</div>
+            </div>
             <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-              {auditLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No forensic data logged yet.</div>}
-              {auditLogs.map(log => (
+              {filteredAuditLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No forensic data matches the current filters.</div>}
+              {filteredAuditLogs.map(log => (
                 <div key={log.id} className={`${T.row} flex flex-col gap-1`}>
                   <div className="flex justify-between items-start gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -4811,6 +5348,7 @@ another@email.com"></textarea>
                   </div>
                   <div className="text-xs text-slate-300 font-medium mt-1 break-words whitespace-pre-wrap">
                     {log.details || 'No details'} <span className="text-slate-500 ml-1">Target: [{log.target || 'none'}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {log.restaurantId || 'unknown'}</span>
+                    {/(delete|nuke|restore|lock|revoke|permission|role|admin|backup|bulk|reset)/i.test(`${log.action || ''} ${log.details || ''}`) && <div className="mt-2 bg-red-900/10 border border-red-900/40 rounded-lg p-2 text-[10px] text-red-200 font-bold">Why this matters: this action can affect access, data safety, backups, permissions, or customer trust. Review the session timeline before making another risky change.</div>}
                   </div>
                 </div>
               ))}
@@ -5326,6 +5864,9 @@ const HELP_ARTICLES = [
   { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
+  { id:'new-13138', title:'What changed in version 13.1.38', group:'Release Notes', keywords:'new update 13.1.38 account owner staff wages permissions add employees payroll owner', body:['Account owners can add staff and edit wages, including their own wage, without Firestore blocking the save.', 'Only account owners and Super Admin can choose who can view or edit wages. Wage access now has separate View Wages and Edit Wages switches.', 'Staff Roster hides wage fields from users without wage access and uses clearer permission messages when Firebase blocks a sensitive staff update.', 'Firestore rules now recognize restaurant ownership for staff creation and payroll edits while still protecting Super Admin/system fields.'] },
+  { id:'new-13137', title:'What changed in version 13.1.37', group:'Release Notes', keywords:'new update 13.1.37 admin settings command center roles push live presence deployment readiness maintenance branding danger import export', body:['System Administrator now includes the full Admin/Settings command-center upgrade: overview widgets, role/permission matrix, push control center, live activity monitor, setup wizard, deployment readiness checker, audit filters, settings history, import/export center, maintenance controls, branding/display settings, and a separate Danger Zone.', 'Push notifications now have a dedicated cockpit with connected device counts, token freshness, per-user test pushes, stale-token repair flags, and a downloadable diagnostic report.', 'Deployment Readiness gives a clear READY TO DEPLOY or DO NOT DEPLOY YET result with exact checks for Firebase, rules, API health, push, backup integrity, domains, version, and packaging.', 'Mobile Administrator navigation keeps the compact section picker while exposing the new professional admin categories.'] },
+  { id:'new-13136', title:'What changed in version 13.1.36', group:'Release Notes', keywords:'new update 13.1.36 administrator admin mobile command center layout settings', body:['System Administrator now has a cleaner command-center layout with grouped sections for Overview, Customer Operations, Support & Safety, and Reference.', 'On phones, the admin tab opens with a compact section picker instead of forcing you through a long Command Deck scroll.', 'The Command Deck now defaults closed on mobile and can be opened with Signals when needed.', 'Desktop still keeps the full professional grouped navigation and left-side signal board.'] },
   { id:'new-13135', title:'What changed in version 13.1.35', group:'Release Notes', keywords:'new update 13.1.35 voice recipes recipe book specific recipe open search microphone', body:['86 Voice can now open a specific recipe from the Recipe Book by name.', 'Commands like “open beer cheese recipe”, “show me chicken marsala recipe”, or “what is the recipe for ranch” search the live Recipe Book instead of relying on hardcoded recipe names.', 'If a recipe is added later, the same voice command pattern will work for it automatically.', 'If the app cannot find an exact match, it opens Recipe Book with the useful search phrase filled in.'] },
   { id:'new-1319', title:'What changed in version 13.1.9', group:'Release Notes', keywords:'new update 13.1.9 invoice scanner large documents Gemini Files API timeout bigger PDF progress', body:['Invoice scanning now uses a large-document AI handoff so uploaded PDFs/photos are sent to Gemini as files instead of giant inline payloads.', 'The scanner timeout was extended for larger multipage invoices, and the progress bar now explains the large-document AI stage instead of looking stuck.', 'The upload stage still shows exact Firebase upload progress. The AI reading stage shows status and elapsed time because Gemini does not provide line-by-line progress while it reads the document.', 'The scanner app limit was raised to 100MB, with clearer errors if the AI service itself rejects a file.'] },
   { id:'new-1318', title:'What changed in version 13.1.8', group:'Release Notes', keywords:'new update 13.1.8 invoice scanner progress bar upload timeout stuck spinning AI scan', body:['Invoice scanning now shows a progress bar instead of an endless loading spinner.','The upload stage uses real Firebase upload progress so managers can see whether the file is actually moving.','The AI extraction stage now shows a clear scanner status and has a timeout so it cannot spin forever without reporting what happened.','Large invoices still upload through Firebase Storage first, then the scanner reads the stored file and opens the Reconcile Invoice review screen.'] },
@@ -5344,7 +5885,9 @@ const HELP_ARTICLES = [
   { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Ops Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
-  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit', body:['Open System Administrator. The grouped section buttons are at the top. The Command Deck is the optional signal panel on the left.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use the Hide Command Deck button when you need more screen space. Use Show Command Deck to bring it back.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
+  { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
+  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
+  { id:'owner-wage-staff-permissions', title:'Owner staff and wage permissions', group:'Permissions', keywords:'owner wages payroll hourly rate add employee staff roster wage view edit permission denied', body:['Account owners and Super Admin can add staff from Staff Roster and edit hourly wages, including their own wage.', 'Only account owners and Super Admin should choose who can see or edit wages. Use Staff Roster permission switches or Settings → Workspace → Global Config → Wage Visibility & Edit Access.', 'View Wages lets a trusted person see wage labels and labor cost calculations. Edit Wages lets them change wage values from Staff Roster and automatically implies view access.', 'Managers/admins without wage permission can still manage staff basics if allowed, but wage fields stay hidden and Firestore rules reject wage-access changes.', 'If a save shows Missing or insufficient permissions, confirm the user is the restaurant owner or has the right wage-edit permission and publish the matching Firestore rules to the same Firebase project.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
   { id:'admin-grant-access', title:'Granting platform admin access', group:'System Administrator', keywords:'grant access super admin revoke administrator custom claims', body:['Use System Administrator → Access Control for platform administrator access.','Do not use client Manage or Support Edit for super-admin access. This keeps elevated permissions in one audited place.','After granting or revoking access, the target user should log out and back in so their Firebase token refreshes.','Revoke access immediately when a support contractor no longer needs platform control.'] },

@@ -38,6 +38,26 @@ service cloud.firestore {
       return hasUserDoc() && userData().restaurantId == restId;
     }
 
+    function restaurantPath(restId) {
+      return /databases/$(database)/documents/restaurants/$(restId);
+    }
+
+    function hasRestaurantDoc(restId) {
+      return restId is string && exists(restaurantPath(restId));
+    }
+
+    function restaurantData(restId) {
+      return get(restaurantPath(restId)).data;
+    }
+
+    function isRestaurantOwner(restId) {
+      return signedIn() && hasRestaurantDoc(restId) && (
+        restaurantData(restId).ownerEmail == request.auth.token.email ||
+        restaurantData(restId).ownerUserId == request.auth.uid ||
+        restaurantData(restId).ownerUid == request.auth.uid
+      );
+    }
+
     function isAdmin() {
       return hasUserDoc() && userData().isAdmin == true;
     }
@@ -48,6 +68,22 @@ service cloud.firestore {
 
     function isTenantAdmin(restId) {
       return isTenantMatch(restId) && isAdmin();
+    }
+
+    function canManageStaff(restId) {
+      return isSuperAdmin() ||
+        isRestaurantOwner(restId) ||
+        (isTenantMatch(restId) && (isAdmin() || hasPerm('team')));
+    }
+
+    function canEditWages(restId) {
+      return isSuperAdmin() ||
+        isRestaurantOwner(restId) ||
+        (isTenantMatch(restId) && hasPerm('wageEdit'));
+    }
+
+    function canChooseWageAccess(restId) {
+      return isSuperAdmin() || isRestaurantOwner(restId);
     }
 
     function isOwnerOfRestaurantDoc() {
@@ -122,12 +158,53 @@ service cloud.firestore {
         isTenantMatch(request.resource.data.restaurantId);
     }
 
+    function wageValueChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['wage']);
+    }
+
+    function adminFlagChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin']);
+    }
+
+    function wagePermissionChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
+        request.resource.data.permissions.wageView != resource.data.permissions.wageView ||
+        request.resource.data.permissions.wageEdit != resource.data.permissions.wageEdit
+      );
+    }
+
+    function newUserHasSensitiveStaffFields(restId) {
+      return (request.resource.data.wage is number && request.resource.data.wage > 0) ||
+        request.resource.data.isAdmin == true ||
+        request.resource.data.permissions.wageView == true ||
+        request.resource.data.permissions.wageEdit == true;
+    }
+
+    function tenantStaffUserCreateIsSafe(restId) {
+      return request.resource.data.restaurantId == restId &&
+        request.resource.data.isSuperAdmin != true &&
+        canManageStaff(restId) &&
+        (
+          !newUserHasSensitiveStaffFields(restId) ||
+          canChooseWageAccess(restId)
+        );
+    }
+
     function tenantAdminUserUpdateIsSafe() {
       return request.resource.data.restaurantId == resource.data.restaurantId &&
         request.resource.data.isSuperAdmin == resource.data.isSuperAdmin &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'isSuperAdmin', 'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess'
-        ]);
+        ]) &&
+        (
+          !wageValueChanged() || canEditWages(resource.data.restaurantId)
+        ) &&
+        (
+          !wagePermissionChanged() || canChooseWageAccess(resource.data.restaurantId)
+        ) &&
+        (
+          !adminFlagChanged() || canChooseWageAccess(resource.data.restaurantId)
+        );
     }
 
     function commonTenantWriteAllowed(collectionName) {
@@ -176,15 +253,13 @@ service cloud.firestore {
       allow read: if signedIn() && (
         isSuperAdmin() ||
         request.auth.uid == userId ||
-        isTenantMatch(resource.data.restaurantId)
+        isTenantMatch(resource.data.restaurantId) ||
+        isRestaurantOwner(resource.data.restaurantId)
       );
 
       allow create: if signedIn() && (
         isSuperAdmin() ||
-        (
-          isTenantAdmin(request.resource.data.restaurantId) &&
-          request.resource.data.isSuperAdmin != true
-        )
+        tenantStaffUserCreateIsSafe(request.resource.data.restaurantId)
       );
 
       allow update: if signedIn() && (
@@ -194,14 +269,14 @@ service cloud.firestore {
           userSafeSelfUpdate()
         ) ||
         (
-          isTenantAdmin(resource.data.restaurantId) &&
+          canManageStaff(resource.data.restaurantId) &&
           tenantAdminUserUpdateIsSafe()
         )
       );
 
       allow delete: if signedIn() && (
         isSuperAdmin() ||
-        isTenantAdmin(resource.data.restaurantId)
+        canManageStaff(resource.data.restaurantId)
       );
     }
 
@@ -265,7 +340,7 @@ service cloud.firestore {
     match /auditLogs/{docId} {
       allow read: if signedIn() && (
         isSuperAdmin() ||
-        isTenantAdmin(resource.data.restaurantId)
+        canManageStaff(resource.data.restaurantId)
       );
 
       allow create: if signedIn() && (
