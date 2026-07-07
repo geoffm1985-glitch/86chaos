@@ -72,6 +72,16 @@ service firebase.storage {
       allow write: if canManageBrandAssets(restaurantId) && isAllowedImage();
     }
 
+
+
+    // Legacy Cheers branding path from older Settings builds. New builds do not
+    // expose restaurant-logo display, but this keeps an older deployed client from
+    // hitting storage/unauthorized while the update rolls out.
+    match /cheers-restaurant-assets/{allPaths=**} {
+      allow read: if isSuperAdmin() || isTenantMatch('cheers_chilton_01');
+      allow write: if canManageBrandAssets('cheers_chilton_01') && isAllowedImage();
+    }
+
     // Restaurant-scoped message attachments.
     match /{restaurantId}/messageAttachments/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);

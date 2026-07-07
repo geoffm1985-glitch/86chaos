@@ -800,8 +800,6 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [sysEnableIpWhitelist, setSysEnableIpWhitelist] = useState(sys.enableIpWhitelist ?? false);
   const [sysIpWhitelist, setSysIpWhitelist] = useState(sys.ipWhitelist || '');
   const [sysAccentColor, setSysAccentColor] = useState(sys.accentColor || branding.accentColor || '#D4A381');
-  const [sysRestaurantLogoUrl, setSysRestaurantLogoUrl] = useState(sys.restaurantLogoUrl || branding.restaurantLogoUrl || branding.logoUrl || '');
-  const [sysShowRestaurantLogo, setSysShowRestaurantLogo] = useState(sys.showRestaurantLogo ?? branding.showRestaurantLogo ?? true);
   const [sysRestaurantGroupName, setSysRestaurantGroupName] = useState(sys.restaurantGroupName || branding.restaurantGroupName || clientData?.name || '');
   const [sysLoginMessage, setSysLoginMessage] = useState(sys.loginMessage || branding.loginMessage || '');
   const [sysHelpContact, setSysHelpContact] = useState(sys.helpContact || branding.helpContact || clientData?.ownerEmail || '');
@@ -811,7 +809,6 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [sysCurrency, setSysCurrency] = useState(sys.currency || branding.currency || 'USD');
   const [sysWeekStartsOn, setSysWeekStartsOn] = useState(sys.weekStartsOn || branding.weekStartsOn || 'Monday');
   const [sysDefaultLandingTab, setSysDefaultLandingTab] = useState(sys.defaultLandingTab || branding.defaultLandingTab || 'published');
-  const [isUploadingBrandLogo, setIsUploadingBrandLogo] = useState(false);
   const [mapProviderIndex, setMapProviderIndex] = useState(0);
   const [mapLoadState, setMapLoadState] = useState('idle');
   const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
@@ -982,27 +979,6 @@ const handleEnableNotifications = async () => {
   };
 
 
-  const handleBrandLogoUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!canManageBranding) return addToast('Locked', 'Only the owner or a user with Branding permission can upload a restaurant logo.');
-    if (!file.type?.startsWith('image/')) return addToast('Invalid File', 'Please choose an image file.');
-    if (file.size > 8 * 1024 * 1024) return addToast('File Too Large', 'Please choose an image under 8MB.');
-    setIsUploadingBrandLogo(true);
-    try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
-      const path = `${appUser.restaurantId}/brandAssets/restaurant-logo-${Date.now()}-${safeName}`;
-      const fileRef = ref(storage, path);
-      await uploadBytes(fileRef, file, { contentType: file.type });
-      const url = await getDownloadURL(fileRef);
-      setSysRestaurantLogoUrl(url);
-      addToast('Logo Uploaded', 'Restaurant logo is ready to save. 86 Chaos branding will still stay visible.');
-    } catch (err) {
-      addToast('Upload Failed', err.message || 'Could not upload logo. Publish Storage rules if this is a new project.');
-    }
-    setIsUploadingBrandLogo(false);
-  };
-
   const handleSaveBrandingSettings = async (e) => {
     e.preventDefault();
     if (!canManageBranding) return addToast('Locked', 'Only the owner or a user with Branding permission can save branding.');
@@ -1018,8 +994,8 @@ const handleEnableNotifications = async () => {
         lockedAppName: '86 Chaos',
         restaurantGroupName: sysRestaurantGroupName.trim(),
         accentColor: cleanAccent,
-        restaurantLogoUrl: sysRestaurantLogoUrl.trim(),
-        showRestaurantLogo: !!sysShowRestaurantLogo,
+        restaurantLogoUrl: '',
+        showRestaurantLogo: false,
         loginMessage: sysLoginMessage.trim(),
         helpContact: sysHelpContact.trim(),
         timezone: sysDefaultTimezone,
@@ -1032,8 +1008,8 @@ const handleEnableNotifications = async () => {
       const nextSystemSettings = {
         ...previousSettings,
         accentColor: cleanAccent,
-        restaurantLogoUrl: nextBranding.restaurantLogoUrl,
-        showRestaurantLogo: nextBranding.showRestaurantLogo,
+        restaurantLogoUrl: '',
+        showRestaurantLogo: false,
         restaurantGroupName: nextBranding.restaurantGroupName,
         loginMessage: nextBranding.loginMessage,
         helpContact: nextBranding.helpContact,
@@ -1055,7 +1031,7 @@ const handleEnableNotifications = async () => {
       };
       const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
       await setDoc(restRef, { systemSettings: nextSystemSettings, settingsHistory: [...existingHistory, historyEntry], updatedAt: new Date().toISOString() }, { merge: true });
-      addToast('Branding Saved', 'Accent color, logo, and display defaults were updated. 86 Chaos remains the app name.');
+      addToast('Branding Saved', 'Accent color and display defaults were updated. 86 Chaos remains the app name and header brand.');
     } catch (err) { addToast('Save Failed', err.message || 'Could not save branding settings.'); }
   };
 
@@ -1727,23 +1703,19 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 
             <div className="grid lg:grid-cols-[1fr_1.2fr] gap-4">
               <div className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4 space-y-3">
-                <div className="text-xs font-black text-white">Restaurant Logo</div>
+                <div className="text-xs font-black text-white">Header Branding</div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className="flex items-center gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2">
                     <img src="/wisco.png" alt="86 Chaos icon" className="h-8 w-auto" />
                     <img src="/6139.png" alt="86 Chaos" className="h-5 w-auto" />
                   </div>
-                  {sysRestaurantLogoUrl ? <img src={sysRestaurantLogoUrl} alt="Restaurant logo preview" className="h-12 max-w-[180px] object-contain bg-white/5 border border-[#2A353D] rounded-xl p-2" /> : <div className="text-[10px] text-slate-500 font-bold">No restaurant logo uploaded yet.</div>}
+                  <div className="text-[10px] text-slate-400 font-bold leading-snug max-w-sm">
+                    Restaurant logo display is disabled. The app header always shows 86 Chaos branding only, so there is no upload button or display checkbox here.
+                  </div>
                 </div>
-                <input type="text" value={sysRestaurantLogoUrl} onChange={e => setSysRestaurantLogoUrl(e.target.value)} className={`${T.input} py-2 text-xs`} placeholder="Paste logo URL or upload below" />
-                <label className={`${T.btnAlt} block text-center cursor-pointer`}>
-                  {isUploadingBrandLogo ? 'Uploading...' : 'Upload Restaurant Logo'}
-                  <input type="file" accept="image/*" onChange={handleBrandLogoUpload} disabled={isUploadingBrandLogo} className="hidden" />
-                </label>
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-300">
-                  <input type="checkbox" checked={sysShowRestaurantLogo} onChange={e => setSysShowRestaurantLogo(e.target.checked)} className="w-4 h-4 accent-[#8F6040]" />
-                  Show restaurant logo beside 86 Chaos branding
-                </label>
+                <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-3 text-[10px] text-emerald-100 font-bold leading-snug">
+                  Saving this page also clears any older restaurant-logo URL from the workspace branding settings.
+                </div>
               </div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4 space-y-3">
                 <div className="text-xs font-black text-white">Login / Help Message</div>
@@ -2173,7 +2145,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [maintenanceStartsAt, setMaintenanceStartsAt] = useState('');
   const [maintenanceEndsAt, setMaintenanceEndsAt] = useState('');
   const [brandingWorkspaceId, setBrandingWorkspaceId] = useState('');
-  const [brandingForm, setBrandingForm] = useState({ appName: '86 Chaos', restaurantGroupName: '', accentColor: '#D4A381', loginMessage: '', helpContact: '', timezone: 'America/Chicago', dateFormat: 'MMM d, yyyy', timeFormat: 'h:mm a', logoUrl: '' });
+  const [brandingForm, setBrandingForm] = useState({ appName: '86 Chaos', restaurantGroupName: '', accentColor: '#D4A381', loginMessage: '', helpContact: '', timezone: 'America/Chicago', dateFormat: 'MMM d, yyyy', timeFormat: 'h:mm a' });
 
 // Form States
   const [rName, setRName] = useState(''); const [rAddress, setRAddress] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
@@ -3687,7 +3659,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       const restRef = doc(db, 'restaurants', targetId);
       const beforeSnap = await getDoc(restRef);
       const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
-      const nextBranding = { ...brandingForm, updatedAt: new Date().toISOString(), updatedBy: appUser?.email || appUser?.name || 'System Admin' };
+      const nextBranding = { ...brandingForm, logoUrl: '', restaurantLogoUrl: '', showRestaurantLogo: false, updatedAt: new Date().toISOString(), updatedBy: appUser?.email || appUser?.name || 'System Admin' };
       const historyEntry = { type: 'branding_display_settings', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Branding / Display settings changed.', before: { branding: beforeData.branding || {} }, after: { branding: nextBranding } };
       const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
       await setDoc(restRef, { branding: nextBranding, settingsHistory: [...existingHistory, historyEntry] }, { merge: true });
@@ -3757,7 +3729,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Workspaces', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Workspaces and click the workspace name or People button.', 'The workspace drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and status state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that workspace or user sees.'] },
     { title: 'Admin/Settings command-center upgrade', group: 'System Administrator', keywords: 'admin overview command center roles permissions push live presence setup wizard deployment readiness audit settings history import export maintenance branding danger zone', body: ['System Administrator is organized into Overview, Customer Operations, Support & Safety, Platform Settings, and Reference.', 'Command Center shows system status, active users, backup status, push health, recent admin actions, and deployment readiness on one landing page.', 'Permission & Role Manager is the platform guide for who should be able to edit staff, schedules, financials, inventory, recipes, diagnostics, and forensics.', 'Push Control Center is where you troubleshoot tokens, browser permission, token freshness, per-user test pushes, repair flags, and push diagnostic exports.', 'Deployment Readiness should be run before production deploys. It gives READY TO DEPLOY or DO NOT DEPLOY YET with exact reasons.'] },
-    { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings store app name, restaurant group name, logo URL, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
+    { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings store app name, restaurant/group display name, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record. Restaurant logo display stays disabled so the header remains 86 Chaos only.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
     { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
@@ -4918,7 +4890,7 @@ Type RESTORE to continue.`);
 
       {subTab === 'branding' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className={`${T.card} p-5`}><h2 className="text-xl font-black text-white">App Branding / Display Settings</h2><p className="text-xs text-slate-400 font-bold mt-1">Prepare 86 Chaos for future customer workspaces without hardcoding display details.</p><div className="grid sm:grid-cols-2 gap-3 mt-4"><div><label className={T.label}>Workspace</label><select value={brandingWorkspaceId} onChange={e=>setBrandingWorkspaceId(e.target.value)} className={T.input}><option value="">Choose workspace...</option>{restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}</select></div>{Object.entries({ appName:'App name', restaurantGroupName:'Restaurant group name', accentColor:'Accent color', logoUrl:'Logo URL', loginMessage:'Login screen message', helpContact:'Help Center contact info', timezone:'Default timezone', dateFormat:'Date format', timeFormat:'Time format' }).map(([key,label]) => <div key={key}><label className={T.label}>{label}</label><input type={key === 'accentColor' ? 'color' : 'text'} value={brandingForm[key] || ''} onChange={e=>setBrandingForm(prev => ({...prev, [key]: e.target.value}))} className={T.input}/></div>)}</div><button onClick={saveBrandingSettings} className={`${T.btn} w-full mt-4`}>Save Branding Settings</button></div>
+          <div className={`${T.card} p-5`}><h2 className="text-xl font-black text-white">App Branding / Display Settings</h2><p className="text-xs text-slate-400 font-bold mt-1">Prepare 86 Chaos for future customer workspaces without hardcoding display details.</p><div className="grid sm:grid-cols-2 gap-3 mt-4"><div><label className={T.label}>Workspace</label><select value={brandingWorkspaceId} onChange={e=>setBrandingWorkspaceId(e.target.value)} className={T.input}><option value="">Choose workspace...</option>{restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}</select></div>{Object.entries({ appName:'App name', restaurantGroupName:'Restaurant group name', accentColor:'Accent color', loginMessage:'Login screen message', helpContact:'Help Center contact info', timezone:'Default timezone', dateFormat:'Date format', timeFormat:'Time format' }).map(([key,label]) => <div key={key}><label className={T.label}>{label}</label><input type={key === 'accentColor' ? 'color' : 'text'} value={brandingForm[key] || ''} onChange={e=>setBrandingForm(prev => ({...prev, [key]: e.target.value}))} className={T.input}/></div>)}</div><button onClick={saveBrandingSettings} className={`${T.btn} w-full mt-4`}>Save Branding Settings</button></div>
         </div>
       )}
 
@@ -6152,7 +6124,7 @@ const HELP_ARTICLES = [
   { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13141', title:'What changed in version 13.1.41', group:'Release Notes', keywords:'new update 13.1.41 settings preferences branding accent color logo upload permissions', body:['Settings / Preferences now includes a Branding & Display area for owner-controlled accent color, restaurant logo upload, login/help message, timezone, date/time, currency, week-start, and default landing-tab settings.', '86 Chaos remains the locked app name and the 86 Chaos logo stays visible even when a restaurant uploads its own logo.', 'Owners can grant Settings, Branding, and Integrations access from Settings without changing the System Administrator tab.', 'Accent color changes now apply to the app shell instead of only saving as unused data.'] },
+  { id:'new-13142', title:'What changed in version 13.1.42', group:'Release Notes', keywords:'new update 13.1.42 settings branding restaurant logo storage upload disabled', body:['Restaurant logo upload/display controls were removed from Settings so the header stays locked to 86 Chaos branding only.', 'Saving Branding & Display now clears older restaurant-logo URL/display flags from the workspace settings.', 'Storage rules include a guarded legacy Cheers logo-asset path so older deployments do not hit a permission wall while this build is rolling out.', 'Accent color, help contact, login/help message, timezone, date/time, currency, week-start, and default staff landing-tab settings still work from Settings → Branding.'] },
   { id:'new-13140', title:'What changed in version 13.1.40', group:'Release Notes', keywords:'new update 13.1.40 owner staff delete remove deactivate roster payroll api permissions', body:['Account owners can now remove staff from the active roster through the same verified staff API used for staff creation and wage edits.', 'The removal flow keeps historical schedule and payroll records intact by deactivating the staff profile instead of deleting past records.', 'The staff API now blocks self-removal and protects account-owner profiles unless a Super Admin performs the action.', 'Staff removals write a sensitive audit event so roster changes are visible in Forensics.'] },
   { id:'new-13138', title:'What changed in version 13.1.38', group:'Release Notes', keywords:'new update 13.1.38 account owner staff wages permissions add employees payroll owner', body:['Account owners can add staff and edit wages, including their own wage, without Firestore blocking the save.', 'Only account owners and Super Admin can choose who can view or edit wages. Wage access now has separate View Wages and Edit Wages switches.', 'Staff Roster hides wage fields from users without wage access and uses clearer permission messages when Firebase blocks a sensitive staff update.', 'Firestore rules now recognize restaurant ownership for staff creation and payroll edits while still protecting Super Admin/system fields.'] },
   { id:'new-13137', title:'What changed in version 13.1.37', group:'Release Notes', keywords:'new update 13.1.37 admin settings command center roles push live presence deployment readiness maintenance branding danger import export', body:['System Administrator now includes the full Admin/Settings command-center upgrade: overview widgets, role/permission matrix, push control center, live activity monitor, setup wizard, deployment readiness checker, audit filters, settings history, import/export center, maintenance controls, branding/display settings, and a separate Danger Zone.', 'Push notifications now have a dedicated cockpit with connected device counts, token freshness, per-user test pushes, stale-token repair flags, and a downloadable diagnostic report.', 'Deployment Readiness gives a clear READY TO DEPLOY or DO NOT DEPLOY YET result with exact checks for Firebase, rules, API health, push, backup integrity, domains, version, and packaging.', 'Mobile Administrator navigation keeps the compact section picker while exposing the new professional admin categories.'] },
@@ -6177,7 +6149,7 @@ const HELP_ARTICLES = [
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
   { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
-  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload app name permissions integrations workspace', body:['Open Settings → Branding to change the workspace accent color, upload a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab.', 'The app name is locked as 86 Chaos. A restaurant logo can appear beside the 86 Chaos logo, but it never replaces the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, and Integrations access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing brand assets, publish Storage rules if uploads fail and refresh the app to confirm the accent and logo display everywhere.'] },
+  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo display disabled app name permissions integrations workspace', body:['Open Settings → Branding to change the workspace accent color, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab.', 'The app name is locked as 86 Chaos. Restaurant logo display is disabled, so the app header stays consistent.', 'Only account owners and Super Admin can grant Settings, Branding, and Integrations access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing display settings, refresh the app to confirm the accent color and defaults stayed saved.'] },
   { id:'owner-wage-staff-permissions', title:'Owner staff and wage permissions', group:'Permissions', keywords:'owner wages payroll hourly rate add employee staff roster wage view edit permission denied', body:['Account owners and Super Admin can add staff from Staff Roster and edit hourly wages, including their own wage.', 'Only account owners and Super Admin should choose who can see or edit wages. Use Staff Roster permission switches or Settings → Workspace → Global Config → Wage Visibility & Edit Access.', 'View Wages lets a trusted person see wage labels and labor cost calculations. Edit Wages lets them change wage values from Staff Roster and automatically implies view access.', 'Managers/admins without wage permission can still manage staff basics if allowed, but wage fields stay hidden and Firestore rules reject wage-access changes.', 'If a save shows Missing or insufficient permissions, confirm the user is the restaurant owner or has the right wage-edit permission and publish the matching Firestore rules to the same Firebase project.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },

@@ -1,5 +1,5 @@
 # 86 Chaos
 
-Current version: 13.1.41
+Current version: 13.1.42
 
-See README_13_1_41_RELEASE_NOTES.md for this build.
+See README_13_1_42_RELEASE_NOTES.md for this build.

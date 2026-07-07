@@ -4,24 +4,16 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 
-const CheersLogo = ({ clientData }) => {
-  const settings = clientData?.systemSettings || {};
-  const logoUrl = settings.showRestaurantLogo === false ? '' : (settings.restaurantLogoUrl || settings.branding?.restaurantLogoUrl || settings.branding?.logoUrl || '');
+const CheersLogo = () => {
   return (
     <div className="brand-logo-stack flex items-center gap-2 sm:gap-3 cursor-pointer transition-opacity hover:opacity-80 min-w-0">
       <div className="flex items-center gap-2 flex-shrink-0">
         <img src="/wisco.png" alt="86 Chaos app icon" className="h-8 w-8 sm:h-9 w-auto" />
         <img src="/6139.png" alt="86 Chaos" className="h-5 sm:h-6 w-auto" />
       </div>
-      {logoUrl && (
-        <div className="hidden sm:flex items-center gap-2 min-w-0 pl-2 border-l border-[#2A353D]">
-          <img src={logoUrl} alt="Restaurant logo" className="h-8 sm:h-9 max-w-[92px] sm:max-w-[140px] object-contain rounded-md bg-white/5 p-1" />
-        </div>
-      )}
     </div>
   );
 };
