@@ -1,13 +1,11 @@
 # 86 Chaos
 
-Current version: 14.0.4
+Current version: 14.0.6
 
-This build adds the full multi-workspace switcher so one Firebase login can belong to more than one restaurant. Employees with multiple jobs can choose the active workspace after login, switch from the app header, and keep schedules, punches, roles, wages, permissions, and presence separated by restaurant.
+This build fixes System Administrator client-management saves that could fail when an old workspace record contained an unsupported empty/undefined value, and it removes the read-only notice banner from Staff Roster while keeping manager/admin-only editing protection in place.
 
-See `README_14_0_4_RELEASE_NOTES.md` and `QA_14_0_4_MULTI_WORKSPACE_SWITCHER.md` for this build.
+See `README_14_0_6_RELEASE_NOTES.md` and `QA_14_0_6_CLIENT_SAVE_ROSTER_CLEANUP.md` for this build.
 
 ## Deployment notes
 
-Deploy through GitHub/Vercel as usual.
-
-After deploying the app, publish the included `firestore.rules` to the matching Firebase project. The multi-workspace membership model, Staff Roster linking, workspace reads, and per-workspace presence depend on the updated Firestore rules. No new Vercel environment variables are required. No new Storage rule changes are required for this build, but keep the bundled `storage.rules` published if your Firebase project is behind the 14.x logo/upload rules.
+Deploy through GitHub/Vercel as usual. No new Vercel environment variables are required. No Firestore or Storage rule changes are required specifically for this fix, but keep the bundled 14.x rules published if your live Firebase project is behind.

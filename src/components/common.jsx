@@ -936,9 +936,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>86 Voice can now add recurring daily, weekly, and monthly tasks while keeping task creation manager/admin-only.</p>
+    <p>My Schedule now rolls forward automatically after a scheduled shift ends, so an ended shift does not stay pinned as the next shift.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Daily tasks','Weekly tasks','Monthly tasks','Manager/Admin only'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Next shift fixed','Auto refresh','No manual reload','Time clock safer'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>

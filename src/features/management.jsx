@@ -41,6 +41,27 @@ const getSafeMapCenter = (lat, lon) => {
   return [44.0296, -88.1633];
 };
 
+
+const sanitizeForFirestore = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (Array.isArray(value)) {
+    return value
+      .map(item => sanitizeForFirestore(item))
+      .filter(item => item !== undefined);
+  }
+  if (value && typeof value === 'object') {
+    if (value instanceof Date) return value;
+    const cleaned = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const next = sanitizeForFirestore(item);
+      if (next !== undefined) cleaned[key] = next;
+    });
+    return cleaned;
+  }
+  return value;
+};
+
 const GeofenceMapStabilizer = ({ lat, lon, radius, refreshNonce }) => {
   const map = useMap();
 
@@ -313,13 +334,6 @@ return (
           <button type="button" onClick={() => setCreatedLogin(null)} className={`w-full ${T.btn}`}>Done</button>
         </div>}
       </Modal>
-
-      {!canManageTeam && (
-        <div className={`${T.card} p-4 border-blue-900/40 bg-blue-900/10`}>
-          <div className="text-xs font-black uppercase tracking-widest text-blue-300">Read-only Staff Roster</div>
-          <p className="text-xs font-bold text-slate-400 mt-1">Regular staff can view the roster and last app activity. Managers/admins can manage staff basics. Only the account owner controls wage visibility/edit access.</p>
-        </div>
-      )}
 
       <div className={`${T.card} p-4 border ${heartbeatTone}`}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -2685,16 +2699,17 @@ Old clients cannot reveal their original creation time, so they will be marked a
         features: editingRest.features || {},
         labs: editingRest.labs || {}
       };
-      const historyEntry = {
+      const cleanUpdatePayload = sanitizeForFirestore(updatePayload);
+      const historyEntry = sanitizeForFirestore({
         type: 'platform_workspace_settings',
         at: new Date().toISOString(),
         by: appUser?.email || appUser?.name || 'System Admin',
         summary: 'Workspace settings changed from System Administrator > Workspaces.',
         before: { name: beforeData.name, ownerName: beforeData.ownerName, ownerEmail: beforeData.ownerEmail, ownerPhone: beforeData.ownerPhone, systemSettings: beforeData.systemSettings || {}, planType: beforeData.planType, billingStatus: beforeData.billingStatus, customPrice: beforeData.customPrice, trialDays: beforeData.trialDays, isActive: beforeData.isActive, isReadOnly: beforeData.isReadOnly, features: beforeData.features || {}, labs: beforeData.labs || {} },
-        after: updatePayload
-      };
+        after: cleanUpdatePayload
+      });
       const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
-      await updateDoc(restRef, { ...updatePayload, settingsHistory: [...existingHistory, historyEntry] });
+      await updateDoc(restRef, sanitizeForFirestore({ ...cleanUpdatePayload, settingsHistory: [...existingHistory, historyEntry] }));
       addToast('Saved', 'Client workspace configuration updated and history snapshot saved.');
       setEditingRest(null);
     } catch (err) {
@@ -3867,6 +3882,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
   const adminManualArticles = [
     { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', '14.0 Robustness Suite is the hardening bay for Safe Write Engine status, Storage Doctor, Schema Doctor, Backup Preview, Permission Simulator, Import Bridge, and Release Guardrails.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'Version 14.0.6 Client Save & Roster Cleanup', group: 'System Administrator', keywords: 'v14 14.0.6 client manage save configuration unsupported undefined staff roster read only banner', body: ['System Administrator workspace saves now clean unsupported undefined values before writing to Firestore, preventing the invalid data error when managing a client.', 'Staff Roster keeps the same manager/admin edit protections, but the regular-staff read-only banner was removed so the roster view is cleaner.'] },
     { title: 'Version 14.0.4 Multi-Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.4 multi workspace switcher multiple jobs tenant memberships staff roster presence heartbeat one login', body: ['86 Chaos now supports one Firebase login belonging to multiple restaurant workspaces through workspaceMembers membership records.', 'After login, employees with more than one active workspace choose which restaurant they are entering. The header also includes a Switch control when multiple workspaces are available.', 'Staff Roster can link an existing email to the current workspace instead of forcing duplicate accounts or resetting that person\'s password.', 'Removing a staff member removes only the current workspace membership. The Firebase Auth login stays active when the person still belongs to another restaurant.', 'Live Users and presence heartbeats are stored per workspace/user pair so activity from one job does not overwrite another job. Publish Firestore rules with this build.'] },
     { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Ops smart actions, Today quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Ops Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
     { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not an Elite-only plan feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
@@ -6460,6 +6476,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-1406', title:'What changed in version 14.0.6', group:'Release Notes', keywords:'new update 14.0.6 client management save staff roster read only banner', body:['Workspace management saves are more reliable and no longer fail when an old workspace setting contains an empty unsupported value.', 'Staff Roster keeps manager/admin-only editing, but the read-only notice banner was removed for regular staff.'] },
+  { id:'new-1405', title:'What changed in version 14.0.5', group:'Release Notes', keywords:'new update 14.0.5 next shift schedule time clock my schedule ended shift rollover', body:['My Schedule now checks the scheduled end time before choosing the next shift.', 'A shift that already ended today no longer stays pinned as the next shift.', 'The card refreshes while the screen is open and refreshes when the app returns from the background, so employees should not need to reload just to see the next shift.'] },
   { id:'new-1404', title:'What changed in version 14.0.4', group:'Release Notes', keywords:'new update 14.0.4 multi workspace switcher multiple jobs restaurants one login staff roster', body:['Employees who work at more than one restaurant using 86 Chaos can now use one login and choose the workspace they are entering.', 'The app header shows the active restaurant and offers Switch when more than one workspace is available.', 'Managers can add an existing 86 Chaos email to their staff roster without creating a duplicate login or changing that employee\'s password.', 'Removing someone from Staff Roster now removes only that restaurant membership when the person still belongs to another workspace.'] },
   { id:'new-1402', title:'What changed in version 14.0.2', group:'Release Notes', keywords:'new update 14.0.2 tip declaration clock out time clock payroll tips staff', body:['Mandatory Tip Declaration is now treated as a core Time Clock & Schedule feature for every workspace.', 'When enabled, staff see the Declare Tips modal before clock-out even if an older workspace document was missing the setting field.', 'Employees can enter 0 when they did not receive tips, and completed punches store declaration metadata for manager review.', 'Settings → Workspace no longer plan-locks Mandatory Tip Declaration, so managers can turn it on for the whole restaurant.'] },
   { id:'new-13134', title:'What changed in version 13.1.34', group:'Release Notes', keywords:'new update 13.1.34 geofence map pin drop tiles loading gray half image settings workspace', body:['The geofence pin-drop map in Settings → Workspace → Global Config now loads more reliably on desktop and mobile.', 'The app forces the map to resize after the settings panel renders, after browser resize events, and after returning to the tab so gray or half-loaded tiles are less likely.', 'A Refresh Map button was added, and the map can switch tile providers if the current map tiles fail to load.'] },

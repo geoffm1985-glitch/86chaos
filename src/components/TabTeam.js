@@ -161,13 +161,6 @@ Please log in and update your password.`;
 
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
-      {!canManageTeam && (
-        <div className={`${T.card} p-4 border-blue-900/40 bg-blue-900/10`}>
-          <div className="text-xs font-black uppercase tracking-widest text-blue-300">Read-only Staff Roster</div>
-          <p className="text-xs font-bold text-slate-400 mt-1">Regular staff can view the roster and last app activity, but only manager/admin accounts can add, edit, reset, or remove staff.</p>
-        </div>
-      )}
-      
       {canManageTeam && (
         <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-2`}>
           {editingUserId && (
