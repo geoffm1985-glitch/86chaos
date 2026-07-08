@@ -1,6 +1,7 @@
 {
-  "version": "15.0.7",
-  "name": "86 Chaos",
-  "updatedAt": "2026-07-08T06:45:00.000Z",
-  "label": "86 Chaos 15.0.7"
+  "version": "15.0.8",
+  "name": "86 Chaos 15.0.8 Scanner Auto Compression",
+  "updatedAt": "2026-07-08T07:10:00.000Z",
+  "label": "86 Chaos 15.0.8",
+  "build": "15.0.8"
 }

@@ -2,7 +2,7 @@
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.2';
+const INVOICE_SCANNER_VERSION = '15.0.8';
 const DEFAULT_INVOICE_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 function cleanJsonText(text = '') {
@@ -336,6 +336,7 @@ async function readScanSource(reqBody, req, adminApp) {
   const body = reqBody || {};
   const fileName = body.fileName || 'invoice';
   const mimeType = detectMimeType(fileName, body.mimeType || '');
+  const compression = body.compression && typeof body.compression === 'object' ? body.compression : null;
 
   // Preferred production path: browser uploads file directly to Firebase Storage,
   // then sends only the small storage path to Vercel. This avoids Vercel request limits.
@@ -377,7 +378,8 @@ async function readScanSource(reqBody, req, adminApp) {
       source: 'firebase-storage',
       storagePath,
       decodedUid: decoded.uid,
-      originalBytes: buffer.length
+      originalBytes: buffer.length,
+      compression
     };
   }
 
@@ -390,7 +392,8 @@ async function readScanSource(reqBody, req, adminApp) {
     mimeType,
     fileName,
     source: 'inline-base64',
-    originalBytes: Math.round((fileBase64.length * 3) / 4)
+    originalBytes: Math.round((fileBase64.length * 3) / 4),
+    compression
   };
 }
 
@@ -769,6 +772,7 @@ async function handler(req, res) {
     normalized.scanInputMethod = scanInputMethod;
     normalized.scanStoragePath = scanSource?.storagePath || '';
     normalized.scanOriginalBytes = scanSource?.originalBytes || null;
+    normalized.scanCompression = scanSource?.compression || null;
     normalized.geminiFileName = geminiFile?.name || '';
     normalized.processedAt = new Date().toISOString();
     normalized.scannerVersion = INVOICE_SCANNER_VERSION;

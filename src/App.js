@@ -94,7 +94,7 @@ export default function App() {
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
-  const helpReleaseBriefDisabled = ['15.0.5', '15.0.6', '15.0.7'].includes(CURRENT_VERSION);
+  const helpReleaseBriefDisabled = ['15.0.5', '15.0.6', '15.0.7', '15.0.8'].includes(CURRENT_VERSION);
   const [hasHelpUpdate, setHasHelpUpdate] = useState(() => !helpReleaseBriefDisabled && localStorage.getItem(`helpBriefSeen_${CURRENT_VERSION}`) !== 'true');
   const [tourMode, setTourMode] = useState(null);
   const [tourStep, setTourStep] = useState(0);

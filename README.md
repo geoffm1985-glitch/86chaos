@@ -1,28 +1,32 @@
 # 86 Chaos
 
-Current version: 15.0.7
+Current version: 15.0.8
 
-## 15.0.7 focus
+## 15.0.8 focus
 
-This build keeps the 15.0.6 Menu Intelligence fast-delete work intact, then tightens 86 Voice smart prep matching so spoken prep quantities update existing prep tasks instead of creating duplicate Voice Station rows when the task is already on the prep list.
+This build keeps the 15.0.7 voice prep matching fix intact, then adds automatic scan-file compression for Menu Intelligence and Invoice Scanner uploads.
 
 ## What changed
 
-- 86 Voice now does an on-demand prep match refresh before saving a smart prep command.
-- The matcher checks the target prep date and MASTER prep tasks from Firestore at command time instead of relying only on the small live snapshot used by the voice dock.
-- Matching tie-breakers now prefer intentional day-specific prep rows first, then MASTER prep tasks, then older voice-created duplicates.
-- A command like “slice 3 tomatoes” should update the existing “slice tomato” prep row when it exists instead of adding another “Slice Tomato” under Voice Station.
-- Public Help Center release notes were not added for this build.
-- The internal Administrator Manual includes 15.0.7 smart prep duplicate-prevention guidance.
+- Menu Intelligence now automatically prepares large files before upload instead of immediately blocking oversized photos.
+- Invoice Scanner now uses the same automatic pre-upload compression path.
+- Large JPG/PNG/WebP/BMP photos are compressed in the browser into a smaller high-quality JPEG scan copy before Firebase Storage upload.
+- Oversized PDFs get a best-effort in-browser compaction pass before upload.
+- Scan progress now includes the file preparation/compression stage before the Firebase upload stage.
+- Upload metadata now records the original file name, uploaded file name, original size, uploaded size, and compression method.
+- The 20MB backend and Storage safety limit stays in place to protect Vercel memory and scanner reliability.
+- The internal Administrator Manual includes 15.0.8 scanner-compression guidance.
+- No public Help Center release note was added for this build.
 
 ## Deployment steps
 
 1. Deploy the updated app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.7` after deploy.
-3. Open Prep & Tasks and make sure an existing MASTER task like `slice tomato` is visible.
-4. Use 86 Voice or typed voice command text such as `slice 3 tomatoes`.
-5. Confirm the existing prep row quantity updates instead of creating a new Voice Station duplicate.
-6. Run the 15.0.7 QA checklist before handing it to staff.
+2. Confirm Vercel installs the new `pdf-lib` dependency from `package.json`.
+3. Confirm `/version.json` reports `15.0.8` after deploy.
+4. Test Menu Intelligence with a large phone photo and confirm compression runs before upload.
+5. Test Invoice Scanner with a large phone photo and confirm compression runs before upload.
+6. Test an oversized PDF and confirm it either compacts under 20MB or gives a clear split/export-fewer-pages message.
+7. Run the 15.0.8 QA checklist before handing it to staff.
 
 ## Separate publishing required
 
@@ -33,5 +37,6 @@ This build keeps the 15.0.6 Menu Intelligence fast-delete work intact, then tigh
 
 ## Notes
 
-- This fix adds a small on-demand Firestore read only when a voice prep command is actually run. It avoids constant listeners and keeps the low-read 15.0.5 presence approach intact.
-- Existing duplicate Voice Station prep rows from earlier builds are not automatically deleted. Delete those manually after confirming the real prep row has the right quantity.
+- Automatic photo compression should cover the common restaurant problem: giant phone camera images.
+- PDF compression is best-effort. Scanned-image PDFs may still need to be split because the page images inside them cannot always be safely downsampled in-browser.
+- The app still refuses files that remain over 20MB after compression/compaction.

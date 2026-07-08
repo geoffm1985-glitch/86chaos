@@ -9,6 +9,7 @@ import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-lea
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
 import { getZeroStockMenuImpacts } from '../core/menuIntelligence';
+import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
@@ -1024,7 +1025,7 @@ const executeOrder = async (method) => {
     setInvoiceScanProgress({ percent: safePercent, label, phase });
   };
 
-  const scanFileViaStorage = async (file, onProgress = () => {}) => {
+  const scanFileViaStorage = async (file, onProgress = () => {}, originalFile = file, compression = {}) => {
     const ext = (file.name.split('.').pop() || 'upload').toLowerCase().replace(/[^a-z0-9]/g, '') || 'upload';
     const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const restaurantId = appUser?.restaurantId || 'unknown-restaurant';
@@ -1033,7 +1034,12 @@ const executeOrder = async (method) => {
     const uploadTask = uploadBytesResumable(fileRef, file, {
       contentType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
       customMetadata: {
-        originalName: file.name,
+        originalName: originalFile?.name || file.name,
+        uploadedName: file.name,
+        originalBytes: String(originalFile?.size || file.size || 0),
+        uploadedBytes: String(file.size || 0),
+        compressionMethod: compression?.method || 'none',
+        compressed: compression?.wasCompressed ? 'true' : 'false',
         restaurantId,
         uploadedBy: appUser?.id || '',
         uploadedByName: appUser?.name || '',
@@ -1055,9 +1061,12 @@ const executeOrder = async (method) => {
     return {
       storagePath,
       mimeType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
-      fileName: file.name,
+      fileName: originalFile?.name || file.name,
+      uploadedFileName: file.name,
       restaurantId,
-      originalSize: file.size
+      originalSize: originalFile?.size || file.size,
+      uploadedSize: file.size,
+      compression
     };
   };
 
@@ -1065,32 +1074,38 @@ const executeOrder = async (method) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const maxBytes = 20 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      addToast('Invoice Too Large', 'This invoice is over 20MB. Compress it, split the PDF, or scan fewer pages.');
-      e.target.value = '';
-      return;
-    }
-
     setIsScanningInvoice(true);
     setScannedInvoice(null);
     updateInvoiceProgress(2, 'Preparing invoice file...', 'prepare');
-    addToast('Scanning Invoice', isPdf ? 'Uploading PDF, then sending it to the invoice scanner...' : 'Uploading photo, then sending it to the invoice scanner...');
 
     let timeoutId = null;
     let aiPulseId = null;
     const controller = new AbortController();
 
     try {
-      // Upload the original file directly to Firebase Storage first. This is the only heavy upload.
+      const prepared = await prepareScannerUploadFile(file, {
+        label: 'Invoice file',
+        maxBytes,
+        imageCompressAboveBytes: 6 * 1024 * 1024,
+        targetImageBytes: 9 * 1024 * 1024,
+        maxImageDimension: 2800,
+        onProgress: info => updateInvoiceProgress(Math.max(2, Math.min(42, info.percent || 8)), info.detail || info.label || 'Preparing invoice file...', 'compress')
+      });
+      const uploadFile = prepared.file;
+      const isPdf = isPdfFile(uploadFile);
+      if (prepared.wasCompressed) addToast('Invoice Compressed', `${prepared.displaySizeBefore} → ${prepared.displaySizeAfter}. Scanning the smaller copy.`);
+      addToast('Scanning Invoice', isPdf ? 'Uploading PDF, then sending it to the invoice scanner...' : 'Uploading photo, then sending it to the invoice scanner...');
+
+      // Upload the prepared file directly to Firebase Storage first. Photos may be an automatically
+      // compressed copy, and PDFs get a best-effort compaction pass before upload.
       // The progress bar is actual Firebase upload progress for this stage.
-      const payload = await scanFileViaStorage(file, ({ uploadPercent, bytesTransferred, totalBytes }) => {
-        const uiPercent = 5 + Math.round((uploadPercent / 100) * 55);
+      const payload = await scanFileViaStorage(uploadFile, ({ uploadPercent, bytesTransferred, totalBytes }) => {
+        const uiPercent = 42 + Math.round((uploadPercent / 100) * 20);
         const mbDone = (bytesTransferred / (1024 * 1024)).toFixed(1);
         const mbTotal = (totalBytes / (1024 * 1024)).toFixed(1);
-        updateInvoiceProgress(uiPercent, `Uploading original invoice: ${Math.round(uploadPercent)}% (${mbDone}/${mbTotal} MB)`, 'upload');
-      });
+        updateInvoiceProgress(uiPercent, `Uploading invoice: ${Math.round(uploadPercent)}% (${mbDone}/${mbTotal} MB)`, 'upload');
+      }, file, prepared.compression);
 
       updateInvoiceProgress(63, 'Upload complete. Handing large document to AI file processor...', 'ai');
       const startedAt = Date.now();
@@ -1157,7 +1172,7 @@ const executeOrder = async (method) => {
       const normalizedLineItems = normalizedCandidates.filter(isPurchasedInvoiceLine).map(i => ({ ...i, isInventoryLine: true }));
       const skippedRows = (fullRows.length ? fullRows : normalizedCandidates).filter(row => !isPurchasedInvoiceLine(row));
       updateInvoiceProgress(100, 'Review ready.', 'done');
-      setScannedInvoice({ ...data, lineItems: normalizedLineItems, skippedRows, allExtractedRows: fullRows.length ? fullRows : normalizedCandidates, sourceFile: file.name });
+      setScannedInvoice({ ...data, lineItems: normalizedLineItems, skippedRows, allExtractedRows: fullRows.length ? fullRows : normalizedCandidates, sourceFile: file.name, scanCompression: payload.compression || null, scanUploadedFileName: payload.uploadedFileName || '' });
       addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased product rows. ${skippedRows.length ? `${skippedRows.length} non-product rows were kept in the audit only.` : 'No non-product rows were sent to Stock Matcher.'}`);
     } catch (err) {
       if (aiPulseId) window.clearInterval(aiPulseId);
@@ -1167,7 +1182,7 @@ const executeOrder = async (method) => {
         ? 'The invoice scanner needed more time. Try this same document one more time; if it keeps happening, split only the biggest PDF pages.'
         : (err.message || 'Could not scan invoice.');
       updateInvoiceProgress(100, message, 'error');
-      addToast('Scan Error', message);
+      addToast(/over|compress|split|large/i.test(message) ? 'Invoice Too Large' : 'Scan Error', message);
     } finally {
       setIsScanningInvoice(false);
       e.target.value = '';
