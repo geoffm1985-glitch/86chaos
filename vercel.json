@@ -34,6 +34,10 @@
     {
       "path": "/api/weekly-maintenance",
       "schedule": "0 10 * * 1"
+    },
+    {
+      "path": "/api/dispatch-reminders",
+      "schedule": "*/5 * * * *"
     }
   ],
   "functions": {
@@ -41,9 +45,21 @@
       "maxDuration": 300,
       "memory": 1024
     },
+    "api/scan-menu.js": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "api/dispatch-reminders.js": {
+      "maxDuration": 300,
+      "memory": 512
+    },
     "api/full-system-diagnostics.js": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "api/presence-snapshot.js": {
+      "maxDuration": 60,
+      "memory": 512
     }
   }
 }

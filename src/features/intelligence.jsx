@@ -1,0 +1,768 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { T, db, storage, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
+import { Modal, SmartEmptyState } from '../components/common';
+import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuIntelligence';
+import { makeReminderDate, parseReminderCommand, toDateInputValue, toTimeInputValue } from '../core/reminderUtils';
+
+const getInitialReminderDate = () => {
+  const d = new Date();
+  d.setHours(d.getHours() + 2, 0, 0, 0);
+  return { date: toDateInputValue(d), time: toTimeInputValue(d) };
+};
+
+const formatElapsedSeconds = (seconds = 0) => {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = String(safeSeconds % 60).padStart(2, '0');
+  return `${mins}:${secs}`;
+};
+
+const formatUploadBytes = (bytes = 0) => `${(Math.max(0, bytes) / (1024 * 1024)).toFixed(1)}MB`;
+
+const FIRESTORE_BATCH_DELETE_LIMIT = 450;
+
+const batchDeleteRefs = async (refs = [], onProgress = null) => {
+  const cleanRefs = refs.filter(Boolean);
+  let deleted = 0;
+  for (let i = 0; i < cleanRefs.length; i += FIRESTORE_BATCH_DELETE_LIMIT) {
+    const chunk = cleanRefs.slice(i, i + FIRESTORE_BATCH_DELETE_LIMIT);
+    const batch = writeBatch(db);
+    chunk.forEach(refToDelete => batch.delete(refToDelete));
+    await batch.commit();
+    deleted += chunk.length;
+    if (typeof onProgress === 'function') onProgress(deleted, cleanRefs.length);
+  }
+  return deleted;
+};
+
+const WorkProgressBar = ({ label, detail, percent = 0, elapsedSeconds = 0 }) => {
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  return (
+    <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-widest">
+        <span className="text-white truncate">{label || 'Working'}</span>
+        <span className="text-[#D4A381] shrink-0">{safePercent}% · {formatElapsedSeconds(elapsedSeconds)}</span>
+      </div>
+      <div className="h-3 rounded-full bg-black/40 border border-[#2A353D] overflow-hidden">
+        <div className="h-full rounded-full bg-[#D4A381] transition-all duration-500" style={{ width: `${safePercent}%` }} />
+      </div>
+      {detail && <div className="text-[10px] text-slate-500 font-bold leading-snug">{detail}</div>}
+    </div>
+  );
+};
+
+const TabPersonalReminders = ({ appUser, addToast }) => {
+  const initial = getInitialReminderDate();
+  const reminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+    whereClauses: [['userId', '==', appUser?.id || '']],
+    limitCount: 200,
+    fallbackLimitCount: 100
+  });
+  const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [dateInput, setDateInput] = useState(initial.date);
+  const [timeInput, setTimeInput] = useState(initial.time);
+  const [editing, setEditing] = useState(null);
+  const [listening, setListening] = useState(false);
+  const sortedReminders = [...reminders].sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')));
+  const pendingReminders = sortedReminders.filter(r => r.status !== 'done' && r.status !== 'cancelled');
+  const completedReminders = sortedReminders.filter(r => r.status === 'done' || r.status === 'cancelled').slice(0, 20);
+
+  const applyParsedText = (value) => {
+    const parsed = parseReminderCommand(value);
+    if (parsed) {
+      setTitle(parsed.title);
+      if (parsed.dateInput) setDateInput(parsed.dateInput);
+      if (parsed.timeInput) setTimeInput(parsed.timeInput);
+      if (parsed.needsManualTime) addToast('Needs Time', 'I found the reminder text. Pick the date and time before saving.');
+    } else {
+      setTitle(value);
+    }
+  };
+
+  const startListening = () => {
+    const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+    if (!SpeechRecognition) return addToast('Mic Unavailable', 'This browser does not support built-in speech recognition. Type the reminder instead.');
+    try {
+      const rec = new SpeechRecognition();
+      rec.lang = 'en-US';
+      rec.interimResults = false;
+      setListening(true);
+      rec.onresult = (event) => {
+        const text = event.results?.[0]?.[0]?.transcript || '';
+        setListening(false);
+        applyParsedText(text);
+      };
+      rec.onerror = () => { setListening(false); addToast('Voice Error', 'Could not hear the reminder clearly.'); };
+      rec.onend = () => setListening(false);
+      rec.start();
+    } catch (err) {
+      setListening(false);
+      addToast('Voice Error', 'Could not start the microphone.');
+    }
+  };
+
+  const resetForm = () => {
+    const next = getInitialReminderDate();
+    setTitle('');
+    setNotes('');
+    setDateInput(next.date);
+    setTimeInput(next.time);
+    setEditing(null);
+  };
+
+  const saveReminder = async (e) => {
+    e.preventDefault();
+    if (!title.trim()) return addToast('Missing Text', 'Type what you want to be reminded about.');
+    const scheduledDate = makeReminderDate(dateInput, timeInput);
+    if (!scheduledDate) return addToast('Missing Time', 'Choose a valid reminder date and time.');
+    const payload = {
+      restaurantId: appUser.restaurantId,
+      userId: appUser.id || '',
+      userEmail: appUser.email || '',
+      title: title.trim(),
+      notes: notes.trim(),
+      scheduledAt: scheduledDate.toISOString(),
+      status: 'scheduled',
+      updatedAt: new Date().toISOString(),
+      source: editing ? 'manual_update' : 'manual_private_reminder'
+    };
+    if (editing?.id) {
+      await updateDoc(doc(db, 'personalReminders', editing.id), payload);
+      addToast('Reminder Updated', title.trim());
+    } else {
+      await addDoc(collection(db, 'personalReminders'), {
+        ...payload,
+        createdAt: new Date().toISOString(),
+        createdBy: appUser.id || '',
+        dispatchedAt: null,
+        dispatchKey: ''
+      });
+      addToast('Reminder Saved', `${title.trim()} at ${formatClockDateTime(scheduledDate.toISOString())}.`);
+    }
+    await logAudit(appUser, editing ? 'REMINDER_UPDATED' : 'REMINDER_CREATED', title.trim(), scheduledDate.toISOString());
+    resetForm();
+  };
+
+  const editReminder = (reminder) => {
+    const d = reminder.scheduledAt ? new Date(reminder.scheduledAt) : new Date();
+    setEditing(reminder);
+    setTitle(reminder.title || '');
+    setNotes(reminder.notes || '');
+    setDateInput(toDateInputValue(d));
+    setTimeInput(toTimeInputValue(d));
+  };
+
+  const markDone = async (reminder) => {
+    await updateDoc(doc(db, 'personalReminders', reminder.id), { status: 'done', completedAt: new Date().toISOString() });
+    addToast('Reminder Done', reminder.title || 'Reminder');
+  };
+
+  const removeReminder = async (reminder) => {
+    if (!window.confirm('Delete this private reminder?')) return;
+    await deleteDoc(doc(db, 'personalReminders', reminder.id));
+    addToast('Reminder Deleted', reminder.title || 'Reminder');
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-4 pb-24">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
+        <div>
+          <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Bell size={24} className={T.copper}/> My Reminders</h2>
+          <p className="text-xs text-slate-400 font-bold mt-1">Private reminders for this signed-in user only.</p>
+        </div>
+        <button type="button" onClick={startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
+      </div>
+
+      <form onSubmit={saveReminder} className={`${T.card} p-4 grid lg:grid-cols-[1.4fr_.7fr_.55fr_auto] gap-3 items-end`}>
+        <div>
+          <label className={T.label}>Reminder</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} onBlur={e => /^remind me/i.test(e.target.value) && applyParsedText(e.target.value)} className={T.input} placeholder="Remind me tomorrow at 9 AM to order buns" />
+        </div>
+        <div>
+          <label className={T.label}>Date</label>
+          <input type="date" value={dateInput} onChange={e => setDateInput(e.target.value)} className={T.input} />
+        </div>
+        <div>
+          <label className={T.label}>Time</label>
+          <input type="time" value={timeInput} onChange={e => setTimeInput(e.target.value)} className={T.input} />
+        </div>
+        <button className={`${T.btn} h-11 flex items-center justify-center gap-2`}>{editing ? <Save size={16}/> : <Plus size={16}/>} {editing ? 'Save' : 'Add'}</button>
+        <div className="lg:col-span-4">
+          <label className={T.label}>Notes</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)} className={T.input} placeholder="Optional private note" />
+          {editing && <button type="button" onClick={resetForm} className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Cancel edit</button>}
+        </div>
+      </form>
+
+      <div className="grid lg:grid-cols-[1fr_.8fr] gap-4">
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={T.th}>Upcoming</div>
+          {pendingReminders.length === 0 ? <SmartEmptyState title="No reminders yet" desc="Add one by typing or using the mic." /> : pendingReminders.map(reminder => (
+            <div key={reminder.id} className={`${T.row} flex items-center justify-between gap-3`}>
+              <div className="min-w-0">
+                <div className="font-black text-white text-sm truncate">{reminder.title}</div>
+                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex items-center gap-1"><Clock size={12}/> {reminder.scheduledAt ? formatClockDateTime(reminder.scheduledAt) : 'No time'}</div>
+                {reminder.notes && <div className="text-xs text-slate-500 font-bold mt-1 truncate">{reminder.notes}</div>}
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => markDone(reminder)} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={16}/></button>
+                <button onClick={() => editReminder(reminder)} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D]"><Calendar size={16}/></button>
+                <button onClick={() => removeReminder(reminder)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><Trash2 size={16}/></button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={T.th}>Recently Closed</div>
+          {completedReminders.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">Completed and cancelled reminders show here.</div> : completedReminders.map(reminder => (
+            <div key={reminder.id} className={`${T.row}`}>
+              <div className="font-bold text-slate-300 text-sm line-through">{reminder.title}</div>
+              <div className="text-[10px] text-slate-500 font-bold mt-1">{reminder.status}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToast }) => {
+  const allowed = canUseMenuIntelligence(appUser, clientData);
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && allowed, limitCount: 500 });
+  const scans = useLiveCollection('menuIntelligenceScans', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && allowed, limitCount: 60 });
+  const [file, setFile] = useState(null);
+  const [scanResult, setScanResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null);
+  const [approving, setApproving] = useState(false);
+  const [approveProgress, setApproveProgress] = useState(null);
+  const [editingScan, setEditingScan] = useState(null);
+  const [editResult, setEditResult] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [deletingScanId, setDeletingScanId] = useState(null);
+  const [deleteProgress, setDeleteProgress] = useState(null);
+  const [progressTick, setProgressTick] = useState(Date.now());
+  const scanBusyRef = useRef(false);
+  const approvingRef = useRef(false);
+  const editSavingRef = useRef(false);
+  const deleteBusyRef = useRef(false);
+  const impacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
+
+  useEffect(() => {
+    if (!busy && !approving && !editSaving && !deletingScanId) return undefined;
+    const timer = setInterval(() => setProgressTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [busy, approving, editSaving, deletingScanId]);
+
+  const progressElapsed = (progress) => Math.max(0, Math.floor((progressTick - (progress?.startedAt || Date.now())) / 1000));
+  const displayedPercent = (progress, cap = 96) => {
+    if (!progress) return 0;
+    const elapsed = progressElapsed(progress);
+    const base = Number(progress.percent) || 0;
+    return Math.min(progress.done ? 100 : cap, Math.max(base, base + Math.min(18, elapsed * 1.4)));
+  };
+
+  const getScanDependencies = (scan) => {
+    if (!scan) return [];
+    const storagePath = scan.storagePath || '';
+    const fileName = scan.fileName || '';
+    return menuDependencies.filter(dep => {
+      if (storagePath && dep.scanStoragePath === storagePath) return true;
+      if (!storagePath && fileName && dep.scanFileName === fileName) return true;
+      return false;
+    });
+  };
+
+  const buildEditableScanResult = (scan, loadedDeps = null) => {
+    const deps = loadedDeps || getScanDependencies(scan);
+    const groups = [];
+    const keyToIndex = new Map();
+    deps.forEach(dep => {
+      const key = [dep.menuItemName || 'Menu item', dep.menuCategory || '', dep.menuDescription || ''].join('||');
+      if (!keyToIndex.has(key)) {
+        keyToIndex.set(key, groups.length);
+        groups.push({
+          name: dep.menuItemName || 'Menu item',
+          category: dep.menuCategory || '',
+          description: dep.menuDescription || '',
+          ingredients: []
+        });
+      }
+      groups[keyToIndex.get(key)].ingredients.push({
+        dependencyId: dep.id,
+        name: dep.ingredientName || dep.inventoryItemName || '',
+        matchedInventoryItemId: dep.inventoryItemId || '',
+        matchedInventoryItemName: dep.inventoryItemName || '',
+        confidence: dep.confidence || 'manual'
+      });
+    });
+    return {
+      fileName: scan?.fileName || 'Menu scan',
+      storagePath: scan?.storagePath || '',
+      downloadUrl: scan?.downloadUrl || '',
+      menuItems: groups
+    };
+  };
+
+  const fetchScanDependencies = async (scan) => {
+    if (!scan) return [];
+    const cachedDeps = getScanDependencies(scan);
+    try {
+      if (scan.storagePath) {
+        const snap = await getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', appUser.restaurantId), where('scanStoragePath', '==', scan.storagePath)));
+        return snap.docs.map(row => ({ id: row.id, ...row.data() })).filter(dep => dep.restaurantId === appUser.restaurantId);
+      }
+      if (scan.fileName) {
+        const snap = await getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', appUser.restaurantId), where('scanFileName', '==', scan.fileName)));
+        return snap.docs.map(row => ({ id: row.id, ...row.data() })).filter(dep => dep.restaurantId === appUser.restaurantId);
+      }
+      return cachedDeps;
+    } catch (err) {
+      if (cachedDeps.length) return cachedDeps;
+      throw err;
+    }
+  };
+
+  const openEditScan = async (scan) => {
+    setEditingScan(scan);
+    setEditResult({ fileName: scan?.fileName || 'Menu scan', storagePath: scan?.storagePath || '', downloadUrl: scan?.downloadUrl || '', menuItems: [] });
+    setEditOpen(true);
+    try {
+      const deps = await fetchScanDependencies(scan);
+      setEditResult(buildEditableScanResult(scan, deps));
+    } catch (err) {
+      addToast('Could Not Load Links', err.message || 'Could not load menu links for this scan.');
+    }
+  };
+
+  const updateMenuItem = (itemIdx, patch, mode = 'scan') => {
+    const source = mode === 'edit' ? editResult : scanResult;
+    const menuItems = [...(source?.menuItems || [])];
+    menuItems[itemIdx] = { ...menuItems[itemIdx], ...patch };
+    if (mode === 'edit') setEditResult({ ...editResult, menuItems });
+    else setScanResult({ ...scanResult, menuItems });
+  };
+
+  const updateIngredient = (itemIdx, ingIdx, patch, mode = 'scan') => {
+    const source = mode === 'edit' ? editResult : scanResult;
+    const menuItems = [...(source?.menuItems || [])];
+    const ingredients = [...(menuItems[itemIdx].ingredients || [])];
+    ingredients[ingIdx] = { ...ingredients[ingIdx], ...patch };
+    menuItems[itemIdx] = { ...menuItems[itemIdx], ingredients };
+    if (mode === 'edit') setEditResult({ ...editResult, menuItems });
+    else setScanResult({ ...scanResult, menuItems });
+  };
+
+  const removeIngredient = (itemIdx, ingIdx, mode = 'scan') => {
+    const source = mode === 'edit' ? editResult : scanResult;
+    const item = (source?.menuItems || [])[itemIdx] || {};
+    const ingredients = [...(item.ingredients || [])];
+    ingredients.splice(ingIdx, 1);
+    updateMenuItem(itemIdx, { ingredients }, mode);
+  };
+
+  const addIngredientToItem = (itemIdx, mode = 'scan') => {
+    const source = mode === 'edit' ? editResult : scanResult;
+    const item = (source?.menuItems || [])[itemIdx] || {};
+    updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', confidence: 'manual' }] }, mode);
+  };
+
+  const addMenuItemToEdit = () => {
+    setEditResult({
+      ...(editResult || {}),
+      menuItems: [...(editResult?.menuItems || []), { name: '', category: '', description: '', ingredients: [{ name: '', matchedInventoryItemId: '', confidence: 'manual' }] }]
+    });
+  };
+
+  const removeEditMenuItem = (itemIdx) => {
+    const menuItems = [...(editResult?.menuItems || [])];
+    menuItems.splice(itemIdx, 1);
+    setEditResult({ ...editResult, menuItems });
+  };
+
+  if (!allowed) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className={`${T.card} p-8 text-center`}>
+          <Sparkles className="mx-auto text-slate-500 mb-3" size={38}/>
+          <h2 className="text-xl font-black text-white">Menu Intelligence is owner controlled</h2>
+          <p className="text-sm text-slate-400 font-bold mt-2">Ask the account owner to grant Menu Intelligence access in Settings.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const scanMenu = async () => {
+    if (scanBusyRef.current) return;
+    if (!file) return addToast('Choose File', 'Upload a menu image or PDF first.');
+    if (file.size > 20 * 1024 * 1024) return addToast('Menu Too Large', 'This menu file is over 20MB. Compress it, split the PDF, or upload fewer pages.');
+    scanBusyRef.current = true;
+    setBusy(true);
+    const scanStartedAt = Date.now();
+    setProgressTick(scanStartedAt);
+    setScanProgress({ label: 'Uploading menu', detail: 'Sending the file to secure storage.', percent: 8, startedAt: scanStartedAt });
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);
+      const path = `${appUser.restaurantId}/menuUploads/menu-${Date.now()}-${safeName}`;
+      const fileRef = ref(storage, path);
+      setScanProgress({ label: 'Uploading menu', detail: 'Starting secure upload.', percent: 8, startedAt: scanStartedAt });
+      const uploadTask = uploadBytesResumable(fileRef, file, { contentType: file.type || 'application/octet-stream' });
+      await new Promise((resolve, reject) => {
+        uploadTask.on('state_changed', snapshot => {
+          const ratio = snapshot.totalBytes ? snapshot.bytesTransferred / snapshot.totalBytes : 0;
+          setScanProgress({
+            label: 'Uploading menu',
+            detail: `Uploaded ${formatUploadBytes(snapshot.bytesTransferred)} of ${formatUploadBytes(snapshot.totalBytes || file.size)}.`,
+            percent: 8 + Math.round(ratio * 34),
+            startedAt: scanStartedAt
+          });
+        }, reject, resolve);
+      });
+      setScanProgress({ label: 'Upload complete', detail: 'Preparing the AI menu reader.', percent: 42, startedAt: scanStartedAt });
+      const downloadUrl = await getDownloadURL(fileRef);
+      setScanProgress({ label: 'Reading menu with AI', detail: 'Finding menu items, ingredients, and inventory matches. This can take a minute for big menus.', percent: 55, startedAt: scanStartedAt });
+      const response = await secureFetch('/api/scan-menu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          fileName: file.name,
+          contentType: file.type,
+          storagePath: path,
+          downloadUrl,
+          inventoryItems: inventoryItems.map(i => ({ id: i.id, name: i.name, category: i.category }))
+        })
+      });
+      setScanProgress({ label: 'Building review screen', detail: 'Loading the menu matches for approval.', percent: 88, startedAt: scanStartedAt });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Menu scan failed.');
+      setScanResult({ ...result, storagePath: path, downloadUrl, fileName: file.name });
+      setReviewOpen(true);
+      setScanProgress({ label: 'Menu scan ready', detail: 'Review the AI matches before saving.', percent: 100, done: true, startedAt: scanStartedAt });
+      addToast('Menu Scanned', 'Review the AI matches before saving.');
+      setTimeout(() => setScanProgress(null), 1400);
+    } catch (err) {
+      setScanProgress({ label: 'Scan stopped', detail: err.message || 'Could not scan menu.', percent: 100, done: true, startedAt: scanStartedAt });
+      addToast('Scan Failed', err.message || 'Could not scan menu.');
+      setTimeout(() => setScanProgress(null), 2200);
+    } finally {
+      scanBusyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const approveMenu = async () => {
+    if (approvingRef.current) return;
+    approvingRef.current = true;
+    const menuItems = scanResult?.menuItems || [];
+    const totalLinks = menuItems.reduce((sum, item) => sum + (item.ingredients || []).filter(ingredient => ingredient.matchedInventoryItemId).length, 0);
+    let saved = 0;
+    setApproving(true);
+    const approveStartedAt = Date.now();
+    setProgressTick(approveStartedAt);
+    setApproveProgress({ label: 'Approving menu links', detail: `Saving ${totalLinks} reviewed ingredient ${totalLinks === 1 ? 'link' : 'links'}.`, percent: 5, startedAt: approveStartedAt });
+    try {
+      for (const item of menuItems) {
+        for (const ingredient of item.ingredients || []) {
+          if (!ingredient.matchedInventoryItemId) continue;
+          const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
+          await addDoc(collection(db, 'menuDependencies'), {
+            restaurantId: appUser.restaurantId,
+            menuItemName: item.name || 'Menu item',
+            menuCategory: item.category || '',
+            menuDescription: item.description || '',
+            ingredientName: ingredient.name || inventoryItem?.name || '',
+            inventoryItemId: ingredient.matchedInventoryItemId,
+            inventoryItemName: inventoryItem?.name || ingredient.matchedInventoryItemName || ingredient.name || '',
+            confidence: ingredient.confidence || item.confidence || 'reviewed',
+            source: 'menu_intelligence_ai_review',
+            status: 'approved',
+            approvedAt: new Date().toISOString(),
+            approvedBy: appUser.name || appUser.email || appUser.id || '',
+            scanFileName: scanResult.fileName || '',
+            scanStoragePath: scanResult.storagePath || ''
+          });
+          saved++;
+          const pct = totalLinks ? Math.min(88, 8 + Math.round((saved / totalLinks) * 78)) : 70;
+          setApproveProgress({ label: 'Approving menu links', detail: `Saved ${saved} of ${totalLinks} reviewed links.`, percent: pct, startedAt: approveStartedAt });
+        }
+      }
+      setApproveProgress({ label: 'Saving scan summary', detail: 'Locking in this approved menu scan.', percent: 92, startedAt: approveStartedAt });
+      await addDoc(collection(db, 'menuIntelligenceScans'), {
+        restaurantId: appUser.restaurantId,
+        fileName: scanResult.fileName || '',
+        storagePath: scanResult.storagePath || '',
+        downloadUrl: scanResult.downloadUrl || '',
+        menuItemCount: menuItems.length,
+        dependencyCount: saved,
+        status: 'approved',
+        createdAt: new Date().toISOString(),
+        approvedAt: new Date().toISOString(),
+        approvedBy: appUser.id || ''
+      });
+      await logAudit(appUser, 'MENU_INTELLIGENCE_APPROVED', `${menuItems.length} menu items`, `${saved} dependencies`);
+      setApproveProgress({ label: 'Menu Intelligence saved', detail: `${saved} ingredient links approved.`, percent: 100, done: true, startedAt: approveStartedAt });
+      addToast('Menu Intelligence Saved', `${saved} ingredient links approved.`);
+      setReviewOpen(false);
+      setScanResult(null);
+      setFile(null);
+      setTimeout(() => setApproveProgress(null), 1200);
+    } catch (err) {
+      setApproveProgress({ label: 'Approval stopped', detail: err.message || 'Could not approve menu links.', percent: 100, done: true, startedAt: approveStartedAt });
+      addToast('Approval Failed', err.message || 'Could not approve menu links.');
+      setTimeout(() => setApproveProgress(null), 2200);
+    } finally {
+      approvingRef.current = false;
+      setApproving(false);
+    }
+  };
+
+  const saveEditedScan = async () => {
+    if (editSavingRef.current || !editingScan?.id) return;
+    editSavingRef.current = true;
+    setEditSaving(true);
+    try {
+      const existingDeps = await fetchScanDependencies(editingScan);
+      const existingIds = new Set(existingDeps.map(dep => dep.id).filter(Boolean));
+      const retainedIds = new Set();
+      let savedLinks = 0;
+      for (const item of editResult?.menuItems || []) {
+        for (const ingredient of item.ingredients || []) {
+          if (!ingredient.matchedInventoryItemId) continue;
+          const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
+          const payload = {
+            restaurantId: appUser.restaurantId,
+            menuItemName: item.name || 'Menu item',
+            menuCategory: item.category || '',
+            menuDescription: item.description || '',
+            ingredientName: ingredient.name || inventoryItem?.name || '',
+            inventoryItemId: ingredient.matchedInventoryItemId,
+            inventoryItemName: inventoryItem?.name || ingredient.matchedInventoryItemName || ingredient.name || '',
+            confidence: ingredient.confidence || 'manual_review',
+            source: ingredient.dependencyId ? 'menu_intelligence_manual_update' : 'menu_intelligence_manual_add',
+            status: 'approved',
+            updatedAt: new Date().toISOString(),
+            updatedBy: appUser.id || '',
+            scanFileName: editResult.fileName || editingScan.fileName || '',
+            scanStoragePath: editingScan.storagePath || ''
+          };
+          if (ingredient.dependencyId && existingIds.has(ingredient.dependencyId)) {
+            await updateDoc(doc(db, 'menuDependencies', ingredient.dependencyId), payload);
+            retainedIds.add(ingredient.dependencyId);
+          } else {
+            await addDoc(collection(db, 'menuDependencies'), {
+              ...payload,
+              approvedAt: new Date().toISOString(),
+              approvedBy: appUser.name || appUser.email || appUser.id || ''
+            });
+          }
+          savedLinks++;
+        }
+      }
+      const staleRefs = existingDeps
+        .filter(dep => dep.id && !retainedIds.has(dep.id))
+        .map(dep => doc(db, 'menuDependencies', dep.id));
+      if (staleRefs.length) await batchDeleteRefs(staleRefs);
+      await updateDoc(doc(db, 'menuIntelligenceScans', editingScan.id), {
+        fileName: editResult?.fileName || editingScan.fileName || '',
+        menuItemCount: (editResult?.menuItems || []).length,
+        dependencyCount: savedLinks,
+        updatedAt: new Date().toISOString(),
+        updatedBy: appUser.id || ''
+      });
+      await logAudit(appUser, 'MENU_INTELLIGENCE_SCAN_EDITED', editResult?.fileName || editingScan.fileName || 'Menu scan', `${savedLinks} dependencies`);
+      addToast('Menu Scan Updated', `${savedLinks} menu links saved.`);
+      setEditOpen(false);
+      setEditingScan(null);
+      setEditResult(null);
+    } catch (err) {
+      addToast('Update Failed', err.message || 'Could not update menu scan.');
+    } finally {
+      editSavingRef.current = false;
+      setEditSaving(false);
+    }
+  };
+
+  const deleteMenuScan = async (scan) => {
+    if (deleteBusyRef.current || !scan?.id) return;
+    const knownDeps = getScanDependencies(scan);
+    const expectedCount = Number(scan.dependencyCount || 0) || knownDeps.length;
+    if (!window.confirm(`Delete this menu scan and ${expectedCount} linked ${expectedCount === 1 ? 'ingredient' : 'ingredients'}? This removes the approved menu-impact links for this scan.`)) return;
+    deleteBusyRef.current = true;
+    setDeletingScanId(scan.id);
+    const deleteStartedAt = Date.now();
+    setProgressTick(deleteStartedAt);
+    setDeleteProgress({
+      scanId: scan.id,
+      label: 'Preparing fast delete',
+      detail: 'Finding approved menu-impact links tied to this scan.',
+      percent: 5,
+      startedAt: deleteStartedAt
+    });
+    try {
+      const deps = await fetchScanDependencies(scan);
+      const refsToDelete = [
+        ...deps.filter(dep => dep.id).map(dep => doc(db, 'menuDependencies', dep.id)),
+        doc(db, 'menuIntelligenceScans', scan.id)
+      ];
+      if (refsToDelete.length === 0) {
+        throw new Error('No menu scan record was found to delete.');
+      }
+      setDeleteProgress({
+        scanId: scan.id,
+        label: 'Deleting menu scan',
+        detail: `Deleting 0 of ${refsToDelete.length} Firestore records in batches.`,
+        percent: 10,
+        startedAt: deleteStartedAt
+      });
+      await batchDeleteRefs(refsToDelete, (deleted, total) => {
+        const pct = total ? Math.min(96, 10 + Math.round((deleted / total) * 86)) : 96;
+        setDeleteProgress({
+          scanId: scan.id,
+          label: 'Deleting menu scan',
+          detail: `Deleted ${deleted} of ${total} Firestore records.`,
+          percent: pct,
+          startedAt: deleteStartedAt
+        });
+      });
+      await logAudit(appUser, 'MENU_INTELLIGENCE_SCAN_DELETED', scan.fileName || 'Menu scan', `${deps.length} dependencies removed with batched delete`);
+      setDeleteProgress({
+        scanId: scan.id,
+        label: 'Menu scan deleted',
+        detail: `${deps.length} linked ${deps.length === 1 ? 'ingredient was' : 'ingredients were'} removed.`,
+        percent: 100,
+        done: true,
+        startedAt: deleteStartedAt
+      });
+      addToast('Menu Scan Deleted', `${deps.length} linked ingredients removed.`);
+      setTimeout(() => setDeleteProgress(null), 1400);
+    } catch (err) {
+      setDeleteProgress({
+        scanId: scan.id,
+        label: 'Delete stopped',
+        detail: err.message || 'Could not delete menu scan.',
+        percent: 100,
+        done: true,
+        startedAt: deleteStartedAt
+      });
+      addToast('Delete Failed', err.message || 'Could not delete menu scan.');
+      setTimeout(() => setDeleteProgress(null), 2600);
+    } finally {
+      deleteBusyRef.current = false;
+      setDeletingScanId(null);
+    }
+  };
+
+  const renderMenuEditor = (source, mode = 'scan') => (
+    <div className="space-y-4">
+      {(source?.menuItems || []).length === 0 ? <SmartEmptyState title="Nothing found" desc="Add menu items and ingredient links before saving." /> : (source.menuItems || []).map((item, itemIdx) => (
+        <div key={itemIdx} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-3">
+          <div className={`grid ${mode === 'edit' ? 'sm:grid-cols-[1fr_.45fr_auto]' : 'sm:grid-cols-[1fr_.45fr]'} gap-2 items-center`}>
+            <input value={item.name || ''} onChange={e => updateMenuItem(itemIdx, { name: e.target.value }, mode)} className={T.input} placeholder="Menu item name" />
+            <input value={item.category || ''} onChange={e => updateMenuItem(itemIdx, { category: e.target.value }, mode)} className={T.input} placeholder="Category" />
+            {mode === 'edit' && <button type="button" onClick={() => removeEditMenuItem(itemIdx)} disabled={editSaving} className="p-3 rounded-xl border border-red-900/50 text-red-300 bg-red-900/10 disabled:opacity-50"><Trash2 size={16}/></button>}
+          </div>
+          <textarea value={item.description || ''} onChange={e => updateMenuItem(itemIdx, { description: e.target.value }, mode)} className={T.input} rows={2} placeholder="Description" />
+          <div className="space-y-2">
+            {(item.ingredients || []).map((ingredient, ingIdx) => (
+              <div key={`${ingredient.dependencyId || 'new'}-${ingIdx}`} className="grid sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                <input value={ingredient.name || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { name: e.target.value }, mode)} className={T.input} placeholder="Ingredient" />
+                <select value={ingredient.matchedInventoryItemId || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { matchedInventoryItemId: e.target.value }, mode)} className={T.input}>
+                  <option value="">No inventory match</option>
+                  {inventoryItems.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+                </select>
+                <button type="button" onClick={() => removeIngredient(itemIdx, ingIdx, mode)} disabled={approving || editSaving} className="p-3 rounded-xl border border-red-900/50 text-red-300 bg-red-900/10 disabled:opacity-50"><X size={16}/></button>
+              </div>
+            ))}
+            <button type="button" onClick={() => addIngredientToItem(itemIdx, mode)} disabled={approving || editSaving} className={`${T.btnAlt} disabled:opacity-50`}>Add Ingredient</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
+        <div>
+          <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Sparkles size={24} className={T.copper}/> Menu Intelligence</h2>
+          <p className="text-xs text-slate-400 font-bold mt-1">Upload a menu, review AI ingredient links, and let 86 alerts show menu impact.</p>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-[1fr_.9fr] gap-4">
+        <div className={`${T.card} p-4 space-y-4`}>
+          <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center bg-[#12161A]">
+            <Upload className="mx-auto text-[#D4A381] mb-3" size={30}/>
+            <label className={`${T.btnAlt} inline-flex items-center gap-2 cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+              Choose Menu Image or PDF
+              <input type="file" accept="image/*,application/pdf" disabled={busy} onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
+            </label>
+            <div className="text-xs font-bold text-slate-400 mt-3">{file ? file.name : 'No file selected'}</div>
+          </div>
+          {scanProgress && <WorkProgressBar label={scanProgress.label} detail={scanProgress.detail} percent={displayedPercent(scanProgress, busy ? 96 : 100)} elapsedSeconds={progressElapsed(scanProgress)} />}
+          <button onClick={scanMenu} disabled={busy || !file} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{busy ? <Upload size={18}/> : <Sparkles size={18}/>} {busy ? 'Scanning Menu' : 'Scan Menu'}</button>
+          <div className="text-[10px] text-slate-500 font-bold leading-snug">AI results are not saved until you approve them. Regular staff cannot browse uploaded menu records unless the owner grants access.</div>
+        </div>
+
+        <div className={`${T.card} overflow-hidden`}>
+          <div className={T.th}>Current Menu Impacts</div>
+          {impacts.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">No zero-stock menu impacts found yet.</div> : impacts.slice(0, 10).map(row => (
+            <div key={row.item.id} className={`${T.row}`}>
+              <div className="font-black text-white text-sm flex items-center gap-2"><Package size={14} className="text-red-300"/> {row.item.name}</div>
+              <div className="text-[10px] text-red-200 font-bold mt-1">Impacts: {row.impacts.map(i => i.name).join(', ')}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className={`${T.card} overflow-hidden`}>
+        <div className={T.th}>Recent Menu Scans</div>
+        {scans.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">No approved menu scans yet.</div> : scans.slice(0, 12).map(scan => {
+          const isDeletingThisScan = deletingScanId === scan.id || deleteProgress?.scanId === scan.id;
+          return (
+          <div key={scan.id} className={`${T.row} space-y-3 ${isDeletingThisScan ? 'opacity-80' : ''}`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0"><div className="font-black text-white text-sm truncate">{scan.fileName || 'Menu scan'}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{scan.menuItemCount || 0} menu items, {scan.dependencyCount || 0} links</div></div>
+              <div className="flex items-center gap-2 justify-end">
+                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest">{isDeletingThisScan ? 'deleting' : (scan.status || 'saved')}</div>
+                <button type="button" onClick={() => openEditScan(scan)} disabled={isDeletingThisScan || editSaving || !!deletingScanId} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-50" title="Edit menu scan"><Edit3 size={15}/></button>
+                <button type="button" onClick={() => deleteMenuScan(scan)} disabled={isDeletingThisScan || !!deletingScanId} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-50" title="Delete menu scan"><Trash2 size={15}/></button>
+              </div>
+            </div>
+            {isDeletingThisScan && deleteProgress && <WorkProgressBar label={deleteProgress.label} detail={deleteProgress.detail} percent={displayedPercent(deleteProgress, deleteProgress.done ? 100 : 98)} elapsedSeconds={progressElapsed(deleteProgress)} />}
+          </div>
+        );})}
+      </div>
+
+      <Modal isOpen={reviewOpen} onClose={() => { if (!approving) setReviewOpen(false); }} title="Review Menu Intelligence" sizeClass="max-w-5xl">
+        <div className="space-y-4">
+          {approveProgress && <WorkProgressBar label={approveProgress.label} detail={approveProgress.detail} percent={displayedPercent(approveProgress, approving ? 99 : 100)} elapsedSeconds={progressElapsed(approveProgress)} />}
+          {renderMenuEditor(scanResult, 'scan')}
+          <button onClick={approveMenu} disabled={approving} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}><Check size={18}/> {approving ? 'Approving Reviewed Menu Links' : 'Approve Reviewed Menu Links'}</button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={editOpen} onClose={() => { if (!editSaving) setEditOpen(false); }} title="Edit Menu Scan" sizeClass="max-w-5xl">
+        <div className="space-y-4">
+          <div>
+            <label className={T.label}>Menu scan name</label>
+            <input value={editResult?.fileName || ''} onChange={e => setEditResult({ ...(editResult || {}), fileName: e.target.value })} disabled={editSaving} className={T.input} placeholder="Menu scan name" />
+          </div>
+          {renderMenuEditor(editResult, 'edit')}
+          <button type="button" onClick={addMenuItemToEdit} disabled={editSaving} className={`${T.btnAlt} disabled:opacity-50`}>Add Menu Item</button>
+          <button onClick={saveEditedScan} disabled={editSaving} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{editSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} {editSaving ? 'Saving Menu Scan' : 'Save Menu Scan Changes'}</button>
+          <div className="text-[10px] text-slate-500 font-bold leading-snug">Deleting or removing a match here removes that approved menu-impact link. The original uploaded file stays in secure storage.</div>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+export { TabPersonalReminders, TabMenuIntelligence };

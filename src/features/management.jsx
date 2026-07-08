@@ -108,7 +108,7 @@ const GeofenceMapStabilizer = ({ lat, lon, radius, refreshNonce }) => {
   return null;
 };
 
-const TabTeam = ({ users, appUser, clientData, addToast, heartbeatDebug }) => {
+const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const normalizedEmail = (appUser?.email || '').toLowerCase().trim();
   const ownerEmail = (clientData?.ownerEmail || appUser?.ownerEmail || '').toLowerCase().trim();
   const ownerUserId = clientData?.ownerUserId || clientData?.ownerUid || '';
@@ -138,7 +138,7 @@ const TabTeam = ({ users, appUser, clientData, addToast, heartbeatDebug }) => {
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, wageView: false, wageEdit: false };
+  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, menuIntelligence: false, wageView: false, wageEdit: false };
   const PERMISSION_PRESETS = {
     'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false },
     'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false, labor: false },
@@ -315,12 +315,6 @@ const handleDeactivate = async (u) => {
 
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
 
-  const selfActivity = users.find(u => u.id === appUser?.id);
-  const heartbeatStatus = heartbeatDebug || (() => {
-    try { return JSON.parse(localStorage.getItem(`chaosHeartbeatDebug_${appUser?.restaurantId}_${appUser?.id}`) || 'null'); } catch (err) { return null; }
-  })();
-  const heartbeatTone = heartbeatStatus?.ok ? 'border-emerald-900/40 bg-emerald-900/10 text-emerald-200' : 'border-amber-900/50 bg-amber-900/10 text-amber-200';
-
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
       <Modal isOpen={!!createdLogin} onClose={() => setCreatedLogin(null)} title="Employee Login Created">
@@ -335,21 +329,6 @@ return (
         </div>}
       </Modal>
 
-      <div className={`${T.card} p-4 border ${heartbeatTone}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-widest">My Live Presence Check</div>
-            <p className="text-xs font-bold text-slate-300 mt-1">
-              {heartbeatStatus?.ok ? `Heartbeat saved through ${heartbeatStatus.channel || 'live channel'}.` : `Heartbeat is not confirmed yet${heartbeatStatus?.message ? `: ${heartbeatStatus.message}` : '.'}`}
-            </p>
-          </div>
-          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Roster sees you: <span className={formatLastActive(selfActivity || {}).tone}>{formatLastActive(selfActivity || {}).label}</span>
-          </div>
-        </div>
-        {heartbeatStatus?.message && <div className="mt-2 text-[10px] font-mono text-slate-500 break-all">{heartbeatStatus.message}</div>}
-      </div>
-      
       {canManageTeam && (
         <form onSubmit={handleSave} className={`${T.card} p-4 sm:p-6 space-y-2`}>
           {editingUserId && (
@@ -401,9 +380,9 @@ return (
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => {
                   const wageAccessToggle = k === 'wageView' || k === 'wageEdit';
-                  const ownerOnlyToggle = wageAccessToggle || k === 'settings' || k === 'branding' || k === 'integrations';
+                  const ownerOnlyToggle = wageAccessToggle || k === 'settings' || k === 'branding' || k === 'integrations' || k === 'menuIntelligence';
                   const disabled = ownerOnlyToggle && !canChooseWageAccess;
-                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
+                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', menuIntelligence: 'Menu Intelligence', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
                   return (
                   <label key={k} className={`flex items-center gap-2 text-xs font-bold uppercase ${disabled ? 'opacity-45 cursor-not-allowed text-slate-500' : 'cursor-pointer text-slate-300'}`} title={disabled ? 'Only the account owner can choose this access.' : ''}>
                     <input type="checkbox" disabled={disabled} checked={!!perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked, ...(k === 'wageEdit' && e.target.checked ? { wageView: true } : {})})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded disabled:opacity-40" /> 
@@ -436,7 +415,6 @@ return (
                     <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {canViewWages && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
-                    <span title={activity.exact} className={`text-[8px] font-black uppercase tracking-widest ml-1 ${activity.tone}`}>Last active: {activity.label}</span>
                   </div>
                 </div>
               </div>
@@ -1855,13 +1833,13 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
             <div className={`${T.card} p-3 sm:p-5 space-y-3`}>
               <div>
                 <h2 className="text-base font-black text-white">Settings Access</h2>
-                <p className="text-[10px] text-slate-400 font-bold mt-1">Only the account owner can choose who may change workspace settings, branding, or integrations.</p>
+                <p className="text-[10px] text-slate-400 font-bold mt-1">Only the account owner can choose who may change workspace settings, branding, integrations, or Menu Intelligence.</p>
               </div>
               <div className="max-h-80 overflow-y-auto custom-scrollbar space-y-2">
                 {users.filter(u => u.isActive !== false && u.id !== appUser.id).map(u => (
                   <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 items-center bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
                     <div className="min-w-0"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[10px] text-slate-500 font-bold truncate">{u.role || 'Staff'} • {u.email || 'no email'}</div></div>
-                    {['settings','branding','integrations'].map(key => (
+                    {['settings','branding','integrations','menuIntelligence'].map(key => (
                       <label key={key} className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
                         <input type="checkbox" checked={u.permissions?.[key] === true} onChange={e => toggleSettingsPermission(u, key, e.target.checked)} className="w-3.5 h-3.5 accent-[#8F6040]" /> {key}
                       </label>
@@ -2225,7 +2203,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [demoFeatures, setDemoFeatures] = useState(defaultDemoFeatures);
   const [adminManualSearch, setAdminManualSearch] = useState('');
   const [userCounts, setUserCounts] = useState({});
-  const [totalInstalls, setTotalInstalls] = useState(0); 
+  const [totalInstalls, setTotalInstalls] = useState(0);
+  const [presenceSnapshot, setPresenceSnapshot] = useState({ users: [], recentUsers: [], fetchedAt: '', windowMinutes: 15, livePresenceCount: 0, onlineCount: 0, recentCount: 0 });
+  const [isPresenceSnapshotLoading, setIsPresenceSnapshotLoading] = useState(false);
+  const [presenceSnapshotError, setPresenceSnapshotError] = useState(''); 
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -2463,79 +2444,17 @@ const CHEERS_JULY_2026_SCHEDULE = [
     const unsubRests = onSnapshot(collection(db, 'restaurants'), snap => { clearLoadError('restaurants'); setRestaurants(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('restaurants', err));
     const unsubAdmins = onSnapshot(query(collection(db, 'users'), where('isSuperAdmin', '==', true)), snap => { clearLoadError('superAdmins'); setSuperAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('superAdmins', err));
     let rawUserList = [];
-    let rawPresenceSessions = [];
-    let rawLivePresence = [];
-    const parsePresenceForAdmin = (value) => {
-      if (!value) return 0;
-      if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
-      if (typeof value === 'string') { const parsed = new Date(value).getTime(); return Number.isFinite(parsed) ? parsed : 0; }
-      if (typeof value?.toDate === 'function') { const parsed = value.toDate().getTime(); return Number.isFinite(parsed) ? parsed : 0; }
-      if (typeof value?.seconds === 'number') return value.seconds * 1000;
-      return 0;
-    };
-    const publishMergedUsers = () => {
-      const now = Date.now();
-      const liveWindowMs = 5 * 60 * 1000;
-      const sessionsByUser = {};
-      [...rawLivePresence, ...rawPresenceSessions].forEach(session => {
-        const userId = session.userId || session.uid || session.id;
-        if (!userId) return;
-        const lastMs = Math.max(
-          parsePresenceForAdmin(session.lastHeartbeatAt),
-          parsePresenceForAdmin(session.presenceUpdatedAt),
-          parsePresenceForAdmin(session.lastActive),
-          parsePresenceForAdmin(session.lastSeen),
-          parsePresenceForAdmin(session.heartbeatEpochMs)
-        );
-        if (!lastMs) return;
-        const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: (now - lastMs) < liveWindowMs && session.onlineState !== 'offline' };
-        if (!sessionsByUser[userId]) sessionsByUser[userId] = [];
-        sessionsByUser[userId].push(enriched);
-      });
-      const merged = rawUserList.map(user => {
-        const sessions = (sessionsByUser[user.id] || []).sort((a, b) => b._presenceLastMs - a._presenceLastMs);
-        if (!sessions.length) return user;
-        const liveSession = sessions.find(session => session._presenceLive);
-        const best = liveSession || sessions[0];
-        const bestTime = new Date(best._presenceLastMs).toISOString();
-        return {
-          ...user,
-          lastActive: bestTime,
-          lastSeen: bestTime,
-          lastHeartbeatAt: best.lastHeartbeatAt || bestTime,
-          presenceUpdatedAt: best.presenceUpdatedAt || bestTime,
-          onlineState: liveSession ? (best.onlineState || 'online') : (best.onlineState || user.onlineState),
-          activeTab: best.activeTab || user.activeTab,
-          activeSessionId: best.activeSessionId || user.activeSessionId,
-          activeDevice: best.activeDevice || user.activeDevice,
-          activeHost: best.activeHost || user.activeHost,
-          notificationPermission: best.notificationPermission || user.notificationPermission,
-          gpsPermission: best.gpsPermission || user.gpsPermission,
-          deviceDiagnostics: best.deviceDiagnostics || user.deviceDiagnostics,
-          presenceRecordId: best.id || user.presenceRecordId,
-          presenceSessionCount: sessions.length,
-          presenceSource: liveSession ? (best.source === 'app-heartbeat' ? 'live-presence' : 'live-session') : 'session-history'
-        };
-      });
-      setAllUsers(merged);
-      const counts = {}; rawUserList.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
+    const publishUsers = () => {
+      setAllUsers(rawUserList);
+      const counts = {};
+      rawUserList.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
       setUserCounts(counts);
     };
     const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
       clearLoadError('users');
       rawUserList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      publishMergedUsers();
+      publishUsers();
     }, err => noteLoadError('users', err));
-    const unsubPresenceSessions = onSnapshot(collection(db, 'presenceSessions'), snap => {
-      clearLoadError('presenceSessions');
-      rawPresenceSessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      publishMergedUsers();
-    }, err => noteLoadError('presenceSessions', err));
-    const unsubLivePresence = onSnapshot(collection(db, 'livePresence'), snap => {
-      clearLoadError('livePresence');
-      rawLivePresence = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      publishMergedUsers();
-    }, err => noteLoadError('livePresence', err));
     const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => { clearLoadError('crashReports'); setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)); }, err => noteLoadError('crashReports', err));
 const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('auditLogs');
@@ -2555,8 +2474,36 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('operationsReview');
        setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubPresenceSessions(); unsubLivePresence(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubOpsReview(); };
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubOpsReview(); };
   }, []);
+
+
+  const loadPresenceSnapshot = async ({ silent = false } = {}) => {
+    setIsPresenceSnapshotLoading(true);
+    setPresenceSnapshotError('');
+    try {
+      const response = await secureFetch('/api/presence-snapshot?windowMinutes=15&limit=1200', { method: 'GET' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
+      setPresenceSnapshot({
+        users: Array.isArray(data.users) ? data.users : [],
+        recentUsers: Array.isArray(data.recentUsers) ? data.recentUsers : [],
+        fetchedAt: data.fetchedAt || new Date().toISOString(),
+        windowMinutes: data.windowMinutes || 15,
+        livePresenceCount: data.livePresenceCount || 0,
+        onlineCount: data.onlineCount || 0,
+        recentCount: data.recentCount || 0,
+        mode: data.mode || 'manual-snapshot'
+      });
+      if (!silent) addToast('Presence Snapshot', `${data.onlineCount || 0} recent app check-in(s) found. No live listener was opened.`);
+    } catch (err) {
+      const message = err?.message || 'Manual presence snapshot failed.';
+      setPresenceSnapshotError(message);
+      if (!silent) addToast('Snapshot Failed', message);
+    } finally {
+      setIsPresenceSnapshotLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (subTab === 'forensics' && backupList.length === 0 && !isBackupListLoading) {
@@ -3499,8 +3446,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
   const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
-  const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+  const ONLINE_WINDOW_MS = (Number(presenceSnapshot.windowMinutes || 15) || 15) * 60 * 1000;
   const nowMs = Date.now();
+  const presenceSnapshotFetchedAtMs = parseAnyDate(presenceSnapshot.fetchedAt)?.getTime?.() || 0;
   const parsePresenceTimeMs = (value) => {
     if (!value) return 0;
     if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
@@ -3522,11 +3470,24 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     parsePresenceTimeMs(u.lastSeen),
     parsePresenceTimeMs(u.heartbeatEpochMs)
   );
+  const enrichPresenceRow = (row = {}) => {
+    const profile = allUsers.find(u => u.id === row.userId || u.id === row.uid || (u.email && row.email && String(u.email).toLowerCase() === String(row.email).toLowerCase())) || {};
+    return {
+      ...profile,
+      ...row,
+      id: row.userId || row.uid || row.id || profile.id,
+      name: row.userName || row.name || profile.name || row.email || 'Unknown user',
+      email: row.userEmail || row.email || profile.email || '',
+      restaurantId: row.restaurantId || profile.restaurantId || '',
+      role: row.role || profile.role || '',
+      photoURL: row.photoURL || profile.photoURL || ''
+    };
+  };
   const isOnlineNow = (u) => {
     const last = getLastActiveMs(u);
-    return !!last && (nowMs - last) < ONLINE_WINDOW_MS && u.onlineState !== 'offline';
+    return !!presenceSnapshotFetchedAtMs && !!last && (nowMs - last) < ONLINE_WINDOW_MS && u.onlineState !== 'offline';
   };
-  const onlineUsers = allUsers.filter(isOnlineNow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const onlineUsers = (presenceSnapshot.users || []).map(enrichPresenceRow).filter(isOnlineNow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
   const onlineRestaurantIds = [...new Set(onlineUsers.map(u => u.restaurantId).filter(Boolean))];
   const onlineRestaurants = restaurants.filter(r => onlineRestaurantIds.includes(r.id));
   const onlineByRestaurant = onlineRestaurantIds.map(id => ({
@@ -3534,16 +3495,13 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     rest: restaurants.find(r => r.id === id),
     users: onlineUsers.filter(u => u.restaurantId === id)
   })).sort((a,b) => b.users.length - a.users.length);
-  const recentlyActiveUsers = allUsers.filter(u => {
-    const last = getLastActiveMs(u);
-    return !!last && (nowMs - last) < 15 * 60 * 1000 && !isOnlineNow(u);
-  }).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const recentlyActiveUsers = (presenceSnapshot.recentUsers || []).map(enrichPresenceRow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
 
   const selectedClientUsers = selectedClient ? allUsers
     .filter(u => u.restaurantId === selectedClient.id)
     .sort((a,b) => (b.isAdmin === true) - (a.isAdmin === true) || (a.name || a.email || '').localeCompare(b.name || b.email || '')) : [];
   const selectedClientAdmins = selectedClientUsers.filter(u => u.isAdmin || u.isSuperAdmin);
-  const selectedClientOnline = selectedClientUsers.filter(isOnlineNow);
+  const selectedClientOnline = selectedClient ? onlineUsers.filter(u => u.restaurantId === selectedClient.id) : [];
   const selectedClientPushEnabled = selectedClientUsers.filter(u => !!u.fcmToken).length;
   const selectedClientGpsKnown = selectedClientUsers.filter(u => u.gpsPermission || u.deviceDiagnostics?.gpsPermission).length;
 
@@ -3566,7 +3524,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'send-push', 'send-schedule-alert', 'import-cheers-july-schedule', 'presence-heartbeat', 'push-token-repair', 'staff-member', 'voice-command', 'alerts'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'import-cheers-july-schedule', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -3583,7 +3541,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const platformSnapshot = [
     `86 Chaos Platform Snapshot`,
     `Version: ${CURRENT_VERSION}`,
-    `Online users: ${onlineUsers.length}`,
+    `Manual presence snapshot: ${presenceSnapshot.fetchedAt ? `${onlineUsers.length} recent` : 'not refreshed'}`,
     `Active workspaces: ${restaurants.filter(r=>r.isActive).length}`,
     `Paid workspaces: ${paidWorkspaces}`,
     `Trials: ${trialWorkspaces.length}`,
@@ -3629,7 +3587,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
   const deploymentChecks = [
     { label: 'Firebase project ID', ok: !!firebaseConfig?.projectId, detail: firebaseConfig?.projectId || 'Missing browser Firebase project ID' },
-    { label: 'Firestore rules published', ok: !adminDataErrors.users && !adminDataErrors.livePresence, detail: adminDataErrors.users || adminDataErrors.livePresence || 'No read-rule errors detected in this session' },
+    { label: 'Firestore rules published', ok: !adminDataErrors.users, detail: adminDataErrors.users || 'No read-rule errors detected in this session' },
     { label: 'Storage rules reachable', ok: !backupListError, detail: backupListError || `${backupList.length} backup object(s) listed` },
     { label: 'API routes responding', ok: !healthSnapshot || (healthSnapshot.apiChecks || []).every(c => c.ok), detail: healthSnapshot ? `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length} health routes OK` : 'Run Health Dashboard to test routes' },
     { label: 'Push env vars working', ok: pushEnabledUsers.length > 0, detail: `${pushEnabledUsers.length} user(s) have push token(s); ${stalePushUsers.length} stale` },
@@ -3643,7 +3601,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
   const commandWidgets = [
     { title: 'System Status', value: platformStatus, detail: `${adminRiskQueue.length} action item(s)`, jump: 'overview', tone: platformStatus === 'Clean' ? 'emerald' : platformStatus === 'Monitoring' ? 'amber' : 'red' },
-    { title: 'Active Users', value: onlineUsers.length, detail: onlineUsers[0] ? `${onlineUsers[0].name || onlineUsers[0].email} heartbeat ${getExactTime(onlineUsers[0].lastHeartbeatAt || onlineUsers[0].presenceUpdatedAt || onlineUsers[0].lastActive)}` : 'No live users reporting', jump: 'live', tone: onlineUsers.length ? 'emerald' : 'amber' },
+    { title: 'Manual Presence', value: presenceSnapshot.fetchedAt ? onlineUsers.length : '—', detail: presenceSnapshot.fetchedAt ? `${onlineUsers.length} recent check-in(s) • fetched ${timeAgo(presenceSnapshot.fetchedAt)}` : 'Press Refresh Snapshot in Live', jump: 'live', tone: presenceSnapshot.fetchedAt ? (onlineUsers.length ? 'emerald' : 'amber') : 'blue' },
     { title: 'Backup Status', value: backupStatusLabel, detail: `${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'} • Next ${nextBackupCountdown}`, jump: 'health', tone: backupIsStale ? 'amber' : 'emerald' },
     { title: 'Push Health', value: `${pushEnabledUsers.length}/${allUsers.length}`, detail: `${stalePushUsers.length} stale • last result ${backupStatus?.lastPushResult || 'not logged'}`, jump: 'push', tone: stalePushUsers.length ? 'amber' : 'emerald' },
     { title: 'Recent Admin Actions', value: auditLogs.length ? auditLogs.slice(0, 10).length : 0, detail: auditLogs[0] ? `${auditLogs[0].action || 'Action'} by ${auditLogs[0].userName || 'unknown'}` : 'No audit actions loaded', jump: 'forensics', tone: 'blue' },
@@ -3935,7 +3893,23 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
-    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity shows who is currently heartbeating into the app, what workspace they are in, what tab they are using, and gives support a Possess option when troubleshooting.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', '14.0 Robustness Suite is the hardening bay for Safe Write Engine status, Storage Doctor, Schema Doctor, Backup Preview, Permission Simulator, Import Bridge, and Release Guardrails.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'Version 15.0.6 Menu Scan Fast Delete', group: 'System Administrator', keywords: 'v15 15.0.6 menu intelligence delete fast batch progress menu scans dependencies', body: ['15.0.6 makes Menu Intelligence scan deletion faster by deleting the scan summary and linked menuDependencies through Firestore batched commits instead of one write round trip at a time.', 'Recent Menu Scans shows a delete progress bar with record count, percent, and elapsed time while a scan is being removed.', 'Edit and delete controls lock while a delete is in progress to prevent duplicate delete attempts.', 'Editing a scan and removing stale ingredient links also uses the same batched delete helper.', 'This is an app-code workflow cleanup only. Firestore rules, Storage rules, Vercel config, API routes, and environment variables are unchanged from 15.0.5. No 15.0.6 public Help Center release note was added.'] },
+    { title: '15.0.6 deployment checklist', group: 'System Administrator', keywords: '15.0.6 deploy menu intelligence delete fast batch progress scan dependencies', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.6.', 'Delete a Recent Menu Scan with several linked ingredients and confirm the row shows delete progress.', 'Confirm the edit and delete buttons are disabled while deletion is running.', 'Confirm the scan summary and only its linked menuDependencies are removed.', 'No Firestore rules, Storage rules, new API route, or new environment variable is required for this build.'] },
+    { title: 'Version 15.0.4 Menu Intelligence Review Controls', group: 'System Administrator', keywords: 'v15 15.0.4 menu intelligence scan menu progress bar timer approve duplicate edit delete scans dependencies', body: ['15.0.4 replaces the Menu Intelligence Scan Menu spinner with a progress bar, percent display, status text, and elapsed timer. The upload stage uses Firebase resumable upload progress; the AI-reading stage shows status while the scanner waits for Gemini.', 'Approve Reviewed Menu Links now disables while saving and uses a progress bar with saved-link counts. A click guard prevents accidental repeated approval clicks from creating duplicate menuDependencies.', 'Recent Menu Scans now include edit and delete actions. Edit can rename the scan, update menu item details, change ingredient inventory matches, add links, and remove links.', 'Delete removes the menuIntelligenceScans summary and the approved menuDependencies tied to that scan. The original uploaded file remains in secure Storage.', 'This is a frontend workflow cleanup. Firestore rules, Storage rules, Vercel config, API routes, and environment variables are unchanged from 15.0.3.'] },
+    { title: '15.0.4 deployment checklist', group: 'System Administrator', keywords: '15.0.4 deploy menu intelligence progress approve edit delete scan', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.4.', 'Scan a menu and confirm the progress bar shows upload status, AI reading status, percent, and elapsed time.', 'Approve a menu scan and confirm the approve button disables while saving so duplicate menuDependencies are not created.', 'Edit an approved menu scan and confirm menuDependencies update correctly.', 'Delete an approved menu scan and confirm its scan summary and linked dependencies are removed while unrelated scans remain.'] },
+    { title: 'Version 15.0.3 Bulk Notification Cleanup', group: 'System Administrator', keywords: 'v15 15.0.3 invoice csv inventory import bulk notifications toast saved item count', body: ['15.0.3 keeps bulk inventory saves quiet while they run, then shows one summary toast at the end.', 'Approving a scanned invoice no longer creates one Saved notification per inventory row. It saves the invoice, vendor, new items, and stock updates silently, then reports the total saved count.', 'CSV inventory import uses the same quiet bulk-save behavior and shows one Upload Complete notification with the imported item count.', 'This is a frontend workflow cleanup only. Firestore rules, Storage rules, Vercel config, and environment variables are unchanged from 15.0.2. Deploy the app code so the updated Inventory workflow is live.'] },
+    { title: '15.0.3 deployment checklist', group: 'System Administrator', keywords: '15.0.3 deploy invoice inventory notifications csv import toast', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.3.', 'Approve a scanned invoice with multiple create/update rows and confirm only one Invoice Processed notification appears.', 'Import a CSV with multiple rows and confirm only one Upload Complete notification appears.', 'Confirm ordinary single-item Inventory saves still show their normal confirmation toast.'] },
+    { title: 'Version 15.0.2 Stability and Cost Control', group: 'System Administrator', keywords: 'v15 15.0.2 heartbeat livePresence presenceSessions users firestore reads reminder dispatcher concurrency invoice menu 20MB storage rules vercel cron', body: ['15.0.2 moves high-frequency live heartbeat writes out of users and restaurants. Online state now belongs in livePresence and presenceSessions, while users stays for slower profile/settings data.', 'The browser heartbeat cadence is 60 seconds instead of 25 seconds, with immediate updates still sent when the app gains focus, changes visibility, reconnects, or exits.', 'Firestore rules no longer allow normal users to write heartbeat/session fields onto their own users document. Push token and notification preference self-updates remain allowed.', 'The reminder cron now transaction-claims scheduled reminders before sending and processes them with controlled concurrency. Optional tuning variables are REMINDER_DISPATCH_QUERY_LIMIT and REMINDER_DISPATCH_CONCURRENCY.', 'Vercel maxDuration for api/dispatch-reminders.js is 300 seconds. If reminders still back up at scale, review Vercel logs before raising query or concurrency settings.', 'Invoice and Menu Intelligence scanner uploads are capped at 20MB in Storage rules, browser checks, and backend API checks. Scanner APIs inspect Storage metadata before downloading files into memory.', 'This build requires publishing Firestore rules, publishing Storage rules, and deploying Vercel/API routes. No new env vars are required.'] },
+    { title: '15.0.2 deployment checklist', group: 'System Administrator', keywords: '15.0.2 deploy firestore rules storage rules vercel dispatch reminders heartbeat invoice menu scan 20MB', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.2.', 'Publish firestore.rules and storage.rules to the matching Firebase project before testing heartbeat, reminders, invoice scans, or menu scans.', 'Confirm /api/presence-heartbeat writes livePresence and presenceSessions only. It should not report users or restaurants in the written list.', 'Confirm /api/dispatch-reminders returns limit, concurrency, scanned, claimed, sent, skipped, failed, and noToken counts.', 'Test an invoice under 20MB and one over 20MB. The smaller file should scan; the larger file should be blocked with a clear message.', 'Test a Menu Intelligence upload under 20MB and one over 20MB with the same expected behavior.'] },
+    { title: 'Version 15.0.1 Invoice Scanner Recovery', group: 'System Administrator', keywords: 'v15 15.0.1 invoice scanner gemini invalid json timeout compact retry repair scan invoice api', body: ['15.0.1 fixes the invoice scanner case where the progress bar reached 100% but Gemini returned malformed or cut-off JSON.', 'The scanner now tries stronger local JSON cleanup first, then compact retry mode when the first response is too large or incomplete, then an AI JSON repair pass before failing.', 'The default invoice scan timeout remains under the Vercel 300-second function cap. Raising the browser timeout alone will not fix invalid JSON; for very large PDFs, split pages or tune INVOICE_SCAN_TIMEOUT_MS only within the Vercel plan limit.', 'The route accepts GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY. Optional tuning variables are INVOICE_SCAN_MAX_OUTPUT_TOKENS, INVOICE_SCAN_COMPACT_MAX_OUTPUT_TOKENS, INVOICE_REPAIR_TIMEOUT_MS, and INVOICE_SCAN_GEMINI_MODEL.', 'No Firestore rules, Storage rules, Vercel config, or new route publish is required beyond deploying the updated app code.'] },
+    { title: '15.0.1 deployment checklist', group: 'System Administrator', keywords: '15.0.1 deploy invoice scanner gemini invalid json vercel api scan invoice', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.1.', 'Confirm /api/scan-invoice is live from System Administrator Health Dashboard after deploy.', 'Re-scan the same invoice that failed with Gemini returned invalid JSON and confirm Reconcile Invoice opens.', 'Confirm Vercel has GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY plus existing Firebase Admin credentials.', 'Firestore rules and Storage rules are unchanged from 15.0.0 for this fix; re-publish them only if that target Firebase project has not already received the 15.0.0 rules.'] },
+    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity is now a manual Super Admin presence snapshot. It does not run a live scanner; press Refresh Snapshot when you want a one-time view of recent app check-ins and possession shortcuts.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', '14.0 Robustness Suite is the hardening bay for Safe Write Engine status, Storage Doctor, Schema Doctor, Backup Preview, Permission Simulator, Import Bridge, and Release Guardrails.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'Version 15.0.0 Kitchen Intelligence Release', group: 'System Administrator', keywords: 'v15 15.0.0 smart prep menu intelligence personal reminders cron firebase rules storage schedule past shifts invoice scanner invalid json gemini model fallback slice dice chop voice tomorrow friday', body: ['Smart prep matching now updates confident existing prep rows from typed or voice commands instead of creating duplicate prep tasks.', '86 Voice now recognizes kitchen prep phrasing such as slice tomato, dice onions, chop lettuce, thaw shrimp, portion ranch, and quantity/unit commands like 3 pans tomatoes.', 'Prep commands are day-aware: phrases like prep tomatoes for Friday, slice three tomato tomorrow, or prep ranch on 7/10 save to that target prep day and open Prep there.', 'Menu Intelligence adds owner-controlled menu scanning, reviewed inventory dependency links, zero-stock menu impact panels, and menu-impact text on 86 alerts.', 'My Reminders adds private user reminders with typed or voice creation and a protected /api/dispatch-reminders cron route.', 'My Schedule and Full Schedule now dim past shifts and completed day sections based on real shift end time, so old shifts no longer look active.', 'Menu Intelligence no longer depends on the retired gemini-1.5-flash default; it tries newer Gemini Flash models and tolerates common JSON formatting problems.', 'Invoice scanning now tolerates common Gemini JSON formatting problems like code fences, leading text, and trailing commas before failing the scan. Publish the included Firestore and Storage rules before production testing.'] },
+    { title: '15.0.0 deployment checklist', group: 'System Administrator', keywords: '15.0.0 deploy firebase rules storage rules vercel env cron gemini reminders menu intelligence', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.0.', 'Publish the included firestore.rules in Firebase Firestore Rules and the included storage.rules in Firebase Storage Rules for the same Firebase project that the deployed app uses.', 'Confirm Vercel environment variables include the existing Firebase Admin credentials plus CRON_SECRET and GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.', 'Confirm /api/scan-menu and /api/dispatch-reminders are live from System Administrator Health Dashboard after deploy.', 'Vercel Cron only runs on production deployments. The reminder dispatcher is scheduled every five minutes, which requires a Vercel plan that supports that cadence and the total number of cron jobs in vercel.json.'] },
+    { title: 'Menu Intelligence operations', group: 'System Administrator', keywords: 'menu intelligence scan menu upload pdf image permissions owner menuDependencies menuIntelligenceScans storage rules', body: ['Menu Intelligence is visible to Super Admin, the account owner, and users granted Menu Intelligence access. Grant access from Settings → Branding → Settings Access.', 'The menu upload path is restaurant-scoped in Storage under {restaurantId}/menuUploads. If upload says unauthorized, publish storage.rules to the matching Firebase project.', 'The AI scanner returns review data only. Nothing becomes a live dependency until a permitted user reviews and approves the inventory matches.', 'Approved links save to menuDependencies and scan summaries save to menuIntelligenceScans. These records power zero-stock menu impact panels and 86 alert impact text. Recent scans can be edited or deleted by permitted Menu Intelligence users; deleting a scan removes its approved dependency links but leaves the original upload in secure Storage.', 'If scans fail, check GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY in Vercel and confirm /api/scan-menu can read Firebase Storage with the Admin service account.'] },
+    { title: 'Personal Reminders operations', group: 'System Administrator', keywords: 'personal reminders my reminders private cron dispatch reminders CRON_SECRET push tokens scheduled notifications concurrency transaction claim', body: ['My Reminders is private to the signed-in user. Firestore rules allow each user to read and write only their own personalReminders documents.', 'The /api/dispatch-reminders route is protected by CRON_SECRET. Vercel calls it on the production cron schedule; manual tests must send Authorization: Bearer CRON_SECRET.', 'The dispatcher transaction-claims each scheduled reminder before sending so overlapping cron/manual runs should not send the same reminder twice.', 'Reminder sends run with controlled concurrency instead of one slow sequential loop. Optional tuning variables are REMINDER_DISPATCH_QUERY_LIMIT and REMINDER_DISPATCH_CONCURRENCY.', 'Reminder pushes go only to the reminder owner using that user profile push token. If a reminder changes to no_push_token, the user needs to open the app and reconnect notifications on their own device.', 'The dispatcher writes dispatchKey and dispatchedAt so the same scheduled reminder is not sent twice. Delivery problems are recorded on the reminder document for troubleshooting.', 'If reminders do not fire, check Vercel production cron logs, CRON_SECRET, Firebase Admin credentials, whether the target user has a current fcmToken, and the dispatch response counts.'] },
+    { title: 'Smart prep matching operations', group: 'System Administrator', keywords: 'smart prep duplicate prep voice typed matching quantity changed after completion', body: ['Typed prep and 86 Voice prep commands now use the same parser and matcher. Confident matches update quantity/unit on the existing prep row instead of adding a duplicate.', 'Commands like prep 2 pans onions and lettuce can create or update multiple prep rows. Commands with more or extra increment the matched quantity.', 'If a completed prep item gets its quantity changed later, the row keeps completion history and shows a QTY CHANGED badge so the kitchen can review it.', 'If matching is not confident, the app creates a new prep row. This is safer than overwriting the wrong task.', 'Prep writes still go through Safe Write Engine and Firestore tenant rules. Permission errors usually mean the user lacks Prep/Team/Admin access or firestore.rules was not published.'] },
+    { title: '15.0.0 Firebase rules notes', group: 'System Administrator', keywords: 'firestore rules storage rules menu uploads reminders menu dependencies permissions firebase deploy production testing', body: ['Publish Firestore rules and Storage rules to every Firebase project that will run this build. If you maintain separate testing and main Firebase projects, each project needs the matching rules before testing that environment.', 'Firestore adds private personalReminders rules, owner-controlled menuIntelligenceScans rules, and tighter menuDependencies write access.', 'Storage adds the restaurant-scoped menuUploads path and multi-workspace-aware tenant matching.', 'Do not paste firebase.json into the Firebase console rules editor. Paste the contents of firestore.rules into Firestore Rules and the contents of storage.rules into Storage Rules.', 'If a rule publish is skipped, Menu Intelligence uploads/scans, private reminders, or approved dependency saves may fail with Missing or insufficient permissions.'] },
     { title: 'Version 14.0.10 Push and Workspace Wiring Audit', group: 'System Administrator', keywords: 'v14 14.0.10 push schedule alert workspace members repair stale token firebase host wiring', body: ['Push alerts and schedule publication alerts now resolve active staff through workspaceMembers as well as legacy user restaurant fields, so multi-restaurant employees receive alerts for the selected workspace.', 'Push Token Repair Center stale-token pruning now scans the same workspace-aware staff set before clearing and queueing reconnect repair.', 'Production Firebase Messaging host detection now covers app.86chaos.com, 86chaos.com, and www.86chaos.com so foreground tokens and the service worker use the same production project.'] },
     { title: 'Version 14.0.6 Client Save & Roster Cleanup', group: 'System Administrator', keywords: 'v14 14.0.6 client manage save configuration unsupported undefined staff roster read only banner', body: ['System Administrator workspace saves now clean unsupported undefined values before writing to Firestore, preventing the invalid data error when managing a client.', 'Staff Roster keeps the same manager/admin edit protections, but the regular-staff read-only banner was removed so the roster view is cleaner.'] },
     { title: 'Version 14.0.9 Push Token Repair Center', group: 'System Administrator', keywords: 'v14 14.0.9 push token repair stale missing notifications reconnect service worker admin', body: ['System Administrator → Push now includes the Push Token Repair Center with Request Reconnect, Force Refresh, Copy Link, Clear Flag, Send Test, and Prune + Repair Stale actions.', 'Missing tokens cannot be created from the server. The admin tool queues the repair and the employee device creates the Firebase Messaging token when they open the app or reconnect link.', 'Force Refresh clears stale tokens, refreshes the service worker on the employee device at next open, and records repair status/failure details for easier troubleshooting.'] },
@@ -3944,8 +3918,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Ops smart actions, Today quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Ops Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
     { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not an Elite-only plan feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
-    { title: 'Live Activity: why online users may not appear', group: 'Admin Tab Guide', keywords: 'live users online heartbeat presence last active last seen firestore rules gps notification active tab auth session', body: ['A live user appears when their browser saves a verified presence heartbeat. The app now waits for the Firebase login session before it marks the current device as online, so stale cached sessions cannot falsely show Online Now.', 'The Staff Roster My Live Presence Check tells you whether the heartbeat was saved by the server API, saved by the client fallback, waiting for auth, or blocked by permissions.', 'If it says Firebase login is not active, log out and back in on that device. If it says permission-denied, publish the included Firestore rules to the same Firebase project used by that deployment.', 'System Administrator → Live Activity reads the same livePresence and presenceSessions sources as Staff Roster. A user should appear within the three-minute live window after leaving the app open for about 30 seconds.', 'For preview testing, confirm Vercel Preview server variables and the browser Firebase config point at the same Firebase project. Mixed Preview/Production Firebase credentials make heartbeat tokens verify against the wrong project.'] },
-    { title: 'Dashboard / Command Deck: what the numbers mean', group: 'Admin Tab Guide', keywords: 'dashboard command deck metrics backup countdown action queue mrr crashes stale clients push adoption', body: ['Online Now counts users with a fresh heartbeat in the last few minutes.', 'Crashes shows recent crash reports and should be used with Support before editing code or rules.', 'Backup info shows the last backup and the countdown to the next automatic backup.', 'MRR, trial, stale client, push opt-in, and sticky-rate cards are operating signals, not accounting books. Use them to spot accounts that need attention.', 'The Administrator Action Queue is the shortest path to urgent problems. Click a card to jump to the relevant admin section.'] },
+    { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Regular staff and store managers do not see online status in Team. Only the Super Admin can press Refresh Snapshot in System Administrator.', 'Each user browser saves a low-frequency app-open presence check-in. The snapshot button reads livePresence once and shows check-ins from the recent window.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
+    { title: 'Dashboard / Command Deck: what the numbers mean', group: 'Admin Tab Guide', keywords: 'dashboard command deck metrics backup countdown action queue mrr crashes stale clients push adoption', body: ['Manual Presence counts recent app check-ins only after the Super Admin presses Refresh Snapshot; it does not run in the background.', 'Crashes shows recent crash reports and should be used with Support before editing code or rules.', 'Backup info shows the last backup and the countdown to the next automatic backup.', 'MRR, trial, stale client, push opt-in, and sticky-rate cards are operating signals, not accounting books. Use them to spot accounts that need attention.', 'The Administrator Action Queue is the shortest path to urgent problems. Click a card to jump to the relevant admin section.'] },
     { title: 'Workspaces: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Workspaces to manage restaurant/customer environments, not individual shifts or menu work.', 'The workspace drawer shows users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/status state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
     { title: 'People: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
     { title: 'Support: what each support tool means', group: 'Admin Tab Guide', keywords: 'support crashes permission denied raw inspector broadcast banner diagnostics user action telemetry', body: ['Crash reports show errors collected from the app and may include screen size, user agent, breadcrumbs, and stack details.', 'Permission-denied clues usually point to Firestore or Storage rule blocks. Check rules before assuming the UI is broken.', 'Raw Database Inspector lets a platform admin view a specific document by collection and document ID. Use it carefully and copy diagnostics before edits.', 'Broadcast Message sends a one-time message-style alert. Top-of-App Banner pins persistent text below the main header for selected workspaces or all workspaces.', 'Support should be used to diagnose and confirm before making risky changes in Operations or Forensics.'] },
@@ -4403,7 +4377,7 @@ Type RESTORE to continue.`);
       {id:'health', label:'Health Dashboard', short:'Health'},
       {id:'v14', label:'14.0 Robustness Suite', short:'V14'},
       {id:'deployment', label:'Deployment Readiness', short:'Deploy'},
-      {id:'live', label:'Live Activity Monitor', short:'Live'}
+      {id:'live', label:'Manual Presence Snapshot', short:'Presence'}
     ]},
     { title:'Customer Operations', summary:'Workspaces, people, roles, setup', tabs:[
       {id:'tenants', label:'Workspaces', short:'Clients'},
@@ -4629,7 +4603,7 @@ Type RESTORE to continue.`);
               <div className="relative space-y-2">
                 <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} action item(s)`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} onClick={() => jumpToAdminIssue('overview')} />
                 <CockpitMetric label="Health" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Check'} detail={`Integrity: ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}`} tone={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : healthSnapshot?.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} onClick={() => jumpToAdminIssue('health')} />
-                <CockpitMetric label="Online Now" value={onlineUsers.length} detail={`${onlineRestaurants.length} workspaces`} tone="emerald" onClick={() => jumpToAdminIssue('live')} />
+                <CockpitMetric label="Manual Presence" value={presenceSnapshot.fetchedAt ? onlineUsers.length : '—'} detail={presenceSnapshot.fetchedAt ? `${onlineRestaurants.length} workspaces` : 'Press refresh'} tone={presenceSnapshot.fetchedAt ? 'emerald' : 'blue'} onClick={() => jumpToAdminIssue('live')} />
                 <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" onClick={() => jumpToAdminIssue('tenants')} />
                 <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
                 <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('users')} />
@@ -4833,7 +4807,7 @@ Type RESTORE to continue.`);
                         </div>
                         <div className="text-[10px] text-slate-400 font-bold truncate mt-0.5">{u.email || 'No email'} • <span className="text-[#D4A381]">{u.role || 'No role'}</span></div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2">
-                          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Ping</div><div className="text-[10px] text-slate-300 font-bold truncate">{isOnlineNow(u) ? 'Online now' : timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</div></div>
+                          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Presence</div><div className="text-[10px] text-slate-300 font-bold truncate">Manual snapshot only</div></div>
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Push</div><div className={`text-[10px] font-bold truncate ${u.fcmToken ? 'text-emerald-300' : 'text-slate-400'}`}>{u.fcmToken ? 'On' : 'Off'}</div></div>
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">GPS</div><div className="text-[10px] text-slate-300 font-bold truncate">{u.gpsPermission || u.deviceDiagnostics?.gpsPermission || 'Unknown'}</div></div>
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Tab</div><div className="text-[10px] text-slate-300 font-bold truncate">{u.activeTab || 'Unknown'}</div></div>
@@ -5369,16 +5343,19 @@ Type RESTORE to continue.`);
       {subTab === 'live' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {adminDataErrors.users && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Live user data is blocked by Firestore rules or auth claims: {adminDataErrors.users}. Deploy the included firestore.rules file, then log out and back in so super-admin claims refresh.</div>}
-          {adminDataErrors.livePresence && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Live presence is blocked by Firestore rules: {adminDataErrors.livePresence}. Publish the included firestore.rules file to the same Firebase project used by this preview deployment.</div>}
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400"><span className="text-emerald-400">Live Activity Debug</span><span>Users: {allUsers.length}</span><span>Online: {onlineUsers.length}</span><span>Window: 3 min</span><span>Source: livePresence + presenceSessions + user heartbeat</span></div>
+          {presenceSnapshotError && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Manual presence snapshot failed: {presenceSnapshotError}</div>}
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Manual Presence Snapshot</span><span>Users: {allUsers.length}</span><span>Recent: {onlineUsers.length}</span><span>Window: {presenceSnapshot.windowMinutes || 15} min</span><span>Reads only when refreshed</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
+            <button type="button" onClick={() => loadPresenceSnapshot()} disabled={isPresenceSnapshotLoading} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/50 text-emerald-300 rounded-lg font-black uppercase tracking-widest hover:bg-emerald-900/40 disabled:opacity-50 flex items-center justify-center gap-2">{isPresenceSnapshotLoading ? <Loader2 size={14} className="animate-spin"/> : <Users size={14}/>} Refresh Snapshot</button>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border} flex items-center justify-between gap-3`}>
-                <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Live Activity Now</h3>
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} active</span>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Manual Presence Snapshot</h3>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} recent</span>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
-                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users are reporting live presence yet. Open the app on another device, wait about 25 seconds, then refresh this panel. If it stays empty, publish the included Firestore rules so user heartbeat and presence session writes are allowed.</div>}
+                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No manual snapshot has recent app check-ins yet. Press Refresh Snapshot. This does a one-time Super Admin read instead of opening a live listener.</div>}
                 {onlineUsers.map(u => {
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
                   return (
@@ -5401,10 +5378,10 @@ Type RESTORE to continue.`);
             <div className="cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border}`}>
                 <h3 className="font-black text-sm text-white">Active Workspaces</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by live heartbeat</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by manual snapshot</p>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
-                {onlineByRestaurant.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No active workspaces.</div>}
+                {onlineByRestaurant.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No workspaces in the latest snapshot.</div>}
                 {onlineByRestaurant.map(group => (
                   <div key={group.id} className="p-3 hover:bg-[#12161A]/55 transition-colors">
                     <div className="flex items-center justify-between gap-2">
@@ -5422,7 +5399,7 @@ Type RESTORE to continue.`);
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="cockpit-panel rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-black text-white text-sm">Recent Activity Buffer</h3>
+                <h3 className="font-black text-white text-sm">Recent Check-In Buffer</h3>
                 <SignalPip tone="amber" label={`${recentlyActiveUsers.length} warm`} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -5446,7 +5423,7 @@ Type RESTORE to continue.`);
                   ['Backup Engine', 'blue', 'JSON export ready'],
                   ['Billing Locks', staleTenants.length ? 'amber' : 'emerald', `${staleTenants.length} stale`],
                   ['API Routes', 'blue', `${apiConnectedCount} integrations`],
-                  ['Online Radar', onlineUsers.length ? 'emerald' : 'amber', `${onlineUsers.length} live`]
+                  ['Manual Presence', onlineUsers.length ? 'emerald' : 'amber', presenceSnapshot.fetchedAt ? `${onlineUsers.length} recent` : 'not refreshed']
                 ].map(([name, tone, detail]) => (
                   <div key={name} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2.5 min-h-[70px]">
                     <SignalPip tone={tone} label={name} hot={tone === 'amber'} />
@@ -5631,7 +5608,7 @@ Type RESTORE to continue.`);
                       )}
                     </div>
 
-                    <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{onlineUsers.filter(u => u.restaurantId === r.id).length} Online</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{presenceSnapshot.fetchedAt ? `${onlineUsers.filter(u => u.restaurantId === r.id).length} snapshot` : 'snapshot not run'}</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
 <button onClick={() => setSelectedClient(r)} className="px-3 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40 transition-colors shadow-sm flex items-center gap-1"><Users size={14} /> Users</button>
@@ -5684,7 +5661,7 @@ another@email.com"></textarea>
                   <div>
                     <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
-                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">{restName}<span>|</span>{isOnlineNow(u) ? <span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span>Online Now</span> : <span className={timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</span>}</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">{restName}<span>|</span><span>Presence is manual snapshot only</span></div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={() => openSupportUserEditor(u)} className="px-3 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40 transition-colors shadow-sm flex items-center gap-1"><Edit size={14} /> Support Edit</button>
@@ -6581,6 +6558,10 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-1504', title:'What changed in version 15.0.4', group:'Release Notes', keywords:'new update 15.0.4 menu intelligence scan menu progress timer approve edit delete scans', body:['Menu Intelligence scan uploads now show a progress bar, percent, status text, and elapsed time instead of a plain spinner.', 'Approving reviewed menu links now shows save progress and prevents accidental double-click duplicate approvals.', 'Approved menu scans can now be edited or deleted from Recent Menu Scans.', 'Editing a scan lets approved users adjust menu items and ingredient inventory matches. Deleting a scan removes its approved menu-impact links.'] },
+  { id:'new-1503', title:'What changed in version 15.0.3', group:'Release Notes', keywords:'new update 15.0.3 invoice inventory notification toast saved items csv import', body:['Bulk invoice and CSV inventory saves now show one clean summary instead of a stack of separate Saved notifications.', 'Approving a scanned invoice reports the total saved items, including updated and newly added inventory items.', 'CSV import reports one imported-item total after the file finishes.', 'No new Firebase rules or Storage rules are required for this notification cleanup.'] },
+  { id:'new-1501', title:'What changed in version 15.0.1', group:'Release Notes', keywords:'new update 15.0.1 invoice scanner gemini invalid json timeout compact retry repair pdf photo', body:['Invoice scanning is more reliable when the AI finishes reading but returns messy JSON.', 'The scanner now cleans more common JSON problems, retries in a compact mode when the response looks too large, and attempts a safe repair before failing.', 'This targets the Scan Error message that said Gemini returned invalid JSON at 100%.', 'No new Firebase rules or Storage rules are required for this scanner-only fix.'] },
+  { id:'new-1500', title:'What changed in version 15.0.0', group:'Release Notes', keywords:'new update 15.0.0 smart prep menu intelligence reminders voice cron firebase rules schedule past shifts invoice scanner invalid json gemini model fallback slice dice chop tomorrow friday', body:['Prep is smarter: typed and voice prep commands can update a matching prep item instead of creating duplicates, including multi-item commands.', '86 Voice now understands kitchen prep wording like slice tomato, dice onions, chop lettuce, and 3 pans tomatoes.', 'Prep commands can include a day, like prep tomatoes for Friday or slice tomato tomorrow, and the item saves to that prep date.', 'Menu Intelligence lets approved users upload a menu, review AI ingredient matches, and save menu-to-inventory links so zero-stock items show menu impact.', 'Menu scanning now uses newer Gemini Flash model fallbacks instead of depending on the retired gemini-1.5-flash default.', 'My Reminders is a private reminder tab with typed or mic creation and scheduled push delivery through the protected reminder cron route.', 'My Schedule and Full Schedule now gray out shifts that have already ended, and Full Schedule dims completed day sections.', 'Invoice scans are more forgiving when Gemini returns JSON inside code fences or with small formatting mistakes.'] },
   { id:'new-14010', title:'What changed in version 14.0.10', group:'Release Notes', keywords:'new update 14.0.10 push notifications schedule alerts workspace reliability', body:['Push notifications are more reliable for employees who work in more than one restaurant.', 'Schedule publish alerts now reach active staff for the selected workspace more consistently.', 'Production notification setup now stays aligned across the app and background notification service.'] },
   { id:'new-1406', title:'What changed in version 14.0.6', group:'Release Notes', keywords:'new update 14.0.6 client management save staff roster read only banner', body:['Workspace management saves are more reliable and no longer fail when an old workspace setting contains an empty unsupported value.', 'Staff Roster keeps manager/admin-only editing, but the read-only notice banner was removed for regular staff.'] },
   { id:'new-1409', title:'What changed in version 14.0.9', group:'Release Notes', keywords:'new update 14.0.9 push notifications repair reconnect stale missing token', body:['Push notification diagnostics now include repair actions for missing or stale device tokens.', 'Managers with access can request a reconnect or send an employee a reconnect link. The employee still has to open the app on their own device so browser notifications can safely reconnect.'] },
@@ -6617,6 +6598,7 @@ const HELP_ARTICLES = [
   { id:'new-13137', title:'What changed in version 13.1.37', group:'Release Notes', keywords:'new update 13.1.37 admin settings command center roles push live presence deployment readiness maintenance branding danger import export', body:['System Administrator now includes the full Admin/Settings command-center upgrade: overview widgets, role/permission matrix, push control center, live activity monitor, setup wizard, deployment readiness checker, audit filters, settings history, import/export center, maintenance controls, branding/display settings, and a separate Danger Zone.', 'Push notifications now have a dedicated cockpit with connected device counts, token freshness, per-user test pushes, stale-token repair flags, and a downloadable diagnostic report.', 'Deployment Readiness gives a clear READY TO DEPLOY or DO NOT DEPLOY YET result with exact checks for Firebase, rules, API health, push, backup integrity, domains, version, and packaging.', 'Mobile Administrator navigation keeps the compact section picker while exposing the new professional admin categories.'] },
   { id:'new-13136', title:'What changed in version 13.1.36', group:'Release Notes', keywords:'new update 13.1.36 administrator admin mobile command center layout settings', body:['System Administrator now has a cleaner command-center layout with grouped sections for Overview, Customer Operations, Support & Safety, and Reference.', 'On phones, the admin tab opens with a compact section picker instead of forcing you through a long Command Deck scroll.', 'The Command Deck now defaults closed on mobile and can be opened with Signals when needed.', 'Desktop still keeps the full professional grouped navigation and left-side signal board.'] },
   { id:'new-13135', title:'What changed in version 13.1.35', group:'Release Notes', keywords:'new update 13.1.35 voice recipes recipe book specific recipe open search microphone', body:['86 Voice can now open a specific recipe from the Recipe Book by name.', 'Commands like “open beer cheese recipe”, “show me chicken marsala recipe”, or “what is the recipe for ranch” search the live Recipe Book instead of relying on hardcoded recipe names.', 'If a recipe is added later, the same voice command pattern will work for it automatically.', 'If the app cannot find an exact match, it opens Recipe Book with the useful search phrase filled in.'] },
+  { id:'new-1502', title:'What changed in version 15.0.2', group:'Release Notes', keywords:'new update 15.0.2 heartbeat live users reminders invoice menu scan 20MB stability', body:['Live user status now uses the dedicated presence system instead of updating the main user profile on every heartbeat.', 'The app sends fewer routine heartbeat writes while still keeping Team and Live Activity status current.', 'Personal reminder delivery is more reliable under heavier use because reminders are claimed before sending and dispatched in safe batches.', 'Invoice and menu scans now have a 20MB upload limit with clearer too-large messages. Compress, split, or rescan fewer pages when a file is too large.'] },
   { id:'new-1319', title:'What changed in version 13.1.9', group:'Release Notes', keywords:'new update 13.1.9 invoice scanner large documents Gemini Files API timeout bigger PDF progress', body:['Invoice scanning now uses a large-document AI handoff so uploaded PDFs/photos are sent to Gemini as files instead of giant inline payloads.', 'The scanner timeout was extended for larger multipage invoices, and the progress bar now explains the large-document AI stage instead of looking stuck.', 'The upload stage still shows exact Firebase upload progress. The AI reading stage shows status and elapsed time because Gemini does not provide line-by-line progress while it reads the document.', 'The scanner app limit was raised to 100MB, with clearer errors if the AI service itself rejects a file.'] },
   { id:'new-1318', title:'What changed in version 13.1.8', group:'Release Notes', keywords:'new update 13.1.8 invoice scanner progress bar upload timeout stuck spinning AI scan', body:['Invoice scanning now shows a progress bar instead of an endless loading spinner.','The upload stage uses real Firebase upload progress so managers can see whether the file is actually moving.','The AI extraction stage now shows a clear scanner status and has a timeout so it cannot spin forever without reporting what happened.','Large invoices still upload through Firebase Storage first, then the scanner reads the stored file and opens the Reconcile Invoice review screen.'] },
   { id:'new-1316', title:'What changed in version 13.1.6', group:'Release Notes', keywords:'new update 13.1.6 voice navigation show me help center search permissions full schedule month view staff list', body:['86 Voice can now pull up common screens from plain commands like “show me the full schedule”, “show me the month view”, “show me staff list”, “open inventory”, or “show schedule builder”.','Schedule voice commands route to the correct Time Clock & Schedule subview. Full schedule/month view open the employee schedule area, while Schedule Builder only opens for users with schedule-builder permission.','Help Center search is now available through the microphone. Say “search help center for missed punch” or “help me with geofence” and Help Center opens with that search filled in.','Voice navigation checks the same module/permission rules before opening anything, so users cannot use the microphone to bypass hidden tabs.'] },
@@ -6635,8 +6617,8 @@ const HELP_ARTICLES = [
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
-  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Online Now opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
-  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, and Integrations access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
+  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Manual Presence opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
+  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations menu intelligence workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, Integrations, and Menu Intelligence access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
   { id:'owner-wage-staff-permissions', title:'Owner staff and wage permissions', group:'Permissions', keywords:'owner wages payroll hourly rate add employee staff roster wage view edit permission denied', body:['Account owners and Super Admin can add staff from Staff Roster and edit hourly wages, including their own wage.', 'Only account owners and Super Admin should choose who can see or edit wages. Use Staff Roster permission switches or Settings → Workspace → Global Config → Wage Visibility & Edit Access.', 'View Wages lets a trusted person see wage labels and labor cost calculations. Edit Wages lets them change wage values from Staff Roster and automatically implies view access.', 'Managers/admins without wage permission can still manage staff basics if allowed, but wage fields stay hidden and Firestore rules reject wage-access changes.', 'If a save shows Missing or insufficient permissions, confirm the user is the restaurant owner or has the right wage-edit permission and publish the matching Firestore rules to the same Firebase project.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
@@ -6672,7 +6654,7 @@ const HELP_ARTICLES = [
   { id:'schedule-publish-backup', title:'Schedule publish creates a backup file', group:'Scheduling', keywords:'schedule publish backup download json restore shifts deleted duplicate', body:['When a manager clicks Publish, the app downloads a JSON backup of the current month shifts and all unpublished shifts before anything is changed.','Keep this file if you are making major schedule edits or publishing a rebuilt month. It can help support restore shifts if something is accidentally deleted.','The backup filename starts with the restaurant name and includes the schedule month and timestamp.'] },
 
   { id:'new-1309', title:'What changed in version 13.0.9', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'invoice-payload-storage-scan', title:'Invoice scanner: upload, progress, and timeout help', group:'Inventory', keywords:'invoice pdf scan payload too large 413 Vercel upload firebase storage large file crash scanner progress bar stuck spinning timeout', body:['The invoice scanner uploads the original PDF or image directly to Firebase Storage first, then sends the stored file to the large-document AI scanner. This avoids browser/Vercel payload limits and handles bigger multipage invoices more reliably.','The progress bar shows exact upload progress during the Firebase upload stage. After upload completes, the AI extraction stage shows scanner status while the invoice is being read.','If the scanner takes too long, it now stops with a clear timeout message instead of spinning forever. The timeout is longer for large invoices, so try the same file again once before splitting pages.','After a successful scan, review the Reconcile Invoice window and click Approve & Update Stock to save the invoice into history and apply stock changes.'] },
+  { id:'invoice-payload-storage-scan', title:'Invoice scanner: upload, progress, and timeout help', group:'Inventory', keywords:'invoice pdf scan payload too large 413 Vercel upload firebase storage large file crash scanner progress bar stuck spinning timeout 20MB', body:['The invoice scanner uploads the original PDF or image directly to Firebase Storage first, then sends the stored file to the large-document AI scanner. This avoids browser/Vercel payload limits and keeps the original file quality for extraction.','Invoice scans are capped at 20MB to protect the scanner from huge phone photos or oversized PDFs. Compress, split, or rescan fewer pages if a file is too large.','The progress bar shows exact upload progress during the Firebase upload stage. After upload completes, the AI extraction stage shows scanner status while the invoice is being read.','If the scanner takes too long, it stops with a clear timeout message instead of spinning forever. Try the same file again once before splitting pages.','After a successful scan, review the Reconcile Invoice window and click Approve & Update Stock to save the invoice into history and apply stock changes.'] },
   { id:'new-1303', title:'What changed in version 13.0.3', group:'Release Notes', keywords:'new update 13.0.3 invoice scanner pdf payload storage scan', body:['Invoice scanning now uses Firebase Storage handoff for PDFs and images instead of sending the whole file through Vercel.','This fixes payload-too-large scanner crashes on normal invoice PDFs and keeps the full original file quality for extraction.'] },
   { id:'new-1302', title:'What changed in version 13.0.2', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-1301', title:'What changed in version 13.0.1', group:'Release Notes', keywords:'new update 13.0.1 labor export roles custom settings timesheets payroll', body:['Financials → Timesheets export now filters by the exact roles each restaurant creates in Settings instead of fixed departments.','Exports still support Whole Restaurant, Time Punch Detail, Total Hours Summary, CSV, and Print / Save PDF.','The employee dropdown follows the selected role, and export filenames use the restaurant name and selected role.'] },
@@ -6727,7 +6709,7 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
   const articles = HELP_ARTICLES.filter(a => group === 'All' || a.group === group).filter(a => !q || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q));
   const selected = HELP_ARTICLES.find(a => a.id === selectedId) || articles[0] || HELP_ARTICLES[0];
   const related = HELP_ARTICLES.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3);
-  const latestRelease = HELP_ARTICLES.find(a => a.id === `new-${String(CURRENT_VERSION).replace(/\D/g, '')}`) || HELP_ARTICLES.find(a => a.group === 'Release Notes');
+  const latestRelease = HELP_ARTICLES.find(a => a.id === `new-${String(CURRENT_VERSION).replace(/\D/g, '')}`);
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid flex flex-col lg:flex-row lg:items-end justify-between gap-3`}><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Built-in owner manual</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'employee' } }))} className={T.btnAlt}>Restart Employee Tour</button>{(appUser?.isAdmin || appUser?.permissions?.team) && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'manager' } }))} className={T.btn}>Restart Manager Tour</button>}</div></div>

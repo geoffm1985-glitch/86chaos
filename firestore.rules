@@ -99,6 +99,10 @@ service cloud.firestore {
       return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'settings') || hasPermFor(restId, 'branding') || hasPermFor(restId, 'integrations')));
     }
 
+    function canUseMenuIntelligence(restId) {
+      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && hasPermFor(restId, 'menuIntelligence'));
+    }
+
     function restaurantSettingsWriteIsSafe(restId) {
       return canManageWorkspaceSettings(restId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['systemSettings', 'settingsHistory', 'integrations', 'updatedAt']);
     }
@@ -115,9 +119,8 @@ service cloud.firestore {
 
     function userSafeSelfUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'name', 'phone', 'photoURL', 'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt',
-        'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost', 'heartbeatEpochMs',
-        'notificationPermission', 'gpsPermission', 'deviceDiagnostics',
+        'name', 'phone', 'photoURL',
+        'notificationPermission',
         'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
         'pushNeedsRepair', 'pushForceServiceWorkerRefresh', 'pushRepairStatus', 'pushRepairCompletedAt',
         'pushRepairCompletedHost', 'lastPushRepairError', 'lastPushFailureCode',
@@ -179,7 +182,8 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
         request.resource.data.permissions.settings != resource.data.permissions.settings ||
         request.resource.data.permissions.branding != resource.data.permissions.branding ||
-        request.resource.data.permissions.integrations != resource.data.permissions.integrations
+        request.resource.data.permissions.integrations != resource.data.permissions.integrations ||
+        request.resource.data.permissions.menuIntelligence != resource.data.permissions.menuIntelligence
       );
     }
 
@@ -214,8 +218,8 @@ service cloud.firestore {
     }
 
     function kitchenWriteAllowed(collectionName, restId) {
-      return collectionName in ['prepItems', 'prepCategories', 'lineCheckItems', 'recipes', 'menuDependencies'] &&
-        (isAdminFor(restId) || hasPermFor(restId, 'prep') || hasPermFor(restId, 'team') || (collectionName == 'menuDependencies' && hasPermFor(restId, 'inventory')));
+      return collectionName in ['prepItems', 'prepCategories', 'lineCheckItems', 'recipes'] &&
+        (isAdminFor(restId) || hasPermFor(restId, 'prep') || hasPermFor(restId, 'team'));
     }
 
     function inventoryWriteAllowed(collectionName, restId) {
@@ -287,14 +291,14 @@ service cloud.firestore {
     // PRESENCE
     // ============================================================
     match /presenceSessions/{sessionId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+      allow read: if signedIn() && isSuperAdmin();
       allow create: if signedIn() && presenceCreateIsSafe();
       allow update: if signedIn() && presenceUpdateIsSafe();
       allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
     }
 
     match /livePresence/{docId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+      allow read: if signedIn() && isSuperAdmin();
       allow create, update: if signedIn() && livePresenceWriteIsSafe();
       allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
     }
@@ -332,6 +336,37 @@ service cloud.firestore {
       allow create: if signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && canManageTasks(request.resource.data.restaurantId)));
       allow update: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageTasks(resource.data.restaurantId) || taskCompletionUpdateIsSafe())));
       allow delete: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && canManageTasks(resource.data.restaurantId)));
+    }
+
+    // ============================================================
+    // PRIVATE PERSONAL REMINDERS
+    // ============================================================
+    match /personalReminders/{docId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid && isTenantMatch(resource.data.restaurantId);
+    }
+
+    // ============================================================
+    // MENU INTELLIGENCE
+    // ============================================================
+    match /menuIntelligenceScans/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canUseMenuIntelligence(request.resource.data.restaurantId);
+      allow update, delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
+    }
+
+    match /menuDependencies/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && (
+        canUseMenuIntelligence(resource.data.restaurantId) ||
+        isAdminFor(resource.data.restaurantId) ||
+        hasPermFor(resource.data.restaurantId, 'inventory') ||
+        hasPermFor(resource.data.restaurantId, 'ops') ||
+        hasPermFor(resource.data.restaurantId, 'team')
+      );
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canUseMenuIntelligence(request.resource.data.restaurantId);
+      allow update, delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
     }
 
     // ============================================================

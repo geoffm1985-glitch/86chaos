@@ -119,16 +119,13 @@ module.exports = async function handler(req, res) {
       source: 'api-heartbeat'
     };
 
-    const batch = db.batch();
-    batch.set(db.collection('livePresence').doc(memberDocId(uid, restaurantId)), livePresence);
-    batch.set(db.collection('presenceSessions').doc(sessionId), { ...livePresence, sessionId });
-    batch.set(userRef, basePresence, { merge: true });
-    batch.set(db.collection('restaurants').doc(restaurantId), {
-      lastActive: stamp,
-      lastActiveUserId: uid,
-      lastActiveUserName: livePresence.userName || livePresence.userEmail || uid
-    }, { merge: true });
-    await batch.commit();
+    // Cost-control rule: this endpoint is now used as a low-frequency app-open
+    // presence check-in only. It writes one stable livePresence document per user/workspace
+    // and does not write session history, users, or restaurants.
+    await db.collection('livePresence').doc(memberDocId(uid, restaurantId)).set({
+      ...livePresence,
+      source: 'api-presence-check-in'
+    });
 
     return res.status(200).json({
       ok: true,
@@ -136,8 +133,9 @@ module.exports = async function handler(req, res) {
       restaurantId,
       state,
       sessionId,
+      mode: 'presence-check-in',
       projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount()?.project_id || loadServiceAccount()?.projectId || '',
-      written: ['livePresence', 'presenceSessions', 'users', 'restaurants']
+      written: ['livePresence']
     });
   } catch (err) {
     console.error('Presence heartbeat failed:', err);

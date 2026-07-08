@@ -236,7 +236,6 @@ return (
                     <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {canManageTeam && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
-                    <span title={activity.exact} className={`text-[8px] font-black uppercase tracking-widest ml-1 ${activity.tone}`}>Last active: {activity.label}</span>
                   </div>
                 </div>
               </div>

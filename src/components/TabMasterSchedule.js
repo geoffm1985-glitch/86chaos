@@ -27,6 +27,66 @@ const normalizeTipAmount = (value) => {
   return Math.round(n * 100) / 100;
 };
 
+const formatLocalDateKey = (date = new Date()) => {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const parseScheduleTimeParts = (value, fallback = { hours: 0, minutes: 0 }) => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return fallback;
+  if (raw === 'CLOSE' || raw === 'CL') return { hours: 23, minutes: 59, seconds: 59 };
+  if (raw === 'OPEN') return { hours: 0, minutes: 0, seconds: 0 };
+
+  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(A|P|AM|PM)?$/);
+  if (!match) return fallback;
+  let hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2] || '0', 10);
+  const meridian = match[3] || '';
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return fallback;
+  if (meridian.startsWith('P') && hours < 12) hours += 12;
+  if (meridian.startsWith('A') && hours === 12) hours = 0;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return fallback;
+  return { hours, minutes, seconds: 0 };
+};
+
+const buildScheduleDateTime = (dateKey, timeValue, fallback) => {
+  if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) return null;
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  const parts = parseScheduleTimeParts(timeValue, fallback);
+  return new Date(year, month - 1, day, parts.hours, parts.minutes, parts.seconds || 0, 0);
+};
+
+const getShiftStartDateTime = (shift) => buildScheduleDateTime(shift?.date, shift?.startTime, { hours: 0, minutes: 0, seconds: 0 });
+
+const getShiftEndDateTime = (shift) => {
+  const startAt = getShiftStartDateTime(shift);
+  const endAt = buildScheduleDateTime(shift?.date, shift?.endTime, { hours: 23, minutes: 59, seconds: 59 });
+  if (!endAt) return null;
+  if (startAt && endAt.getTime() <= startAt.getTime()) endAt.setDate(endAt.getDate() + 1);
+  return endAt;
+};
+
+const isShiftStillCurrentOrUpcoming = (shift, now = new Date()) => {
+  if (!shift?.date) return false;
+  const endAt = getShiftEndDateTime(shift);
+  if (!endAt) return String(shift.date) >= formatLocalDateKey(now);
+  return endAt.getTime() > now.getTime();
+};
+
+const isShiftInPast = (shift, now = new Date()) => shift?.date ? !isShiftStillCurrentOrUpcoming(shift, now) : false;
+
+const isScheduleDateComplete = (dateKey, shiftsForDate = [], now = new Date()) => {
+  if (!dateKey) return false;
+  const dateValue = String(dateKey);
+  const today = formatLocalDateKey(now);
+  if (dateValue < today) return true;
+  if (dateValue > today) return false;
+  const dayShifts = (shiftsForDate || []).filter(s => s?.date === dateValue);
+  return dayShifts.length > 0 && dayShifts.every(s => isShiftInPast(s, now));
+};
+
 const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, db, Modal, T, getToday, getMonthStr, formatDisplayDate, formatShortTime, getDaysInMonth, formatDisplayMonth, getHoliday, clientData = null }) => {
   const [subTab, setSubTab] = useState('my-schedule');
   const monthStr = getMonthStr(currentDate);
@@ -37,9 +97,19 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
   const [clockActionType, setClockActionType] = useState(null);
   const [clockActionPunch, setClockActionPunch] = useState(null);
   const recentlyClockedOutRef = useRef({});
+  const [scheduleNow, setScheduleNow] = useState(() => new Date());
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
+
+  useEffect(() => {
+    const refreshScheduleNow = () => setScheduleNow(new Date());
+    refreshScheduleNow();
+    const tick = setInterval(refreshScheduleNow, 30000);
+    const onVisibility = () => { if (!document.hidden) refreshScheduleNow(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { clearInterval(tick); document.removeEventListener('visibilitychange', onVisibility); };
+  }, []);
 
   useEffect(() => {
     if (!appUser?.id || !appUser?.restaurantId) {
@@ -169,7 +239,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     .sort((a,b) => a.date.localeCompare(b.date));
 
   const myNextShift = shifts
-    .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
+    .filter(s => s.employeeId === appUser.id && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
     .sort((a,b) => a.date.localeCompare(b.date))[0];
 
   const activeMonthShifts = shifts
@@ -294,20 +364,22 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
                 <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No shifts scheduled for you this month.</div>
               ) : (
                 myMonthShifts.map(s => {
-                  const isFuture = s.date >= getToday();
+                  const isPastShift = isShiftInPast(s, scheduleNow);
                   const isOffered = shiftSwaps.some(swap => swap.shiftId === s.id && swap.status === 'available');
 
                   return (
-                    <div key={s.id} className={`${T.row} flex justify-between items-center`}>
+                    <div key={s.id} className={`${T.row} flex justify-between items-center transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : ''}`}>
                       <div>
-                        <div className="font-bold text-white text-sm">{formatDisplayDate(s.date)}</div>
-                        <div className={`text-[9px] font-black uppercase tracking-widest ${T.copper} mt-0.5`}>{s.role}</div>
+                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{formatDisplayDate(s.date)}</div>
+                        <div className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${isPastShift ? 'text-slate-600' : T.copper}`}>{s.role}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>
+                        <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>
                           {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
                         </div>
-                        {isFuture && (
+                        {isPastShift ? (
+                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-600 border border-[#1F2933] px-2 py-1 rounded">Ended</span>
+                        ) : (
                           isOffered ? (
                             <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">Listed</span>
                           ) : (
@@ -378,25 +450,29 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
             {activeMonthShifts.map((shift, index) => {
                const emp = users.find(u => u.id === shift.employeeId);
                const showDivider = index === 0 || shift.date !== activeMonthShifts[index - 1].date;
+               const dayShifts = activeMonthShifts.filter(s => s.date === shift.date);
+               const isPastShift = isShiftInPast(shift, scheduleNow);
+               const isPastDay = showDivider && isScheduleDateComplete(shift.date, dayShifts, scheduleNow);
                
                return (
                  <React.Fragment key={shift.id}>
                    {showDivider && (
-                     <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
+                     <div className={`${isPastDay ? 'bg-[#0B0E11] text-slate-600 opacity-80' : 'bg-[#1A2126] text-[#D4A381]'} px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2 transition-colors`}>
                        <span>{formatDisplayDate(shift.date)}</span>
                        {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
+                       {isPastDay && <span className="text-[8px] text-slate-600 border border-[#1F2933] px-1.5 py-0.5 rounded">PAST</span>}
                      </div>
                    )}
-                   <div className={`${T.row} hover:bg-[#12161A]`}>
+                   <div className={`${T.row} transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : 'hover:bg-[#12161A]'}`}>
                      <div className="flex items-center justify-between">
                        <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 rounded-full border border-[#2A353D] bg-[#12161A] flex items-center justify-center text-xs font-black text-white uppercase">{emp?.name ? emp.name.charAt(0) : '?'}</div>
+                         <div className={`w-8 h-8 rounded-full border bg-[#12161A] flex items-center justify-center text-xs font-black uppercase ${isPastShift ? 'border-[#1F2933] text-slate-500 opacity-60' : 'border-[#2A353D] text-white'}`}>{emp?.name ? emp.name.charAt(0) : '?'}</div>
                          <div>
-                           <div className="text-sm font-bold text-white">{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div>
-                           <div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div>
+                           <div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div>
+                           <div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div>
                          </div>
                        </div>
-                       <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                       <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
                      </div>
                    </div>
                  </React.Fragment>
