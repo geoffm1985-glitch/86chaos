@@ -56,6 +56,10 @@
     "api/full-system-diagnostics.js": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "api/presence-snapshot.js": {
+      "maxDuration": 60,
+      "memory": 512
     }
   }
 }

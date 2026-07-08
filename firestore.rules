@@ -291,14 +291,14 @@ service cloud.firestore {
     // PRESENCE
     // ============================================================
     match /presenceSessions/{sessionId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+      allow read: if signedIn() && isSuperAdmin();
       allow create: if signedIn() && presenceCreateIsSafe();
       allow update: if signedIn() && presenceUpdateIsSafe();
       allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
     }
 
     match /livePresence/{docId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+      allow read: if signedIn() && isSuperAdmin();
       allow create, update: if signedIn() && livePresenceWriteIsSafe();
       allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
     }

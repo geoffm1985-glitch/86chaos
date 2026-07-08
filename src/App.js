@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
-import { doc, onSnapshot, updateDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
@@ -94,7 +94,8 @@ export default function App() {
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
-  const [hasHelpUpdate, setHasHelpUpdate] = useState(() => localStorage.getItem(`helpBriefSeen_${CURRENT_VERSION}`) !== 'true');
+  const helpReleaseBriefDisabled = ['15.0.5'].includes(CURRENT_VERSION);
+  const [hasHelpUpdate, setHasHelpUpdate] = useState(() => !helpReleaseBriefDisabled && localStorage.getItem(`helpBriefSeen_${CURRENT_VERSION}`) !== 'true');
   const [tourMode, setTourMode] = useState(null);
   const [tourStep, setTourStep] = useState(0);
 
@@ -188,10 +189,11 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: !!rId, limitCount: activeTabState === 'team' ? 400 : 180, fallbackLimitCount: 80 });
-  const presenceSessions = useLiveCollection('presenceSessions', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
-  // Stable per-user live presence. Unlike presenceSessions, this collection has only
-  // one document per user, so old sessions cannot push current users out of capped reads.
-  const livePresenceRecords = useLiveCollection('livePresence', rId, { enabled: !!rId, limitCount: 500, fallbackLimitCount: 180 });
+  // Presence is intentionally not subscribed here. System Administrator now uses
+  // a Super Admin-only manual snapshot button so regular app sessions do not create
+  // constant livePresence reads.
+  const presenceSessions = [];
+  const livePresenceRecords = [];
   const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
@@ -429,34 +431,14 @@ if (liveAppUser && clientData) {
     const legacyUsers = (users || []).filter(u => !memberIds.has(u.id) && u.isActive !== false);
     const combinedUsers = memberUsers.length ? [...memberUsers, ...legacyUsers] : (users || []);
     const baseUsers = isDemoMode ? combinedUsers.map(maskDemoUser) : combinedUsers;
-    const sharedPresence = [...(livePresenceRecords || []), ...(presenceSessions || [])];
-    let merged = isDemoMode ? baseUsers : mergePresenceIntoUsers(baseUsers, sharedPresence);
-    // Current-device safety net: a regular employee should never see their own row drop back
-    // to a days-old timestamp while this browser is actively sending heartbeats.
-    if (!isDemoMode && appUser?.id && rId) {
-      let localMs = 0;
-      try { localMs = Number(localStorage.getItem(`chaosLastHeartbeat_${rId}_${appUser.id}`) || 0); } catch (err) {}
-      if (localMs && (Date.now() - localMs) < 5 * 60 * 1000) {
-        const localIso = new Date(localMs).toISOString();
-        merged = merged.map(u => u.id === appUser.id ? {
-          ...u,
-          lastActive: localIso,
-          lastSeen: localIso,
-          lastHeartbeatAt: localIso,
-          presenceUpdatedAt: localIso,
-          heartbeatEpochMs: localMs,
-          onlineState: 'online',
-          activeTab: activeTabState,
-          activeHost: window.location.hostname,
-          presenceSource: u.presenceSource || 'local-current-device'
-        } : u);
-      }
-    }
+    // Roster/user lists no longer merge online presence. Online status is hidden from
+    // regular staff and managers; System Administrator can run a manual presence snapshot.
+    let merged = baseUsers;
     if (!isDemoMode && !sessionCanViewWages) {
       merged = merged.map(u => ({ ...u, wage: 0, wageHidden: true }));
     }
     return merged;
-  }, [isDemoMode, users, workspaceMembers, presenceSessions, livePresenceRecords, appUser?.id, rId, activeTabState, sessionCanViewWages]);
+  }, [isDemoMode, users, workspaceMembers, sessionCanViewWages]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -566,21 +548,15 @@ if (liveAppUser && clientData) {
       }
     });
 
-// 2. Live Presence Heartbeat (Only real users, never Ghost Mode)
-    let heartbeatTimer = null;
-    let handleVisibility = null;
-    let handleBeforeUnload = null;
+// 2. Low-frequency presence check-in (no live scanner, no interval)
+    let cancelledPresenceCheck = false;
 
     if (!ghostTenant && appUser?.id) {
-      // Keep live presence sessions tied to the current user + workspace.
-      // Reusing one generic session id after account switching can make Firestore reject
-      // the heartbeat update because the old session belongs to a different user.
-      const presenceSessionKey = `chaosSessionId_${rId}_${appUser.id}`;
-      let sessionId = sessionStorage.getItem(presenceSessionKey);
-      if (!sessionId) {
-        sessionId = `${rId}_${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        sessionStorage.setItem(presenceSessionKey, sessionId);
-      }
+      const saveHeartbeatDebug = (next) => {
+        const packed = { ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id };
+        if (!cancelledPresenceCheck) setHeartbeatDebug(packed);
+        try { sessionStorage.setItem(`chaosPresenceCheckInDebug_${rId}_${appUser.id}`, JSON.stringify(packed)); } catch (err) {}
+      };
 
       const collectDeviceDiagnostics = async () => {
         const diag = {
@@ -605,84 +581,45 @@ if (liveAppUser && clientData) {
         return diag;
       };
 
-      const saveHeartbeatDebug = (next) => {
-        const packed = { ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id };
-        setHeartbeatDebug(packed);
-        try { localStorage.setItem(`chaosHeartbeatDebug_${rId}_${appUser.id}`, JSON.stringify(packed)); } catch (err) {}
-      };
+      const sendPresenceCheckIn = async () => {
+        const checkKey = `chaosPresenceCheckIn_${rId}_${appUser.id}`;
+        let lastCheckIn = 0;
+        try { lastCheckIn = Number(sessionStorage.getItem(checkKey) || 0); } catch (err) {}
+        if (lastCheckIn && Date.now() - lastCheckIn < 10 * 60 * 1000) {
+          saveHeartbeatDebug({ ok: true, channel: 'manual-presence-mode', state: 'online', message: 'Presence check-in already saved for this browser session. No live heartbeat interval is running.', heartbeatEpochMs: lastCheckIn });
+          return;
+        }
 
-      const sendHeartbeat = async (state = 'online') => {
-        const stamp = new Date().toISOString();
         const firebaseUser = await waitForAuthCurrentUser(8000);
         if (!firebaseUser) {
-          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
-          saveHeartbeatDebug({ ok: false, channel: 'auth-wait', state, message: 'Firebase login session is not active yet on this device. Log out and back in if this keeps showing.', heartbeatEpochMs: Date.now() });
+          saveHeartbeatDebug({ ok: false, channel: 'auth-wait', state: 'online', message: 'Presence check-in skipped because Firebase login is not active yet.', heartbeatEpochMs: Date.now() });
           return;
         }
         const authUid = firebaseUser.uid;
         if (appUser.id && appUser.id !== authUid) {
-          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
-          saveHeartbeatDebug({ ok: false, channel: 'auth-mismatch', state, message: `Cached app user does not match Firebase Auth user. Cached ${appUser.id}; Auth ${authUid}. Please log out and back in.`, heartbeatEpochMs: Date.now() });
+          saveHeartbeatDebug({ ok: false, channel: 'auth-mismatch', state: 'online', message: `Cached app user does not match Firebase Auth user. Cached ${appUser.id}; Auth ${authUid}.`, heartbeatEpochMs: Date.now() });
           return;
         }
-        const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
-        const deviceDiagnostics = await collectDeviceDiagnostics();
+
+        const stamp = new Date().toISOString();
         const heartbeatEpochMs = Date.now();
-        const presencePayload = {
-          lastActive: stamp,
-          lastSeen: stamp,
-          lastHeartbeatAt: stamp,
-          presenceUpdatedAt: stamp,
-          heartbeatEpochMs,
-          onlineState: state,
-          activeTab: activeTabState,
-          activeSessionId: sessionId,
-          activeDevice: device,
-          activeHost: window.location.hostname,
-          notificationPermission: deviceDiagnostics.notifications,
-          gpsPermission: deviceDiagnostics.gpsPermission,
-          deviceDiagnostics
-        };
+        const deviceDiagnostics = await collectDeviceDiagnostics();
+        const presenceSessionKey = `chaosSessionId_${rId}_${appUser.id}`;
+        let sessionId = sessionStorage.getItem(presenceSessionKey);
+        if (!sessionId) {
+          sessionId = `${rId}_${appUser.id}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          sessionStorage.setItem(presenceSessionKey, sessionId);
+        }
         const safeSessionId = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
-        const createdAt = sessionStorage.getItem(`chaosPresenceCreatedAt_${sessionId}`) || stamp;
-        sessionStorage.setItem(`chaosPresenceCreatedAt_${sessionId}`, createdAt);
-        const livePresencePayload = {
-          ...presencePayload,
-          userId: authUid,
-          uid: authUid,
-          restaurantId: rId,
-          userName: appUser.name || '',
-          userEmail: appUser.email || '',
-          email: appUser.email || '',
-          role: appUser.role || '',
-          photoURL: appUser.photoURL || '',
-          createdAt,
-          updatedAt: stamp,
-          source: 'app-heartbeat'
-        };
-        const presenceSessionPayload = {
-          ...livePresencePayload,
-          sessionId: safeSessionId
-        };
+        const device = (navigator.userAgent || 'Unknown device').substring(0, 140);
 
-        // Local self-signal is written only after Firebase confirms the heartbeat.
-        // This prevents a stale/cached login from falsely showing Online Now when Firestore rejected the save.
-        const markVerifiedLocalHeartbeat = () => {
-          try { localStorage.setItem(`chaosLastHeartbeat_${rId}_${appUser.id}`, String(heartbeatEpochMs)); } catch (err) {}
-        };
-        const clearVerifiedLocalHeartbeat = () => {
-          try { localStorage.removeItem(`chaosLastHeartbeat_${rId}_${appUser.id}`); } catch (err) {}
-        };
-
-        let apiOk = false;
-        let apiMessage = '';
         try {
           const response = await secureFetch('/api/presence-heartbeat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               restaurantId: rId,
-              state,
+              state: 'online',
               activeTab: activeTabState,
               sessionId: safeSessionId,
               device,
@@ -694,68 +631,22 @@ if (liveAppUser && clientData) {
             })
           });
           const data = await response.json().catch(() => ({}));
-          apiOk = response.ok && data?.ok !== false;
-          apiMessage = data?.error || data?.message || `API ${response.status}`;
-          if (apiOk) {
-            markVerifiedLocalHeartbeat();
-            saveHeartbeatDebug({ ok: true, channel: 'api', state, message: 'Heartbeat saved by server API.', heartbeatEpochMs, apiProjectId: data?.projectId || '' });
-            return;
-          }
+          if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
+          try { sessionStorage.setItem(checkKey, String(heartbeatEpochMs)); } catch (err) {}
+          saveHeartbeatDebug({ ok: true, channel: data?.mode || 'presence-check-in', state: 'online', message: 'One app-open presence check-in saved. No repeating heartbeat timer is running.', heartbeatEpochMs, apiProjectId: data?.projectId || '' });
         } catch (err) {
-          apiMessage = err?.message || String(err);
-        }
-
-        // Fallback for local development or a missing Vercel function. livePresence is overwritten,
-        // not merged, so old poisoned presence docs cannot keep blocking fresh writes.
-        // Do not write heartbeat data to users/restaurants here; those high-churn collections
-        // can trigger expensive listener fan-out and noisy React refreshes.
-        const results = await Promise.allSettled([
-          setDoc(doc(db, 'livePresence', `${String(rId).replace(/[^A-Za-z0-9_-]/g, '_')}_${authUid}`), livePresencePayload),
-          setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload)
-        ]);
-        const rejected = results.filter(r => r.status === 'rejected');
-        const primarySaved = results[0]?.status === 'fulfilled';
-        if (rejected.length && !primarySaved) {
-          clearVerifiedLocalHeartbeat();
-          const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
-          console.warn('86 Chaos heartbeat fallback blocked or delayed:', errText);
-          saveHeartbeatDebug({ ok: false, channel: 'client-fallback', state, message: `${apiMessage || 'API heartbeat failed'}; fallback failed: ${errText}`, heartbeatEpochMs });
-        } else if (rejected.length && primarySaved) {
-          markVerifiedLocalHeartbeat();
-          const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
-          console.warn('86 Chaos heartbeat partially saved:', errText);
-          saveHeartbeatDebug({ ok: true, channel: 'client-fallback-partial', state, message: `Live heartbeat saved; secondary write issue: ${errText}`, heartbeatEpochMs });
-        } else {
-          markVerifiedLocalHeartbeat();
-          saveHeartbeatDebug({ ok: true, channel: 'client-fallback', state, message: `Saved by client fallback after API issue: ${apiMessage || 'unknown'}`, heartbeatEpochMs });
+          saveHeartbeatDebug({ ok: false, channel: 'presence-check-in', state: 'online', message: err?.message || String(err), heartbeatEpochMs });
         }
       };
 
-      sendHeartbeat(document.hidden ? 'away' : 'online');
-      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 60000);
-      handleVisibility = () => sendHeartbeat(document.hidden ? 'away' : 'online');
-      handleBeforeUnload = () => sendHeartbeat('offline');
-      document.addEventListener('visibilitychange', handleVisibility);
-      window.addEventListener('focus', handleVisibility);
-      window.addEventListener('online', handleVisibility);
-      window.addEventListener('pagehide', handleBeforeUnload);
-      window.addEventListener('beforeunload', handleBeforeUnload);
+      sendPresenceCheckIn();
     }
 
     return () => {
+      cancelledPresenceCheck = true;
       unsub();
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (handleVisibility) {
-        document.removeEventListener('visibilitychange', handleVisibility);
-        window.removeEventListener('focus', handleVisibility);
-        window.removeEventListener('online', handleVisibility);
-      }
-      if (handleBeforeUnload) {
-        window.removeEventListener('pagehide', handleBeforeUnload);
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-      }
     };
-  }, [rId, ghostTenant, appUser?.id, activeTabState]);
+  }, [rId, ghostTenant, appUser?.id]);
 
  
   useEffect(() => {
@@ -1156,7 +1047,7 @@ useEffect(() => {
     if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
-    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} heartbeatDebug={heartbeatDebug} />;
+    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
