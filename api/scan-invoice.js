@@ -2,11 +2,14 @@
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.0';
+const INVOICE_SCANNER_VERSION = '15.0.1';
 
 function cleanJsonText(text = '') {
-  return String(text)
+  return String(text || '')
     .replace(/^\uFEFF/, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
@@ -19,17 +22,66 @@ function extractFencedJson(text = '') {
 }
 
 function extractBalancedJson(text = '') {
+  return extractBalancedJsonCandidates(text)[0] || '';
+}
+
+function extractBalancedJsonCandidates(text = '') {
   const raw = String(text || '');
+  const candidates = [];
+
+  for (let start = 0; start < raw.length; start += 1) {
+    const opener = raw[start];
+    if (opener !== '{' && opener !== '[') continue;
+
+    const stack = [opener === '{' ? '}' : ']'];
+    let inString = false;
+    let escaped = false;
+
+    for (let i = start + 1; i < raw.length; i += 1) {
+      const ch = raw[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') {
+        if (stack[stack.length - 1] !== ch) break;
+        stack.pop();
+        if (stack.length === 0) {
+          candidates.push(raw.slice(start, i + 1).trim());
+          break;
+        }
+      }
+    }
+  }
+
+  return candidates.sort((a, b) => b.length - a.length);
+}
+
+function repairTruncatedJson(text = '') {
+  const raw = cleanJsonText(text);
   const start = raw.search(/[\[{]/);
   if (start < 0) return '';
 
-  const opener = raw[start];
-  const stack = [opener === '{' ? '}' : ']'];
+  let out = '';
+  const stack = [];
   let inString = false;
   let escaped = false;
 
-  for (let i = start + 1; i < raw.length; i += 1) {
+  for (let i = start; i < raw.length; i += 1) {
     const ch = raw[i];
+    out += ch;
+
     if (escaped) {
       escaped = false;
       continue;
@@ -43,35 +95,56 @@ function extractBalancedJson(text = '') {
       continue;
     }
     if (inString) continue;
+
     if (ch === '{') stack.push('}');
     else if (ch === '[') stack.push(']');
     else if (ch === '}' || ch === ']') {
-      if (stack[stack.length - 1] !== ch) return '';
-      stack.pop();
-      if (stack.length === 0) return raw.slice(start, i + 1).trim();
+      if (stack[stack.length - 1] === ch) stack.pop();
     }
   }
 
-  return '';
+  if (inString) out += '"';
+  out = out.trimEnd();
+  if (/[:]\s*$/.test(out)) out += ' null';
+  if (/,\s*$/.test(out)) out = out.replace(/,\s*$/, '');
+  while (stack.length) out += stack.pop();
+  return out.trim();
+}
+
+function normalizeJsonCandidate(text = '') {
+  return cleanJsonText(text)
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/:\s*(undefined|NaN|Infinity|-Infinity)\s*([,}\]])/g, ': null$2')
+    .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_\-$]*)\s*:/g, '$1"$2":')
+    .trim();
 }
 
 function parseGeminiJson(text = '') {
   const raw = String(text || '').trim();
   const fenced = extractFencedJson(raw);
-  const candidates = [
+  const balanced = extractBalancedJsonCandidates(raw);
+  const fencedBalanced = extractBalancedJsonCandidates(fenced);
+  const baseCandidates = [
     raw,
     cleanJsonText(raw),
     fenced,
     cleanJsonText(fenced),
-    extractBalancedJson(raw),
-    extractBalancedJson(fenced)
+    ...balanced,
+    ...fencedBalanced,
+    repairTruncatedJson(raw),
+    repairTruncatedJson(fenced)
   ].filter(Boolean);
 
-  const uniqueCandidates = Array.from(new Set(candidates));
-  for (const candidate of uniqueCandidates) {
+  const candidates = [];
+  for (const candidate of baseCandidates) {
+    candidates.push(candidate);
+    candidates.push(normalizeJsonCandidate(candidate));
+    candidates.push(repairTruncatedJson(candidate));
+    candidates.push(normalizeJsonCandidate(repairTruncatedJson(candidate)));
+  }
+
+  for (const candidate of Array.from(new Set(candidates.filter(Boolean)))) {
     try { return JSON.parse(candidate); }
-    catch (_) {}
-    try { return JSON.parse(candidate.replace(/,\s*([}\]])/g, '$1')); }
     catch (_) {}
   }
 
@@ -388,7 +461,14 @@ async function deleteGeminiFileQuietly(apiKey, file) {
   }
 }
 
-function buildInvoicePrompt() {
+function buildInvoicePrompt({ compact = false } = {}) {
+  const compactRules = compact ? `
+Compact retry mode:
+- The previous scan response was not usable JSON, usually because the model produced too much text or cut off the ending.
+- Return a smaller JSON object that still includes vendor/invoice totals, all purchased product rows, and clear skipped/non-product rows.
+- Keep rawTranscription short. If output size becomes risky, omit long prose before ever truncating JSON.
+- Close every array/object. Valid JSON matters more than extra notes.` : '';
+
   return `
 You are the invoice extraction engine for a restaurant inventory system.
 
@@ -402,12 +482,13 @@ Rules:
 - Do NOT put email addresses, From/To/Subject lines, vendor contact info, customer/bill-to/ship-to fields, headers, footers, page numbers, terms, totals, taxes, freight, deposits, fees, discounts, credits, payments, balances, notes, signatures, or account metadata in lineItems.
 - Preserve every visible line/row in allExtractedRows, even if it is not an inventory item.
 - If a value is unclear, include it as bestGuess and add a warning.
-- Keep rawTranscription as a readable transcription of the whole document.
+- Keep strings short and JSON-safe. Escape quotation marks inside values.
+- rawTranscription may be a compact readable summary of the whole document; do not let rawTranscription make the JSON too large.
 - For inventory/product rows only, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
 - Mark non-product rows in allExtractedRows with rowType such as tax, freight, deposit, subtotal, total, discount, credit, payment, note, header, footer, contact, customer, metadata.
 - For catch-weight foods like chicken, beef, fish, cheese, and produce, include weight and weightPerCaseLbs when visible or strongly implied by pack size.
 - For longer multipage invoices, keep going until every visible product row is represented in lineItems and every visible row is represented in allExtractedRows.
-
+${compactRules}
 Return this JSON shape:
 {
   "vendorName": "",
@@ -444,8 +525,113 @@ Return this JSON shape:
 }`;
 }
 
-function createGenerationBody(prompt, filePart) {
-  const maxOutputTokens = parseInt(process.env.INVOICE_SCAN_MAX_OUTPUT_TOKENS || '65536', 10);
+function getInvoiceModelCandidates() {
+  const configured = process.env.INVOICE_SCAN_GEMINI_MODEL || process.env.GEMINI_INVOICE_MODEL || process.env.GEMINI_MODEL || '';
+  return Array.from(new Set([
+    configured,
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash'
+  ].map(v => String(v || '').trim()).filter(Boolean)));
+}
+
+async function repairGeminiJsonWithModel({ apiKey, model, badText, scanInputMethod }) {
+  const trimmed = String(badText || '').slice(0, 60000);
+  if (!trimmed) throw new Error('No Gemini text was available for JSON repair.');
+  const repairPrompt = `You are a JSON repair engine for an invoice scanner. Return ONLY valid JSON. Do not add markdown. Preserve all usable invoice fields and line rows from the broken text. If the text is cut off, keep the complete rows that are present, close every object/array, and add an extractionWarnings entry that says the AI response had to be repaired. Broken text:\n${trimmed}`;
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: 'application/json',
+      maxOutputTokens: parseInt(process.env.INVOICE_REPAIR_MAX_OUTPUT_TOKENS || '32768', 10)
+    }
+  };
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const timeoutMs = parseInt(process.env.INVOICE_REPAIR_TIMEOUT_MS || '45000', 10);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Gemini JSON repair failed. ${raw.slice(0, 700)}`);
+  let gemini;
+  try { gemini = JSON.parse(raw || '{}'); }
+  catch (_) { throw new Error('Gemini JSON repair route returned non-JSON API output.'); }
+  const text = gemini?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
+  const parsed = parseGeminiJson(text);
+  if (parsed && typeof parsed === 'object') {
+    parsed.extractionWarnings = Array.isArray(parsed.extractionWarnings) ? parsed.extractionWarnings : [];
+    parsed.extractionWarnings.push(`Scanner repaired a malformed Gemini JSON response from ${scanInputMethod}.`);
+  }
+  return { parsed, repairModel: model, repairFinishReason: gemini?.candidates?.[0]?.finishReason || '' };
+}
+
+function getGeminiCandidateText(gemini = {}) {
+  return gemini?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
+}
+
+function getGeminiFinishReason(gemini = {}) {
+  return gemini?.candidates?.[0]?.finishReason || '';
+}
+
+function isModelFallbackError(message = '') {
+  return /not found|not supported|unsupported|unavailable|deprecated|permission denied for model|model.*not/i.test(String(message || ''));
+}
+
+async function callGeminiGenerate({ apiKey, model, body, timeoutMs }) {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const raw = await response.text();
+  if (!response.ok) {
+    let message = raw;
+    try { message = JSON.parse(raw)?.error?.message || raw; }
+    catch (_) {}
+    const err = new Error(message || `Gemini invoice scan failed with ${response.status}.`);
+    err.status = response.status;
+    err.raw = raw;
+    throw err;
+  }
+
+  let gemini;
+  try { gemini = JSON.parse(raw || '{}'); }
+  catch (err) {
+    const apiErr = new Error(`Gemini invoice scan returned non-JSON API output. ${raw.slice(0, 700)}`);
+    apiErr.raw = raw;
+    throw apiErr;
+  }
+  return gemini;
+}
+
+function createGenerationBody(prompt, filePart, { compact = false } = {}) {
+  const maxOutputTokens = parseInt(
+    compact
+      ? (process.env.INVOICE_SCAN_COMPACT_MAX_OUTPUT_TOKENS || '32768')
+      : (process.env.INVOICE_SCAN_MAX_OUTPUT_TOKENS || '65536'),
+    10
+  );
   return {
     contents: [{
       role: 'user',
@@ -456,7 +642,7 @@ function createGenerationBody(prompt, filePart) {
     }],
     generationConfig: {
       temperature: 0,
-      response_mime_type: 'application/json',
+      responseMimeType: 'application/json',
       maxOutputTokens
     }
   };
@@ -468,8 +654,8 @@ async function handler(req, res) {
   let scanSource = null;
   let geminiFile = null;
   try {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY or GOOGLE_API_KEY in Vercel.' });
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY in Vercel.' });
 
     const adminApp = initAdmin();
     scanSource = await readScanSource(req.body || {}, req, adminApp);
@@ -478,63 +664,87 @@ async function handler(req, res) {
     const inputMode = String(process.env.INVOICE_SCAN_INPUT_MODE || 'files').toLowerCase();
     const useGeminiFiles = inputMode !== 'inline' && scanSource.source === 'firebase-storage' && Buffer.isBuffer(scanSource.fileBuffer);
 
-    const prompt = buildInvoicePrompt();
     let filePart;
     let scanInputMethod = 'inline-base64';
 
     if (useGeminiFiles) {
       geminiFile = await uploadToGeminiFiles(apiKey, scanSource);
-      filePart = { file_data: { mime_type: mimeType, file_uri: geminiFile.uri } };
+      filePart = { fileData: { mimeType, fileUri: geminiFile.uri } };
       scanInputMethod = 'gemini-files-api';
     } else {
       const fileBase64 = scanSource.fileBase64 || scanSource.fileBuffer?.toString('base64');
       if (!fileBase64) throw new Error('No invoice file data available to scan.');
-      filePart = { inline_data: { mime_type: mimeType, data: fileBase64 } };
+      filePart = { inlineData: { mimeType, data: fileBase64 } };
     }
-
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const body = createGenerationBody(prompt, filePart);
 
     const timeoutMs = parseInt(process.env.INVOICE_SCAN_TIMEOUT_MS || '285000', 10);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    let response;
-    try {
-      response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-    } finally {
-      clearTimeout(timeout);
+    const modelCandidates = getInvoiceModelCandidates();
+    let parsed = null;
+    let usedModel = '';
+    let usedAttempt = '';
+    let finishReason = '';
+    let repairModel = '';
+    let lastFailure = null;
+
+    for (const candidateModel of modelCandidates) {
+      const attempts = [
+        { name: 'full-json', compact: false },
+        { name: 'compact-json-retry', compact: true }
+      ];
+
+      for (const attempt of attempts) {
+        try {
+          const prompt = buildInvoicePrompt({ compact: attempt.compact });
+          const body = createGenerationBody(prompt, filePart, { compact: attempt.compact });
+          const gemini = await callGeminiGenerate({ apiKey, model: candidateModel, body, timeoutMs });
+          const text = getGeminiCandidateText(gemini);
+          finishReason = getGeminiFinishReason(gemini);
+          if (!text) throw new Error('Gemini returned no invoice text.');
+
+          try {
+            parsed = parseGeminiJson(text);
+          } catch (parseErr) {
+            lastFailure = parseErr;
+            const wasTruncated = /MAX_TOKENS|LENGTH/i.test(finishReason) || !extractBalancedJson(text);
+            if (!attempt.compact && wasTruncated) {
+              // A cut-off first pass should be rescanned in compact mode instead of trying to save a half invoice.
+              continue;
+            }
+            try {
+              const repaired = await repairGeminiJsonWithModel({ apiKey, model: candidateModel, badText: text, scanInputMethod });
+              parsed = repaired.parsed;
+              repairModel = repaired.repairModel;
+              finishReason = repaired.repairFinishReason || finishReason;
+            } catch (repairErr) {
+              lastFailure = repairErr;
+              if (!attempt.compact) continue;
+              throw repairErr;
+            }
+          }
+
+          if (parsed) {
+            usedModel = candidateModel;
+            usedAttempt = attempt.name;
+            break;
+          }
+        } catch (err) {
+          lastFailure = err;
+          if (isModelFallbackError(err.message)) break;
+          if (!attempt.compact) continue;
+        }
+      }
+      if (parsed) break;
     }
 
-    const raw = await response.text();
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: 'Gemini invoice scan failed.',
-        details: raw.slice(0, 2000),
-        scanSource: scanSource?.source || 'unknown',
-        scanInputMethod,
-        fileName: scanSource?.fileName || fileName,
-        originalBytes: scanSource?.originalBytes || null
-      });
-    }
-
-    const gemini = JSON.parse(raw);
-    const text = gemini?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
-    if (!text) return res.status(502).json({ error: 'Gemini returned no invoice text.', scanInputMethod });
-
-    let parsed;
-    try {
-      parsed = parseGeminiJson(text);
-    } catch (err) {
+    if (!parsed) {
       return res.status(502).json({
-        error: 'Gemini returned invalid JSON.',
-        details: err.message || 'Could not parse invoice scan response.',
-        rawText: text.slice(0, 4000),
-        scanInputMethod
+        error: 'Gemini returned invalid JSON after repair attempts.',
+        details: lastFailure?.message || 'Could not parse invoice scan response.',
+        scanInputMethod,
+        scanSource: scanSource?.source || 'unknown',
+        fileName: scanSource?.fileName || fileName,
+        originalBytes: scanSource?.originalBytes || null,
+        scannerVersion: INVOICE_SCANNER_VERSION
       });
     }
 
@@ -548,6 +758,10 @@ async function handler(req, res) {
     normalized.geminiFileName = geminiFile?.name || '';
     normalized.processedAt = new Date().toISOString();
     normalized.scannerVersion = INVOICE_SCANNER_VERSION;
+    normalized.scanModel = usedModel || model;
+    normalized.scanAttempt = usedAttempt || 'full-json';
+    normalized.scanFinishReason = finishReason || '';
+    normalized.scanRepairModel = repairModel || '';
 
     if (geminiFile) deleteGeminiFileQuietly(apiKey, geminiFile);
     return res.status(200).json(normalized);
