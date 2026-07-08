@@ -1,6 +1,6 @@
 {
   "name": "cheers-portal",
-  "version": "15.0.2",
+  "version": "15.0.3",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",

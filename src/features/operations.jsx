@@ -523,7 +523,7 @@ const [searchTerm, setSearchTerm] = useState('');
 
   // Master Permission Check for Inventory Tabs
   const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
-  const safeInventoryWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
+  const safeInventoryWrite = ({ quiet = false, ...args } = {}) => safeWriteWithQueue({ user: appUser, addToast: quiet ? null : addToast, ...args });
 
   // --- LOGIC ---
   const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await safeInventoryWrite({ action: 'add', collectionName: "inventoryItems", label: "Inventory item", data: { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId } }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
@@ -922,18 +922,18 @@ const executeOrder = async (method) => {
           if (existingVendor) {
             vId = existingVendor.id;
           } else {
-            const newVRef = await safeInventoryWrite({ action: "add", collectionName: "vendors", label: "CSV vendor", data: { name: vendorName, rep: "", email: "", phone: "", restaurantId: appUser.restaurantId } });
+            const newVRef = await safeInventoryWrite({ quiet: true, action: "add", collectionName: "vendors", label: "CSV vendor", data: { name: vendorName, rep: "", email: "", phone: "", restaurantId: appUser.restaurantId } });
             vId = newVRef.id;
             vendors.push({id: vId, name: vendorName}); 
           }
 
-          await safeInventoryWrite({ action: "add", collectionName: "inventoryItems", label: "CSV inventory item", data: {
+          await safeInventoryWrite({ quiet: true, action: "add", collectionName: "inventoryItems", label: "CSV inventory item", data: {
             name, category, pfgCode: code, packSize, yieldQty, price, parLevel: 0,
             lastOrderedQty: 0, lastOrderedDate: null, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, restaurantId: appUser.restaurantId
           } });
           addedCount++;
         }
-        addToast("Upload Complete", `Successfully imported ${addedCount} items.`);
+        addToast("Upload Complete", `Saved ${addedCount} imported item${addedCount === 1 ? '' : 's'}.`);
       } catch (err) {
         addToast("Error", "Failed to parse CSV file. Ensure it matches the exact template format.");
       }
@@ -1176,7 +1176,7 @@ const executeOrder = async (method) => {
   const handleApproveInvoice = async () => {
      try {
        // 1. Log the invoice record for history
-       await safeInventoryWrite({ action: "add", collectionName: "invoices", label: "Invoice scan", data: {
+       await safeInventoryWrite({ quiet: true, action: "add", collectionName: "invoices", label: "Invoice scan", data: {
          ...scannedInvoice,
          restaurantId: appUser.restaurantId,
          processedAt: new Date().toISOString(),
@@ -1190,7 +1190,7 @@ const executeOrder = async (method) => {
        if (existingVendor) {
           vId = existingVendor.id;
        } else if (scannedInvoice.vendorName) {
-          const newVRef = await safeInventoryWrite({ action: "add", collectionName: "vendors", label: "Invoice vendor", data: { 
+          const newVRef = await safeInventoryWrite({ quiet: true, action: "add", collectionName: "vendors", label: "Invoice vendor", data: { 
             name: scannedInvoice.vendorName, 
             rep: "", email: "", phone: "", 
             restaurantId: appUser.restaurantId 
@@ -1221,7 +1221,7 @@ if (item.matchedItemId === 'CREATE_NEW') {
              else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
 
              const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
-             await safeInventoryWrite({ action: "add", collectionName: "inventoryItems", label: "Invoice inventory item", data: {
+             await safeInventoryWrite({ quiet: true, action: "add", collectionName: "inventoryItems", label: "Invoice inventory item", data: {
                 name: item.itemName,
                 category: autoCat, 
                 pfgCode: incomingCode, 
@@ -1258,13 +1258,13 @@ if (item.matchedItemId === 'CREATE_NEW') {
                 if ((!invItem.yieldQty || Number(invItem.yieldQty) <= 1) && packProfile.count > 1) updates.yieldQty = packProfile.count;
                 updates.lastInvoiceRaw = item;
 
-                await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: invItem.id, label: "Invoice stock update", before: invItem, data: updates });
+                await safeInventoryWrite({ quiet: true, action: "update", collectionName: "inventoryItems", docId: invItem.id, label: "Invoice stock update", before: invItem, data: updates });
                 updateCount++;
              }
           }
        }
 
-       addToast('Invoice Processed', `Updated ${updateCount} items and added ${newCount} new items.`);
+       addToast('Invoice Processed', `Saved ${updateCount + newCount} item${updateCount + newCount === 1 ? '' : 's'}: updated ${updateCount}, added ${newCount}.`);
        setScannedInvoice(null);
      } catch(e) {
        addToast('Error', 'Failed to process invoice updates.');

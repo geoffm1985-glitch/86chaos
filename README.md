@@ -1,44 +1,33 @@
 # 86 Chaos
 
-Current version: 15.0.2
+Current version: 15.0.3
 
 86 Chaos is a restaurant/kitchen management web app built with React, Vite-compatible structure, Firebase, and Vercel serverless API routes.
 
-## 15.0.2 focus
+## 15.0.3 focus
 
-This build keeps the 15.0.1 invoice JSON recovery work intact, then adds scale and safety hardening:
+This build keeps the 15.0.2 stability/cost-control work intact, then cleans up noisy bulk Inventory notifications:
 
-- Heartbeats now write only to `livePresence` and `presenceSessions`, not high-churn fields on `users` or `restaurants`.
-- Browser heartbeat cadence is reduced from 25 seconds to 60 seconds, with immediate updates still sent on focus/visibility/network/page-exit events.
-- Firestore rules now keep user self-updates away from live heartbeat/session fields.
-- Reminder dispatching uses transaction-based claiming and controlled concurrency so growing reminder volume is less likely to hit the cron timeout wall.
-- The reminder dispatcher Vercel function now has a 300-second max duration.
-- Invoice and menu scan uploads are capped at 20MB in Storage rules, UI checks, and backend API checks.
-- Scanner APIs inspect Storage metadata before downloading files into memory.
+- Invoice approval now silences the internal per-row Safe Write toasts.
+- Approving a scanned invoice shows one `Invoice Processed` notification with the total saved item count, including updated and newly added inventory items.
+- CSV inventory import now uses the same quiet bulk-save behavior and shows one `Upload Complete` summary.
+- Ordinary one-off Inventory saves still show their normal confirmation notifications.
+- Firestore rules, Storage rules, Vercel config, and environment variables are unchanged from 15.0.2.
 
 ## Deploy steps
 
 1. Deploy the app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.2` after deploy.
-3. Publish `firestore.rules` in Firebase Firestore Rules.
-4. Publish `storage.rules` in Firebase Storage Rules.
-5. Confirm Vercel has the existing Firebase Admin credentials, `CRON_SECRET`, and a Gemini key (`GEMINI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, or `GOOGLE_API_KEY` where applicable).
-6. Run the 15.0.2 QA checklist before handing it to staff.
+2. Confirm `/version.json` reports `15.0.3` after deploy.
+3. Test invoice approval with multiple rows and confirm only one summary notification appears.
+4. Test CSV inventory import with multiple rows and confirm only one summary notification appears.
+5. Run the 15.0.3 QA checklist before handing it to staff.
 
 ## Required separate publishes
 
-- Firestore rules: yes.
-- Storage rules: yes.
-- Vercel deploy/API routes: yes.
+- Firestore rules: no new changes from 15.0.2.
+- Storage rules: no new changes from 15.0.2.
+- Vercel deploy/API routes: yes, deploy the updated app code.
 - New environment variables: no.
-
-Optional tuning variables:
-
-- `REMINDER_DISPATCH_QUERY_LIMIT`
-- `REMINDER_DISPATCH_CONCURRENCY`
-- `INVOICE_SCAN_MAX_PDF_BYTES`
-- `INVOICE_SCAN_MAX_IMAGE_BYTES`
-- `MENU_SCAN_MAX_BYTES`
 
 ## Branding rule
 
