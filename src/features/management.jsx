@@ -854,6 +854,10 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [sysWorkspaceTimeFormat, setSysWorkspaceTimeFormat] = useState(sys.workspaceTimeFormat || branding.timeFormat || 'h:mm a');
   const [sysCurrency, setSysCurrency] = useState(sys.currency || branding.currency || 'USD');
   const [sysWeekStartsOn, setSysWeekStartsOn] = useState(sys.weekStartsOn || branding.weekStartsOn || 'Monday');
+  const [sysSchedulePublishMode, setSysSchedulePublishMode] = useState(sys.schedulePublishMode || sys.scheduleCadence || sys.schedulePublishingCadence || 'monthly');
+  const [sysScheduleCustomWeeks, setSysScheduleCustomWeeks] = useState(sys.scheduleCustomWeeks || sys.schedulePeriodWeeks || '3');
+  const [sysScheduleWeekStartsOn, setSysScheduleWeekStartsOn] = useState(sys.scheduleWeekStartsOn || sys.weekStartsOn || branding.weekStartsOn || 'Monday');
+  const [sysAllowPostPublishedTimeOff, setSysAllowPostPublishedTimeOff] = useState(sys.allowPostPublishedTimeOff ?? true);
   const [sysDefaultLandingTab, setSysDefaultLandingTab] = useState(sys.defaultLandingTab || branding.defaultLandingTab || 'published');
   const [isUploadingBrandLogo, setIsUploadingBrandLogo] = useState(false);
   const [mapProviderIndex, setMapProviderIndex] = useState(0);
@@ -865,6 +869,13 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   useEffect(() => {
     setSysTips(sys.tips ?? true);
   }, [sys.tips, appUser?.restaurantId]);
+
+  useEffect(() => {
+    setSysSchedulePublishMode(sys.schedulePublishMode || sys.scheduleCadence || sys.schedulePublishingCadence || 'monthly');
+    setSysScheduleCustomWeeks(sys.scheduleCustomWeeks || sys.schedulePeriodWeeks || '3');
+    setSysScheduleWeekStartsOn(sys.scheduleWeekStartsOn || sys.weekStartsOn || branding.weekStartsOn || 'Monday');
+    setSysAllowPostPublishedTimeOff(sys.allowPostPublishedTimeOff ?? true);
+  }, [sys.schedulePublishMode, sys.scheduleCadence, sys.schedulePublishingCadence, sys.scheduleCustomWeeks, sys.schedulePeriodWeeks, sys.scheduleWeekStartsOn, sys.weekStartsOn, sys.allowPostPublishedTimeOff, branding.weekStartsOn, appUser?.restaurantId]);
 
   const refreshGeofenceMap = () => {
     setMapLoadState('refreshing');
@@ -1013,7 +1024,13 @@ const handleEnableNotifications = async () => {
         geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
         breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime,
         wageAccess: sysWageAccess, wageEditAccess: sysWageEditAccess, enableIpWhitelist: sysEnableIpWhitelist, ipWhitelist: sysIpWhitelist,
-        timezone: sysDefaultTimezone, weekStartsOn: sysWeekStartsOn, defaultLandingTab: sysDefaultLandingTab
+        timezone: sysDefaultTimezone, weekStartsOn: sysWeekStartsOn, defaultLandingTab: sysDefaultLandingTab,
+        schedulePublishMode: sysSchedulePublishMode,
+        schedulePublishingCadence: sysSchedulePublishMode,
+        scheduleCustomWeeks: Math.min(8, Math.max(1, parseInt(sysScheduleCustomWeeks, 10) || 1)),
+        schedulePeriodWeeks: sysSchedulePublishMode === 'weekly' ? 1 : sysSchedulePublishMode === 'biweekly' ? 2 : sysSchedulePublishMode === 'custom' ? Math.min(8, Math.max(1, parseInt(sysScheduleCustomWeeks, 10) || 1)) : null,
+        scheduleWeekStartsOn: sysScheduleWeekStartsOn,
+        allowPostPublishedTimeOff: !!sysAllowPostPublishedTimeOff
       };
       const historyEntry = {
         type: 'workspace_system_settings',
@@ -1648,6 +1665,29 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                <Toggle label="Enable Peer-to-Peer Trades" desc="Allow staff to post their shifts to the Trade Board for others to claim." checked={sysTrades} onChange={e => setSysTrades(e.target.checked)} />
                <Toggle label="Auto-Approve Shift Swaps" desc="If enabled, shift claims are approved instantly without manager intervention." checked={sysAutoApprove} disabled={!sysTrades} onChange={e => setSysAutoApprove(e.target.checked)} />
                <Toggle label="Role-Restricted Trades" desc="Staff can only claim shifts that match their assigned role." checked={sysSameRoleTrades} disabled={!sysTrades} onChange={e => setSysSameRoleTrades(e.target.checked)} />
+             </div>
+
+             <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Schedule Publishing</div>
+             <div className="space-y-2">
+               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl space-y-3`}>
+                 <div>
+                   <div className="text-xs font-bold text-white">Schedule Publishing Style</div>
+                   <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Controls the Schedule Builder window managers work in and the period published by the Publish button.</div>
+                 </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                   <select value={sysSchedulePublishMode} onChange={e => setSysSchedulePublishMode(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                     <option value="weekly">1 week at a time</option>
+                     <option value="biweekly">2 weeks at a time</option>
+                     <option value="monthly">Full month at a time</option>
+                     <option value="custom">Custom number of weeks</option>
+                   </select>
+                   <select value={sysScheduleWeekStartsOn} onChange={e => setSysScheduleWeekStartsOn(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                     {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(day => <option key={day} value={day}>Starts {day}</option>)}
+                   </select>
+                   <input type="number" min="1" max="8" value={sysScheduleCustomWeeks} onChange={e => setSysScheduleCustomWeeks(e.target.value)} disabled={sysSchedulePublishMode !== 'custom'} className={`${T.input} py-2 text-sm disabled:opacity-50`} placeholder="Weeks" />
+                 </div>
+               </div>
+               <Toggle label="Allow Time-Off Requests After Publishing" desc="If off, regular employees cannot request time off for dates that already have a published schedule. Managers can still edit/approve manually." checked={sysAllowPostPublishedTimeOff} onChange={e => setSysAllowPostPublishedTimeOff(e.target.checked)} />
              </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
@@ -2328,6 +2368,7 @@ const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
   const [bulkDeleteEmails, setBulkDeleteEmails] = useState('');
+  const [selectedBulkDeleteUserIds, setSelectedBulkDeleteUserIds] = useState([]);
   const [isBulkDeletingUsers, setIsBulkDeletingUsers] = useState(false);
   const [editingGlobalUser, setEditingGlobalUser] = useState(null);
   const [supportUserForm, setSupportUserForm] = useState({});
@@ -2821,27 +2862,66 @@ const handleDeleteGlobalUser = async (u) => {
     .filter(v => v && v.includes('@'))
   )];
 
+  const getUserCreatedValue = (u = {}) => u.createdAt || u.created || u.createdOn || u.createdDate || u.importedAt || u.passwordPurgedAt || u.lastWorkspaceSwitchedAt || u.updatedAt || '';
+  const formatUserCreatedValue = (u = {}) => {
+    const raw = getUserCreatedValue(u);
+    if (!raw) return 'Created date unknown';
+    try {
+      const d = raw?.toDate ? raw.toDate() : raw?.seconds ? new Date(raw.seconds * 1000) : new Date(raw);
+      if (Number.isNaN(d.getTime())) return String(raw);
+      return d.toLocaleString();
+    } catch (_) {
+      return String(raw);
+    }
+  };
+  const getBulkDeletePreviewUsers = () => {
+    const emails = parseBulkEmailList(bulkDeleteEmails);
+    if (!emails.length) return [];
+    return allUsers
+      .filter(u => emails.includes((u.email || '').toLowerCase().trim()))
+      .sort((a, b) => (a.email || '').localeCompare(b.email || '') || String(getUserCreatedValue(a) || '').localeCompare(String(getUserCreatedValue(b) || '')));
+  };
+  const toggleBulkDeleteSelection = (userId, checked) => {
+    setSelectedBulkDeleteUserIds(prev => checked ? [...new Set([...prev, userId])] : prev.filter(id => id !== userId));
+  };
+
   const handleBulkDeleteUsersByEmail = async (e) => {
     e.preventDefault();
     const emails = parseBulkEmailList(bulkDeleteEmails);
     if (emails.length === 0) return addToast('Nothing to Delete', 'Paste one or more email addresses first.');
 
     const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
-    const targets = allUsers.filter(u => emails.includes((u.email || '').toLowerCase().trim()) && !protectedEmails.has((u.email || '').toLowerCase().trim()));
+    const previewUsers = getBulkDeletePreviewUsers();
+    const validSelectedIds = selectedBulkDeleteUserIds.filter(id => previewUsers.some(u => u.id === id));
     const skippedProtected = emails.filter(email => protectedEmails.has(email));
+    const duplicateGroups = Object.values(previewUsers.reduce((acc, u) => {
+      const key = (u.email || '').toLowerCase().trim();
+      if (!key) return acc;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(u);
+      return acc;
+    }, {})).filter(group => group.length > 1);
 
-    if (targets.length === 0) {
-      return addToast('No Matches', skippedProtected.length ? 'Only protected admin emails were entered.' : 'No user profiles matched those emails.');
+    if (duplicateGroups.length > 0 && validSelectedIds.length === 0) {
+      return addToast('Select Exact Profiles', 'That email matches multiple user profiles. Check the exact created-date rows you want to delete first.');
     }
 
-    const duplicateSummary = Object.entries(targets.reduce((acc, u) => {
-      const key = (u.email || '').toLowerCase().trim();
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {})).map(([email, count]) => `${email} (${count})`).join(', ');
+    const targets = (validSelectedIds.length > 0 ? previewUsers.filter(u => validSelectedIds.includes(u.id)) : previewUsers)
+      .filter(u => !protectedEmails.has((u.email || '').toLowerCase().trim()));
 
-    const confirmText = (prompt(`This will delete ${targets.length} user profile(s) matching:
-${duplicateSummary}
+    if (targets.length === 0) {
+      return addToast('No Matches', skippedProtected.length ? 'Only protected admin emails were entered or selected.' : 'No deletable user profiles matched those emails.');
+    }
+
+    const targetSummary = targets.map(u => {
+      const email = (u.email || 'no-email').toLowerCase();
+      const created = formatUserCreatedValue(u);
+      const restName = restaurants.find(r => r.id === u.restaurantId)?.name || u.restaurantId || 'Unknown workspace';
+      return `${email} | ${created} | ${restName} | ${String(u.id || '').slice(0, 12)}`;
+    }).join('\n');
+
+    const confirmText = (prompt(`This will delete these exact ${targets.length} user profile(s):
+${targetSummary}
 
 Type DELETE to continue.`) || '').trim().toUpperCase();
     if (!['DELETE', 'DELETE USERS'].includes(confirmText)) return addToast('Aborted', 'Bulk deletion canceled.');
@@ -2852,12 +2932,12 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     const errors = [];
 
     try {
-      // Preferred path: one secure backend call deletes Firebase Auth users and Firestore profiles.
+      // Preferred path: one secure backend call deletes selected Firebase Auth users and Firestore profiles.
       try {
         const response = await secureFetch('/api/delete-users-bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ emails })
+          body: JSON.stringify(validSelectedIds.length > 0 ? { emails, userIds: targets.map(u => u.id) } : { emails })
         });
         const result = await response.json().catch(() => ({}));
         if (response.ok) {
@@ -2865,9 +2945,10 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
           profileDeleted = result.profileDeleted ?? result.deletedProfileCount ?? targets.length;
           addToast('Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
           setBulkDeleteEmails('');
+          setSelectedBulkDeleteUserIds([]);
           await addDoc(collection(db, 'auditLogs'), {
             userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
-            details: `Bulk deleted users by email: ${emails.join(', ')}`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
+            details: `Bulk deleted ${profileDeleted} profile(s). Selected IDs: ${targets.map(u => u.id).join(', ')}. Emails: ${emails.join(', ')}.`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
           }).catch(()=>{});
           return;
         }
@@ -2876,7 +2957,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         console.warn('Bulk delete API unavailable, falling back to individual user deletion:', bulkApiErr);
       }
 
-      // Fallback path: try the existing single delete-user endpoint for each UID, then delete the profile doc.
+      // Fallback path: try the existing single delete-user endpoint for each selected UID, then delete the profile doc.
       for (const u of targets) {
         try {
           try {
@@ -2898,12 +2979,12 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
 
       await addDoc(collection(db, 'auditLogs'), {
         userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
-        details: `Bulk deleted ${profileDeleted} profile(s) by email. Auth deleted: ${authDeleted}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
+        details: `Bulk deleted ${profileDeleted} selected profile(s). Auth deleted: ${authDeleted}. Selected IDs: ${targets.map(u => u.id).join(', ')}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
         timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
       }).catch(()=>{});
 
       addToast(errors.length ? 'Partial Delete' : 'Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
-      if (!errors.length) setBulkDeleteEmails('');
+      if (!errors.length) { setBulkDeleteEmails(''); setSelectedBulkDeleteUserIds([]); }
     } finally {
       setIsBulkDeletingUsers(false);
     }
@@ -2913,7 +2994,8 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     if (duplicateEmailGroups.length === 0) return addToast('Clean', 'No duplicate email groups found.');
     setSubTab('users');
     setBulkDeleteEmails(duplicateEmailGroups.map(([email]) => email).join('\n'));
-    addToast('Loaded', 'Duplicate email groups loaded into the bulk delete box. Review before deleting.');
+    setSelectedBulkDeleteUserIds([]);
+    addToast('Loaded', 'Duplicate email groups loaded into the bulk delete box. Review exact created-date rows before deleting.');
   };
 
 
@@ -3893,6 +3975,10 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.9 Schedule Publishing Controls', group: 'System Administrator', keywords: 'v15 15.0.9 schedule publishing weekly biweekly monthly custom time off published schedule workspace settings delete users duplicate emails created date', body: ['15.0.9 adds workspace-level schedule publishing style controls in Settings → Workspace. Owners/managers can choose weekly, every 2 weeks, full month, or a custom number of weeks from 1 to 8.', 'Schedule Builder now uses the selected publishing window for its grid, projected labor rollup, publish backup, and Publish Schedule action instead of always assuming a full month.', 'Workspace settings also include Allow Time-Off Requests After Publishing. When this is off, regular employees cannot submit new time-off requests for dates that already have published shifts. Managers can still adjust schedules and manage requests manually.', 'System Administrator → People bulk delete now previews every matching user profile with created date/time, role, workspace, and profile ID. When an email has multiple profiles, admins must select the exact profile rows to delete before continuing.', 'No public Help Center release note was added for this build.'] },
+    { title: '15.0.9 deployment checklist', group: 'System Administrator', keywords: '15.0.9 deploy schedule publishing controls api delete users bulk administrator manual qa', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.9.', 'Open Settings → Workspace and save each schedule publishing mode: 1 week, 2 weeks, monthly, and custom weeks. Confirm the setting persists after refresh.', 'Open Schedule Builder and confirm the visible schedule grid, labor totals, and Publish Schedule action match the workspace publishing style.', 'Turn off Allow Time-Off Requests After Publishing, publish a shift, then confirm a regular employee cannot request time off for that published date.', 'Open System Administrator → People, load duplicate/bad emails, confirm created dates appear, select specific rows, and verify only selected profiles are deleted.', 'Deploy updated API routes with the Vercel app because /api/delete-users-bulk now accepts exact selected user profile IDs. Firestore and Storage rules are unchanged.'] },
+    { title: 'Workspace schedule publishing settings', group: 'Admin Tab Guide', keywords: 'workspace schedule publishing style settings weekly biweekly monthly custom week starts on time off after publish schedule builder', body: ['Settings → Workspace → Schedule Publishing controls how much schedule the Schedule Builder shows and publishes at once.', 'Weekly uses one 7-day window based on the selected week-start day. 2-week uses a 14-day window. Monthly keeps the classic full-month schedule. Custom allows 1 to 8 weeks.', 'The selected week-start day is used for weekly, 2-week, and custom windows. Monthly still uses the calendar month.', 'When Allow Time-Off Requests After Publishing is turned off, employees are blocked from requesting time off on dates that already have published shifts. This prevents a published schedule from becoming Swiss cheese after managers post it.', 'Managers/admins retain manual control. They can edit shifts, approve/delete requests, and make exceptions when restaurant policy requires it.'] },
+    { title: 'Bulk user delete exact-row review', group: 'Admin Tab Guide', keywords: 'bulk delete users duplicate emails created date exact profile select checkbox system administrator people auth firestore', body: ['System Administrator → People → Bulk Delete Users by Email now shows a preview before deletion. Each matching profile row displays created date/time, workspace, role, and profile ID.', 'If one email matches multiple profiles, the app requires exact checkbox selection. This prevents deleting the wrong duplicate account.', 'Protected accounts, including the current admin and master admin email, cannot be selected or deleted from the bulk flow.', 'The backend /api/delete-users-bulk route accepts selected profile IDs. In selected mode it deletes only those user profile documents and attempts to delete matching Firebase Auth users by UID, instead of deleting every account with the same email.', 'Audit logs record the selected profile IDs and emails so destructive account cleanup has a paper trail.'] },
     { title: 'Version 15.0.8 Scanner Auto Compression', group: 'System Administrator', keywords: 'v15 15.0.8 scanner auto compression menu invoice image pdf 20MB canvas pdf-lib upload firebase storage', body: ['15.0.8 adds automatic pre-upload compression for Menu Intelligence and Invoice Scanner files so managers do not have to manually resize large phone photos before scanning.', 'Photos over the scan comfort threshold are converted in-browser to a smaller high-quality JPEG before Firebase Storage upload. The scanner progress bar shows the compression stage before upload progress begins.', 'PDFs over the 20MB scanner limit receive a best-effort in-browser PDF compaction pass using object-stream saving. This can shrink some exported PDFs, but scanned-image PDFs may still need to be split because the embedded page images cannot always be safely downsampled in-browser.', 'The original file name, uploaded compressed file name, original bytes, uploaded bytes, and compression method are stored as upload metadata for invoice/menu scan support.', 'No public Help Center release note was added for this build.'] },
     { title: '15.0.8 deployment checklist', group: 'System Administrator', keywords: '15.0.8 deploy scanner compression invoice menu pdf-lib package dependency vercel administrator manual', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.8.', 'Confirm Vercel installs the new pdf-lib dependency from package.json during build.', 'Upload a large JPG/PNG menu photo over 20MB and confirm the app shows a compression stage, then uploads the smaller file instead of immediately blocking it.', 'Upload a large invoice photo and confirm the invoice progress bar shows compression before Firebase upload.', 'Try a PDF over 20MB. If it cannot compact below 20MB, confirm the error tells the manager to split/export fewer pages instead of silently failing.', 'Open System Administrator → Administrator Manual and search 15.0.8 or scanner compression to confirm this guidance is present.', 'No Firestore rules, Storage rules, Vercel config, API route, or new environment variable is required beyond deploying the updated app code and package dependency.'] },
     { title: 'Scanner compression support routine', group: 'Admin Tab Guide', keywords: 'scanner compression support routine invoice menu large file 20MB storage metadata jpg pdf browser compression troubleshooting', body: ['When a manager scans a menu or invoice, the app now prepares the selected file before upload. Large photos are compressed locally in the browser; this reduces Storage upload size, scanner memory use, and AI file payload size.', 'Successful compression shows a toast such as 24.0MB → 7.8MB. This means the original file stayed on the user device and the smaller scan copy was uploaded.', 'For PDFs, compression is best-effort. PDFs that are mostly text/exported objects may shrink. PDFs that are giant page photos may not shrink enough, and the correct support advice is to split the PDF or export fewer pages.', 'If compression fails for HEIC or an unusual image type, ask the manager to rescan as JPG/PNG or set the phone camera to Most Compatible for restaurant scanning.', 'The 20MB Storage/API scanner shield remains in place. Automatic compression is a front-door helper, not permission to allow giant files into backend memory.'] },
@@ -5645,14 +5731,63 @@ Type RESTORE to continue.`);
               </div>
               {duplicateEmailGroups.length > 0 && <button type="button" onClick={loadDuplicateEmailsIntoBulkDelete} className="text-[9px] font-black uppercase tracking-widest text-red-300 border border-red-900/50 px-2 py-1.5 rounded-lg hover:bg-red-900/20">Load Duplicate Emails</button>}
             </div>
-            <textarea value={bulkDeleteEmails} onChange={e=>setBulkDeleteEmails(e.target.value)} rows="3" className={`${T.input} font-mono text-xs`} placeholder="bad@email.com
+            <textarea value={bulkDeleteEmails} onChange={e=>{ setBulkDeleteEmails(e.target.value); setSelectedBulkDeleteUserIds([]); }} rows="3" className={`${T.input} font-mono text-xs`} placeholder="bad@email.com
 duplicate@email.com
 another@email.com"></textarea>
+            {getBulkDeletePreviewUsers().length > 0 && (() => {
+              const previewUsers = getBulkDeletePreviewUsers();
+              const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
+              const deletableIds = previewUsers.filter(u => !protectedEmails.has((u.email || '').toLowerCase().trim())).map(u => u.id);
+              const groupedPreview = previewUsers.reduce((acc, u) => {
+                const key = (u.email || 'No email').toLowerCase().trim();
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(u);
+                return acc;
+              }, {});
+              return (
+                <div className="mt-3 bg-[#0B0E11] border border-red-900/30 rounded-xl overflow-hidden">
+                  <div className="p-3 border-b border-red-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-red-200">Review Exact Accounts Before Deleting</div>
+                      <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Created date, workspace, role, and profile ID are shown so duplicate emails do not get vaporized blindly.</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setSelectedBulkDeleteUserIds(deletableIds)} className="text-[9px] font-black uppercase tracking-widest text-red-200 border border-red-800/60 px-2 py-1 rounded-lg hover:bg-red-900/30">Select All</button>
+                      <button type="button" onClick={() => setSelectedBulkDeleteUserIds([])} className="text-[9px] font-black uppercase tracking-widest text-slate-300 border border-[#2A353D] px-2 py-1 rounded-lg hover:bg-[#12161A]">Clear Picks</button>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-red-900/20 max-h-64 overflow-y-auto custom-scrollbar">
+                    {Object.entries(groupedPreview).map(([email, rows]) => (
+                      <div key={email} className="p-2">
+                        <div className="text-[9px] font-black uppercase tracking-widest text-red-300 px-1 mb-1">{email} {rows.length > 1 && <span className="text-amber-300">• {rows.length} profiles</span>}</div>
+                        <div className="space-y-1">
+                          {rows.map(u => {
+                            const rowEmail = (u.email || '').toLowerCase().trim();
+                            const protectedRow = protectedEmails.has(rowEmail);
+                            const restName = restaurants.find(r => r.id === u.restaurantId)?.name || u.restaurantId || 'Unknown workspace';
+                            return (
+                              <label key={u.id} className={`flex items-start gap-2 p-2 rounded-lg border ${protectedRow ? 'border-amber-900/40 bg-amber-900/10 opacity-75' : selectedBulkDeleteUserIds.includes(u.id) ? 'border-red-500/60 bg-red-900/20' : 'border-[#2A353D] bg-[#12161A]'} cursor-pointer`}>
+                                <input type="checkbox" disabled={protectedRow} checked={selectedBulkDeleteUserIds.includes(u.id)} onChange={e => toggleBulkDeleteSelection(u.id, e.target.checked)} className="mt-1 accent-red-500" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-black text-white truncate">{u.name || 'No name'} {protectedRow && <span className="text-amber-300 text-[9px] uppercase ml-1">Protected</span>}</div>
+                                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Created: <span className="text-slate-200">{formatUserCreatedValue(u)}</span></div>
+                                  <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest truncate">{restName} • {u.role || 'No role'} • ID {String(u.id || '').slice(0, 18)}</div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex flex-col sm:flex-row gap-2 mt-3">
               <button type="submit" disabled={isBulkDeletingUsers} className="flex-1 bg-red-900/30 text-red-200 border border-red-700/60 hover:bg-red-900/50 font-black uppercase tracking-widest py-2.5 rounded-lg text-xs disabled:opacity-50 flex items-center justify-center gap-2">
-                {isBulkDeletingUsers ? <Loader2 className="animate-spin" size={14}/> : <Trash2 size={14}/>} Delete Matching Users
+                {isBulkDeletingUsers ? <Loader2 className="animate-spin" size={14}/> : <Trash2 size={14}/>} {selectedBulkDeleteUserIds.length ? `Delete ${selectedBulkDeleteUserIds.length} Selected User${selectedBulkDeleteUserIds.length === 1 ? '' : 's'}` : 'Delete Matching Users'}
               </button>
-              <button type="button" onClick={() => setBulkDeleteEmails('')} className={`${T.btnAlt} sm:w-32`}>Clear</button>
+              <button type="button" onClick={() => { setBulkDeleteEmails(''); setSelectedBulkDeleteUserIds([]); }} className={`${T.btnAlt} sm:w-32`}>Clear</button>
             </div>
           </form>
 

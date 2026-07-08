@@ -23,6 +23,16 @@ function normalizeEmails(raw) {
   return [...new Set(arr.map(e => String(e || '').toLowerCase().trim()).filter(e => e.includes('@')))];
 }
 
+function normalizeIds(raw) {
+  const arr = Array.isArray(raw) ? raw : String(raw || '').split(/[\s,;]+/);
+  return [...new Set(arr.map(id => String(id || '').trim()).filter(Boolean))].slice(0, 250);
+}
+
+function isProtectedUser(profile, caller, protectedEmails) {
+  const email = String(profile?.email || '').toLowerCase().trim();
+  return protectedEmails.has(email) || profile?.id === caller.uid;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
@@ -30,14 +40,65 @@ module.exports = async function handler(req, res) {
     const app = initAdmin();
     const db = app.firestore();
     const emails = normalizeEmails(req.body?.emails || req.body?.emailText);
+    const userIds = normalizeIds(req.body?.userIds || req.body?.uids || req.body?.profileIds);
     const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
     const protectedEmails = new Set([masterEmail, (caller.email || '').toLowerCase()]);
-    const targets = emails.filter(e => !protectedEmails.has(e));
-    if (!targets.length) return res.status(400).json({ error: 'No deletable emails supplied.' });
 
     let authDeleted = 0;
     let profileDeleted = 0;
     const errors = [];
+    const skippedProtected = [];
+
+    if (userIds.length > 0) {
+      const profileSnaps = await Promise.all(userIds.map(id => db.collection('users').doc(id).get()));
+      const profiles = profileSnaps
+        .filter(snap => snap.exists)
+        .map(snap => ({ id: snap.id, ref: snap.ref, ...(snap.data() || {}) }));
+
+      const targets = profiles.filter(profile => {
+        if (isProtectedUser(profile, caller, protectedEmails)) {
+          skippedProtected.push(profile.email || profile.id);
+          return false;
+        }
+        return true;
+      });
+
+      if (!targets.length) return res.status(400).json({ error: 'No deletable selected profiles were supplied.', skippedProtected });
+
+      for (const profile of targets) {
+        const email = String(profile.email || '').toLowerCase().trim();
+        try {
+          try {
+            const authUser = await app.auth().getUser(profile.id);
+            if ((authUser.email || '').toLowerCase() === masterEmail || authUser.uid === caller.uid) throw new Error('Protected admin account.');
+            await app.auth().deleteUser(authUser.uid);
+            authDeleted++;
+          } catch (err) {
+            if (err.code !== 'auth/user-not-found') errors.push(`${email || profile.id}: auth ${err.message}`);
+          }
+          await profile.ref.delete();
+          profileDeleted++;
+        } catch (err) {
+          errors.push(`${email || profile.id}: profile ${err.message}`);
+        }
+      }
+
+      await db.collection('auditLogs').add({
+        userId: caller.uid,
+        userName: caller.email || 'System Admin',
+        action: 'BULK_DELETE_USERS_SELECTED',
+        target: 'users',
+        details: `Bulk deleted selected user profiles: ${targets.map(u => `${u.email || 'no-email'}:${u.id}`).join(', ')}. Auth: ${authDeleted}. Profiles: ${profileDeleted}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
+        timestamp: new Date().toISOString(),
+        restaurantId: 'system',
+        isGhost: false
+      }).catch(() => {});
+
+      return res.status(200).json({ ok: true, mode: 'selected-profiles', requested: userIds.length, authDeleted, profileDeleted, skippedProtected, errors });
+    }
+
+    const targets = emails.filter(e => !protectedEmails.has(e));
+    if (!targets.length) return res.status(400).json({ error: 'No deletable emails supplied.' });
 
     for (const email of targets) {
       let uidFromAuth = null;
@@ -76,7 +137,7 @@ module.exports = async function handler(req, res) {
       isGhost: false
     }).catch(() => {});
 
-    res.status(200).json({ ok: true, requested: emails.length, authDeleted, profileDeleted, skippedProtected: emails.filter(e => protectedEmails.has(e)), errors });
+    res.status(200).json({ ok: true, mode: 'emails', requested: emails.length, authDeleted, profileDeleted, skippedProtected: emails.filter(e => protectedEmails.has(e)), errors });
   } catch (err) {
     res.status(403).json({ error: err.message || 'Bulk delete failed.' });
   }

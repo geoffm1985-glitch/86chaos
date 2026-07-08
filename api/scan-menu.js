@@ -2,7 +2,7 @@ const { initAdmin, readBody, writeAudit, norm, masterEmails, readWorkspaceMember
 const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 
-const MENU_SCANNER_VERSION = '15.0.8';
+const MENU_SCANNER_VERSION = '15.0.9';
 
 function cleanJsonText(text = '') {
   return String(text || '')

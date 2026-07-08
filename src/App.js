@@ -94,7 +94,7 @@ export default function App() {
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
-  const helpReleaseBriefDisabled = ['15.0.5', '15.0.6', '15.0.7', '15.0.8'].includes(CURRENT_VERSION);
+  const helpReleaseBriefDisabled = ['15.0.5', '15.0.6', '15.0.7', '15.0.8', '15.0.9'].includes(CURRENT_VERSION);
   const [hasHelpUpdate, setHasHelpUpdate] = useState(() => !helpReleaseBriefDisabled && localStorage.getItem(`helpBriefSeen_${CURRENT_VERSION}`) !== 'true');
   const [tourMode, setTourMode] = useState(null);
   const [tourStep, setTourStep] = useState(0);
@@ -158,8 +158,8 @@ const [currentDate, setCurrentDate] = useState(getToday());
     return { start, end: formatDate(endDate) };
   };
   const monthBounds = getMonthBounds(currentDate);
-  const scheduleWindowStart = addDays(monthBounds.start, -7);
-  const scheduleWindowEnd = addDays(monthBounds.end, 14);
+  const scheduleWindowStart = addDays(monthBounds.start, -14);
+  const scheduleWindowEnd = addDays(monthBounds.end, 60);
   const recentWindowStart = addDays(getToday(), -30);
   const futureWindowEnd = addDays(getToday(), 14);
   const todayOpsWindowEnd = addDays(getToday(), 7);
