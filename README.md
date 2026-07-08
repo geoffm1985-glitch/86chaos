@@ -1,33 +1,34 @@
 # 86 Chaos
 
-Current version: 15.0.9
+Current version: 15.0.10
 
-## 15.0.9 focus
+## 15.0.10 focus
 
-15.0.9 adds schedule publishing controls and safer exact-row bulk user deletion.
+15.0.10 improves 86 Voice alerts and command-center naming.
 
-- Workspace schedule publishing can now be set to weekly, every 2 weeks, monthly, or a custom 1–8 week window.
-- Schedule Builder uses the workspace publishing style for the visible grid, projected labor, publish backup, and Publish Schedule action.
-- Workspace settings can block regular employee time-off requests after a date has already been published.
-- System Administrator → People bulk delete shows every matching user profile with created date/time, workspace, role, and profile ID before deletion.
-- Duplicate-email cleanup now requires selecting the exact user profile rows before deleting.
-- `/api/delete-users-bulk` accepts selected user profile IDs so it can delete only the intended rows.
-- The internal Administrator Manual includes 15.0.9 setup, support, and QA guidance.
-- No public Help Center release note was added for this build.
+## What changed
+
+- 86 Voice can use Menu Intelligence links to resolve spoken menu shorthand to the right inventory product.
+- Example: saying “86 burger” can match an inventory item like `BEEF GR PTY` when approved menu links point burgers to that product.
+- 86 alert Message Board posts now include unavailable menu items from Menu Intelligence.
+- The same 86 alert is flagged for Manager Brief and Kitchen Command Center without creating duplicate alert records.
+- The side menu now says **Manager Brief** instead of Today Command Center.
+- The side menu now says **Kitchen Command Center** instead of Ops Command Center.
+- Help Center includes 15.0.10 release notes.
+- Administrator Manual includes 15.0.10 setup, QA, and support guidance.
 
 ## Deployment notes
 
 1. Deploy the app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.9` after deploy.
-3. Test Workspace → Schedule Publishing settings.
-4. Test Schedule Builder in weekly, 2-week, monthly, and custom modes.
-5. Test time-off blocking after schedule publish when the workspace toggle is off.
-6. Test System Administrator → People bulk delete preview and exact-row selection.
-7. Run the 15.0.9 QA checklist before handing it to staff.
+2. Confirm `/version.json` reports `15.0.10` after deploy.
+3. Test 86 Voice with a phrase like `86 burger` in a workspace with approved Menu Intelligence links.
+4. Confirm the Message Board post includes the inventory match and unavailable menu items.
+5. Confirm Manager Brief and Kitchen Command Center show the important alert.
+6. Run the 15.0.10 QA checklist before handing it to staff.
 
-## Separate publish/deploy requirements
+## Separate publishing required
 
-- Firestore rules: no new changes from 15.0.8.
-- Storage rules: no new changes from 15.0.8.
-- Vercel/API routes: deploy updated app code because `/api/delete-users-bulk.js` changed.
-- New Vercel environment variables: none.
+- Firestore rules: no new changes from 15.0.9.
+- Storage rules: no new changes from 15.0.9.
+- Vercel/API routes: deploy the updated app code.
+- New environment variables: none.

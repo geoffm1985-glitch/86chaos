@@ -8,7 +8,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
-import { getZeroStockMenuImpacts } from '../core/menuIntelligence';
+import { buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
@@ -2608,7 +2608,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       dependencyType: 'ingredient',
       notes: depNotes.trim(),
       createdAt: new Date().toISOString(),
-      createdBy: appUser?.name || appUser?.email || 'Ops Center',
+      createdBy: appUser?.name || appUser?.email || 'Kitchen Command Center',
       restaurantId: appUser.restaurantId
     } });
     setDepNotes('');
@@ -2745,9 +2745,9 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       await Promise.all(items.map(i => safeOpsWrite({ action: 'update', collectionName: 'inventoryItems', docId: i.id, label: 'Smart order', before: i, data: {
         pendingQty: Math.max(Number(i.pendingQty || 0), stockNeed(i)),
         lastSmartOrderDate: getToday(),
-        lastSmartOrderBy: appUser?.name || 'Ops Command Center'
+        lastSmartOrderBy: appUser?.name || 'Kitchen Command Center'
       } })));
-      await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Ops Command Center.`);
+      await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Kitchen Command Center.`);
       addToast('Smart Order Built', `${items.length} item(s) queued for ordering.`);
     } catch (err) { addToast('Error', err.message); }
   };
@@ -2781,7 +2781,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     const text = `86 / Low Stock Watch:\n${alertLines.join('\n')}`;
     try {
       await safeOpsWrite({ action: 'add', collectionName: 'events', label: '86 alert', data: {
-        date: new Date().toISOString(), title: text, type: 'note', messageCategory: '86 Alert', author: appUser?.name || 'Ops Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
+        date: new Date().toISOString(), title: text, type: 'note', messageCategory: '86 Alert', author: appUser?.name || 'Kitchen Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
       } });
       addToast('86 Alert Posted', 'Important low-stock alert posted to Message Board.');
     } catch (err) { addToast('Error', err.message); }
@@ -2789,8 +2789,8 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const handleMarkOpsReviewed = async () => {
     try {
-      await logAudit(appUser, 'OPS_REVIEWED', 'ops', `Reviewed Ops Command Center for ${today}. Health score ${healthScore}/100.`);
-      addToast('Ops Reviewed', 'Review logged to audit trail.');
+      await logAudit(appUser, 'OPS_REVIEWED', 'ops', `Reviewed Kitchen Command Center for ${today}. Health score ${healthScore}/100.`);
+      addToast('Kitchen Command Reviewed', 'Review logged to audit trail.');
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -2803,7 +2803,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     })),
     ...todayWaste.map(w => ({ at: w.timestamp || today, type: 'Waste', title: `${w.itemName || 'Item'} wasted`, detail: `${w.qty || ''} ${w.reason || ''}` })),
     ...maintenanceLogs.filter(l => (l.reportedAt || '').startsWith(today) || (l.lastUpdated || '').startsWith(today)).map(l => ({ at: l.lastUpdated || l.reportedAt, type: 'Maintenance', title: l.equipment, detail: l.issue })),
-    ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.type || 'Event', title: e.title || 'Event', detail: e.author || '' })),
+    ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.messageCategory || e.type || 'Event', title: e.title || 'Event', detail: e.notes || e.menuImpact || e.author || '' })),
     ...todayShifts.slice(0, 12).map(s => ({ at: `${today}T${s.startTime || '00:00'}:00`, type: 'Scheduled', title: `${users.find(u => u.id === s.employeeId)?.name || 'Staff'} ${s.role || ''}`, detail: `${formatShortTime(s.startTime)} - ${formatShortTime(s.endTime)}` }))
   ].filter(x => x.at).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0, 18);
 
@@ -2826,7 +2826,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         date: new Date().toISOString(),
         title: briefText(),
         type: 'note',
-        author: appUser?.name || 'Ops Command Center',
+        author: appUser?.name || 'Kitchen Command Center',
         isImportant: false,
         restaurantId: appUser.restaurantId,
         replies: []
@@ -2866,7 +2866,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         .filter(p => !existingPmTitles.has(p.title.toLowerCase()))
         .map(p => safeOpsWrite({ action: 'add', collectionName: 'pmSchedules', label: 'Seed PM schedule', data: { ...p, lastCompleted: getToday(), lastUpdatedBy: appUser.name, restaurantId: appUser.restaurantId } }));
       await Promise.all([...taskAdds, ...pmAdds]);
-      addToast('Kitchen Ops Seeded', `Added ${taskAdds.length + pmAdds.length} operating standards.`);
+      addToast('Kitchen Standards Seeded', `Added ${taskAdds.length + pmAdds.length} operating standards.`);
     } catch (err) {
       addToast('Error', err.message);
     }
@@ -3057,7 +3057,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
           <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
             <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">86 Watch</div>
-            <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>
+            <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>{importantEvents[0]?.notes && <div className="text-[11px] text-slate-400 font-bold mt-1 whitespace-pre-wrap line-clamp-3">{importantEvents[0].notes}</div>}
           </div>
         </div>
         <div className="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-3">
@@ -3113,7 +3113,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   );
 };
 
-const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, clientData, setActiveTab, addToast, registerUndo }) => {
+const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], clientData, setActiveTab, addToast, registerUndo }) => {
   const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
   const today = getToday();
   const profile = getHomeProfile(appUser);
@@ -3154,9 +3154,20 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       if (kind === '86') {
         const item = prompt('What item is 86\'d or low?');
         if (!item) return;
-        const result = await safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Today quick 86 alert', data: { restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] } });
+        const resolved = resolveEightySixInventoryMatch(item, inventoryItems, menuDependencies);
+        const inventoryItem = resolved?.item || null;
+        const impactText = inventoryItem ? buildMenuImpactText(inventoryItem, menuDependencies) : '';
+        const impactItems = inventoryItem ? getMenuImpactForInventoryItem(inventoryItem, menuDependencies).map(i => i.name).filter(Boolean) : [];
+        const matchText = inventoryItem && String(inventoryItem.name || '').toLowerCase() !== String(item || '').toLowerCase()
+          ? `Inventory match: ${inventoryItem.name}${resolved?.method === 'menuIntelligence' ? ' (matched through Menu Intelligence)' : ''}.`
+          : '';
+        const notes = [matchText, impactText, resolved?.matchedMenuItemName ? `Menu phrase matched: ${resolved.matchedMenuItemName}.` : ''].filter(Boolean).join('\n');
+        const result = await safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Manager Brief quick 86 alert', data: {
+          restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }],
+          notes, menuImpact: impactText, menuImpactItems: impactItems, inventoryItemId: inventoryItem?.id || '', inventoryItemName: inventoryItem?.name || '', requestedItemName: item, commandCenterAlert: true, managerBriefAlert: true, kitchenCommandCenterAlert: true, source: 'manager_brief_quick_86'
+        } });
         undoMeta = { collectionName: 'events', id: result.id, before: result.payload };
-        addToast('86 Alert Posted', item);
+        addToast('86 Alert Posted', impactText ? `${item} posted with menu impact.` : item);
       }
       if (kind === 'prep') {
         const item = prompt('Prep task to add for today?');
@@ -3251,13 +3262,13 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className={`${T.card} p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
           {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={openInventoryFocus} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
-          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Ops" detail="Open full command center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
+          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Kitchen Command" detail="Open Kitchen Command Center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
           {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
         </div>
 
         <div className={`${T.card} p-4`}>
           <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">Important Messages</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open Board</button></div>
-          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div></div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
+          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div>{(n.notes || n.menuImpact) && <div className="text-[11px] text-slate-300 font-bold mt-1 whitespace-pre-wrap line-clamp-3">{n.notes || n.menuImpact}</div>}</div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
         </div>
       </div>
 
