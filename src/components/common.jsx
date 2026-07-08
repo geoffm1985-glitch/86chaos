@@ -539,6 +539,30 @@ const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today') => {
   return false;
 };
 
+const fetchVoicePrepMatchCandidates = async (restaurantId = '', prepDates = [], existingPrepItems = []) => {
+  const byId = new Map();
+  const addCandidate = (item) => {
+    if (!item) return;
+    const key = item.id || `${item.date || ''}:${item.text || item.title || item.name || ''}:${item.station || ''}`;
+    if (key && !byId.has(key)) byId.set(key, item);
+  };
+  (existingPrepItems || []).forEach(addCandidate);
+
+  if (!restaurantId) return Array.from(byId.values());
+  const dates = Array.from(new Set([...(prepDates || []), 'MASTER'].map(v => String(v || '').trim()).filter(Boolean)));
+  for (let i = 0; i < dates.length; i += 10) {
+    const chunk = dates.slice(i, i + 10);
+    if (!chunk.length) continue;
+    try {
+      const snap = await getDocs(query(collection(db, 'prepItems'), where('restaurantId', '==', restaurantId), where('date', 'in', chunk)));
+      snap.forEach((docSnap) => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+    } catch (err) {
+      console.warn('86 Voice prep match refresh failed; using loaded prep snapshot.', err?.message || err);
+    }
+  }
+  return Array.from(byId.values());
+};
+
 const makeVoiceNav = ({ label, tab, summary, subTab = null, date = null, helpQuery = '', localSearch = '' }) => ({
   intent: helpQuery ? 'help_search' : (subTab ? 'navigate_schedule' : 'navigate'),
   label, tab, subTab, date, helpQuery, localSearch, summary, safe:true
@@ -942,10 +966,13 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           return;
         }
         const targetPrepDate = actionToRun.prepDate || getToday();
+        const requestedPrepItems = actionToRun.prepItems || [];
+        const prepDatesToCheck = Array.from(new Set(requestedPrepItems.map(item => item.prepDate || targetPrepDate).filter(Boolean)));
+        const matchCandidates = await fetchVoicePrepMatchCandidates(appUser?.restaurantId, prepDatesToCheck, prepItems);
         const results = [];
-        for (const parsed of actionToRun.prepItems || []) {
+        for (const parsed of requestedPrepItems) {
           const prepDate = parsed.prepDate || targetPrepDate;
-          const match = findPrepMatch(prepItems, parsed, prepDate);
+          const match = findPrepMatch(matchCandidates, parsed, prepDate);
           if (match?.id) {
             const data = buildPrepQuantityUpdate({
               existingItem: match,
@@ -955,6 +982,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
               source: '86_voice_smart_prep'
             });
             await updateDoc(doc(db, 'prepItems', match.id), data);
+            Object.assign(match, data);
             results.push({ type: 'updated', name: match.text || parsed.itemText });
           } else {
             await addDoc(collection(db, 'prepItems'), buildPrepCreatePayload({
