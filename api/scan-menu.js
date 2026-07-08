@@ -1,6 +1,8 @@
 const { initAdmin, readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace } = require('./_chaos-admin');
+const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
-const MENU_SCANNER_VERSION = '15.0.0';
+
+const MENU_SCANNER_VERSION = '15.0.2';
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -224,8 +226,20 @@ module.exports = async function handler(req, res) {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing GEMINI_API_KEY in Vercel environment variables.' });
 
-    const [buffer] = await app.storage().bucket().file(storagePath).download();
-    const contentType = body.contentType || 'application/octet-stream';
+    const menuFile = app.storage().bucket().file(storagePath);
+    const [metadata] = await menuFile.getMetadata().catch(() => ([{}]));
+    const contentType = body.contentType || metadata?.contentType || 'application/octet-stream';
+    const maxBytes = parseInt(process.env.MENU_SCAN_MAX_BYTES || String(DEFAULT_MENU_SCAN_MAX_BYTES), 10);
+    const reportedBytes = Number(metadata?.size || 0);
+    if (reportedBytes && reportedBytes > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      return res.status(413).json({ ok: false, error: `Menu file is over the current ${mb}MB scanner limit. Compress it, split the PDF, or upload fewer pages.` });
+    }
+    const [buffer] = await menuFile.download();
+    if (buffer.length > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      return res.status(413).json({ ok: false, error: `Menu file is over the current ${mb}MB scanner limit. Compress it, split the PDF, or upload fewer pages.` });
+    }
     const inventoryItems = Array.isArray(body.inventoryItems) ? body.inventoryItems : [];
     const prompt = [
       'You are helping a restaurant build menu-to-inventory dependency records.',

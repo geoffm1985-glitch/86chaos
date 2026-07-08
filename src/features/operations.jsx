@@ -1066,9 +1066,9 @@ const executeOrder = async (method) => {
     if (!file) return;
 
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    const maxBytes = isPdf ? 100 * 1024 * 1024 : 100 * 1024 * 1024;
+    const maxBytes = 20 * 1024 * 1024;
     if (file.size > maxBytes) {
-      addToast('Invoice Too Large', 'This invoice is over 100MB. Split it into smaller files or scan fewer pages.');
+      addToast('Invoice Too Large', 'This invoice is over 20MB. Compress it, split the PDF, or scan fewer pages.');
       e.target.value = '';
       return;
     }

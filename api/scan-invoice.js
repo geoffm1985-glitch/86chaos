@@ -2,7 +2,8 @@
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.1';
+const INVOICE_SCANNER_VERSION = '15.0.2';
+const DEFAULT_INVOICE_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -346,19 +347,32 @@ async function readScanSource(reqBody, req, adminApp) {
       throw new Error('Scan file path does not match the selected workspace.');
     }
     const bucket = adminApp.storage().bucket();
-    const [buffer] = await bucket.file(storagePath).download();
-    const pdfLike = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
+    const scanFile = bucket.file(storagePath);
+    const [metadata] = await scanFile.getMetadata().catch(() => ([{}]));
+    const storageMimeType = metadata?.contentType && metadata.contentType !== 'application/octet-stream' ? metadata.contentType : '';
+    const effectiveMimeType = detectMimeType(fileName, storageMimeType || mimeType);
+    const pdfLike = effectiveMimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
     const maxBytes = pdfLike
-      ? parseInt(process.env.INVOICE_SCAN_MAX_PDF_BYTES || String(100 * 1024 * 1024), 10)
-      : parseInt(process.env.INVOICE_SCAN_MAX_IMAGE_BYTES || String(100 * 1024 * 1024), 10);
+      ? parseInt(process.env.INVOICE_SCAN_MAX_PDF_BYTES || String(DEFAULT_INVOICE_SCAN_MAX_BYTES), 10)
+      : parseInt(process.env.INVOICE_SCAN_MAX_IMAGE_BYTES || String(DEFAULT_INVOICE_SCAN_MAX_BYTES), 10);
+    const reportedBytes = Number(metadata?.size || 0);
+    if (reportedBytes && reportedBytes > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      const err = new Error(`Invoice file is over the current ${mb}MB scanner limit. Split it into smaller files, compress the PDF, or scan fewer pages at once.`);
+      err.statusCode = 413;
+      throw err;
+    }
+    const [buffer] = await scanFile.download();
     if (buffer.length > maxBytes) {
       const mb = Math.round(maxBytes / (1024 * 1024));
-      throw new Error(`Invoice file is over the current ${mb}MB scanner limit. Split it into smaller files or scan fewer pages at once.`);
+      const err = new Error(`Invoice file is over the current ${mb}MB scanner limit. Split it into smaller files, compress the PDF, or scan fewer pages at once.`);
+      err.statusCode = 413;
+      throw err;
     }
     return {
       fileBase64: null,
       fileBuffer: buffer,
-      mimeType,
+      mimeType: effectiveMimeType,
       fileName,
       source: 'firebase-storage',
       storagePath,
@@ -770,7 +784,7 @@ async function handler(req, res) {
     const message = isTimeout
       ? 'Invoice scanner needed more time while AI was reading the file. Try again once, or scan fewer pages if this keeps happening.'
       : (err.message || 'Invoice scanner failed.');
-    const status = isTimeout ? 504 : (/authorization|token|permission|login/i.test(message) ? 401 : 500);
+    const status = err?.statusCode || (isTimeout ? 504 : (/authorization|token|permission|login/i.test(message) ? 401 : 500));
     return res.status(status).json({
       error: message,
       hint: message.toLowerCase().includes('payload')

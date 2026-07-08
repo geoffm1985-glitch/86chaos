@@ -707,14 +707,14 @@ if (liveAppUser && clientData) {
 
         // Fallback for local development or a missing Vercel function. livePresence is overwritten,
         // not merged, so old poisoned presence docs cannot keep blocking fresh writes.
+        // Do not write heartbeat data to users/restaurants here; those high-churn collections
+        // can trigger expensive listener fan-out and noisy React refreshes.
         const results = await Promise.allSettled([
           setDoc(doc(db, 'livePresence', `${String(rId).replace(/[^A-Za-z0-9_-]/g, '_')}_${authUid}`), livePresencePayload),
-          setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload),
-          setDoc(doc(db, 'users', authUid), presencePayload, { merge: true }),
-          updateDoc(doc(db, 'restaurants', rId), { lastActive: stamp, lastActiveUserId: authUid }).catch(()=>{})
+          setDoc(doc(db, 'presenceSessions', safeSessionId), presenceSessionPayload)
         ]);
         const rejected = results.filter(r => r.status === 'rejected');
-        const primarySaved = results[0]?.status === 'fulfilled' || results[2]?.status === 'fulfilled';
+        const primarySaved = results[0]?.status === 'fulfilled';
         if (rejected.length && !primarySaved) {
           clearVerifiedLocalHeartbeat();
           const errText = rejected.map(r => r.reason?.code || r.reason?.message || String(r.reason)).join(' | ');
@@ -732,7 +732,7 @@ if (liveAppUser && clientData) {
       };
 
       sendHeartbeat(document.hidden ? 'away' : 'online');
-      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 25000);
+      heartbeatTimer = setInterval(() => sendHeartbeat(document.hidden ? 'away' : 'online'), 60000);
       handleVisibility = () => sendHeartbeat(document.hidden ? 'away' : 'online');
       handleBeforeUnload = () => sendHeartbeat('offline');
       document.addEventListener('visibilitychange', handleVisibility);

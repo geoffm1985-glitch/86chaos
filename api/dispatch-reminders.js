@@ -20,6 +20,24 @@ function collectTokens(user = {}) {
   return [...tokens].filter(Boolean);
 }
 
+function safeInt(value, fallback, min, max) {
+  const parsed = parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+async function runWithConcurrency(items, limit, worker) {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor];
+      cursor += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   const expectedSecret = process.env.CRON_SECRET;
@@ -29,32 +47,50 @@ module.exports = async function handler(req, res) {
   const db = app.firestore();
   const messaging = app.messaging();
   const nowIso = new Date().toISOString();
-  const stats = { scanned: 0, sent: 0, skipped: 0, failed: 0, noToken: 0 };
+  const stats = { scanned: 0, claimed: 0, sent: 0, skipped: 0, failed: 0, noToken: 0 };
+  const limit = safeInt(process.env.REMINDER_DISPATCH_QUERY_LIMIT, 200, 1, 500);
+  const concurrency = safeInt(process.env.REMINDER_DISPATCH_CONCURRENCY, 12, 1, 25);
 
   try {
     const snap = await db.collection('personalReminders')
       .where('scheduledAt', '<=', nowIso)
-      .limit(200)
+      .limit(limit)
       .get();
 
-    for (const docSnap of snap.docs) {
+    const processReminder = async (docSnap) => {
       stats.scanned += 1;
-      const reminder = docSnap.data() || {};
-      if (reminder.status !== 'scheduled') { stats.skipped += 1; continue; }
-      const dispatchKey = `${docSnap.id}:${reminder.scheduledAt || ''}`;
-      if (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt) { stats.skipped += 1; continue; }
       const ref = db.collection('personalReminders').doc(docSnap.id);
       try {
-        await ref.update({ status: 'dispatching', dispatchAttemptAt: nowIso, dispatchKey });
+        const claim = await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(ref);
+          if (!fresh.exists) return { claimed: false, reason: 'missing' };
+          const reminder = fresh.data() || {};
+          if (reminder.status !== 'scheduled') return { claimed: false, reason: 'not_scheduled' };
+          const dispatchKey = `${docSnap.id}:${reminder.scheduledAt || ''}`;
+          if (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt) return { claimed: false, reason: 'already_dispatched' };
+          tx.update(ref, { status: 'dispatching', dispatchAttemptAt: nowIso, dispatchKey });
+          return { claimed: true, reminder, dispatchKey };
+        });
+
+        if (!claim.claimed) {
+          stats.skipped += 1;
+          return;
+        }
+
+        stats.claimed += 1;
+        const reminder = claim.reminder || {};
+        const dispatchKey = claim.dispatchKey;
         const userId = reminder.userId || reminder.createdBy || '';
         const userSnap = userId ? await db.collection('users').doc(userId).get() : null;
         const user = userSnap?.exists ? userSnap.data() : {};
         const tokens = collectTokens(user);
+
         if (!tokens.length) {
           stats.noToken += 1;
           await ref.update({ status: 'no_push_token', dispatchKey, dispatchedAt: nowIso, dispatchError: 'No saved push token for reminder owner.' });
-          continue;
+          return;
         }
+
         const payload = {
           notification: {
             title: '86 Chaos Reminder',
@@ -68,6 +104,7 @@ module.exports = async function handler(req, res) {
           },
           tokens
         };
+
         const result = await messaging.sendEachForMulticast(payload);
         if (result.successCount > 0) {
           stats.sent += 1;
@@ -90,12 +127,17 @@ module.exports = async function handler(req, res) {
         }
       } catch (err) {
         stats.failed += 1;
-        await ref.update({ status: 'delivery_problem', dispatchedAt: nowIso, dispatchKey, dispatchError: err.message || 'Dispatch failed.' }).catch(() => {});
+        await ref.update({
+          status: 'delivery_problem',
+          dispatchedAt: nowIso,
+          dispatchError: err.message || 'Dispatch failed.'
+        }).catch(() => {});
       }
-    }
+    };
 
-    return res.status(200).json({ ok: true, now: nowIso, ...stats });
+    await runWithConcurrency(snap.docs, concurrency, processReminder);
+    return res.status(200).json({ ok: true, now: nowIso, limit, concurrency, ...stats });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message || 'Reminder dispatch failed.', ...stats });
+    return res.status(500).json({ ok: false, error: err.message || 'Reminder dispatch failed.', limit, concurrency, ...stats });
   }
 };

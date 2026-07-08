@@ -50,7 +50,7 @@
       "memory": 1024
     },
     "api/dispatch-reminders.js": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "memory": 512
     },
     "api/full-system-diagnostics.js": {

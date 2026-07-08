@@ -132,7 +132,16 @@ service firebase.storage {
 
     function isAllowedInvoiceScan() {
       return request.resource != null &&
-        request.resource.size < 50 * 1024 * 1024 &&
+        request.resource.size <= 20 * 1024 * 1024 &&
+        (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
+    }
+
+    function isAllowedMenuUpload() {
+      return request.resource != null &&
+        request.resource.size <= 20 * 1024 * 1024 &&
         (
           request.resource.contentType.matches('image/.*') ||
           request.resource.contentType == 'application/pdf'
@@ -181,7 +190,7 @@ service firebase.storage {
     // Restaurant-scoped menu uploads for Menu Intelligence review.
     match /{restaurantId}/menuUploads/{allPaths=**} {
       allow read: if canUseMenuIntelligence(restaurantId);
-      allow write: if canUseMenuIntelligence(restaurantId) && isAllowedInvoiceScan();
+      allow write: if canUseMenuIntelligence(restaurantId) && isAllowedMenuUpload();
     }
 
     // Backups are Super Admin only. No regular signed-in user can read or write backups.

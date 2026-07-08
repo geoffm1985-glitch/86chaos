@@ -213,6 +213,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
 
   const scanMenu = async () => {
     if (!file) return addToast('Choose File', 'Upload a menu image or PDF first.');
+    if (file.size > 20 * 1024 * 1024) return addToast('Menu Too Large', 'This menu file is over 20MB. Compress it, split the PDF, or upload fewer pages.');
     setBusy(true);
     try {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);

@@ -119,15 +119,12 @@ module.exports = async function handler(req, res) {
       source: 'api-heartbeat'
     };
 
+    // Cost-control rule: high-frequency heartbeat writes stay out of users/restaurants.
+    // Team/Live screens should read livePresence and presenceSessions for online state,
+    // while the users collection remains reserved for slower profile/settings data.
     const batch = db.batch();
     batch.set(db.collection('livePresence').doc(memberDocId(uid, restaurantId)), livePresence);
     batch.set(db.collection('presenceSessions').doc(sessionId), { ...livePresence, sessionId });
-    batch.set(userRef, basePresence, { merge: true });
-    batch.set(db.collection('restaurants').doc(restaurantId), {
-      lastActive: stamp,
-      lastActiveUserId: uid,
-      lastActiveUserName: livePresence.userName || livePresence.userEmail || uid
-    }, { merge: true });
     await batch.commit();
 
     return res.status(200).json({
@@ -137,7 +134,7 @@ module.exports = async function handler(req, res) {
       state,
       sessionId,
       projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount()?.project_id || loadServiceAccount()?.projectId || '',
-      written: ['livePresence', 'presenceSessions', 'users', 'restaurants']
+      written: ['livePresence', 'presenceSessions']
     });
   } catch (err) {
     console.error('Presence heartbeat failed:', err);

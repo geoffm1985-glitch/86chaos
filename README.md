@@ -1,42 +1,45 @@
 # 86 Chaos
 
-Current version: 15.0.1
+Current version: 15.0.2
 
-## Build: Invoice Scanner JSON Recovery
+86 Chaos is a restaurant/kitchen management web app built with React, Vite-compatible structure, Firebase, and Vercel serverless API routes.
 
-This build keeps the 15.0.0 Kitchen Intelligence work intact, then fixes the invoice scanner failure where Gemini could finish reading an invoice but return malformed or cut-off JSON at 100%.
+## 15.0.2 focus
 
-See `README_15_0_1_RELEASE_NOTES.md` and `QA_15_0_1_CHECKLIST.md` for this build.
+This build keeps the 15.0.1 invoice JSON recovery work intact, then adds scale and safety hardening:
 
-## Deploy notes
+- Heartbeats now write only to `livePresence` and `presenceSessions`, not high-churn fields on `users` or `restaurants`.
+- Browser heartbeat cadence is reduced from 25 seconds to 60 seconds, with immediate updates still sent on focus/visibility/network/page-exit events.
+- Firestore rules now keep user self-updates away from live heartbeat/session fields.
+- Reminder dispatching uses transaction-based claiming and controlled concurrency so growing reminder volume is less likely to hit the cron timeout wall.
+- The reminder dispatcher Vercel function now has a 300-second max duration.
+- Invoice and menu scan uploads are capped at 20MB in Storage rules, UI checks, and backend API checks.
+- Scanner APIs inspect Storage metadata before downloading files into memory.
 
-1. Deploy through GitHub/Vercel.
-2. Confirm `/api/scan-invoice` is live after deploy.
-3. Confirm `/version.json` reports `15.0.1` after deploy.
-4. Re-test invoice scanning with the same invoice that previously showed `Gemini returned invalid JSON`.
-5. Firestore rules and Storage rules are included unchanged from 15.0.0. Re-publish them only if the target Firebase project has not already received the 15.0.0 rules.
+## Deploy steps
 
-## Firebase/Vercel requirements
+1. Deploy the app through GitHub/Vercel.
+2. Confirm `/version.json` reports `15.0.2` after deploy.
+3. Publish `firestore.rules` in Firebase Firestore Rules.
+4. Publish `storage.rules` in Firebase Storage Rules.
+5. Confirm Vercel has the existing Firebase Admin credentials, `CRON_SECRET`, and a Gemini key (`GEMINI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, or `GOOGLE_API_KEY` where applicable).
+6. Run the 15.0.2 QA checklist before handing it to staff.
 
-The existing Firebase Admin environment variables must remain set in Vercel:
+## Required separate publishes
 
-- `FIREBASE_SERVICE_ACCOUNT_KEY` or the split Firebase Admin variables
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_CLIENT_EMAIL`
-- `FIREBASE_PRIVATE_KEY`
-- `MASTER_ADMIN_EMAIL`
+- Firestore rules: yes.
+- Storage rules: yes.
+- Vercel deploy/API routes: yes.
+- New environment variables: no.
 
-AI scanning needs one of these Vercel variables:
+Optional tuning variables:
 
-- `GEMINI_API_KEY`
-- `GOOGLE_GENERATIVE_AI_API_KEY`
-- `GOOGLE_API_KEY`
+- `REMINDER_DISPATCH_QUERY_LIMIT`
+- `REMINDER_DISPATCH_CONCURRENCY`
+- `INVOICE_SCAN_MAX_PDF_BYTES`
+- `INVOICE_SCAN_MAX_IMAGE_BYTES`
+- `MENU_SCAN_MAX_BYTES`
 
-Optional invoice scanner tuning variables, only if needed after this fix:
+## Branding rule
 
-- `INVOICE_SCAN_TIMEOUT_MS` defaults to `285000`, which stays just under the Vercel 300-second function cap.
-- `INVOICE_SCAN_MAX_OUTPUT_TOKENS` defaults to `65536`.
-- `INVOICE_SCAN_COMPACT_MAX_OUTPUT_TOKENS` defaults to `32768`.
-- `INVOICE_REPAIR_TIMEOUT_MS` defaults to `45000`.
-
-Do not set the invoice function timeout above your Vercel plan's max function duration. If a huge PDF still struggles, split the invoice into smaller page groups instead of pushing the timeout past Vercel's ceiling.
+86 Chaos branding is mandatory and must always remain visible. Restaurant/customer logos may display beside it, but cannot replace or hide 86 Chaos branding.
