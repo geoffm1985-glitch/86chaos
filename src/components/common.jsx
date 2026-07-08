@@ -6,6 +6,9 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
+import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
+import { buildMenuImpactText, canUseMenuIntelligence } from '../core/menuIntelligence';
+import { parseReminderCommand } from '../core/reminderUtils';
 
 const CheersLogo = ({ clientData }) => {
   const settings = clientData?.systemSettings || {};
@@ -43,7 +46,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
   );
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   const [menuSearch, setMenuSearch] = useState('');
 
   if (!isOpen) return null;
@@ -62,6 +65,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
+  if (canUseMenuIntelligence(appUser, clientData)) tabs.push({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
+  tabs.push({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/> });
   if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
@@ -522,6 +527,8 @@ const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today') => {
   if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops);
   if (tab === 'messages') return voiceFeatureEnabled(clientFeatures, 'messages');
   if (tab === 'prep') return voiceFeatureEnabled(clientFeatures, 'prep') && (isAdmin || role === 'kitchen' || !!perms.prep);
+  if (tab === 'reminders') return true;
+  if (tab === 'menu-intelligence') return !!perms.menuIntelligence || isSuper || user?.isOwner || user?.accountOwner || user?.workspaceOwner;
   if (tab === 'recipes') return voiceFeatureEnabled(clientFeatures, 'recipes') && (isAdmin || role === 'kitchen' || !!perms.prep || !!perms.team);
   if (tab === 'inventory') return voiceFeatureEnabled(clientFeatures, 'inventory') && (isAdmin || !!perms.inventory || !!perms.team);
   if (tab === 'team') return voiceFeatureEnabled(clientFeatures, 'team');
@@ -566,7 +573,7 @@ const getVoiceWeightPerStockUnit = (item = {}) => {
   return m ? parseFloat(m[1]) : 0;
 };
 
-const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], clientFeatures = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
+const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -587,6 +594,20 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     const raw = String(spokenText || '').trim();
     const q = normalizeVoiceText(raw);
     if (!q) return null;
+
+    const parsedReminder = parseReminderCommand(raw);
+    if (parsedReminder) {
+      if (parsedReminder.needsManualTime) {
+        return { intent:'navigate', label:'Open My Reminders', tab:'reminders', summary:'Open My Reminders so you can choose the exact date and time.', safe:true };
+      }
+      return {
+        intent:'create_personal_reminder',
+        label:'Create personal reminder',
+        ...parsedReminder,
+        summary:`Remind you: ${parsedReminder.title} at ${formatClockDateTime(parsedReminder.scheduledAt)}.`,
+        needsConfirmation:false
+      };
+    }
 
     // Specific recipe commands should open/search the live Recipe Book by title, including future recipes.
     // Keep this ahead of generic navigation so “open beer cheese recipe” does not stop at the Recipe Book landing page.
@@ -639,6 +660,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (/\b(staff list|staff roster|team list|employee list|employees|roster|team)\b/.test(q)) return makeVoiceNav({ label:'Open Staff Roster', tab:'team', summary:'Open Staff Roster.' });
       if (q.includes('inventory') || q.includes('orders')) return makeVoiceNav({ label:'Open Inventory', tab:'inventory', summary:'Open Inventory & Orders.' });
       if (q.includes('prep')) return makeVoiceNav({ label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.' });
+      if (q.includes('reminder') || q.includes('reminders')) return makeVoiceNav({ label:'Open My Reminders', tab:'reminders', summary:'Open your private reminders.' });
+      if (q.includes('menu intelligence') || q.includes('menu scanner') || q.includes('menu scan')) return makeVoiceNav({ label:'Open Menu Intelligence', tab:'menu-intelligence', summary:'Open Menu Intelligence.' });
       if (q.includes('recipe') || q.includes('recipes') || q.includes('recipe book') || q.includes('spec sheet')) return makeVoiceNav({ label:'Open Recipes', tab:'recipes', summary:'Open Recipe Book.' });
       if (q.includes('message') || q.includes('announcement')) return makeVoiceNav({ label:'Open Messages', tab:'messages', summary:'Open the Message Board.' });
       if (q.includes('maintenance') || q.includes('repair') || q.includes('broken')) return makeVoiceNav({ label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.' });
@@ -690,8 +713,17 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     // Prep tasks. Only the useful item name goes into the prep name field.
     // Quantities are stored separately so “prep 2 of ranch” becomes qty=2, text=Ranch.
     if (/\b(prep|prepare)\b/.test(q) || /we need\s+(.+)/.test(q) || /add\s+(.+)\s+to\s+prep/.test(q)) {
-      const parsedPrep = parsePrepVoicePayload(raw);
-      return { intent:'create_prep', label:'Create prep task', ...parsedPrep, summary:`Add prep task: ${parsedPrep.itemText} • Qty ${parsedPrep.amount}${parsedPrep.unit ? ' ' + parsedPrep.unit : ''}.`, needsConfirmation:false };
+      const parsedPrepItems = parsePrepCommandItems(raw);
+      if (parsedPrepItems.length) {
+        const preview = parsedPrepItems.slice(0, 3).map(item => `${item.itemText} (${formatPrepAmount(item.amount, item.unit)})`).join(', ');
+        return {
+          intent:'smart_prep',
+          label:'Update prep list',
+          prepItems: parsedPrepItems,
+          summary:`Update prep list: ${preview}${parsedPrepItems.length > 3 ? '...' : ''}.`,
+          needsConfirmation:false
+        };
+      }
     }
 
     // Message board posts.
@@ -748,7 +780,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     setPending(action);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'create_prep', 'create_task', 'eighty_six_alert'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'create_personal_reminder', 'create_task', 'eighty_six_alert'];
     if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
       await executeAction(action, text, true);
     }
@@ -807,12 +839,14 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (actionToRun.intent === 'eighty_six_alert') {
         const itemName = String(actionToRun.itemName || actionToRun.item?.name || 'Item').trim();
         const alertTitle = `86 ${itemName}`;
+        const impactText = actionToRun.item ? buildMenuImpactText(actionToRun.item, menuDependencies) : '';
         await addDoc(collection(db, 'events'), {
           restaurantId: appUser.restaurantId,
           type:'note',
           category:'86 Alert',
           messageCategory:'86 Alert',
           title: alertTitle,
+          notes: impactText,
           author: appUser.name || appUser.email || 'Voice Command',
           date:new Date().toISOString(),
           isImportant:true,
@@ -820,7 +854,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           voiceCommand: sourceText,
           createdAt:new Date().toISOString(),
           source:'86_voice_alert',
-          inventoryNotModified:true
+          inventoryNotModified:true,
+          menuImpact: impactText,
+          menuImpactItemId: actionToRun.item?.id || ''
         });
         await secureFetch('/api/send-push', {
           method:'POST',
@@ -828,10 +864,10 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           body: JSON.stringify({
             restaurantId: appUser.restaurantId,
             title: alertTitle,
-            body: `${itemName} is out. Please 86 it until management updates the team.`,
+            body: `${itemName} is out. Please 86 it until management updates the team.${impactText ? ` ${impactText}.` : ''}`,
             type:'message',
             isCritical:true,
-            textContent: alertTitle
+            textContent: impactText ? `${alertTitle} - ${impactText}` : alertTitle
           })
         }).catch((err) => console.warn('86 voice push failed:', err?.message || err));
         await logAudit(appUser, 'VOICE_86_ALERT', itemName, sourceText);
@@ -868,6 +904,70 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         await addDoc(collection(db, 'tasks'), payload);
         await logAudit(appUser, 'VOICE_RECURRING_TASK', `${frequency}: ${title}`, sourceText);
         addToast('Task Added', `${title} was added as a ${describeRecurringTaskSchedule(payload)} task.`);
+        setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'create_personal_reminder') {
+        const title = String(actionToRun.title || 'Personal reminder').trim();
+        if (!actionToRun.scheduledAt) {
+          setActiveTab('reminders');
+          addToast('Reminder Needs Time', 'Open My Reminders and choose the date and time.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        await addDoc(collection(db, 'personalReminders'), {
+          restaurantId: appUser.restaurantId,
+          userId: appUser.id || '',
+          userEmail: appUser.email || '',
+          title,
+          notes: '',
+          scheduledAt: actionToRun.scheduledAt,
+          status: 'scheduled',
+          createdAt: new Date().toISOString(),
+          createdBy: appUser.id || '',
+          source: '86_voice_personal_reminder',
+          voiceCommand: sourceText,
+          dispatchedAt: null,
+          dispatchKey: ''
+        });
+        await logAudit(appUser, 'VOICE_PERSONAL_REMINDER', title, actionToRun.scheduledAt);
+        addToast('Reminder Saved', `${title} at ${formatClockDateTime(actionToRun.scheduledAt)}.`);
+        setActiveTab('reminders'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'smart_prep') {
+        if (!voiceFeatureEnabled(clientFeatures, 'prep')) {
+          addToast('Prep & Tasks Disabled', 'The Prep & Tasks module is disabled for this workspace.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        const today = getToday();
+        const results = [];
+        for (const parsed of actionToRun.prepItems || []) {
+          const match = findPrepMatch(prepItems, parsed, today);
+          if (match?.id) {
+            const data = buildPrepQuantityUpdate({
+              existingItem: match,
+              parsedItem: parsed,
+              actorName: appUser.name || appUser.email || 'Voice Command',
+              prepDate: today,
+              source: '86_voice_smart_prep'
+            });
+            await updateDoc(doc(db, 'prepItems', match.id), data);
+            results.push({ type: 'updated', name: match.text || parsed.itemText });
+          } else {
+            await addDoc(collection(db, 'prepItems'), buildPrepCreatePayload({
+              parsedItem: parsed,
+              appUser,
+              prepDate: today,
+              station: 'Voice',
+              isMaster: false,
+              sourceText,
+              source: '86_voice_smart_prep'
+            }));
+            results.push({ type: 'created', name: parsed.itemText });
+          }
+          await logAudit(appUser, 'VOICE_SMART_PREP', parsed.itemText, sourceText);
+        }
+        addToast('Prep Updated', summarizePrepResults(results));
         setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'create_prep') {

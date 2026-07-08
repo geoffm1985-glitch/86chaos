@@ -5,7 +5,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
-import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday } from './features';
+import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence } from './features';
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
@@ -175,8 +175,9 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsScheduleScreen = ['schedule', 'events', 'published'].includes(activeTabState);
   const wantsScheduleData = wantsToday || wantsScheduleScreen || ['labor', 'ops'].includes(activeTabState);
   const wantsLaborData = wantsToday || ['financials', 'labor', 'sales', 'ops'].includes(activeTabState);
-  const wantsInventoryData = wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen;
+  const wantsInventoryData = wantsToday || ['inventory', 'ops', 'menu-intelligence'].includes(activeTabState) || isGlobalSearchOpen;
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
+  const wantsMenuData = wantsInventoryData || ['menu-intelligence'].includes(activeTabState);
   const wantsRecipesData = true; // Keep recipe titles available for 86 Voice exact-recipe navigation.
   const wantsMaintenanceData = wantsToday || ['maintenance', 'ops'].includes(activeTabState);
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState);
@@ -221,6 +222,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 70 : 30, fallbackLimitCount: 25 });
   const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });
   const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 240 : 75, fallbackLimitCount: 55 });
+  const menuDependencies = useLiveCollection('menuDependencies', rId, { enabled: !!rId && wantsMenuData, limitCount: activeTabState === 'menu-intelligence' ? 500 : 120, fallbackLimitCount: 80 });
   const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: activeTabState === 'maintenance' ? 110 : 30, fallbackLimitCount: 25 });
   const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
   const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 75, fallbackLimitCount: 35 });
@@ -1152,6 +1154,8 @@ useEffect(() => {
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
     if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
+    if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
+    if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} heartbeatDebug={heartbeatDebug} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
@@ -1346,11 +1350,11 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={() => !ghostTenant && !isDemoMode && setIsWorkspaceSwitcherOpen(true)} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={() => !ghostTenant && !isDemoMode && setIsWorkspaceSwitcherOpen(true)} />
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
-      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} clientFeatures={displayClientFeatures} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} menuDependencies={menuDependencies} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">

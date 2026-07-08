@@ -46,8 +46,25 @@ service firebase.storage {
       );
     }
 
+    function membershipMapHas(restaurantId) {
+      return hasUserDoc() &&
+        userDoc().memberships is map &&
+        userDoc().memberships[restaurantId] is map &&
+        userDoc().memberships[restaurantId].isActive == true;
+    }
+
+    function workspaceIdsHas(restaurantId) {
+      return hasUserDoc() && userDoc().workspaceIds is list && userDoc().workspaceIds.hasAny([restaurantId]);
+    }
+
     function isTenantMatch(restaurantId) {
-      return signedIn() && hasUserDoc() && userDoc().restaurantId == restaurantId;
+      return signedIn() && hasUserDoc() && (
+        userDoc().restaurantId == restaurantId ||
+        userDoc().activeRestaurantId == restaurantId ||
+        userDoc().defaultRestaurantId == restaurantId ||
+        workspaceIdsHas(restaurantId) ||
+        membershipMapHas(restaurantId)
+      );
     }
 
     function isRestaurantOwner(restaurantId) {
@@ -83,6 +100,18 @@ service firebase.storage {
             userDoc().permissions.branding == true ||
             userDoc().permissions.settings == true
           ))
+        ));
+    }
+
+    function canUseMenuIntelligence(restaurantId) {
+      return isSuperAdmin() ||
+        isRestaurantOwner(restaurantId) ||
+        (isTenantMatch(restaurantId) && (
+          userDoc().permissions.menuIntelligence == true ||
+          (
+            membershipMapHas(restaurantId) &&
+            userDoc().memberships[restaurantId].permissions.menuIntelligence == true
+          )
         ));
     }
 
@@ -147,6 +176,12 @@ service firebase.storage {
     match /{restaurantId}/invoices/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
       allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedInvoiceScan();
+    }
+
+    // Restaurant-scoped menu uploads for Menu Intelligence review.
+    match /{restaurantId}/menuUploads/{allPaths=**} {
+      allow read: if canUseMenuIntelligence(restaurantId);
+      allow write: if canUseMenuIntelligence(restaurantId) && isAllowedInvoiceScan();
     }
 
     // Backups are Super Admin only. No regular signed-in user can read or write backups.

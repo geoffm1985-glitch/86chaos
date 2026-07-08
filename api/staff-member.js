@@ -24,7 +24,7 @@ function cleanMoney(v) {
   return Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0;
 }
 function cleanPerms(perms = {}) {
-  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'wageView', 'wageEdit'];
+  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'menuIntelligence', 'wageView', 'wageEdit'];
   return allowed.reduce((acc, key) => {
     acc[key] = perms?.[key] === true;
     return acc;
@@ -159,7 +159,7 @@ function buildMembershipPayload(ctx, uid, base = {}, existing = {}) {
   const incomingPerms = cleanPerms(base.permissions || {});
   if (incomingPerms.wageEdit) incomingPerms.wageView = true;
   const currentPerms = cleanPerms(existing.permissions || {});
-  const ownerOnlyPermissionKeys = ['wageView', 'wageEdit', 'settings', 'branding', 'integrations'];
+  const ownerOnlyPermissionKeys = ['wageView', 'wageEdit', 'settings', 'branding', 'integrations', 'menuIntelligence'];
   const permissions = ctx.canChooseWageAccess ? incomingPerms : { ...currentPerms, ...incomingPerms };
   if (!ctx.canChooseWageAccess) ownerOnlyPermissionKeys.forEach((key) => { permissions[key] = currentPerms[key] === true; });
   if (permissions.wageEdit) permissions.wageView = true;

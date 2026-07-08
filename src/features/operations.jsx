@@ -7,6 +7,8 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
+import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
+import { getZeroStockMenuImpacts } from '../core/menuIntelligence';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
@@ -75,16 +77,31 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const handleAddPrep = async (e) => { 
     e.preventDefault(); 
     if(text.trim()) { 
-      await safePrepWrite({ action: 'add', collectionName: "prepItems", label: "Prep item", data: { 
-        date: isMaster ? 'MASTER' : prepDate, 
-        text: text.trim(), 
-        station, 
-        isCompleted: false, 
-        completedDates: {}, 
-        isMaster, 
-        qty: 1,
-        restaurantId: appUser.restaurantId
-      } }); 
+      const parsedItems = parsePrepCommandItems(text);
+      const results = [];
+      for (const parsed of parsedItems.length ? parsedItems : [{ itemText: text.trim(), amount: 1, unit: 'item', increment: false }]) {
+        const match = findPrepMatch(activePrep, parsed, prepDate);
+        if (match?.id) {
+          await safePrepWrite({
+            action: 'update',
+            collectionName: "prepItems",
+            docId: match.id,
+            label: "Prep quantity",
+            before: match,
+            data: buildPrepQuantityUpdate({ existingItem: match, parsedItem: parsed, actorName: appUser.name, prepDate, source: 'manual_smart_prep' })
+          });
+          results.push({ type: 'updated', name: match.text || parsed.itemText });
+        } else {
+          await safePrepWrite({
+            action: 'add',
+            collectionName: "prepItems",
+            label: "Prep item",
+            data: buildPrepCreatePayload({ parsedItem: parsed, appUser, prepDate, station, isMaster, sourceText: text, source: 'manual_smart_prep' })
+          });
+          results.push({ type: 'created', name: parsed.itemText });
+        }
+      }
+      if (addToast) addToast('Prep Updated', summarizePrepResults(results));
       setText(''); 
     } 
   };
@@ -404,8 +421,9 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                     <div key={i.id} className={`${T.row} ${isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
                       <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
+                      {i.quantityChangedAfterCompletion && <span className="text-[9px] font-black text-amber-300 bg-amber-900/20 border border-amber-900/50 px-1.5 py-0.5 rounded">QTY CHANGED</span>}
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: Math.max(0, qty - 1) } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: qty + 1 } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
+                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: Math.max(0, qty - 1), unit: i.unit || 'item', lastQuantityChangeAt: new Date().toISOString(), lastQuantityChangeBy: appUser.name, quantityChangedAfterCompletion: isDone } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="min-w-10 px-1 text-center text-xs font-bold text-[#D4A381]">{formatPrepAmount(qty, i.unit)}</span><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: qty + 1, unit: i.unit || 'item', lastQuantityChangeAt: new Date().toISOString(), lastQuantityChangeBy: appUser.name, quantityChangedAfterCompletion: isDone } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
                         <button onClick={()=>{ safePrepWrite({ action: "delete", collectionName: "prepItems", docId: i.id, label: "Prep item", before: i }); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
                       </div>
@@ -451,6 +469,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
 
 const TabInventory = ({ addToast, appUser }) => {
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
   const vendors = useLiveCollection('vendors', appUser?.restaurantId, { limitCount: 150 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
   const [invTab, setInvTab] = useState('count');
@@ -521,7 +540,49 @@ const [searchTerm, setSearchTerm] = useState('');
     setEditItem(null); 
     addToast('Item Updated', 'Master file overwritten.'); 
   };
-  const updateStock = async (id, newStock) => await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory stock", data: { currentStock: Math.max(0, parseFloat(newStock) || 0) } });
+  const updateStock = async (id, newStock) => {
+    const item = inventoryItems.find(i => i.id === id);
+    const nextStock = Math.max(0, parseFloat(newStock) || 0);
+    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory stock", before: item, data: { currentStock: nextStock } });
+    const lastImpactMs = item?.menuImpactAlertedAt ? new Date(item.menuImpactAlertedAt).getTime() : 0;
+    const crossedToZero = item && Number(item.currentStock || 0) > 0 && nextStock <= 0 && (!lastImpactMs || Date.now() - lastImpactMs > 12 * 60 * 60 * 1000);
+    if (crossedToZero) {
+      const impactRows = getZeroStockMenuImpacts([{ ...item, currentStock: 0 }], menuDependencies);
+      const impacts = impactRows[0]?.impacts || [];
+      if (impacts.length) {
+        const impactText = `Menu impact: ${impacts.slice(0, 4).map(i => i.name).join(', ')}${impacts.length > 4 ? ` and ${impacts.length - 4} more` : ''}`;
+        await addDoc(collection(db, 'events'), {
+          restaurantId: appUser.restaurantId,
+          type: 'note',
+          category: 'Menu Impact',
+          messageCategory: '86 Alert',
+          title: `86 ${item.name}`,
+          notes: impactText,
+          author: appUser.name || appUser.email || 'Inventory',
+          date: new Date().toISOString(),
+          isImportant: true,
+          replies: [],
+          source: 'inventory_zero_stock_menu_impact',
+          menuImpact: impactText,
+          menuImpactItemId: item.id,
+          createdAt: new Date().toISOString()
+        });
+        secureFetch('/api/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            restaurantId: appUser.restaurantId,
+            title: `86 ${item.name}`,
+            body: `${item.name} hit 0 stock. ${impactText}.`,
+            type: 'message',
+            isCritical: true,
+            textContent: `86 ${item.name} - ${impactText}`
+          })
+        }).catch((err) => console.warn('Menu impact push failed:', err?.message || err));
+        updateDoc(doc(db, 'inventoryItems', id), { menuImpactAlertedAt: new Date().toISOString() }).catch(() => {});
+      }
+    }
+  };
   const updatePar = async (id, newPar) => await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory par", data: { parLevel: Math.max(0, parseFloat(newPar) || 0) } });
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
   
@@ -1208,6 +1269,7 @@ if (item.matchedItemId === 'CREATE_NEW') {
 
 const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
 const belowParItems = inventoryItems.filter(isBelowPar);
+const zeroStockMenuImpacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
 const selectedWasteItem = inventoryItems.find(i => i.id === wItemId) || null;
 const selectedWasteUnitsPerStock = selectedWasteItem ? getBurnUnitsPerStockUnit(selectedWasteItem) : 1;
 const selectedWasteWeightPerStock = selectedWasteItem ? (parseFloat(wWeightPerStockUnit) || getBurnWeightPerStockUnit(selectedWasteItem)) : 0;
@@ -1412,6 +1474,25 @@ const groupedItems = inventoryItems
             </button>
           </div>
           {focusBelowPar && belowParItems.length === 0 && <div className="bg-emerald-900/10 border border-emerald-500/30 text-emerald-300 rounded-xl p-4 text-sm font-bold">No inventory items are currently below par. Items equal to par are not counted as low.</div>}
+          {zeroStockMenuImpacts.length > 0 && (
+            <div className="bg-red-950/20 border border-red-500/40 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-black text-red-200 text-sm uppercase tracking-widest">Menu Impact Alerts</h3>
+                  <p className="text-[10px] text-red-100/70 font-bold mt-1">These inventory items are at 0 stock and are linked to menu items.</p>
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-red-300">{zeroStockMenuImpacts.length} item(s)</span>
+              </div>
+              <div className="grid md:grid-cols-2 gap-2">
+                {zeroStockMenuImpacts.slice(0, 8).map(row => (
+                  <div key={row.item.id} className="bg-[#12161A] border border-red-900/50 rounded-xl p-3">
+                    <div className="text-sm font-black text-white">{row.item.name}</div>
+                    <div className="text-[10px] text-red-200 font-bold mt-1 leading-snug">Impacts: {row.impacts.map(i => i.name).join(', ')}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {Object.entries(groupedItems).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
             <div key={category} className="space-y-2">
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
