@@ -5,6 +5,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
 import { Modal, SmartEmptyState } from '../components/common';
 import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuIntelligence';
+import { prepareScannerUploadFile, formatScannerBytes } from '../core/fileCompression';
 import { makeReminderDate, parseReminderCommand, toDateInputValue, toTimeInputValue } from '../core/reminderUtils';
 
 const getInitialReminderDate = () => {
@@ -401,55 +402,84 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const scanMenu = async () => {
     if (scanBusyRef.current) return;
     if (!file) return addToast('Choose File', 'Upload a menu image or PDF first.');
-    if (file.size > 20 * 1024 * 1024) return addToast('Menu Too Large', 'This menu file is over 20MB. Compress it, split the PDF, or upload fewer pages.');
     scanBusyRef.current = true;
     setBusy(true);
     const scanStartedAt = Date.now();
     setProgressTick(scanStartedAt);
-    setScanProgress({ label: 'Uploading menu', detail: 'Sending the file to secure storage.', percent: 8, startedAt: scanStartedAt });
+    setScanProgress({ label: 'Preparing menu file', detail: 'Checking whether the menu needs automatic compression.', percent: 4, startedAt: scanStartedAt });
     try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);
+      const prepared = await prepareScannerUploadFile(file, {
+        label: 'Menu file',
+        maxBytes: 20 * 1024 * 1024,
+        imageCompressAboveBytes: 6 * 1024 * 1024,
+        targetImageBytes: 8 * 1024 * 1024,
+        maxImageDimension: 2600,
+        onProgress: info => setScanProgress({
+          label: info.label || 'Preparing menu file',
+          detail: info.detail || '',
+          percent: Math.max(4, Math.min(42, info.percent || 10)),
+          startedAt: scanStartedAt
+        })
+      });
+      const uploadFile = prepared.file;
+      if (prepared.wasCompressed) addToast('Menu Compressed', `${prepared.displaySizeBefore} → ${prepared.displaySizeAfter}. Scanning the smaller copy.`);
+
+      const safeName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);
       const path = `${appUser.restaurantId}/menuUploads/menu-${Date.now()}-${safeName}`;
       const fileRef = ref(storage, path);
-      setScanProgress({ label: 'Uploading menu', detail: 'Starting secure upload.', percent: 8, startedAt: scanStartedAt });
-      const uploadTask = uploadBytesResumable(fileRef, file, { contentType: file.type || 'application/octet-stream' });
+      setScanProgress({ label: 'Uploading menu', detail: `Starting secure upload (${formatScannerBytes(uploadFile.size)}).`, percent: 42, startedAt: scanStartedAt });
+      const uploadTask = uploadBytesResumable(fileRef, uploadFile, {
+        contentType: uploadFile.type || file.type || 'application/octet-stream',
+        customMetadata: {
+          originalName: file.name || '',
+          uploadedName: uploadFile.name || '',
+          originalBytes: String(file.size || 0),
+          uploadedBytes: String(uploadFile.size || 0),
+          compressionMethod: prepared.compression?.method || 'none',
+          compressed: prepared.wasCompressed ? 'true' : 'false',
+          purpose: 'menu-scan'
+        }
+      });
       await new Promise((resolve, reject) => {
         uploadTask.on('state_changed', snapshot => {
           const ratio = snapshot.totalBytes ? snapshot.bytesTransferred / snapshot.totalBytes : 0;
           setScanProgress({
             label: 'Uploading menu',
-            detail: `Uploaded ${formatUploadBytes(snapshot.bytesTransferred)} of ${formatUploadBytes(snapshot.totalBytes || file.size)}.`,
-            percent: 8 + Math.round(ratio * 34),
+            detail: `Uploaded ${formatUploadBytes(snapshot.bytesTransferred)} of ${formatUploadBytes(snapshot.totalBytes || uploadFile.size)}.`,
+            percent: 42 + Math.round(ratio * 20),
             startedAt: scanStartedAt
           });
         }, reject, resolve);
       });
-      setScanProgress({ label: 'Upload complete', detail: 'Preparing the AI menu reader.', percent: 42, startedAt: scanStartedAt });
+      setScanProgress({ label: 'Upload complete', detail: 'Preparing the AI menu reader.', percent: 63, startedAt: scanStartedAt });
       const downloadUrl = await getDownloadURL(fileRef);
-      setScanProgress({ label: 'Reading menu with AI', detail: 'Finding menu items, ingredients, and inventory matches. This can take a minute for big menus.', percent: 55, startedAt: scanStartedAt });
+      setScanProgress({ label: 'Reading menu with AI', detail: 'Finding menu items, ingredients, and inventory matches. This can take a minute for big menus.', percent: 70, startedAt: scanStartedAt });
       const response = await secureFetch('/api/scan-menu', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           restaurantId: appUser.restaurantId,
           fileName: file.name,
-          contentType: file.type,
+          uploadedFileName: uploadFile.name,
+          contentType: uploadFile.type || file.type,
           storagePath: path,
           downloadUrl,
+          compression: prepared.compression,
           inventoryItems: inventoryItems.map(i => ({ id: i.id, name: i.name, category: i.category }))
         })
       });
-      setScanProgress({ label: 'Building review screen', detail: 'Loading the menu matches for approval.', percent: 88, startedAt: scanStartedAt });
+      setScanProgress({ label: 'Building review screen', detail: 'Loading the menu matches for approval.', percent: 90, startedAt: scanStartedAt });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Menu scan failed.');
-      setScanResult({ ...result, storagePath: path, downloadUrl, fileName: file.name });
+      setScanResult({ ...result, storagePath: path, downloadUrl, fileName: file.name, uploadedFileName: uploadFile.name, compression: prepared.compression });
       setReviewOpen(true);
       setScanProgress({ label: 'Menu scan ready', detail: 'Review the AI matches before saving.', percent: 100, done: true, startedAt: scanStartedAt });
       addToast('Menu Scanned', 'Review the AI matches before saving.');
       setTimeout(() => setScanProgress(null), 1400);
     } catch (err) {
-      setScanProgress({ label: 'Scan stopped', detail: err.message || 'Could not scan menu.', percent: 100, done: true, startedAt: scanStartedAt });
-      addToast('Scan Failed', err.message || 'Could not scan menu.');
+      const message = err.message || 'Could not scan menu.';
+      setScanProgress({ label: 'Scan stopped', detail: message, percent: 100, done: true, startedAt: scanStartedAt });
+      addToast(/over|compress|split|large/i.test(message) ? 'Menu Too Large' : 'Scan Failed', message);
       setTimeout(() => setScanProgress(null), 2200);
     } finally {
       scanBusyRef.current = false;
@@ -497,8 +527,10 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       await addDoc(collection(db, 'menuIntelligenceScans'), {
         restaurantId: appUser.restaurantId,
         fileName: scanResult.fileName || '',
+        uploadedFileName: scanResult.uploadedFileName || '',
         storagePath: scanResult.storagePath || '',
         downloadUrl: scanResult.downloadUrl || '',
+        compression: scanResult.compression || null,
         menuItemCount: menuItems.length,
         dependencyCount: saved,
         status: 'approved',

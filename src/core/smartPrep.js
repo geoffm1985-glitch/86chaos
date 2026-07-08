@@ -208,6 +208,19 @@ export const parsePrepCommandItems = (input = '') => {
   }).filter(item => item.itemText && normalizePrepText(item.itemText));
 };
 
+const getPrepMatchPriority = (item = {}, prepDate = '') => {
+  const isMasterTask = item?.isMaster === true || item?.date === 'MASTER';
+  const isTargetDayTask = prepDate && item?.date === prepDate;
+  const isVoiceCreated = /voice/i.test(String(item?.source || item?.createdBy || item?.station || ''));
+
+  // Prefer a real day-specific row when it was intentionally created outside 86 Voice.
+  if (isTargetDayTask && !isMasterTask && !isVoiceCreated) return 5;
+  // If the same task exists as a master task and as an accidental old Voice duplicate, update the master task.
+  if (isMasterTask) return 4;
+  if (isTargetDayTask) return isVoiceCreated ? 2 : 3;
+  return 1;
+};
+
 export const findPrepMatch = (prepItems = [], parsedItem = {}, prepDate = '') => {
   const itemKey = singularize(normalizePrepText(parsedItem.itemText || ''));
   if (!itemKey) return null;
@@ -217,7 +230,7 @@ export const findPrepMatch = (prepItems = [], parsedItem = {}, prepDate = '') =>
     .map(item => {
       const candidateKey = singularize(normalizePrepText(item.text || item.title || item.name || ''));
       const candidateTokens = candidateKey.split(' ').filter(w => w.length > 1);
-      if (!candidateKey) return { item, score: 0 };
+      if (!candidateKey) return { item, score: 0, priority: 0 };
       let score = 0;
       if (candidateKey === itemKey) score = 100;
       else if (candidateKey.includes(itemKey) || itemKey.includes(candidateKey)) score = 88;
@@ -226,9 +239,9 @@ export const findPrepMatch = (prepItems = [], parsedItem = {}, prepDate = '') =>
         score = hits.length ? Math.round((hits.length / Math.max(itemTokens.length, candidateTokens.length, 1)) * 78) : 0;
         if (hits.length === itemTokens.length && itemTokens.length > 1) score += 12;
       }
-      return { item, score };
+      return { item, score, priority: getPrepMatchPriority(item, prepDate) };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => (b.score - a.score) || (b.priority - a.priority));
   return scored[0]?.score >= 70 ? scored[0].item : null;
 };
 

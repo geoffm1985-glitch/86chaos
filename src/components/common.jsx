@@ -7,7 +7,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, isLikelyPrepCommand, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
-import { buildMenuImpactText, canUseMenuIntelligence } from '../core/menuIntelligence';
+import { buildMenuImpactText, canUseMenuIntelligence, resolveEightySixInventoryMatch, getMenuImpactForInventoryItem } from '../core/menuIntelligence';
 import { parseReminderCommand } from '../core/reminderUtils';
 
 const CheersLogo = ({ clientData }) => {
@@ -56,10 +56,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
-  tabs.push({ id: 'today', label: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
+  tabs.push({ id: 'today', label: 'Manager Brief', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
   if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
-  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
+  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
@@ -325,12 +325,12 @@ const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }
   const [open, setOpen] = useState(false);
   const profile = getHomeProfile(appUser);
   const actions = [
-    { label: 'Today', tab: 'today' },
+    { label: 'Manager Brief', tab: 'today' },
     { label: 'Search', fn: openSearch },
     { label: 'Kitchen TV', fn: openTV },
     profile === 'kitchen' ? { label: 'Recipes', tab: 'recipes' } : null,
     profile === 'kitchen' ? { label: 'Prep', tab: 'prep' } : null,
-    ['manager','system'].includes(profile) ? { label: 'Ops', tab: 'ops' } : null,
+    ['manager','system'].includes(profile) ? { label: 'Kitchen Command', tab: 'ops' } : null,
     ['manager','system'].includes(profile) ? { label: 'Schedule', tab: 'schedule' } : null,
     { label: 'Message Board', tab: 'messages' },
     { label: 'My Shift', tab: 'published' }
@@ -539,6 +539,30 @@ const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today') => {
   return false;
 };
 
+const fetchVoicePrepMatchCandidates = async (restaurantId = '', prepDates = [], existingPrepItems = []) => {
+  const byId = new Map();
+  const addCandidate = (item) => {
+    if (!item) return;
+    const key = item.id || `${item.date || ''}:${item.text || item.title || item.name || ''}:${item.station || ''}`;
+    if (key && !byId.has(key)) byId.set(key, item);
+  };
+  (existingPrepItems || []).forEach(addCandidate);
+
+  if (!restaurantId) return Array.from(byId.values());
+  const dates = Array.from(new Set([...(prepDates || []), 'MASTER'].map(v => String(v || '').trim()).filter(Boolean)));
+  for (let i = 0; i < dates.length; i += 10) {
+    const chunk = dates.slice(i, i + 10);
+    if (!chunk.length) continue;
+    try {
+      const snap = await getDocs(query(collection(db, 'prepItems'), where('restaurantId', '==', restaurantId), where('date', 'in', chunk)));
+      snap.forEach((docSnap) => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+    } catch (err) {
+      console.warn('86 Voice prep match refresh failed; using loaded prep snapshot.', err?.message || err);
+    }
+  }
+  return Array.from(byId.values());
+};
+
 const makeVoiceNav = ({ label, tab, summary, subTab = null, date = null, helpQuery = '', localSearch = '' }) => ({
   intent: helpQuery ? 'help_search' : (subTab ? 'navigate_schedule' : 'navigate'),
   label, tab, subTab, date, helpQuery, localSearch, summary, safe:true
@@ -692,9 +716,26 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     }
     if (itemPhrase) {
       const cleaned = cleanVoiceItemName(itemPhrase);
-      const item = findVoiceMatch(inventoryItems, cleaned);
-      const itemName = item?.name || cleaned || 'Item';
-      return { intent:'eighty_six_alert', label:`Send 86 alert: ${itemName}`, item, itemName, summary:`Post an important 86 alert for ${itemName}. Inventory stock will not be changed.`, needsConfirmation:false };
+      const resolved = resolveEightySixInventoryMatch(cleaned, inventoryItems, menuDependencies);
+      const item = resolved?.item || findVoiceMatch(inventoryItems, cleaned);
+      const requestedItemName = cleaned || item?.name || 'Item';
+      const itemName = item?.name || requestedItemName;
+      const displayName = requestedItemName || itemName;
+      const matchNote = resolved?.method === 'menuIntelligence' && item?.name && normalizeVoiceText(item.name) !== normalizeVoiceText(displayName)
+        ? ` Matched inventory item: ${item.name}.`
+        : '';
+      return {
+        intent:'eighty_six_alert',
+        label:`Send 86 alert: ${displayName}`,
+        item,
+        itemName,
+        requestedItemName: displayName,
+        menuMatchMethod: resolved?.method || (item ? 'inventory' : 'none'),
+        matchedMenuItemName: resolved?.matchedMenuItemName || '',
+        matchedIngredientName: resolved?.matchedIngredientName || '',
+        summary:`Post an important 86 alert for ${displayName}.${matchNote} Inventory stock will not be changed.`,
+        needsConfirmation:false
+      };
     }
 
     // Recurring daily/weekly/monthly tasks. Only managers/admins can add these.
@@ -839,26 +880,44 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       }
       if (appUser?.isDemo) return addToast('Demo Mode', 'Demo mode is read-only. Nothing was saved.');
       if (actionToRun.intent === 'eighty_six_alert') {
-        const itemName = String(actionToRun.itemName || actionToRun.item?.name || 'Item').trim();
-        const alertTitle = `86 ${itemName}`;
+        const requestedName = String(actionToRun.requestedItemName || actionToRun.itemName || actionToRun.item?.name || 'Item').trim();
+        const inventoryName = String(actionToRun.item?.name || actionToRun.itemName || requestedName).trim();
+        const alertTitle = `86 ${requestedName}`;
         const impactText = actionToRun.item ? buildMenuImpactText(actionToRun.item, menuDependencies) : '';
+        const impactedItems = actionToRun.item ? getMenuImpactForInventoryItem(actionToRun.item, menuDependencies).map(i => i.name).filter(Boolean) : [];
+        const matchText = actionToRun.item && normalizeVoiceText(inventoryName) !== normalizeVoiceText(requestedName)
+          ? `Inventory match: ${inventoryName}${actionToRun.menuMatchMethod === 'menuIntelligence' ? ' (matched through Menu Intelligence)' : ''}.`
+          : '';
+        const details = [
+          matchText,
+          impactText,
+          actionToRun.matchedMenuItemName ? `Menu phrase matched: ${actionToRun.matchedMenuItemName}.` : ''
+        ].filter(Boolean).join('\n');
         await addDoc(collection(db, 'events'), {
           restaurantId: appUser.restaurantId,
           type:'note',
           category:'86 Alert',
           messageCategory:'86 Alert',
           title: alertTitle,
-          notes: impactText,
+          notes: details,
           author: appUser.name || appUser.email || 'Voice Command',
           date:new Date().toISOString(),
           isImportant:true,
           replies:[],
+          readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }],
           voiceCommand: sourceText,
           createdAt:new Date().toISOString(),
           source:'86_voice_alert',
           inventoryNotModified:true,
+          commandCenterAlert:true,
+          managerBriefAlert:true,
+          kitchenCommandCenterAlert:true,
           menuImpact: impactText,
-          menuImpactItemId: actionToRun.item?.id || ''
+          menuImpactItems: impactedItems,
+          menuImpactItemId: actionToRun.item?.id || '',
+          inventoryItemName: inventoryName,
+          requestedItemName: requestedName,
+          menuMatchMethod: actionToRun.menuMatchMethod || ''
         });
         await secureFetch('/api/send-push', {
           method:'POST',
@@ -866,15 +925,15 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           body: JSON.stringify({
             restaurantId: appUser.restaurantId,
             title: alertTitle,
-            body: `${itemName} is out. Please 86 it until management updates the team.${impactText ? ` ${impactText}.` : ''}`,
+            body: `${requestedName} is out.${impactText ? ` ${impactText}.` : ''}${matchText ? ` ${matchText}` : ''}`,
             type:'message',
             isCritical:true,
-            textContent: impactText ? `${alertTitle} - ${impactText}` : alertTitle
+            textContent: details ? `${alertTitle} - ${details}` : alertTitle
           })
         }).catch((err) => console.warn('86 voice push failed:', err?.message || err));
-        await logAudit(appUser, 'VOICE_86_ALERT', itemName, sourceText);
-        addToast('86 Alert Sent', `${itemName} was posted as an important alert. Inventory was not changed.`);
-        setActiveTab('messages'); if (closeWhenDone) setOpen(false); return;
+        await logAudit(appUser, 'VOICE_86_ALERT', requestedName, `${sourceText}${details ? ` | ${details}` : ''}`);
+        addToast('86 Alert Sent', `${requestedName} was added to Manager Brief, Kitchen Command Center, and Message Board.`);
+        setActiveTab('today'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'create_task') {
         if (!isVoiceManagerOrAdmin(appUser)) {
@@ -942,10 +1001,13 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           return;
         }
         const targetPrepDate = actionToRun.prepDate || getToday();
+        const requestedPrepItems = actionToRun.prepItems || [];
+        const prepDatesToCheck = Array.from(new Set(requestedPrepItems.map(item => item.prepDate || targetPrepDate).filter(Boolean)));
+        const matchCandidates = await fetchVoicePrepMatchCandidates(appUser?.restaurantId, prepDatesToCheck, prepItems);
         const results = [];
-        for (const parsed of actionToRun.prepItems || []) {
+        for (const parsed of requestedPrepItems) {
           const prepDate = parsed.prepDate || targetPrepDate;
-          const match = findPrepMatch(prepItems, parsed, prepDate);
+          const match = findPrepMatch(matchCandidates, parsed, prepDate);
           if (match?.id) {
             const data = buildPrepQuantityUpdate({
               existingItem: match,
@@ -955,6 +1017,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
               source: '86_voice_smart_prep'
             });
             await updateDoc(doc(db, 'prepItems', match.id), data);
+            Object.assign(match, data);
             results.push({ type: 'updated', name: match.text || parsed.itemText });
           } else {
             await addDoc(collection(db, 'prepItems'), buildPrepCreatePayload({

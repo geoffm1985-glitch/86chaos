@@ -1,6 +1,6 @@
 {
   "name": "cheers-portal",
-  "version": "15.0.6",
+  "version": "15.0.10",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -10,7 +10,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
-    "react-scripts": "5.0.1"
+    "react-scripts": "5.0.1",
+    "pdf-lib": "^1.17.1"
   },
   "scripts": {
     "start": "react-scripts start",

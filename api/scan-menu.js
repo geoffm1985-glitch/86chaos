@@ -2,7 +2,7 @@ const { initAdmin, readBody, writeAudit, norm, masterEmails, readWorkspaceMember
 const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 
-const MENU_SCANNER_VERSION = '15.0.2';
+const MENU_SCANNER_VERSION = '15.0.10';
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -264,7 +264,9 @@ module.exports = async function handler(req, res) {
       fileName: body.fileName || '',
       storagePath,
       model,
-      scannerVersion: MENU_SCANNER_VERSION
+      scannerVersion: MENU_SCANNER_VERSION,
+      compression: body.compression || null,
+      uploadedFileName: body.uploadedFileName || ''
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message || 'Menu scan failed.', scannerVersion: MENU_SCANNER_VERSION });

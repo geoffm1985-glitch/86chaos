@@ -1,29 +1,34 @@
 # 86 Chaos
 
-Current version: 15.0.6
+Current version: 15.0.10
 
-## 15.0.6 focus
+## 15.0.10 focus
 
-This build keeps the 15.0.5 manual presence snapshot work intact, then makes Menu Intelligence scan deletion faster and safer:
+15.0.10 improves 86 Voice alerts and command-center naming.
 
-- Recent Menu Scans now delete linked `menuDependencies` and the scan summary using Firestore batched deletes instead of one document write at a time.
-- Delete buttons lock while a menu scan delete is running so users cannot double-click and start duplicate delete attempts.
-- A delete progress bar shows records deleted, percent, and elapsed time.
-- Editing a menu scan now also removes stale dependency links through the same batched delete helper.
-- No 15.0.6 release note was added to the public Help Center.
+## What changed
 
-## Deploy notes
+- 86 Voice can use Menu Intelligence links to resolve spoken menu shorthand to the right inventory product.
+- Example: saying “86 burger” can match an inventory item like `BEEF GR PTY` when approved menu links point burgers to that product.
+- 86 alert Message Board posts now include unavailable menu items from Menu Intelligence.
+- The same 86 alert is flagged for Manager Brief and Kitchen Command Center without creating duplicate alert records.
+- The side menu now says **Manager Brief** instead of Today Command Center.
+- The side menu now says **Kitchen Command Center** instead of Ops Command Center.
+- Help Center includes 15.0.10 release notes.
+- Administrator Manual includes 15.0.10 setup, QA, and support guidance.
 
-1. Deploy the updated app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.6` after deploy.
-3. Open Menu Intelligence and delete a recent menu scan with several links.
-4. Confirm the row shows delete progress and the delete/edit buttons are disabled while it runs.
-5. Confirm the scan summary and only its linked menu-impact dependencies are removed.
-6. Run the 15.0.6 QA checklist before handing it to staff.
+## Deployment notes
 
-## Separate publish/deploy requirements
+1. Deploy the app through GitHub/Vercel.
+2. Confirm `/version.json` reports `15.0.10` after deploy.
+3. Test 86 Voice with a phrase like `86 burger` in a workspace with approved Menu Intelligence links.
+4. Confirm the Message Board post includes the inventory match and unavailable menu items.
+5. Confirm Manager Brief and Kitchen Command Center show the important alert.
+6. Run the 15.0.10 QA checklist before handing it to staff.
 
-- Firestore rules: no new changes from 15.0.5.
-- Storage rules: no new changes from 15.0.5.
-- Vercel/API routes: deploy the updated app code. No new API route was added.
-- New Vercel env vars: none.
+## Separate publishing required
+
+- Firestore rules: no new changes from 15.0.9.
+- Storage rules: no new changes from 15.0.9.
+- Vercel/API routes: deploy the updated app code.
+- New environment variables: none.

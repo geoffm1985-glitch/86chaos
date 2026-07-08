@@ -376,13 +376,13 @@ return (
                   <button key={preset} type="button" onClick={() => setPerms({ ...DEFAULT_PERMISSIONS, ...PERMISSION_PRESETS[preset] })} className="px-2.5 py-1.5 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381] hover:border-[#D4A381]/40 transition-colors">{preset}</button>
                 ))}
               </div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Ops Command Center is only visible with Ops permission or Store Manager. Labor is only visible to Store Managers, Schedule/Sales managers, or users with Labor permission.</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Custom Permissions: Kitchen Command Center is only visible with Ops permission or Store Manager. Labor is only visible to Store Managers, Schedule/Sales managers, or users with Labor permission.</p>
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => {
                   const wageAccessToggle = k === 'wageView' || k === 'wageEdit';
                   const ownerOnlyToggle = wageAccessToggle || k === 'settings' || k === 'branding' || k === 'integrations' || k === 'menuIntelligence';
                   const disabled = ownerOnlyToggle && !canChooseWageAccess;
-                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Ops Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', menuIntelligence: 'Menu Intelligence', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
+                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Kitchen Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', menuIntelligence: 'Menu Intelligence', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
                   return (
                   <label key={k} className={`flex items-center gap-2 text-xs font-bold uppercase ${disabled ? 'opacity-45 cursor-not-allowed text-slate-500' : 'cursor-pointer text-slate-300'}`} title={disabled ? 'Only the account owner can choose this access.' : ''}>
                     <input type="checkbox" disabled={disabled} checked={!!perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked, ...(k === 'wageEdit' && e.target.checked ? { wageView: true } : {})})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded disabled:opacity-40" /> 
@@ -468,7 +468,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
     .filter(e => e.type === 'note')
     .filter(e => {
       const term = searchTerm.toLowerCase();
-      const matchesText = (e.title || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term) || (e.messageCategory || '').toLowerCase().includes(term);
+      const matchesText = (e.title || '').toLowerCase().includes(term) || (e.notes || '').toLowerCase().includes(term) || (e.menuImpact || '').toLowerCase().includes(term) || (e.author || '').toLowerCase().includes(term) || (e.messageCategory || '').toLowerCase().includes(term);
       const matchesCat = categoryFilter === 'All' || (e.messageCategory || (e.isImportant ? 'Important' : 'Shift Note')) === categoryFilter;
       return matchesText && matchesCat;
     })
@@ -590,7 +590,7 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
               <div className="h-8 w-8 rounded-lg bg-[#0B0E11] border border-[#2A353D] flex items-center justify-center text-[#D4A381] flex-shrink-0"><MessageSquare size={16}/></div>
               <div className="min-w-0">
                 <h2 className="text-base sm:text-lg font-black text-white leading-tight whitespace-nowrap">Message Board</h2>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-0.5 leading-snug">Ops notes, 86 alerts, maintenance, and announcements</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-0.5 leading-snug">Kitchen notes, 86 alerts, maintenance, and announcements</p>
               </div>
             </div>
             <div className="hidden sm:flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap pt-1"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{allNotes.length} visible</div>
@@ -678,6 +678,16 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
                       </div>
 
                       {n.title && <p className="font-medium text-sm leading-snug text-slate-200 break-words whitespace-pre-wrap mt-2">{n.title}</p>}
+                      {(n.notes || n.menuImpact) && (
+                        <div className="mt-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-[11px] font-bold text-slate-300 whitespace-pre-wrap">
+                          {n.notes || n.menuImpact}
+                        </div>
+                      )}
+                      {Array.isArray(n.menuImpactItems) && n.menuImpactItems.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {n.menuImpactItems.slice(0, 8).map((name, idx) => <span key={`${name}-${idx}`} className="bg-red-500/10 border border-red-500/30 text-red-200 text-[9px] px-2 py-1 rounded-lg uppercase font-black tracking-widest">Unavailable: {name}</span>)}
+                        </div>
+                      )}
                       {n.imageUrl && <div className="mt-2 rounded-lg overflow-hidden border border-[#2A353D] bg-[#0B0E11] max-w-xl"><img src={n.imageUrl} alt="Attached" className="w-full max-h-[260px] object-cover" /></div>}
 
                       <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -854,6 +864,10 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [sysWorkspaceTimeFormat, setSysWorkspaceTimeFormat] = useState(sys.workspaceTimeFormat || branding.timeFormat || 'h:mm a');
   const [sysCurrency, setSysCurrency] = useState(sys.currency || branding.currency || 'USD');
   const [sysWeekStartsOn, setSysWeekStartsOn] = useState(sys.weekStartsOn || branding.weekStartsOn || 'Monday');
+  const [sysSchedulePublishMode, setSysSchedulePublishMode] = useState(sys.schedulePublishMode || sys.scheduleCadence || sys.schedulePublishingCadence || 'monthly');
+  const [sysScheduleCustomWeeks, setSysScheduleCustomWeeks] = useState(sys.scheduleCustomWeeks || sys.schedulePeriodWeeks || '3');
+  const [sysScheduleWeekStartsOn, setSysScheduleWeekStartsOn] = useState(sys.scheduleWeekStartsOn || sys.weekStartsOn || branding.weekStartsOn || 'Monday');
+  const [sysAllowPostPublishedTimeOff, setSysAllowPostPublishedTimeOff] = useState(sys.allowPostPublishedTimeOff ?? true);
   const [sysDefaultLandingTab, setSysDefaultLandingTab] = useState(sys.defaultLandingTab || branding.defaultLandingTab || 'published');
   const [isUploadingBrandLogo, setIsUploadingBrandLogo] = useState(false);
   const [mapProviderIndex, setMapProviderIndex] = useState(0);
@@ -865,6 +879,13 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   useEffect(() => {
     setSysTips(sys.tips ?? true);
   }, [sys.tips, appUser?.restaurantId]);
+
+  useEffect(() => {
+    setSysSchedulePublishMode(sys.schedulePublishMode || sys.scheduleCadence || sys.schedulePublishingCadence || 'monthly');
+    setSysScheduleCustomWeeks(sys.scheduleCustomWeeks || sys.schedulePeriodWeeks || '3');
+    setSysScheduleWeekStartsOn(sys.scheduleWeekStartsOn || sys.weekStartsOn || branding.weekStartsOn || 'Monday');
+    setSysAllowPostPublishedTimeOff(sys.allowPostPublishedTimeOff ?? true);
+  }, [sys.schedulePublishMode, sys.scheduleCadence, sys.schedulePublishingCadence, sys.scheduleCustomWeeks, sys.schedulePeriodWeeks, sys.scheduleWeekStartsOn, sys.weekStartsOn, sys.allowPostPublishedTimeOff, branding.weekStartsOn, appUser?.restaurantId]);
 
   const refreshGeofenceMap = () => {
     setMapLoadState('refreshing');
@@ -1013,7 +1034,13 @@ const handleEnableNotifications = async () => {
         geofence: sysGeofence, address: sysAddress, lat: parseFloat(sysLat) || 0, lon: parseFloat(sysLon) || 0, geofenceRadius: parseInt(sysRadius) || 300,
         breaks: sysBreaks, tips: sysTips, trades: sysTrades, autoApprove: sysAutoApprove, sameRoleTrades: sysSameRoleTrades, blockEarly: sysBlockEarly, gracePeriod: sysGracePeriod, overtime: sysOvertime,
         wageAccess: sysWageAccess, wageEditAccess: sysWageEditAccess, enableIpWhitelist: sysEnableIpWhitelist, ipWhitelist: sysIpWhitelist,
-        timezone: sysDefaultTimezone, weekStartsOn: sysWeekStartsOn, defaultLandingTab: sysDefaultLandingTab
+        timezone: sysDefaultTimezone, weekStartsOn: sysWeekStartsOn, defaultLandingTab: sysDefaultLandingTab,
+        schedulePublishMode: sysSchedulePublishMode,
+        schedulePublishingCadence: sysSchedulePublishMode,
+        scheduleCustomWeeks: Math.min(8, Math.max(1, parseInt(sysScheduleCustomWeeks, 10) || 1)),
+        schedulePeriodWeeks: sysSchedulePublishMode === 'weekly' ? 1 : sysSchedulePublishMode === 'biweekly' ? 2 : sysSchedulePublishMode === 'custom' ? Math.min(8, Math.max(1, parseInt(sysScheduleCustomWeeks, 10) || 1)) : null,
+        scheduleWeekStartsOn: sysScheduleWeekStartsOn,
+        allowPostPublishedTimeOff: !!sysAllowPostPublishedTimeOff
       };
       const historyEntry = {
         type: 'workspace_system_settings',
@@ -1293,7 +1320,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     <option value="messages">Message Board</option>
                     <option value="events">Event Calendar</option>
                     <option value="team">Team Roster</option>
-                    {appUser?.isAdmin || appUser?.permissions?.ops ? <option value="ops">Ops Command Center</option> : null}
+                    {appUser?.isAdmin || appUser?.permissions?.ops ? <option value="ops">Kitchen Command Center</option> : null}
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
                     {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
                     {appUser?.isAdmin && <option value="inventory">Inventory & Orders</option>}
@@ -1328,7 +1355,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 <div>
                   <label className={T.label}>Message Board Style</label>
                   <select value={messageView} onChange={e => setMessageView(e.target.value)} className={`${T.input} py-2 text-sm`}>
-                    <option value="ops">Professional Ops Feed</option>
+                    <option value="ops">Professional Kitchen Feed</option>
                     <option value="social">Social Feed</option>
                     <option value="compact">Compact Log</option>
                   </select>
@@ -1359,7 +1386,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               </div>
               <label className="mt-3 flex items-center gap-2 p-2.5 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors">
                 <input type="checkbox" checked={showMorningBrief} onChange={e => setShowMorningBrief(e.target.checked)} className="w-4 h-4 accent-[#8F6040]" />
-                <span className="text-xs font-bold text-slate-300">Show Morning Brief / Ops summary first when available</span>
+                <span className="text-xs font-bold text-slate-300">Show Manager Brief / Kitchen summary first when available</span>
               </label>
               <label className="mt-2 flex items-center gap-2 p-2.5 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors">
                 <input type="checkbox" checked={confirmDestructiveActions} onChange={e => setConfirmDestructiveActions(e.target.checked)} className="w-4 h-4 accent-[#8F6040]" />
@@ -1648,6 +1675,29 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                <Toggle label="Enable Peer-to-Peer Trades" desc="Allow staff to post their shifts to the Trade Board for others to claim." checked={sysTrades} onChange={e => setSysTrades(e.target.checked)} />
                <Toggle label="Auto-Approve Shift Swaps" desc="If enabled, shift claims are approved instantly without manager intervention." checked={sysAutoApprove} disabled={!sysTrades} onChange={e => setSysAutoApprove(e.target.checked)} />
                <Toggle label="Role-Restricted Trades" desc="Staff can only claim shifts that match their assigned role." checked={sysSameRoleTrades} disabled={!sysTrades} onChange={e => setSysSameRoleTrades(e.target.checked)} />
+             </div>
+
+             <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Schedule Publishing</div>
+             <div className="space-y-2">
+               <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl space-y-3`}>
+                 <div>
+                   <div className="text-xs font-bold text-white">Schedule Publishing Style</div>
+                   <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Controls the Schedule Builder window managers work in and the period published by the Publish button.</div>
+                 </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                   <select value={sysSchedulePublishMode} onChange={e => setSysSchedulePublishMode(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                     <option value="weekly">1 week at a time</option>
+                     <option value="biweekly">2 weeks at a time</option>
+                     <option value="monthly">Full month at a time</option>
+                     <option value="custom">Custom number of weeks</option>
+                   </select>
+                   <select value={sysScheduleWeekStartsOn} onChange={e => setSysScheduleWeekStartsOn(e.target.value)} className={`${T.input} py-2 text-sm`}>
+                     {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(day => <option key={day} value={day}>Starts {day}</option>)}
+                   </select>
+                   <input type="number" min="1" max="8" value={sysScheduleCustomWeeks} onChange={e => setSysScheduleCustomWeeks(e.target.value)} disabled={sysSchedulePublishMode !== 'custom'} className={`${T.input} py-2 text-sm disabled:opacity-50`} placeholder="Weeks" />
+                 </div>
+               </div>
+               <Toggle label="Allow Time-Off Requests After Publishing" desc="If off, regular employees cannot request time off for dates that already have a published schedule. Managers can still edit/approve manually." checked={sysAllowPostPublishedTimeOff} onChange={e => setSysAllowPostPublishedTimeOff(e.target.checked)} />
              </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
@@ -2328,6 +2378,7 @@ const [editingRest, setEditingRest] = useState(null);
   const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
   const [bulkDeleteEmails, setBulkDeleteEmails] = useState('');
+  const [selectedBulkDeleteUserIds, setSelectedBulkDeleteUserIds] = useState([]);
   const [isBulkDeletingUsers, setIsBulkDeletingUsers] = useState(false);
   const [editingGlobalUser, setEditingGlobalUser] = useState(null);
   const [supportUserForm, setSupportUserForm] = useState({});
@@ -2821,27 +2872,66 @@ const handleDeleteGlobalUser = async (u) => {
     .filter(v => v && v.includes('@'))
   )];
 
+  const getUserCreatedValue = (u = {}) => u.createdAt || u.created || u.createdOn || u.createdDate || u.importedAt || u.passwordPurgedAt || u.lastWorkspaceSwitchedAt || u.updatedAt || '';
+  const formatUserCreatedValue = (u = {}) => {
+    const raw = getUserCreatedValue(u);
+    if (!raw) return 'Created date unknown';
+    try {
+      const d = raw?.toDate ? raw.toDate() : raw?.seconds ? new Date(raw.seconds * 1000) : new Date(raw);
+      if (Number.isNaN(d.getTime())) return String(raw);
+      return d.toLocaleString();
+    } catch (_) {
+      return String(raw);
+    }
+  };
+  const getBulkDeletePreviewUsers = () => {
+    const emails = parseBulkEmailList(bulkDeleteEmails);
+    if (!emails.length) return [];
+    return allUsers
+      .filter(u => emails.includes((u.email || '').toLowerCase().trim()))
+      .sort((a, b) => (a.email || '').localeCompare(b.email || '') || String(getUserCreatedValue(a) || '').localeCompare(String(getUserCreatedValue(b) || '')));
+  };
+  const toggleBulkDeleteSelection = (userId, checked) => {
+    setSelectedBulkDeleteUserIds(prev => checked ? [...new Set([...prev, userId])] : prev.filter(id => id !== userId));
+  };
+
   const handleBulkDeleteUsersByEmail = async (e) => {
     e.preventDefault();
     const emails = parseBulkEmailList(bulkDeleteEmails);
     if (emails.length === 0) return addToast('Nothing to Delete', 'Paste one or more email addresses first.');
 
     const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
-    const targets = allUsers.filter(u => emails.includes((u.email || '').toLowerCase().trim()) && !protectedEmails.has((u.email || '').toLowerCase().trim()));
+    const previewUsers = getBulkDeletePreviewUsers();
+    const validSelectedIds = selectedBulkDeleteUserIds.filter(id => previewUsers.some(u => u.id === id));
     const skippedProtected = emails.filter(email => protectedEmails.has(email));
+    const duplicateGroups = Object.values(previewUsers.reduce((acc, u) => {
+      const key = (u.email || '').toLowerCase().trim();
+      if (!key) return acc;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(u);
+      return acc;
+    }, {})).filter(group => group.length > 1);
 
-    if (targets.length === 0) {
-      return addToast('No Matches', skippedProtected.length ? 'Only protected admin emails were entered.' : 'No user profiles matched those emails.');
+    if (duplicateGroups.length > 0 && validSelectedIds.length === 0) {
+      return addToast('Select Exact Profiles', 'That email matches multiple user profiles. Check the exact created-date rows you want to delete first.');
     }
 
-    const duplicateSummary = Object.entries(targets.reduce((acc, u) => {
-      const key = (u.email || '').toLowerCase().trim();
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {})).map(([email, count]) => `${email} (${count})`).join(', ');
+    const targets = (validSelectedIds.length > 0 ? previewUsers.filter(u => validSelectedIds.includes(u.id)) : previewUsers)
+      .filter(u => !protectedEmails.has((u.email || '').toLowerCase().trim()));
 
-    const confirmText = (prompt(`This will delete ${targets.length} user profile(s) matching:
-${duplicateSummary}
+    if (targets.length === 0) {
+      return addToast('No Matches', skippedProtected.length ? 'Only protected admin emails were entered or selected.' : 'No deletable user profiles matched those emails.');
+    }
+
+    const targetSummary = targets.map(u => {
+      const email = (u.email || 'no-email').toLowerCase();
+      const created = formatUserCreatedValue(u);
+      const restName = restaurants.find(r => r.id === u.restaurantId)?.name || u.restaurantId || 'Unknown workspace';
+      return `${email} | ${created} | ${restName} | ${String(u.id || '').slice(0, 12)}`;
+    }).join('\n');
+
+    const confirmText = (prompt(`This will delete these exact ${targets.length} user profile(s):
+${targetSummary}
 
 Type DELETE to continue.`) || '').trim().toUpperCase();
     if (!['DELETE', 'DELETE USERS'].includes(confirmText)) return addToast('Aborted', 'Bulk deletion canceled.');
@@ -2852,12 +2942,12 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     const errors = [];
 
     try {
-      // Preferred path: one secure backend call deletes Firebase Auth users and Firestore profiles.
+      // Preferred path: one secure backend call deletes selected Firebase Auth users and Firestore profiles.
       try {
         const response = await secureFetch('/api/delete-users-bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ emails })
+          body: JSON.stringify(validSelectedIds.length > 0 ? { emails, userIds: targets.map(u => u.id) } : { emails })
         });
         const result = await response.json().catch(() => ({}));
         if (response.ok) {
@@ -2865,9 +2955,10 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
           profileDeleted = result.profileDeleted ?? result.deletedProfileCount ?? targets.length;
           addToast('Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
           setBulkDeleteEmails('');
+          setSelectedBulkDeleteUserIds([]);
           await addDoc(collection(db, 'auditLogs'), {
             userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
-            details: `Bulk deleted users by email: ${emails.join(', ')}`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
+            details: `Bulk deleted ${profileDeleted} profile(s). Selected IDs: ${targets.map(u => u.id).join(', ')}. Emails: ${emails.join(', ')}.`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
           }).catch(()=>{});
           return;
         }
@@ -2876,7 +2967,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         console.warn('Bulk delete API unavailable, falling back to individual user deletion:', bulkApiErr);
       }
 
-      // Fallback path: try the existing single delete-user endpoint for each UID, then delete the profile doc.
+      // Fallback path: try the existing single delete-user endpoint for each selected UID, then delete the profile doc.
       for (const u of targets) {
         try {
           try {
@@ -2898,12 +2989,12 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
 
       await addDoc(collection(db, 'auditLogs'), {
         userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
-        details: `Bulk deleted ${profileDeleted} profile(s) by email. Auth deleted: ${authDeleted}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
+        details: `Bulk deleted ${profileDeleted} selected profile(s). Auth deleted: ${authDeleted}. Selected IDs: ${targets.map(u => u.id).join(', ')}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
         timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
       }).catch(()=>{});
 
       addToast(errors.length ? 'Partial Delete' : 'Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
-      if (!errors.length) setBulkDeleteEmails('');
+      if (!errors.length) { setBulkDeleteEmails(''); setSelectedBulkDeleteUserIds([]); }
     } finally {
       setIsBulkDeletingUsers(false);
     }
@@ -2913,7 +3004,8 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     if (duplicateEmailGroups.length === 0) return addToast('Clean', 'No duplicate email groups found.');
     setSubTab('users');
     setBulkDeleteEmails(duplicateEmailGroups.map(([email]) => email).join('\n'));
-    addToast('Loaded', 'Duplicate email groups loaded into the bulk delete box. Review before deleting.');
+    setSelectedBulkDeleteUserIds([]);
+    addToast('Loaded', 'Duplicate email groups loaded into the bulk delete box. Review exact created-date rows before deleting.');
   };
 
 
@@ -3893,8 +3985,21 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.10 86 Menu Impact Alerts', group: 'System Administrator', keywords: 'v15 15.0.10 86 alerts menu intelligence burger beef patty manager brief kitchen command center message board voice command', body: ['15.0.10 makes 86 alerts smarter by using Menu Intelligence dependency links when a spoken item does not exactly match the inventory product name. Example: “86 burger” can match an inventory item like BEEF GR PTY when the menu graph links burgers to that product.', '86 voice alerts now save one important Message Board post that includes inventory match details and unavailable menu items from Menu Intelligence.', 'The same event is flagged for Manager Brief and Kitchen Command Center so the alert appears in both command areas without creating separate duplicate records.', 'The side menu labels changed: Today Command Center is now Manager Brief, and Ops Command Center is now Kitchen Command Center.', 'The public Help Center includes a 15.0.10 release note because this build has staff-facing behavior changes.'] },
+    { title: '15.0.10 deployment checklist', group: 'System Administrator', keywords: '15.0.10 deploy qa 86 voice menu impact alerts manager brief kitchen command center help center release notes', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.10.', 'Open the Help Center and confirm the Release Notes section includes “What changed in version 15.0.10”.', 'Say or type “86 burger” through 86 Voice in a workspace that has menuDependencies linking burger menu items to an inventory product such as beef patties. Confirm the alert uses the requested wording and includes the inventory match.', 'Open Message Board and confirm the 86 post includes unavailable menu items from Menu Intelligence.', 'Open Manager Brief and Kitchen Command Center and confirm the same important 86 alert appears without needing a live scanner or duplicate writes.', 'Confirm side menu labels read Manager Brief and Kitchen Command Center. Firestore rules, Storage rules, API routes, and environment variables are unchanged.'] },
+    { title: '86 voice menu impact support routine', group: 'Admin Tab Guide', keywords: '86 voice menu impact support burger inventory match dependency graph unavailable menu items troubleshooting', body: ['If a voice command like “86 burger” does not find the expected inventory item, first check Menu Intelligence and confirm the menu item is approved and linked to the correct inventory product.', 'The matching logic prefers direct inventory matches, then Menu Intelligence menu item and ingredient links, with alias help for common shorthand like burger, patty, beef, wings, fries, and chicken.', 'The alert does not change inventory quantities. It posts an important operational alert and records inventoryNotModified so managers can still decide whether to adjust counts separately.', 'If the alert has no unavailable menu items, the menu graph probably lacks approved dependencies for that inventory product. Approve or edit the menu scan links, then try the 86 command again.'] },
+    { title: 'Version 15.0.9 Schedule Publishing Controls', group: 'System Administrator', keywords: 'v15 15.0.9 schedule publishing weekly biweekly monthly custom time off published schedule workspace settings delete users duplicate emails created date', body: ['15.0.9 adds workspace-level schedule publishing style controls in Settings → Workspace. Owners/managers can choose weekly, every 2 weeks, full month, or a custom number of weeks from 1 to 8.', 'Schedule Builder now uses the selected publishing window for its grid, projected labor rollup, publish backup, and Publish Schedule action instead of always assuming a full month.', 'Workspace settings also include Allow Time-Off Requests After Publishing. When this is off, regular employees cannot submit new time-off requests for dates that already have published shifts. Managers can still adjust schedules and manage requests manually.', 'System Administrator → People bulk delete now previews every matching user profile with created date/time, role, workspace, and profile ID. When an email has multiple profiles, admins must select the exact profile rows to delete before continuing.', 'No public Help Center release note was added for this build.'] },
+    { title: '15.0.9 deployment checklist', group: 'System Administrator', keywords: '15.0.9 deploy schedule publishing controls api delete users bulk administrator manual qa', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.9.', 'Open Settings → Workspace and save each schedule publishing mode: 1 week, 2 weeks, monthly, and custom weeks. Confirm the setting persists after refresh.', 'Open Schedule Builder and confirm the visible schedule grid, labor totals, and Publish Schedule action match the workspace publishing style.', 'Turn off Allow Time-Off Requests After Publishing, publish a shift, then confirm a regular employee cannot request time off for that published date.', 'Open System Administrator → People, load duplicate/bad emails, confirm created dates appear, select specific rows, and verify only selected profiles are deleted.', 'Deploy updated API routes with the Vercel app because /api/delete-users-bulk now accepts exact selected user profile IDs. Firestore and Storage rules are unchanged.'] },
+    { title: 'Workspace schedule publishing settings', group: 'Admin Tab Guide', keywords: 'workspace schedule publishing style settings weekly biweekly monthly custom week starts on time off after publish schedule builder', body: ['Settings → Workspace → Schedule Publishing controls how much schedule the Schedule Builder shows and publishes at once.', 'Weekly uses one 7-day window based on the selected week-start day. 2-week uses a 14-day window. Monthly keeps the classic full-month schedule. Custom allows 1 to 8 weeks.', 'The selected week-start day is used for weekly, 2-week, and custom windows. Monthly still uses the calendar month.', 'When Allow Time-Off Requests After Publishing is turned off, employees are blocked from requesting time off on dates that already have published shifts. This prevents a published schedule from becoming Swiss cheese after managers post it.', 'Managers/admins retain manual control. They can edit shifts, approve/delete requests, and make exceptions when restaurant policy requires it.'] },
+    { title: 'Bulk user delete exact-row review', group: 'Admin Tab Guide', keywords: 'bulk delete users duplicate emails created date exact profile select checkbox system administrator people auth firestore', body: ['System Administrator → People → Bulk Delete Users by Email now shows a preview before deletion. Each matching profile row displays created date/time, workspace, role, and profile ID.', 'If one email matches multiple profiles, the app requires exact checkbox selection. This prevents deleting the wrong duplicate account.', 'Protected accounts, including the current admin and master admin email, cannot be selected or deleted from the bulk flow.', 'The backend /api/delete-users-bulk route accepts selected profile IDs. In selected mode it deletes only those user profile documents and attempts to delete matching Firebase Auth users by UID, instead of deleting every account with the same email.', 'Audit logs record the selected profile IDs and emails so destructive account cleanup has a paper trail.'] },
+    { title: 'Version 15.0.8 Scanner Auto Compression', group: 'System Administrator', keywords: 'v15 15.0.8 scanner auto compression menu invoice image pdf 20MB canvas pdf-lib upload firebase storage', body: ['15.0.8 adds automatic pre-upload compression for Menu Intelligence and Invoice Scanner files so managers do not have to manually resize large phone photos before scanning.', 'Photos over the scan comfort threshold are converted in-browser to a smaller high-quality JPEG before Firebase Storage upload. The scanner progress bar shows the compression stage before upload progress begins.', 'PDFs over the 20MB scanner limit receive a best-effort in-browser PDF compaction pass using object-stream saving. This can shrink some exported PDFs, but scanned-image PDFs may still need to be split because the embedded page images cannot always be safely downsampled in-browser.', 'The original file name, uploaded compressed file name, original bytes, uploaded bytes, and compression method are stored as upload metadata for invoice/menu scan support.', 'No public Help Center release note was added for this build.'] },
+    { title: '15.0.8 deployment checklist', group: 'System Administrator', keywords: '15.0.8 deploy scanner compression invoice menu pdf-lib package dependency vercel administrator manual', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.8.', 'Confirm Vercel installs the new pdf-lib dependency from package.json during build.', 'Upload a large JPG/PNG menu photo over 20MB and confirm the app shows a compression stage, then uploads the smaller file instead of immediately blocking it.', 'Upload a large invoice photo and confirm the invoice progress bar shows compression before Firebase upload.', 'Try a PDF over 20MB. If it cannot compact below 20MB, confirm the error tells the manager to split/export fewer pages instead of silently failing.', 'Open System Administrator → Administrator Manual and search 15.0.8 or scanner compression to confirm this guidance is present.', 'No Firestore rules, Storage rules, Vercel config, API route, or new environment variable is required beyond deploying the updated app code and package dependency.'] },
+    { title: 'Scanner compression support routine', group: 'Admin Tab Guide', keywords: 'scanner compression support routine invoice menu large file 20MB storage metadata jpg pdf browser compression troubleshooting', body: ['When a manager scans a menu or invoice, the app now prepares the selected file before upload. Large photos are compressed locally in the browser; this reduces Storage upload size, scanner memory use, and AI file payload size.', 'Successful compression shows a toast such as 24.0MB → 7.8MB. This means the original file stayed on the user device and the smaller scan copy was uploaded.', 'For PDFs, compression is best-effort. PDFs that are mostly text/exported objects may shrink. PDFs that are giant page photos may not shrink enough, and the correct support advice is to split the PDF or export fewer pages.', 'If compression fails for HEIC or an unusual image type, ask the manager to rescan as JPG/PNG or set the phone camera to Most Compatible for restaurant scanning.', 'The 20MB Storage/API scanner shield remains in place. Automatic compression is a front-door helper, not permission to allow giant files into backend memory.'] },
+    { title: 'Version 15.0.7 Smart Prep Voice Duplicate Prevention', group: 'System Administrator', keywords: 'v15 15.0.7 voice prep smart prep duplicate master task quantity slice tomato dice onion update existing prep list', body: ['15.0.7 fixes the case where 86 Voice could add a new Voice Station prep row even though the same task already existed on the current prep list or MASTER prep list.', 'Before saving a smart prep voice command, the app now performs an on-demand prep candidate refresh for the requested prep date plus MASTER tasks. This avoids relying only on the smaller live snapshot used by the floating voice dock.', 'Matching tie-breakers now prefer intentional day-specific rows first, MASTER prep rows second, and older voice-created duplicates last when multiple rows match the same spoken item.', 'Example: if MASTER has slice tomato and the user says slice 3 tomatoes, the existing slice tomato row should update to quantity 3 instead of creating a new Slice Tomato row under Voice Station.', 'Existing duplicate Voice Station rows from older builds are not deleted automatically. Delete them manually after confirming the real prep row has the correct quantity. No public Help Center release note was added.'] },
+    { title: '15.0.7 deployment checklist', group: 'System Administrator', keywords: '15.0.7 deploy voice prep smart prep duplicate master row quantity administrator manual', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.7.', 'Open Prep & Tasks and confirm a MASTER task such as slice tomato exists.', 'Run a voice or typed voice command like slice 3 tomatoes and confirm the existing row quantity changes instead of creating a Voice Station duplicate.', 'Repeat with another plural/singular phrasing such as dice 2 onions for dice onion.', 'Open System Administrator → Administrator Manual and search 15.0.7 or smart prep to confirm this guidance is present.', 'No Firestore rules, Storage rules, Vercel config, new API route, or new environment variable is required for this build.'] },
     { title: 'Version 15.0.6 Menu Scan Fast Delete', group: 'System Administrator', keywords: 'v15 15.0.6 menu intelligence delete fast batch progress menu scans dependencies', body: ['15.0.6 makes Menu Intelligence scan deletion faster by deleting the scan summary and linked menuDependencies through Firestore batched commits instead of one write round trip at a time.', 'Recent Menu Scans shows a delete progress bar with record count, percent, and elapsed time while a scan is being removed.', 'Edit and delete controls lock while a delete is in progress to prevent duplicate delete attempts.', 'Editing a scan and removing stale ingredient links also uses the same batched delete helper.', 'This is an app-code workflow cleanup only. Firestore rules, Storage rules, Vercel config, API routes, and environment variables are unchanged from 15.0.5. No 15.0.6 public Help Center release note was added.'] },
-    { title: '15.0.6 deployment checklist', group: 'System Administrator', keywords: '15.0.6 deploy menu intelligence delete fast batch progress scan dependencies', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.6.', 'Delete a Recent Menu Scan with several linked ingredients and confirm the row shows delete progress.', 'Confirm the edit and delete buttons are disabled while deletion is running.', 'Confirm the scan summary and only its linked menuDependencies are removed.', 'No Firestore rules, Storage rules, new API route, or new environment variable is required for this build.'] },
+    { title: '15.0.6 deployment checklist', group: 'System Administrator', keywords: '15.0.6 deploy menu intelligence delete fast batch progress scan dependencies administrator manual', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.6.', 'Delete a Recent Menu Scan with several linked ingredients and confirm the row shows delete progress.', 'Confirm the edit and delete buttons are disabled while deletion is running.', 'Confirm the scan summary and only its linked menuDependencies are removed.', 'Open System Administrator → Administrator Manual and search “15.0.6” or “menu delete” to confirm the internal admin guidance is present.', 'No Firestore rules, Storage rules, new API route, or new environment variable is required for this build.'] },
+    { title: 'Menu Intelligence fast delete support routine', group: 'Admin Tab Guide', keywords: 'menu intelligence fast delete recent menu scans batch delete progress linked dependencies current menu impacts support troubleshoot', body: ['When a manager deletes a Recent Menu Scan, the app now gathers the scan summary plus menuDependencies tied to that scan and removes them with Firestore batched commits.', 'The delete progress bar is client-side progress for the batch commits. It should show record count, percent, and elapsed time while edit/delete controls are locked.', 'The delete should remove only dependencies whose sourceScanId, scanId, menuScanId, or sourceFileName matches the selected scan. Unrelated Current Menu Impacts should remain.', 'The original uploaded menu file stays in secure Firebase Storage unless a future build adds explicit file cleanup. This keeps accidental scan deletion from destroying source evidence.', 'If deletion still feels slow, check how many linked dependency records the scan created. Firestore still charges one delete write per removed document; batching reduces round trips, not the number of delete writes.'] },
     { title: 'Version 15.0.4 Menu Intelligence Review Controls', group: 'System Administrator', keywords: 'v15 15.0.4 menu intelligence scan menu progress bar timer approve duplicate edit delete scans dependencies', body: ['15.0.4 replaces the Menu Intelligence Scan Menu spinner with a progress bar, percent display, status text, and elapsed timer. The upload stage uses Firebase resumable upload progress; the AI-reading stage shows status while the scanner waits for Gemini.', 'Approve Reviewed Menu Links now disables while saving and uses a progress bar with saved-link counts. A click guard prevents accidental repeated approval clicks from creating duplicate menuDependencies.', 'Recent Menu Scans now include edit and delete actions. Edit can rename the scan, update menu item details, change ingredient inventory matches, add links, and remove links.', 'Delete removes the menuIntelligenceScans summary and the approved menuDependencies tied to that scan. The original uploaded file remains in secure Storage.', 'This is a frontend workflow cleanup. Firestore rules, Storage rules, Vercel config, API routes, and environment variables are unchanged from 15.0.3.'] },
     { title: '15.0.4 deployment checklist', group: 'System Administrator', keywords: '15.0.4 deploy menu intelligence progress approve edit delete scan', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.4.', 'Scan a menu and confirm the progress bar shows upload status, AI reading status, percent, and elapsed time.', 'Approve a menu scan and confirm the approve button disables while saving so duplicate menuDependencies are not created.', 'Edit an approved menu scan and confirm menuDependencies update correctly.', 'Delete an approved menu scan and confirm its scan summary and linked dependencies are removed while unrelated scans remain.'] },
     { title: 'Version 15.0.3 Bulk Notification Cleanup', group: 'System Administrator', keywords: 'v15 15.0.3 invoice csv inventory import bulk notifications toast saved item count', body: ['15.0.3 keeps bulk inventory saves quiet while they run, then shows one summary toast at the end.', 'Approving a scanned invoice no longer creates one Saved notification per inventory row. It saves the invoice, vendor, new items, and stock updates silently, then reports the total saved count.', 'CSV inventory import uses the same quiet bulk-save behavior and shows one Upload Complete notification with the imported item count.', 'This is a frontend workflow cleanup only. Firestore rules, Storage rules, Vercel config, and environment variables are unchanged from 15.0.2. Deploy the app code so the updated Inventory workflow is live.'] },
@@ -3915,7 +4020,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Version 14.0.9 Push Token Repair Center', group: 'System Administrator', keywords: 'v14 14.0.9 push token repair stale missing notifications reconnect service worker admin', body: ['System Administrator → Push now includes the Push Token Repair Center with Request Reconnect, Force Refresh, Copy Link, Clear Flag, Send Test, and Prune + Repair Stale actions.', 'Missing tokens cannot be created from the server. The admin tool queues the repair and the employee device creates the Firebase Messaging token when they open the app or reconnect link.', 'Force Refresh clears stale tokens, refreshes the service worker on the employee device at next open, and records repair status/failure details for easier troubleshooting.'] },
     { title: 'Version 14.0.8 Menu Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.8 multi workspace drawer menu switch restaurant current workspace two jobs', body: ['The side menu now shows the active restaurant directly under the signed-in user name and role so employees can confirm which job they are in before clocking in or posting changes.', 'If the account has more than one active workspace, that restaurant line becomes a Change control that opens the workspace switcher without digging through the header.'] },
     { title: 'Version 14.0.4 Multi-Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.4 multi workspace switcher multiple jobs tenant memberships staff roster presence heartbeat one login', body: ['86 Chaos now supports one Firebase login belonging to multiple restaurant workspaces through workspaceMembers membership records.', 'After login, employees with more than one active workspace choose which restaurant they are entering. The header also includes a Switch control when multiple workspaces are available.', 'Staff Roster can link an existing email to the current workspace instead of forcing duplicate accounts or resetting that person\'s password.', 'Removing a staff member removes only the current workspace membership. The Firebase Auth login stays active when the person still belongs to another restaurant.', 'Live Users and presence heartbeats are stored per workspace/user pair so activity from one job does not overwrite another job. Publish Firestore rules with this build.'] },
-    { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Ops smart actions, Today quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Ops Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
+    { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Kitchen Command smart actions, Manager Brief quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Kitchen Command Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
     { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not an Elite-only plan feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
     { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Regular staff and store managers do not see online status in Team. Only the Super Admin can press Refresh Snapshot in System Administrator.', 'Each user browser saves a low-frequency app-open presence check-in. The snapshot button reads livePresence once and shows check-ins from the recent window.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
@@ -3940,7 +4045,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Backup integrity verification', group: 'Backups', keywords: 'backup integrity verification sha checksum storage round trip automatic backups firestore backup', body: ['Every Firestore backup now verifies itself after uploading to Firebase Storage.', 'The backup route downloads the saved gzip, checks it can be decompressed, validates document and collection counts, and compares a SHA-256 checksum.', 'The Command Deck and Health Dashboard show the latest verification status from system/backupStatus.', 'If verification fails, do not restore or rely on that backup. Run another backup and check Vercel/Firebase Storage logs.'] },
     { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Labor & Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
     { title: 'Schedule Builder location', group: 'Scheduling', keywords: 'schedule builder time clock shifts subtab permissions', body: ['Schedule Builder is now a protected subtab inside Time Clock & Schedule.', 'Users still need schedule permission or admin access.', 'Event Calendar remains separate because it is not the same thing as staff scheduling.', 'Old Schedule Builder links route into the same protected schedule workflow.'] },
-    { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Today Command Center after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
+    { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Manager Brief after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
     ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
   ];
   const adminManualQuery = adminManualSearch.trim().toLowerCase();
@@ -5523,7 +5628,7 @@ Type RESTORE to continue.`);
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className={`${T.card} p-4`}><h3 className="font-black text-white">Import Bridge</h3><p className="text-xs text-slate-400 font-bold mt-2">Downloads starter templates for Toast/Square/Clover sales, payroll/time, vendor invoices, and inventory counts.</p><button onClick={downloadV14ImportTemplates} className={`${T.btn} mt-4 w-full`}>Download Templates</button></div>
             <div className={`${T.card} p-4`}><h3 className="font-black text-white">Release Guardrail Tests</h3><p className="text-xs text-slate-400 font-bold mt-2">Runs client-side checks for version, 86 brand lock, demo privacy rule, Help Center boundary, and bundled rules.</p><button onClick={runV14Guardrails} className={`${T.btnAlt} mt-4 w-full`}>Run Guardrails</button></div>
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white">Kitchen Dependency Engine</h3><p className="text-xs text-slate-400 font-bold mt-2">Ops Center now cross-checks low-stock inventory against recipes and prep to surface affected menu items and recovery signals.</p><button onClick={() => setActiveTab('ops')} className={`${T.btnAlt} mt-4 w-full`}>Open Ops Center</button></div>
+            <div className={`${T.card} p-4`}><h3 className="font-black text-white">Kitchen Dependency Engine</h3><p className="text-xs text-slate-400 font-bold mt-2">Kitchen Command Center now cross-checks low-stock inventory against recipes and prep to surface affected menu items and recovery signals.</p><button onClick={() => setActiveTab('ops')} className={`${T.btnAlt} mt-4 w-full`}>Open Kitchen Command Center</button></div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -5639,14 +5744,63 @@ Type RESTORE to continue.`);
               </div>
               {duplicateEmailGroups.length > 0 && <button type="button" onClick={loadDuplicateEmailsIntoBulkDelete} className="text-[9px] font-black uppercase tracking-widest text-red-300 border border-red-900/50 px-2 py-1.5 rounded-lg hover:bg-red-900/20">Load Duplicate Emails</button>}
             </div>
-            <textarea value={bulkDeleteEmails} onChange={e=>setBulkDeleteEmails(e.target.value)} rows="3" className={`${T.input} font-mono text-xs`} placeholder="bad@email.com
+            <textarea value={bulkDeleteEmails} onChange={e=>{ setBulkDeleteEmails(e.target.value); setSelectedBulkDeleteUserIds([]); }} rows="3" className={`${T.input} font-mono text-xs`} placeholder="bad@email.com
 duplicate@email.com
 another@email.com"></textarea>
+            {getBulkDeletePreviewUsers().length > 0 && (() => {
+              const previewUsers = getBulkDeletePreviewUsers();
+              const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
+              const deletableIds = previewUsers.filter(u => !protectedEmails.has((u.email || '').toLowerCase().trim())).map(u => u.id);
+              const groupedPreview = previewUsers.reduce((acc, u) => {
+                const key = (u.email || 'No email').toLowerCase().trim();
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(u);
+                return acc;
+              }, {});
+              return (
+                <div className="mt-3 bg-[#0B0E11] border border-red-900/30 rounded-xl overflow-hidden">
+                  <div className="p-3 border-b border-red-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-red-200">Review Exact Accounts Before Deleting</div>
+                      <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Created date, workspace, role, and profile ID are shown so duplicate emails do not get vaporized blindly.</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setSelectedBulkDeleteUserIds(deletableIds)} className="text-[9px] font-black uppercase tracking-widest text-red-200 border border-red-800/60 px-2 py-1 rounded-lg hover:bg-red-900/30">Select All</button>
+                      <button type="button" onClick={() => setSelectedBulkDeleteUserIds([])} className="text-[9px] font-black uppercase tracking-widest text-slate-300 border border-[#2A353D] px-2 py-1 rounded-lg hover:bg-[#12161A]">Clear Picks</button>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-red-900/20 max-h-64 overflow-y-auto custom-scrollbar">
+                    {Object.entries(groupedPreview).map(([email, rows]) => (
+                      <div key={email} className="p-2">
+                        <div className="text-[9px] font-black uppercase tracking-widest text-red-300 px-1 mb-1">{email} {rows.length > 1 && <span className="text-amber-300">• {rows.length} profiles</span>}</div>
+                        <div className="space-y-1">
+                          {rows.map(u => {
+                            const rowEmail = (u.email || '').toLowerCase().trim();
+                            const protectedRow = protectedEmails.has(rowEmail);
+                            const restName = restaurants.find(r => r.id === u.restaurantId)?.name || u.restaurantId || 'Unknown workspace';
+                            return (
+                              <label key={u.id} className={`flex items-start gap-2 p-2 rounded-lg border ${protectedRow ? 'border-amber-900/40 bg-amber-900/10 opacity-75' : selectedBulkDeleteUserIds.includes(u.id) ? 'border-red-500/60 bg-red-900/20' : 'border-[#2A353D] bg-[#12161A]'} cursor-pointer`}>
+                                <input type="checkbox" disabled={protectedRow} checked={selectedBulkDeleteUserIds.includes(u.id)} onChange={e => toggleBulkDeleteSelection(u.id, e.target.checked)} className="mt-1 accent-red-500" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs font-black text-white truncate">{u.name || 'No name'} {protectedRow && <span className="text-amber-300 text-[9px] uppercase ml-1">Protected</span>}</div>
+                                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Created: <span className="text-slate-200">{formatUserCreatedValue(u)}</span></div>
+                                  <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest truncate">{restName} • {u.role || 'No role'} • ID {String(u.id || '').slice(0, 18)}</div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex flex-col sm:flex-row gap-2 mt-3">
               <button type="submit" disabled={isBulkDeletingUsers} className="flex-1 bg-red-900/30 text-red-200 border border-red-700/60 hover:bg-red-900/50 font-black uppercase tracking-widest py-2.5 rounded-lg text-xs disabled:opacity-50 flex items-center justify-center gap-2">
-                {isBulkDeletingUsers ? <Loader2 className="animate-spin" size={14}/> : <Trash2 size={14}/>} Delete Matching Users
+                {isBulkDeletingUsers ? <Loader2 className="animate-spin" size={14}/> : <Trash2 size={14}/>} {selectedBulkDeleteUserIds.length ? `Delete ${selectedBulkDeleteUserIds.length} Selected User${selectedBulkDeleteUserIds.length === 1 ? '' : 's'}` : 'Delete Matching Users'}
               </button>
-              <button type="button" onClick={() => setBulkDeleteEmails('')} className={`${T.btnAlt} sm:w-32`}>Clear</button>
+              <button type="button" onClick={() => { setBulkDeleteEmails(''); setSelectedBulkDeleteUserIds([]); }} className={`${T.btnAlt} sm:w-32`}>Clear</button>
             </div>
           </form>
 
@@ -6558,6 +6712,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15010', title:'What changed in version 15.0.10', group:'Release Notes', keywords:'new update 15.0.10 86 voice alerts menu intelligence burger unavailable menu items manager brief kitchen command center', body:['86 Voice alerts can now use Menu Intelligence links when the spoken item is not an exact inventory name. For example, “86 burger” can match an inventory product such as beef patties when the approved menu links point there.', '86 alert posts now include unavailable menu items from Menu Intelligence on the Message Board, so staff can see what can no longer be sold.', 'The same 86 alert appears in Manager Brief and Kitchen Command Center without creating a stack of duplicate alerts.', 'The main menu now says Manager Brief instead of Today Command Center, and Kitchen Command Center instead of Ops Command Center.'] },
   { id:'new-1504', title:'What changed in version 15.0.4', group:'Release Notes', keywords:'new update 15.0.4 menu intelligence scan menu progress timer approve edit delete scans', body:['Menu Intelligence scan uploads now show a progress bar, percent, status text, and elapsed time instead of a plain spinner.', 'Approving reviewed menu links now shows save progress and prevents accidental double-click duplicate approvals.', 'Approved menu scans can now be edited or deleted from Recent Menu Scans.', 'Editing a scan lets approved users adjust menu items and ingredient inventory matches. Deleting a scan removes its approved menu-impact links.'] },
   { id:'new-1503', title:'What changed in version 15.0.3', group:'Release Notes', keywords:'new update 15.0.3 invoice inventory notification toast saved items csv import', body:['Bulk invoice and CSV inventory saves now show one clean summary instead of a stack of separate Saved notifications.', 'Approving a scanned invoice reports the total saved items, including updated and newly added inventory items.', 'CSV import reports one imported-item total after the file finishes.', 'No new Firebase rules or Storage rules are required for this notification cleanup.'] },
   { id:'new-1501', title:'What changed in version 15.0.1', group:'Release Notes', keywords:'new update 15.0.1 invoice scanner gemini invalid json timeout compact retry repair pdf photo', body:['Invoice scanning is more reliable when the AI finishes reading but returns messy JSON.', 'The scanner now cleans more common JSON problems, retries in a compact mode when the response looks too large, and attempts a safe repair before failing.', 'This targets the Scan Error message that said Gemini returned invalid JSON at 100%.', 'No new Firebase rules or Storage rules are required for this scanner-only fix.'] },
@@ -6611,10 +6766,10 @@ const HELP_ARTICLES = [
   { id:'schedule-templates', title:'Creating and editing schedule templates', group:'Scheduling', keywords:'template create edit normal week packers fish fry live music', body:['Open Schedule Builder → Schedule Copilot → Create Template.','Add rows for each day, role, start time, end time, and count. Example: Friday Cook 4p-9p count 2.','Save Current Week turns the current visible week into a reusable template.','Each restaurant has its own template library, so one client’s patterns never leak into another client.'] },
   { id:'time-off', title:'Handling time-off requests', group:'Scheduling', keywords:'request off unavailable vacation approve deny', body:['Open Time Clock & Schedule → Request Off for employee requests. Managers can review requests from Schedule Builder.','Schedule warnings will flag approved time-off conflicts before publishing.','Partial-day requests should include start and end time so managers can schedule around them.'] },
   { id:'messages', title:'Posting professional message board updates', group:'Messages', keywords:'message board announcement 86 alert read receipt important', body:['Use Message Board for operational updates, not long chat threads.','Choose the correct category: Announcement, Shift Note, 86 Alert, Maintenance, or General.','Mark important posts when staff must read them. Important posts can show read receipt counts.'] },
-  { id:'ops', title:'Who should see Ops Command Center?', group:'Permissions', keywords:'ops command center manager access permission', body:['Ops Command Center should be limited to owners, managers, kitchen managers, or trusted leads.','Grant access from Staff Roster → Edit User → permissions. Do not give Ops access to every staff account by default.','Ops summarizes labor, prep, low stock, maintenance, events, and manager priorities.'] },
+  { id:'ops', title:'Who should see Kitchen Command Center?', group:'Permissions', keywords:'ops command center manager access permission', body:['Kitchen Command Center should be limited to owners, managers, kitchen managers, or trusted leads.','Grant access from Staff Roster → Edit User → permissions. Do not give Ops access to every staff account by default.','Kitchen Command Center summarizes labor, prep, low stock, maintenance, events, and manager priorities.'] },
   { id:'permissions', title:'Why can’t someone see a tab?', group:'Permissions', keywords:'tab missing access permission role manage user', body:['Check that the restaurant has the module enabled.','Check the employee’s permissions in Staff Roster.','Some tabs also require Admin, Manager, or specific feature permissions.','Super Admin and Ghost Mode can see more because they are support tools.'] },
-  { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Ops Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
-  { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Today and Ops.'] },
+  { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Kitchen Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
+  { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Manager Brief and Kitchen Command Center.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
   { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Manual Presence opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
@@ -6659,7 +6814,7 @@ const HELP_ARTICLES = [
   { id:'new-1302', title:'What changed in version 13.0.2', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'new-1301', title:'What changed in version 13.0.1', group:'Release Notes', keywords:'new update 13.0.1 labor export roles custom settings timesheets payroll', body:['Financials → Timesheets export now filters by the exact roles each restaurant creates in Settings instead of fixed departments.','Exports still support Whole Restaurant, Time Punch Detail, Total Hours Summary, CSV, and Print / Save PDF.','The employee dropdown follows the selected role, and export filenames use the restaurant name and selected role.'] },
   { id:'new-1260', title:'What changed in version 12.6.0', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-1242', title:'What changed in version 12.4.2', group:'Release Notes', keywords:'new update 12.4.2 time format 12 hour 24 hour military labor timesheets punches settings preferences', body:['Time format preferences now control schedule times, punch ledger times, Financials → Timesheets displays, Ops timeline times, toast messages, maintenance logs, and payroll CSV exports.','Native time entry fields may still use the device/browser picker, but saved/displayed times honor the selected preference.'] },
+  { id:'new-1242', title:'What changed in version 12.4.2', group:'Release Notes', keywords:'new update 12.4.2 time format 12 hour 24 hour military labor timesheets punches settings preferences', body:['Time format preferences now control schedule times, punch ledger times, Financials → Timesheets displays, Kitchen Command timeline times, toast messages, maintenance logs, and payroll CSV exports.','Native time entry fields may still use the device/browser picker, but saved/displayed times honor the selected preference.'] },
   { id:'new-124', title:'What changed in version 12.4.1', group:'Release Notes', keywords:'new update 12.4 bug report help center weekly database maintenance cron', body:['Report a Bug / Error moved out of the side menu and into Help Center.','Help Center now includes a searchable article for weekly database maintenance.','The optional weekly maintenance pack adds a Vercel Cron endpoint for support housekeeping.'] }
 ];
 

@@ -1,6 +1,7 @@
 {
-  "version": "15.0.6",
-  "name": "86 Chaos",
-  "updatedAt": "2026-07-08T06:10:00.000Z",
-  "label": "86 Chaos 15.0.6"
+  "version": "15.0.10",
+  "name": "86 Chaos 15.0.10 86 Menu Impact Alerts",
+  "updatedAt": "2026-07-08T10:30:00.000Z",
+  "label": "86 Chaos 15.0.10",
+  "build": "15.0.10"
 }

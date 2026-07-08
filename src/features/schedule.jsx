@@ -118,6 +118,63 @@ const settingBool = (value, fallback = false) => {
   return Boolean(value);
 };
 
+
+const WEEKDAY_INDEX = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+
+const normalizeScheduleWeekStart = (value = 'Monday') => {
+  const clean = String(value || 'Monday').trim();
+  return Object.prototype.hasOwnProperty.call(WEEKDAY_INDEX, clean) ? clean : 'Monday';
+};
+
+const getSchedulePublishingSettings = (appUser = {}, clientData = {}) => {
+  const settings = mergeWorkspaceSettings(appUser, clientData);
+  const rawMode = String(settings.schedulePublishMode || settings.scheduleCadence || settings.schedulePublishingCadence || 'monthly').toLowerCase();
+  const allowedModes = ['weekly', 'biweekly', 'monthly', 'custom'];
+  const mode = allowedModes.includes(rawMode) ? rawMode : 'monthly';
+  const customWeeks = Math.min(8, Math.max(1, parseInt(settings.scheduleCustomWeeks || settings.schedulePeriodWeeks || (mode === 'biweekly' ? 2 : 1), 10) || 1));
+  const weeks = mode === 'weekly' ? 1 : mode === 'biweekly' ? 2 : mode === 'custom' ? customWeeks : null;
+  const weekStartsOn = normalizeScheduleWeekStart(settings.scheduleWeekStartsOn || settings.weekStartsOn || 'Monday');
+  const allowPostPublishedTimeOff = settings.allowPostPublishedTimeOff !== false;
+  return { mode, weeks, customWeeks, weekStartsOn, allowPostPublishedTimeOff };
+};
+
+const getSchedulePeriodBounds = (dateKey, scheduleSettings = {}) => {
+  const base = new Date(`${dateKey || getToday()}T12:00:00`);
+  if (scheduleSettings.mode === 'monthly' || !scheduleSettings.weeks) {
+    const month = getMonthStr(dateKey || getToday());
+    return { start: `${month}-01`, end: `${month}-${String(getDaysInMonth(month)).padStart(2, '0')}` };
+  }
+  const weekStart = WEEKDAY_INDEX[normalizeScheduleWeekStart(scheduleSettings.weekStartsOn)] ?? 1;
+  const start = new Date(base);
+  while (start.getDay() !== weekStart) start.setDate(start.getDate() - 1);
+  const end = new Date(start);
+  end.setDate(start.getDate() + (Number(scheduleSettings.weeks || 1) * 7) - 1);
+  return { start: formatDate(start), end: formatDate(end) };
+};
+
+const buildDateRange = (startKey, endKey) => {
+  const days = [];
+  if (!startKey || !endKey) return days;
+  const cursor = new Date(`${startKey}T12:00:00`);
+  const end = new Date(`${endKey}T12:00:00`);
+  while (cursor <= end && days.length < 75) {
+    days.push(formatDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+};
+
+const getSchedulePeriodLabel = (bounds, scheduleSettings = {}) => {
+  if (scheduleSettings.mode === 'monthly') return formatDisplayMonth(getMonthStr(bounds.start));
+  const modeLabel = scheduleSettings.mode === 'weekly' ? 'Weekly' : scheduleSettings.mode === 'biweekly' ? '2-Week' : `${scheduleSettings.weeks || 1}-Week`;
+  return `${modeLabel} Schedule: ${formatDisplayDate(bounds.start)} - ${formatDisplayDate(bounds.end)}`;
+};
+
+const isDateInsidePublishedSchedule = (dateKey, shifts = []) => {
+  if (!dateKey) return false;
+  return (shifts || []).some(s => String(s?.date || s?.scheduleDateKey || '') === String(dateKey) && s?.isPublished === true);
+};
+
 const isTipDeclarationEnabled = (appUser = {}, clientData = {}) => {
   const settings = mergeWorkspaceSettings(appUser, clientData);
   const raw = settings.tips ?? settings.mandatoryTipDeclaration ?? settings.tipDeclarationRequired ?? settings.tipDeclarationEnabled;
@@ -776,7 +833,7 @@ const handleOfferSwap = async (shift) => {
       })()}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} appUser={appUser} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}  
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} shifts={shifts} clientData={clientData} /></div>}  
     </div>
   );
 };
@@ -823,6 +880,12 @@ const [eventDate, setEventDate] = useState(getToday());
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
+  const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
+  const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
+  const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
+  const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
+  const schedulePeriodShifts = shifts.filter(s => { const d = String(s.date || s.scheduleDateKey || ''); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
+  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
@@ -995,7 +1058,7 @@ const [eventDate, setEventDate] = useState(getToday());
 
   const handleCellClick = (d, empId) => {
     if (!canEditScheduleDate(d)) return addToast("Locked", "Cannot edit past dates.");
-    const existing = monthShifts.find(s => s.date === d && s.employeeId === empId);
+    const existing = shifts.find(s => s.date === d && s.employeeId === empId);
     if (existing) { if(window.confirm("Delete shift?")) deleteDoc(doc(db,"shifts",existing.id)); return; }
     setSelectedEmp(empId); if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x!==d)); else setAssignDates([...assignDates, d]);
   };
@@ -1004,7 +1067,7 @@ const [eventDate, setEventDate] = useState(getToday());
     if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
     const validDates = [];
     for (const d of assignDates) { 
-      const existingShift = monthShifts.find(s => s.date === d && s.employeeId === emp.id);
+      const existingShift = shifts.find(s => s.date === d && s.employeeId === emp.id);
       if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
       
       const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id && r.status !== 'pending');
@@ -1054,7 +1117,7 @@ const [eventDate, setEventDate] = useState(getToday());
 const handlePublish = async () => { 
     if(!window.confirm("Publish schedule? Notifications will be sent. A backup file will download first.")) return; 
     
-    const unpub = shifts.filter(s => !s.isPublished); 
+    const unpub = schedulePeriodShifts.filter(s => !s.isPublished); 
     
     if (unpub.length === 0) {
       addToast('Notice', 'No unpublished shifts found.');
@@ -1062,7 +1125,9 @@ const handlePublish = async () => {
     }
 
     try {
-      const publishMonth = getMonthStr(currentDate);
+      const publishPeriodStart = schedulePeriodBounds.start;
+      const publishPeriodEnd = schedulePeriodBounds.end;
+      const publishPeriodLabel = schedulePeriodLabel;
       const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
       const now = new Date();
       const backupPayload = {
@@ -1072,26 +1137,28 @@ const handlePublish = async () => {
         generatedAt: now.toISOString(),
         restaurantId: appUser?.restaurantId || null,
         restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
-        publishMonth,
+        publishPeriodStart,
+        publishPeriodEnd,
+        publishPeriodLabel,
         unpublishedShiftCount: unpub.length,
-        allMonthShiftCount: shifts.filter(s => (s.date || '').startsWith(publishMonth)).length,
+        allPeriodShiftCount: schedulePeriodShifts.length,
         unpublishedShifts: unpub.map(s => ({ ...s })),
-        monthShifts: shifts.filter(s => (s.date || '').startsWith(publishMonth)).map(s => ({ ...s }))
+        periodShifts: schedulePeriodShifts.map(s => ({ ...s }))
       };
       const stamp = now.toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishMonth}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
+      downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
     } catch (backupErr) {
       console.warn('Schedule publish backup download failed:', backupErr);
       if (!window.confirm('The local backup download failed. Continue publishing anyway?')) return;
     }
     
-    addToast('Publishing...', `Pushing ${unpub.length} shifts live. Please wait.`);
+    addToast('Publishing...', `Pushing ${unpub.length} ${publishPeriodLabel} draft shift(s) live. Please wait.`);
     
     try {
       await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser?.id || appUser?.email || 'unknown' })));
       
       addToast("Published", "Schedule is live and a backup file was downloaded."); 
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live. Local backup JSON downloaded before publish.`); 
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live for ${publishPeriodLabel}. Local backup JSON downloaded before publish.`); 
 
 // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
       try {
@@ -1247,9 +1314,9 @@ const handleAddEvent = async (e) => {
 
   let projectedMonthLabor = 0;
   const projectedDailyLabor = {};
-  monthDays.forEach(d => projectedDailyLabor[d] = 0);
+  schedulePeriodDays.forEach(d => projectedDailyLabor[d] = 0);
 
-  monthShifts.forEach(shift => {
+  schedulePeriodShifts.forEach(shift => {
     const emp = users.find(u => u.id === shift.employeeId);
     const wage = emp?.wage || 0; 
     const hours = calculateShiftHours(shift.startTime, shift.endTime);
@@ -1432,11 +1499,11 @@ const handleExportTimesheets = () => {
   const endDayInt = startDayInt === 0 ? 6 : startDayInt - 1;
 
   const weeksInMonth = []; let currentWeek = [];
-  monthDays.forEach(d => { currentWeek.push(d); if (new Date(d+'T12:00').getDay() === endDayInt) { weeksInMonth.push(currentWeek); currentWeek = []; } });
+  schedulePeriodDays.forEach(d => { currentWeek.push(d); if (new Date(d+'T12:00').getDay() === endDayInt) { weeksInMonth.push(currentWeek); currentWeek = []; } });
   if (currentWeek.length > 0) weeksInMonth.push(currentWeek);
 
   const scheduledHours = displayUsers.map(u => {
-     const userShifts = monthShifts.filter(s => s.employeeId === u.id);
+     const userShifts = schedulePeriodShifts.filter(s => s.employeeId === u.id);
      const weekly = weeksInMonth.map(weekDaysArr => { return weekDaysArr.reduce((sum, d) => { const shift = userShifts.find(s => s.date === d); return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0); }, 0); });
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
@@ -1445,7 +1512,7 @@ const handleExportTimesheets = () => {
     <div className="space-y-4 pb-12 w-full">
 
 {/* MANAGER EXPLANATION BANNER */}
-      {timeOffRequests.filter(r => r.status === 'pending' && r.date.startsWith(monthStr)).length > 0 && (
+      {timeOffRequests.filter(r => r.status === 'pending' && r.date >= schedulePeriodBounds.start && r.date <= schedulePeriodBounds.end).length > 0 && (
         <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center justify-between gap-4 shadow-lg animate-[slideIn_0.2s_ease-out]">
           <div className="flex items-center gap-3">
             <Shield className="text-red-500 flex-shrink-0 animate-pulse" size={24} />
@@ -1687,7 +1754,7 @@ const handleExportTimesheets = () => {
             {/* Action Row */}
             <div className="flex w-full 2xl:w-auto gap-2 items-center pt-3 2xl:pt-0 border-t 2xl:border-t-0 border-[#2A353D]">
               <div className="hidden sm:flex flex-col items-end mr-3 bg-[#12161A] border border-[#2A353D] px-4 py-1.5 rounded-xl">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Period Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
 <button onClick={() => {
@@ -1700,15 +1767,24 @@ const handleExportTimesheets = () => {
             </div>
           </div>
 
+          <div className={`${T.card} p-3 border-[#D4A381]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2`}>
+            <div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Schedule Publishing Window</div>
+              <div className="text-sm font-black text-white">{schedulePeriodLabel}</div>
+              <div className="text-[10px] font-bold text-slate-500 mt-0.5">Change this in Settings → Workspace → Schedule Publishing.</div>
+            </div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-2">{schedulePeriodShifts.filter(s => !s.isPublished).length} draft • {schedulePeriodShifts.filter(s => s.isPublished).length} live</div>
+          </div>
+
           <div className={`${T.card} w-full overflow-hidden`}>
             <div className="overflow-x-auto w-full no-scrollbar">
               <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
                 <thead>
                   <tr className="bg-[#12161A] border-b border-[#2A353D]">
                     <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
-                    {monthDays.map(d => {
+                    {schedulePeriodDays.map(d => {
                       const holiday = getHoliday(d);
-                      const dayEvents = monthEvents.filter(e => e.date === d);
+                      const dayEvents = schedulePeriodEvents.filter(e => e.date === d);
                       const hasAlert = holiday || dayEvents.length > 0;
                       
                       return (
@@ -1737,15 +1813,15 @@ const handleExportTimesheets = () => {
                   {sortedRoles.map(role => (
                     <React.Fragment key={`role-group-${role}`}>
                       <tr className="bg-[#1A2126]">
-                        <td colSpan={monthDays.length + 1} className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
+                        <td colSpan={schedulePeriodDays.length + 1} className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
                           {role}
                         </td>
                       </tr>
                       {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
                         <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
                           <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
-                          {monthDays.map(d => {
-                            const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                          {schedulePeriodDays.map(d => {
+                            const shift = schedulePeriodShifts.find(s=>s.date===d&&s.employeeId===u.id); 
                             const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id && r.status !== 'pending'); 
                             const sel = assignDates.includes(d) && selectedEmp===u.id;
 
@@ -1780,7 +1856,7 @@ const handleExportTimesheets = () => {
                     <td className={`px-2 py-2 text-[8px] font-black uppercase tracking-widest text-[#D4A381] sticky left-0 z-10 border-r border-[#2A353D] text-right shadow-md`}>
                       Proj. Cost
                     </td>
-                    {monthDays.map(d => (
+                    {schedulePeriodDays.map(d => (
                       <td key={`cost-${d}`} className={`p-1 border-r border-[#2A353D] text-center align-middle font-black text-[9px] sm:text-[10px] ${projectedDailyLabor[d] > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
                         ${projectedDailyLabor[d].toFixed(0)}
                       </td>
@@ -2207,7 +2283,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   );
 };
 
-const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) => {
+const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], shifts = [], clientData = null }) => {
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7)); 
   const [selectedDates, setSelectedDates] = useState([]); 
   const [isPartial, setIsPartial] = useState(false); 
@@ -2217,6 +2293,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) 
   const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(a.date) - new Date(b.date)); 
   const myFutureRequests = myRequests.filter(r => r.date >= getToday());
   const allFutureRequests = timeOffRequests.filter(r => r.date >= getToday()).sort((a,b) => new Date(a.date) - new Date(b.date));
+  const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
+  const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
   
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
@@ -2228,6 +2306,9 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
 
   const handleToggleDate = (d) => { 
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.'); 
+    if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) {
+      return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
+    }
     
     const existingReq = myRequests.find(r => r.date === d); 
     if (existingReq) { 
@@ -2247,6 +2328,10 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
     if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); 
     
     const currentMonth = getToday().substring(0, 7);
+    const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts));
+    if (blockedAfterPublish.length > 0) {
+      return addToast('Schedule Published', `${blockedAfterPublish.length} selected day(s) are already on a published schedule. Ask a manager to adjust those days.`);
+    }
 
     for (const d of selectedDates) { 
       const reqMonth = d.substring(0, 7);
@@ -2333,7 +2418,10 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
         <div className="md:col-span-1">
           <div className={`${T.card} p-4 sm:p-5 sticky top-20`}>
             <h3 className="font-black text-base mb-1 text-white">Log Availability</h3>
-            <p className={`text-[10px] font-bold ${T.muted} mb-4 leading-tight`}>Tap days on the calendar to mark yourself unavailable.</p>
+            <p className={`text-[10px] font-bold ${T.muted} mb-2 leading-tight`}>Tap days on the calendar to mark yourself unavailable.</p>
+            {!postPublishedTimeOffAllowed && !appUser?.isAdmin && (
+              <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}>
                 <input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />
