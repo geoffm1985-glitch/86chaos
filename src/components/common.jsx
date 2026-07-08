@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -7,7 +7,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, isLikelyPrepCommand, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
-import { buildMenuImpactText, canUseMenuIntelligence, resolveEightySixInventoryMatch, getMenuImpactForInventoryItem } from '../core/menuIntelligence';
+import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { parseReminderCommand } from '../core/reminderUtils';
 
 const CheersLogo = ({ clientData }) => {
@@ -514,31 +514,31 @@ const isVoiceManagerOrAdmin = (user = {}) => {
   );
 };
 const voiceFeatureEnabled = (features = {}, feature) => !feature || features?.[feature] !== false;
-const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today') => {
+const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today', clientData = {}) => {
   const perms = user?.permissions || {};
   const isSuper = isVoiceSuperAdmin(user);
   const isAdmin = isVoiceAdmin(user);
-  const role = String(user?.role || '').toLowerCase();
+  const role = normalizeVoiceText(user?.role || '');
+  const isKitchenRole = role.includes('kitchen') || role.includes('cook') || role.includes('chef');
   if (tab === 'today' || tab === 'help') return true;
   if (tab === 'published') return voiceFeatureEnabled(clientFeatures, 'schedule');
   if (tab === 'schedule') return voiceFeatureEnabled(clientFeatures, 'schedule') && (isAdmin || !!perms.schedule);
   if (tab === 'events') return voiceFeatureEnabled(clientFeatures, 'events') && (isAdmin || !!perms.events || !!perms.schedule || !!perms.team);
-  if (tab === 'financials' || tab === 'sales' || tab === 'labor') return (voiceFeatureEnabled(clientFeatures, 'labor') || voiceFeatureEnabled(clientFeatures, 'sales')) && (isSuper || isAdmin || !!perms.labor || !!perms.sales);
-  if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops);
+  if (tab === 'financials' || tab === 'sales' || tab === 'labor') return (voiceFeatureEnabled(clientFeatures, 'labor') || voiceFeatureEnabled(clientFeatures, 'sales')) && (isSuper || isAdmin || !!perms.labor || !!perms.sales || !!perms.schedule);
+  if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops || role.includes('manager'));
   if (tab === 'messages') return voiceFeatureEnabled(clientFeatures, 'messages');
-  if (tab === 'prep') return voiceFeatureEnabled(clientFeatures, 'prep') && (isAdmin || role === 'kitchen' || !!perms.prep);
+  if (tab === 'prep') return voiceFeatureEnabled(clientFeatures, 'prep') && (isAdmin || isKitchenRole || !!perms.prep);
   if (tab === 'reminders') return true;
-  if (tab === 'menu-intelligence') return !!perms.menuIntelligence || isSuper || user?.isOwner || user?.accountOwner || user?.workspaceOwner;
-  if (tab === 'recipes') return voiceFeatureEnabled(clientFeatures, 'recipes') && (isAdmin || role === 'kitchen' || !!perms.prep || !!perms.team);
-  if (tab === 'inventory') return voiceFeatureEnabled(clientFeatures, 'inventory') && (isAdmin || !!perms.inventory || !!perms.team);
+  if (tab === 'menu-intelligence') return canUseMenuIntelligence(user, clientData);
+  if (tab === 'recipes') return voiceFeatureEnabled(clientFeatures, 'recipes') && (isAdmin || isKitchenRole || !!perms.prep || !!perms.team);
+  if (tab === 'inventory') return voiceFeatureEnabled(clientFeatures, 'inventory') && (isAdmin || !!perms.inventory || !!perms.team || role.includes('manager'));
   if (tab === 'team') return voiceFeatureEnabled(clientFeatures, 'team');
-  if (tab === 'maintenance') return voiceFeatureEnabled(clientFeatures, 'maintenance') && (isAdmin || !!perms.team);
-  if (tab === 'settings') return !user?.isDemo && isAdmin;
+  if (tab === 'maintenance') return voiceFeatureEnabled(clientFeatures, 'maintenance') && (isAdmin || !!perms.team || !!perms.maintenance || role.includes('manager'));
+  if (tab === 'settings') return !user?.isDemo;
   if (tab === 'audit') return !user?.isDemo && (isSuper || isAdmin);
   if (tab === 'godmode') return isSuper;
   return false;
 };
-
 const fetchVoicePrepMatchCandidates = async (restaurantId = '', prepDates = [], existingPrepItems = []) => {
   const byId = new Map();
   const addCandidate = (item) => {
@@ -561,6 +561,28 @@ const fetchVoicePrepMatchCandidates = async (restaurantId = '', prepDates = [], 
     }
   }
   return Array.from(byId.values());
+};
+
+
+const fetchVoiceEightySixContext = async (restaurantId = '', loadedInventoryItems = [], loadedMenuDependencies = []) => {
+  const inventoryById = new Map();
+  const depById = new Map();
+  (loadedInventoryItems || []).forEach(item => { if (item?.id) inventoryById.set(item.id, item); });
+  (loadedMenuDependencies || []).forEach(dep => { if (dep?.id) depById.set(dep.id, dep); });
+  if (!restaurantId) {
+    return { inventoryItems: Array.from(inventoryById.values()), menuDependencies: Array.from(depById.values()) };
+  }
+  try {
+    const [inventorySnap, depSnap] = await Promise.all([
+      getDocs(query(collection(db, 'inventoryItems'), where('restaurantId', '==', restaurantId))),
+      getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', restaurantId)))
+    ]);
+    inventorySnap.forEach(docSnap => inventoryById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
+    depSnap.forEach(docSnap => depById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
+  } catch (err) {
+    console.warn('86 Voice 86-context refresh failed; using loaded snapshots.', err?.message || err);
+  }
+  return { inventoryItems: Array.from(inventoryById.values()), menuDependencies: Array.from(depById.values()) };
 };
 
 const makeVoiceNav = ({ label, tab, summary, subTab = null, date = null, helpQuery = '', localSearch = '' }) => ({
@@ -597,6 +619,37 @@ const getVoiceWeightPerStockUnit = (item = {}) => {
   return m ? parseFloat(m[1]) : 0;
 };
 
+
+const buildVoiceNavigationAction = (q = '') => {
+  const date = parseNextWeekday(q);
+  if (/\b(manager brief|today brief|today command center|home screen|home|dashboard)\b/.test(q)) return makeVoiceNav({ label:'Open Manager Brief', tab:'today', summary:'Open Manager Brief.' });
+  if (/\b(kitchen command center|ops command center|ops center|kitchen command|command center)\b/.test(q)) return makeVoiceNav({ label:'Open Kitchen Command Center', tab:'ops', summary:'Open Kitchen Command Center.' });
+  if (/\b(schedule builder|schedule maker|builder|copilot|coverage target|coverage targets|smart fill)\b/.test(q)) return makeVoiceNav({ label:'Open Schedule Builder', tab:'schedule', subTab:'schedule-builder', date, summary:'Open Time Clock & Schedule → Schedule Builder.' });
+  if (/\b(month view|monthly view|month schedule|calendar view)\b/.test(q)) return makeVoiceNav({ label:'Open Month View', tab:'published', subTab:'month-view', date, summary:'Open Time Clock & Schedule → Month View.' });
+  if (/\b(my schedule|my shifts|mine|my shift|next shift|time clock|clock in|clock out)\b/.test(q)) return makeVoiceNav({ label:'Open My Schedule', tab:'published', subTab:'my-schedule', date, summary:'Open Time Clock & Schedule → My Schedule.' });
+  if (/\b(trade board|shift swap|swap board)\b/.test(q)) return makeVoiceNav({ label:'Open Trade Board', tab:'published', subTab:'trade-board', date, summary:'Open Time Clock & Schedule → Trade Board.' });
+  if (/\b(time off|request off|vacation request|availability)\b/.test(q)) return makeVoiceNav({ label:'Open Time Off', tab:'published', subTab:'time-off', date, summary:'Open Time Clock & Schedule → Request Off.' });
+  if (/\b(full schedule|schedule days|published schedule|whole schedule|team schedule|all schedule|everyone schedule|schedule)\b/.test(q) && !/\b(my schedule|my shifts|mine|my shift|schedule builder|schedule maker)\b/.test(q)) return makeVoiceNav({ label:'Open Full Schedule', tab:'published', subTab:'full-schedule', date, summary: date ? `Open the full schedule on ${formatDisplayDate(date)}.` : 'Open Time Clock & Schedule → Full Schedule.' });
+  if (/\b(staff list|staff roster|team list|employee list|employees|roster|team)\b/.test(q)) return makeVoiceNav({ label:'Open Staff Roster', tab:'team', summary:'Open Staff Roster.' });
+  if (/\b(inventory|orders|order guide|stock count|stock)\b/.test(q)) return makeVoiceNav({ label:'Open Inventory', tab:'inventory', summary:'Open Inventory & Orders.' });
+  if (/\b(prep list|prep tasks|prep and tasks|prep)\b/.test(q) && !isLikelyPrepCommand(q)) return makeVoiceNav({ label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.' });
+  if (/\b(reminder|reminders|my reminders)\b/.test(q)) return makeVoiceNav({ label:'Open My Reminders', tab:'reminders', summary:'Open your private reminders.' });
+  if (/\b(menu intelligence|menu scanner|menu scan|scan menu|intelligent menu)\b/.test(q)) return makeVoiceNav({ label:'Open Menu Intelligence', tab:'menu-intelligence', summary:'Open Menu Intelligence.' });
+  if (/\b(recipe book|recipes|recipe|spec sheet)\b/.test(q)) return makeVoiceNav({ label:'Open Recipes', tab:'recipes', summary:'Open Recipe Book.' });
+  if (/\b(message board|messages|message|announcement|announcements)\b/.test(q)) return makeVoiceNav({ label:'Open Messages', tab:'messages', summary:'Open the Message Board.' });
+  if (/\b(maintenance log|maintenance|repair|broken|fix it)\b/.test(q)) return makeVoiceNav({ label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.' });
+  if (/\b(labor|timesheet|time sheet|financial|financials|daily ledger|sales)\b/.test(q)) return makeVoiceNav({ label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.' });
+  if (/\b(help center|help|manual)\b/.test(q)) return makeVoiceNav({ label:'Open Help Center', tab:'help', summary:'Open Help Center.' });
+  if (/\b(settings|preferences|workspace settings)\b/.test(q)) return makeVoiceNav({ label:'Open Settings', tab:'settings', summary:'Open Settings.' });
+  if (/\b(system administrator|administrator|admin)\b/.test(q)) return makeVoiceNav({ label:'Open System Administrator', tab:'godmode', summary:'Open System Administrator.' });
+  return null;
+};
+
+const isPlainNavigationPhrase = (q = '') => {
+  const cleaned = q.replace(/\b(open|go to|show|take me to|pull up|bring up|display|take me|please)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned.split(' ').length <= 4 && !!buildVoiceNavigationAction(cleaned);
+};
+
 const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
@@ -605,6 +658,18 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   const [pending, setPending] = useState(null);
   const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const canUseSpeech = Boolean(SpeechRecognition);
+  const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
+
+  const getVoiceEightySixContext = async () => {
+    const now = Date.now();
+    const cached = eightySixContextRef.current || {};
+    if (cached.restaurantId === appUser?.restaurantId && now - Number(cached.loadedAt || 0) < 90000 && cached.inventoryItems?.length) {
+      return { inventoryItems: cached.inventoryItems || [], menuDependencies: cached.menuDependencies || [] };
+    }
+    const fresh = await fetchVoiceEightySixContext(appUser?.restaurantId, inventoryItems, menuDependencies);
+    eightySixContextRef.current = { restaurantId: appUser?.restaurantId || '', loadedAt: now, ...fresh };
+    return fresh;
+  };
 
   const openDock = () => {
     setOpen(true);
@@ -661,38 +726,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     }
 
     // Navigation commands first because they are safe and fast.
-    if (/\b(open|go to|show|take me to|pull up|bring up|display)\b/.test(q)) {
-      const date = parseNextWeekday(q);
-      if (/\b(schedule builder|schedule maker|builder|copilot|coverage target|coverage targets|smart fill)\b/.test(q)) {
-        return makeVoiceNav({ label:'Open Schedule Builder', tab:'schedule', subTab:'schedule-builder', date, summary:'Open Time Clock & Schedule → Schedule Builder.' });
-      }
-      if (/\b(month view|monthly view|month schedule|calendar view)\b/.test(q)) {
-        return makeVoiceNav({ label:'Open Month View', tab:'published', subTab:'month-view', date, summary:'Open Time Clock & Schedule → Month View.' });
-      }
-      if (/\b(full schedule|schedule days|published schedule|whole schedule|team schedule|all schedule|everyone schedule)\b/.test(q) || (q.includes('schedule') && !/\b(my schedule|mine)\b/.test(q))) {
-        return makeVoiceNav({ label:'Open Full Schedule', tab:'published', subTab:'full-schedule', date, summary: date ? `Open the full schedule on ${formatDisplayDate(date)}.` : 'Open Time Clock & Schedule → Full Schedule.' });
-      }
-      if (/\b(my schedule|my shifts|mine)\b/.test(q)) {
-        return makeVoiceNav({ label:'Open My Schedule', tab:'published', subTab:'my-schedule', date, summary:'Open Time Clock & Schedule → My Schedule.' });
-      }
-      if (/\b(trade board|shift swap|swap board)\b/.test(q)) {
-        return makeVoiceNav({ label:'Open Trade Board', tab:'published', subTab:'trade-board', date, summary:'Open Time Clock & Schedule → Trade Board.' });
-      }
-      if (/\b(time off|request off|vacation request|availability)\b/.test(q)) {
-        return makeVoiceNav({ label:'Open Time Off', tab:'published', subTab:'time-off', date, summary:'Open Time Clock & Schedule → Request Off.' });
-      }
-      if (/\b(staff list|staff roster|team list|employee list|employees|roster|team)\b/.test(q)) return makeVoiceNav({ label:'Open Staff Roster', tab:'team', summary:'Open Staff Roster.' });
-      if (q.includes('inventory') || q.includes('orders')) return makeVoiceNav({ label:'Open Inventory', tab:'inventory', summary:'Open Inventory & Orders.' });
-      if (q.includes('prep')) return makeVoiceNav({ label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.' });
-      if (q.includes('reminder') || q.includes('reminders')) return makeVoiceNav({ label:'Open My Reminders', tab:'reminders', summary:'Open your private reminders.' });
-      if (q.includes('menu intelligence') || q.includes('menu scanner') || q.includes('menu scan')) return makeVoiceNav({ label:'Open Menu Intelligence', tab:'menu-intelligence', summary:'Open Menu Intelligence.' });
-      if (q.includes('recipe') || q.includes('recipes') || q.includes('recipe book') || q.includes('spec sheet')) return makeVoiceNav({ label:'Open Recipes', tab:'recipes', summary:'Open Recipe Book.' });
-      if (q.includes('message') || q.includes('announcement')) return makeVoiceNav({ label:'Open Messages', tab:'messages', summary:'Open the Message Board.' });
-      if (q.includes('maintenance') || q.includes('repair') || q.includes('broken')) return makeVoiceNav({ label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.' });
-      if (q.includes('labor') || q.includes('timesheet') || q.includes('time sheet') || q.includes('financial') || q.includes('daily ledger') || q.includes('sales')) return makeVoiceNav({ label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.' });
-      if (q.includes('help') || q.includes('manual')) return makeVoiceNav({ label:'Open Help Center', tab:'help', summary:'Open Help Center.' });
-      if (q.includes('settings')) return makeVoiceNav({ label:'Open Settings', tab:'settings', summary:'Open Settings.' });
-      if (q.includes('administrator') || q.includes('admin')) return makeVoiceNav({ label:'Open System Administrator', tab:'godmode', summary:'Open System Administrator.' });
+    if (/\b(open|go to|show|take me to|pull up|bring up|display)\b/.test(q) || isPlainNavigationPhrase(q)) {
+      const navAction = buildVoiceNavigationAction(q);
+      if (navAction) return navAction;
       const recipePhrase = q.replace(/\b(open|go to|show|take me to|pull up|bring up|display|recipe|recipes)\b/g, ' ').trim();
       const recipe = findVoiceMatch(recipes, recipePhrase);
       if (recipe) return makeVoiceNav({ label:`Open recipe: ${recipe.title}`, tab:'recipes', summary:`Open Recipe Book and search for ${recipe.title}.`, localSearch: recipe.title });
@@ -716,13 +752,17 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     }
     if (itemPhrase) {
       const cleaned = cleanVoiceItemName(itemPhrase);
-      const resolved = resolveEightySixInventoryMatch(cleaned, inventoryItems, menuDependencies);
-      const item = resolved?.item || findVoiceMatch(inventoryItems, cleaned);
+      const liveContext = await getVoiceEightySixContext();
+      const voiceInventoryItems = liveContext.inventoryItems || inventoryItems || [];
+      const voiceMenuDependencies = liveContext.menuDependencies || menuDependencies || [];
+      const resolved = resolveEightySixInventoryMatch(cleaned, voiceInventoryItems, voiceMenuDependencies);
+      const item = resolved?.item || findVoiceMatch(voiceInventoryItems, cleaned);
       const requestedItemName = cleaned || item?.name || 'Item';
       const itemName = item?.name || requestedItemName;
       const displayName = requestedItemName || itemName;
-      const matchNote = resolved?.method === 'menuIntelligence' && item?.name && normalizeVoiceText(item.name) !== normalizeVoiceText(displayName)
-        ? ` Matched inventory item: ${item.name}.`
+      const impactPreview = item ? buildEightySixAlertDetails({ requestedName: displayName, inventoryItem: item, menuDependencies: voiceMenuDependencies, matchMethod: resolved?.method, matchedMenuItemName: resolved?.matchedMenuItemName }).impactText : '';
+      const matchNote = item?.name && normalizeVoiceText(item.name) !== normalizeVoiceText(displayName)
+        ? ` Matched inventory item: ${item.name}${resolved?.method === 'menuIntelligence' ? ' through Menu Intelligence' : ''}.`
         : '';
       return {
         intent:'eighty_six_alert',
@@ -733,7 +773,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         menuMatchMethod: resolved?.method || (item ? 'inventory' : 'none'),
         matchedMenuItemName: resolved?.matchedMenuItemName || '',
         matchedIngredientName: resolved?.matchedIngredientName || '',
-        summary:`Post an important 86 alert for ${displayName}.${matchNote} Inventory stock will not be changed.`,
+        resolvedMenuDependencies: voiceMenuDependencies,
+        summary:`Post an important 86 alert for ${displayName}.${matchNote}${impactPreview ? ` ${impactPreview}.` : ''} Inventory stock will not be changed.`,
         needsConfirmation:false
       };
     }
@@ -857,7 +898,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     try {
       if (['navigate', 'navigate_schedule', 'help_search', 'open_recipe'].includes(actionToRun.intent)) {
         const targetTab = actionToRun.tab || 'today';
-        if (!canVoiceOpenTab(appUser, clientFeatures, targetTab)) {
+        if (!canVoiceOpenTab(appUser, clientFeatures, targetTab, clientData)) {
           addToast('Access Blocked', 'You do not have permission to open that area.');
           if (closeWhenDone) setOpen(false);
           return;
@@ -881,18 +922,15 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (appUser?.isDemo) return addToast('Demo Mode', 'Demo mode is read-only. Nothing was saved.');
       if (actionToRun.intent === 'eighty_six_alert') {
         const requestedName = String(actionToRun.requestedItemName || actionToRun.itemName || actionToRun.item?.name || 'Item').trim();
-        const inventoryName = String(actionToRun.item?.name || actionToRun.itemName || requestedName).trim();
         const alertTitle = `86 ${requestedName}`;
-        const impactText = actionToRun.item ? buildMenuImpactText(actionToRun.item, menuDependencies) : '';
-        const impactedItems = actionToRun.item ? getMenuImpactForInventoryItem(actionToRun.item, menuDependencies).map(i => i.name).filter(Boolean) : [];
-        const matchText = actionToRun.item && normalizeVoiceText(inventoryName) !== normalizeVoiceText(requestedName)
-          ? `Inventory match: ${inventoryName}${actionToRun.menuMatchMethod === 'menuIntelligence' ? ' (matched through Menu Intelligence)' : ''}.`
-          : '';
-        const details = [
-          matchText,
-          impactText,
-          actionToRun.matchedMenuItemName ? `Menu phrase matched: ${actionToRun.matchedMenuItemName}.` : ''
-        ].filter(Boolean).join('\n');
+        const alertMenuDependencies = actionToRun.resolvedMenuDependencies || menuDependencies;
+        const { inventoryName, impactText, impactedItems, matchText, details } = buildEightySixAlertDetails({
+          requestedName,
+          inventoryItem: actionToRun.item,
+          menuDependencies: alertMenuDependencies,
+          matchMethod: actionToRun.menuMatchMethod,
+          matchedMenuItemName: actionToRun.matchedMenuItemName
+        });
         await addDoc(collection(db, 'events'), {
           restaurantId: appUser.restaurantId,
           type:'note',

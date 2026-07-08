@@ -8,7 +8,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
-import { buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
+import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
@@ -555,7 +555,7 @@ const [searchTerm, setSearchTerm] = useState('');
       const impactRows = getZeroStockMenuImpacts([{ ...item, currentStock: 0 }], menuDependencies);
       const impacts = impactRows[0]?.impacts || [];
       if (impacts.length) {
-        const impactText = `Menu impact: ${impacts.slice(0, 4).map(i => i.name).join(', ')}${impacts.length > 4 ? ` and ${impacts.length - 4} more` : ''}`;
+        const impactText = `No longer available from the menu: ${impacts.slice(0, 6).map(i => i.name).join(', ')}${impacts.length > 6 ? ` and ${impacts.length - 6} more` : ''}`;
         await addDoc(collection(db, 'events'), {
           restaurantId: appUser.restaurantId,
           type: 'note',
@@ -568,8 +568,14 @@ const [searchTerm, setSearchTerm] = useState('');
           isImportant: true,
           replies: [],
           source: 'inventory_zero_stock_menu_impact',
+          commandCenterAlert: true,
+          managerBriefAlert: true,
+          kitchenCommandCenterAlert: true,
           menuImpact: impactText,
+          menuImpactItems: impacts.map(i => i.name).filter(Boolean),
           menuImpactItemId: item.id,
+          inventoryItemName: item.name || '',
+          requestedItemName: item.name || '',
           createdAt: new Date().toISOString()
         });
         secureFetch('/api/send-push', {
@@ -2777,13 +2783,34 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const handlePost86Alert = async () => {
     if (urgent86Items.length === 0) return addToast('86 Radar', 'No urgent 86/low-stock items found.');
-    const alertLines = urgent86Items.slice(0, 10).map(i => `• ${i.name}: ${Number(i.currentStock || 0)} on hand / par ${Number(i.parLevel || 0)}`);
+    const watched = urgent86Items.slice(0, 10);
+    const alertLines = watched.map(i => {
+      const impactText = buildMenuImpactText(i, menuDependencies);
+      return `• ${i.name}: ${Number(i.currentStock || 0)} on hand / par ${Number(i.parLevel || 0)}${impactText ? `\n  ${impactText}` : ''}`;
+    });
+    const menuImpactItems = watched
+      .flatMap(i => getMenuImpactForInventoryItem(i, menuDependencies).map(row => row.name))
+      .filter(Boolean);
+    const dedupedImpacts = Array.from(new Set(menuImpactItems));
     const text = `86 / Low Stock Watch:\n${alertLines.join('\n')}`;
     try {
       await safeOpsWrite({ action: 'add', collectionName: 'events', label: '86 alert', data: {
-        date: new Date().toISOString(), title: text, type: 'note', messageCategory: '86 Alert', author: appUser?.name || 'Kitchen Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
+        date: new Date().toISOString(),
+        title: text,
+        type: 'note',
+        messageCategory: '86 Alert',
+        author: appUser?.name || 'Kitchen Command Center',
+        isImportant: true,
+        restaurantId: appUser.restaurantId,
+        replies: [],
+        commandCenterAlert: true,
+        managerBriefAlert: true,
+        kitchenCommandCenterAlert: true,
+        menuImpact: dedupedImpacts.length ? `No longer available from the menu: ${dedupedImpacts.slice(0, 8).join(', ')}` : '',
+        menuImpactItems: dedupedImpacts,
+        source: 'kitchen_command_center_86_watch'
       } });
-      addToast('86 Alert Posted', 'Important low-stock alert posted to Message Board.');
+      addToast('86 Alert Posted', dedupedImpacts.length ? 'Posted with Menu Intelligence impact.' : 'Important low-stock alert posted to Message Board.');
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -2875,12 +2902,12 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab?.('inventory'); };
 
   const kpiCards = [
-    { label: 'Health Score', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Strong shift posture' : healthScore >= 70 ? 'Watch the weak spots' : 'Needs manager attention' },
+    { label: 'Shift Health', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Looking good' : healthScore >= 70 ? 'Check weak spots' : 'Needs manager attention' },
     { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
     { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
-    { label: 'Menu Impact', value: `${affectedMenuItems.length}`, detail: affectedMenuItems.length ? 'Recipes affected by low stock' : 'No affected recipes found' },
+    { label: 'Menu Impact', value: `${affectedMenuItems.length}`, detail: affectedMenuItems.length ? 'Menu items affected' : 'Menu looks clear' },
     { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
-    { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} on clock` : 'Nobody clocked in' },
+    { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} clocked in` : 'Nobody clocked in' },
     { label: 'Waste Today', value: `${todayWaste.length}`, detail: wasteCost ? `$${wasteCost.toFixed(2)} logged` : 'No cost logged' }
   ];
 
@@ -2890,9 +2917,9 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#D4A381] mb-2">Morning Brief</div>
+            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4A381] mb-2">Shift Snapshot</div>
             <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">Kitchen Command Center</h1>
-            <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A live cockpit for prep, people, inventory, maintenance, labor, waste, and the little gremlins that usually wait until dinner rush.</p>
+            <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A short list of what needs attention right now.</p>
           </div>
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             <button onClick={handlePostBrief} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Post Brief</button>
@@ -2917,8 +2944,8 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
       <div className={`${T.card} p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
         <div className="lg:col-span-2">
-          <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Smart Action Dock</h2>
-          <p className="text-xs text-slate-400 font-bold mt-1">These buttons turn the dashboard into actual work: pending orders, prep tasks, 86 alerts, and audit trail checkpoints.</p>
+          <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Do These First</h2>
+          <p className="text-xs text-slate-400 font-bold mt-1">The few actions managers need during service.</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Suggested Prep</div><div className="text-xl font-black text-white">{suggestedPrepTasks.length}</div></div>
@@ -2929,7 +2956,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className={`${T.card} p-4 lg:col-span-2`}>
           <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
-            <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Manager Readout</h2>
+            <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Today’s Priorities</h2>
             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2943,7 +2970,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         </div>
 
         <div className={`${T.card} p-4`}>
-          <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Smart Prep Forecast</h2>
+          <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Prep Forecast</h2>
           <div className="space-y-2">
             {prepForecast.map(row => (
               <div key={row.label} className="flex justify-between gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
@@ -2960,7 +2987,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={`${T.card} overflow-hidden`}>
-          <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Inventory Radar</div>
+          <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Stock to Check</div>
           <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
             {lowStockItems.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No par problems detected.</div>}
             {lowStockItems.slice(0, 12).map(item => {
@@ -2984,7 +3011,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         </div>
 
         <div className={`${T.card} overflow-hidden`}>
-          <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Equipment Radar</div>
+          <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Fixes to Check</div>
           <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
             {openMaintenance.length === 0 && overduePm.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No equipment warnings right now.</div>}
             {criticalMaintenance.concat(openMaintenance.filter(l => !criticalMaintenance.includes(l))).slice(0, 8).map(log => (
@@ -3255,7 +3282,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className={`${T.card} p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
           {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
-            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="The equipment gods are quiet, the schedule has a pulse, and nothing is screaming for help." />}
+            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
           </div>}
         </div>
 
