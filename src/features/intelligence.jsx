@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
 import { Modal, SmartEmptyState } from '../components/common';
@@ -21,6 +21,22 @@ const formatElapsedSeconds = (seconds = 0) => {
 };
 
 const formatUploadBytes = (bytes = 0) => `${(Math.max(0, bytes) / (1024 * 1024)).toFixed(1)}MB`;
+
+const FIRESTORE_BATCH_DELETE_LIMIT = 450;
+
+const batchDeleteRefs = async (refs = [], onProgress = null) => {
+  const cleanRefs = refs.filter(Boolean);
+  let deleted = 0;
+  for (let i = 0; i < cleanRefs.length; i += FIRESTORE_BATCH_DELETE_LIMIT) {
+    const chunk = cleanRefs.slice(i, i + FIRESTORE_BATCH_DELETE_LIMIT);
+    const batch = writeBatch(db);
+    chunk.forEach(refToDelete => batch.delete(refToDelete));
+    await batch.commit();
+    deleted += chunk.length;
+    if (typeof onProgress === 'function') onProgress(deleted, cleanRefs.length);
+  }
+  return deleted;
+};
 
 const WorkProgressBar = ({ label, detail, percent = 0, elapsedSeconds = 0 }) => {
   const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
@@ -229,17 +245,20 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const [editResult, setEditResult] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [deletingScanId, setDeletingScanId] = useState(null);
+  const [deleteProgress, setDeleteProgress] = useState(null);
   const [progressTick, setProgressTick] = useState(Date.now());
   const scanBusyRef = useRef(false);
   const approvingRef = useRef(false);
   const editSavingRef = useRef(false);
+  const deleteBusyRef = useRef(false);
   const impacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
 
   useEffect(() => {
-    if (!busy && !approving && !editSaving) return undefined;
+    if (!busy && !approving && !editSaving && !deletingScanId) return undefined;
     const timer = setInterval(() => setProgressTick(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [busy, approving, editSaving]);
+  }, [busy, approving, editSaving, deletingScanId]);
 
   const progressElapsed = (progress) => Math.max(0, Math.floor((progressTick - (progress?.startedAt || Date.now())) / 1000));
   const displayedPercent = (progress, cap = 96) => {
@@ -546,9 +565,10 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
           savedLinks++;
         }
       }
-      for (const dep of existingDeps) {
-        if (dep.id && !retainedIds.has(dep.id)) await deleteDoc(doc(db, 'menuDependencies', dep.id));
-      }
+      const staleRefs = existingDeps
+        .filter(dep => dep.id && !retainedIds.has(dep.id))
+        .map(dep => doc(db, 'menuDependencies', dep.id));
+      if (staleRefs.length) await batchDeleteRefs(staleRefs);
       await updateDoc(doc(db, 'menuIntelligenceScans', editingScan.id), {
         fileName: editResult?.fileName || editingScan.fileName || '',
         menuItemCount: (editResult?.menuItems || []).length,
@@ -570,23 +590,72 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   };
 
   const deleteMenuScan = async (scan) => {
-    let deps = [];
+    if (deleteBusyRef.current || !scan?.id) return;
+    const knownDeps = getScanDependencies(scan);
+    const expectedCount = Number(scan.dependencyCount || 0) || knownDeps.length;
+    if (!window.confirm(`Delete this menu scan and ${expectedCount} linked ${expectedCount === 1 ? 'ingredient' : 'ingredients'}? This removes the approved menu-impact links for this scan.`)) return;
+    deleteBusyRef.current = true;
+    setDeletingScanId(scan.id);
+    const deleteStartedAt = Date.now();
+    setProgressTick(deleteStartedAt);
+    setDeleteProgress({
+      scanId: scan.id,
+      label: 'Preparing fast delete',
+      detail: 'Finding approved menu-impact links tied to this scan.',
+      percent: 5,
+      startedAt: deleteStartedAt
+    });
     try {
-      deps = await fetchScanDependencies(scan);
-    } catch (err) {
-      addToast('Delete Failed', err.message || 'Could not load linked menu ingredients for deletion.');
-      return;
-    }
-    if (!window.confirm(`Delete this menu scan and ${deps.length} linked ${deps.length === 1 ? 'ingredient' : 'ingredients'}? This removes the approved menu-impact links for this scan.`)) return;
-    try {
-      for (const dep of deps) {
-        if (dep.id) await deleteDoc(doc(db, 'menuDependencies', dep.id));
+      const deps = await fetchScanDependencies(scan);
+      const refsToDelete = [
+        ...deps.filter(dep => dep.id).map(dep => doc(db, 'menuDependencies', dep.id)),
+        doc(db, 'menuIntelligenceScans', scan.id)
+      ];
+      if (refsToDelete.length === 0) {
+        throw new Error('No menu scan record was found to delete.');
       }
-      await deleteDoc(doc(db, 'menuIntelligenceScans', scan.id));
-      await logAudit(appUser, 'MENU_INTELLIGENCE_SCAN_DELETED', scan.fileName || 'Menu scan', `${deps.length} dependencies removed`);
+      setDeleteProgress({
+        scanId: scan.id,
+        label: 'Deleting menu scan',
+        detail: `Deleting 0 of ${refsToDelete.length} Firestore records in batches.`,
+        percent: 10,
+        startedAt: deleteStartedAt
+      });
+      await batchDeleteRefs(refsToDelete, (deleted, total) => {
+        const pct = total ? Math.min(96, 10 + Math.round((deleted / total) * 86)) : 96;
+        setDeleteProgress({
+          scanId: scan.id,
+          label: 'Deleting menu scan',
+          detail: `Deleted ${deleted} of ${total} Firestore records.`,
+          percent: pct,
+          startedAt: deleteStartedAt
+        });
+      });
+      await logAudit(appUser, 'MENU_INTELLIGENCE_SCAN_DELETED', scan.fileName || 'Menu scan', `${deps.length} dependencies removed with batched delete`);
+      setDeleteProgress({
+        scanId: scan.id,
+        label: 'Menu scan deleted',
+        detail: `${deps.length} linked ${deps.length === 1 ? 'ingredient was' : 'ingredients were'} removed.`,
+        percent: 100,
+        done: true,
+        startedAt: deleteStartedAt
+      });
       addToast('Menu Scan Deleted', `${deps.length} linked ingredients removed.`);
+      setTimeout(() => setDeleteProgress(null), 1400);
     } catch (err) {
+      setDeleteProgress({
+        scanId: scan.id,
+        label: 'Delete stopped',
+        detail: err.message || 'Could not delete menu scan.',
+        percent: 100,
+        done: true,
+        startedAt: deleteStartedAt
+      });
       addToast('Delete Failed', err.message || 'Could not delete menu scan.');
+      setTimeout(() => setDeleteProgress(null), 2600);
+    } finally {
+      deleteBusyRef.current = false;
+      setDeletingScanId(null);
     }
   };
 
@@ -655,16 +724,21 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
 
       <div className={`${T.card} overflow-hidden`}>
         <div className={T.th}>Recent Menu Scans</div>
-        {scans.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">No approved menu scans yet.</div> : scans.slice(0, 12).map(scan => (
-          <div key={scan.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
-            <div className="min-w-0"><div className="font-black text-white text-sm truncate">{scan.fileName || 'Menu scan'}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{scan.menuItemCount || 0} menu items, {scan.dependencyCount || 0} links</div></div>
-            <div className="flex items-center gap-2 justify-end">
-              <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest">{scan.status || 'saved'}</div>
-              <button type="button" onClick={() => openEditScan(scan)} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D]" title="Edit menu scan"><Edit3 size={15}/></button>
-              <button type="button" onClick={() => deleteMenuScan(scan)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50" title="Delete menu scan"><Trash2 size={15}/></button>
+        {scans.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">No approved menu scans yet.</div> : scans.slice(0, 12).map(scan => {
+          const isDeletingThisScan = deletingScanId === scan.id || deleteProgress?.scanId === scan.id;
+          return (
+          <div key={scan.id} className={`${T.row} space-y-3 ${isDeletingThisScan ? 'opacity-80' : ''}`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0"><div className="font-black text-white text-sm truncate">{scan.fileName || 'Menu scan'}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{scan.menuItemCount || 0} menu items, {scan.dependencyCount || 0} links</div></div>
+              <div className="flex items-center gap-2 justify-end">
+                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest">{isDeletingThisScan ? 'deleting' : (scan.status || 'saved')}</div>
+                <button type="button" onClick={() => openEditScan(scan)} disabled={isDeletingThisScan || editSaving || !!deletingScanId} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-50" title="Edit menu scan"><Edit3 size={15}/></button>
+                <button type="button" onClick={() => deleteMenuScan(scan)} disabled={isDeletingThisScan || !!deletingScanId} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-50" title="Delete menu scan"><Trash2 size={15}/></button>
+              </div>
             </div>
+            {isDeletingThisScan && deleteProgress && <WorkProgressBar label={deleteProgress.label} detail={deleteProgress.detail} percent={displayedPercent(deleteProgress, deleteProgress.done ? 100 : 98)} elapsedSeconds={progressElapsed(deleteProgress)} />}
           </div>
-        ))}
+        );})}
       </div>
 
       <Modal isOpen={reviewOpen} onClose={() => { if (!approving) setReviewOpen(false); }} title="Review Menu Intelligence" sizeClass="max-w-5xl">
