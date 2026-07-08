@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Bell, Calendar, Check, Clock, Loader2, Mic, Package, Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
-import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import React, { useEffect, useRef, useState } from 'react';
+import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
 import { Modal, SmartEmptyState } from '../components/common';
 import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuIntelligence';
@@ -11,6 +11,31 @@ const getInitialReminderDate = () => {
   const d = new Date();
   d.setHours(d.getHours() + 2, 0, 0, 0);
   return { date: toDateInputValue(d), time: toTimeInputValue(d) };
+};
+
+const formatElapsedSeconds = (seconds = 0) => {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = String(safeSeconds % 60).padStart(2, '0');
+  return `${mins}:${secs}`;
+};
+
+const formatUploadBytes = (bytes = 0) => `${(Math.max(0, bytes) / (1024 * 1024)).toFixed(1)}MB`;
+
+const WorkProgressBar = ({ label, detail, percent = 0, elapsedSeconds = 0 }) => {
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  return (
+    <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-widest">
+        <span className="text-white truncate">{label || 'Working'}</span>
+        <span className="text-[#D4A381] shrink-0">{safePercent}% · {formatElapsedSeconds(elapsedSeconds)}</span>
+      </div>
+      <div className="h-3 rounded-full bg-black/40 border border-[#2A353D] overflow-hidden">
+        <div className="h-full rounded-full bg-[#D4A381] transition-all duration-500" style={{ width: `${safePercent}%` }} />
+      </div>
+      {detail && <div className="text-[10px] text-slate-500 font-bold leading-snug">{detail}</div>}
+    </div>
+  );
 };
 
 const TabPersonalReminders = ({ appUser, addToast }) => {
@@ -197,7 +222,150 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const [scanResult, setScanResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null);
+  const [approving, setApproving] = useState(false);
+  const [approveProgress, setApproveProgress] = useState(null);
+  const [editingScan, setEditingScan] = useState(null);
+  const [editResult, setEditResult] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [progressTick, setProgressTick] = useState(Date.now());
+  const scanBusyRef = useRef(false);
+  const approvingRef = useRef(false);
+  const editSavingRef = useRef(false);
   const impacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
+
+  useEffect(() => {
+    if (!busy && !approving && !editSaving) return undefined;
+    const timer = setInterval(() => setProgressTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [busy, approving, editSaving]);
+
+  const progressElapsed = (progress) => Math.max(0, Math.floor((progressTick - (progress?.startedAt || Date.now())) / 1000));
+  const displayedPercent = (progress, cap = 96) => {
+    if (!progress) return 0;
+    const elapsed = progressElapsed(progress);
+    const base = Number(progress.percent) || 0;
+    return Math.min(progress.done ? 100 : cap, Math.max(base, base + Math.min(18, elapsed * 1.4)));
+  };
+
+  const getScanDependencies = (scan) => {
+    if (!scan) return [];
+    const storagePath = scan.storagePath || '';
+    const fileName = scan.fileName || '';
+    return menuDependencies.filter(dep => {
+      if (storagePath && dep.scanStoragePath === storagePath) return true;
+      if (!storagePath && fileName && dep.scanFileName === fileName) return true;
+      return false;
+    });
+  };
+
+  const buildEditableScanResult = (scan, loadedDeps = null) => {
+    const deps = loadedDeps || getScanDependencies(scan);
+    const groups = [];
+    const keyToIndex = new Map();
+    deps.forEach(dep => {
+      const key = [dep.menuItemName || 'Menu item', dep.menuCategory || '', dep.menuDescription || ''].join('||');
+      if (!keyToIndex.has(key)) {
+        keyToIndex.set(key, groups.length);
+        groups.push({
+          name: dep.menuItemName || 'Menu item',
+          category: dep.menuCategory || '',
+          description: dep.menuDescription || '',
+          ingredients: []
+        });
+      }
+      groups[keyToIndex.get(key)].ingredients.push({
+        dependencyId: dep.id,
+        name: dep.ingredientName || dep.inventoryItemName || '',
+        matchedInventoryItemId: dep.inventoryItemId || '',
+        matchedInventoryItemName: dep.inventoryItemName || '',
+        confidence: dep.confidence || 'manual'
+      });
+    });
+    return {
+      fileName: scan?.fileName || 'Menu scan',
+      storagePath: scan?.storagePath || '',
+      downloadUrl: scan?.downloadUrl || '',
+      menuItems: groups
+    };
+  };
+
+  const fetchScanDependencies = async (scan) => {
+    if (!scan) return [];
+    const cachedDeps = getScanDependencies(scan);
+    try {
+      if (scan.storagePath) {
+        const snap = await getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', appUser.restaurantId), where('scanStoragePath', '==', scan.storagePath)));
+        return snap.docs.map(row => ({ id: row.id, ...row.data() })).filter(dep => dep.restaurantId === appUser.restaurantId);
+      }
+      if (scan.fileName) {
+        const snap = await getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', appUser.restaurantId), where('scanFileName', '==', scan.fileName)));
+        return snap.docs.map(row => ({ id: row.id, ...row.data() })).filter(dep => dep.restaurantId === appUser.restaurantId);
+      }
+      return cachedDeps;
+    } catch (err) {
+      if (cachedDeps.length) return cachedDeps;
+      throw err;
+    }
+  };
+
+  const openEditScan = async (scan) => {
+    setEditingScan(scan);
+    setEditResult({ fileName: scan?.fileName || 'Menu scan', storagePath: scan?.storagePath || '', downloadUrl: scan?.downloadUrl || '', menuItems: [] });
+    setEditOpen(true);
+    try {
+      const deps = await fetchScanDependencies(scan);
+      setEditResult(buildEditableScanResult(scan, deps));
+    } catch (err) {
+      addToast('Could Not Load Links', err.message || 'Could not load menu links for this scan.');
+    }
+  };
+
+  const updateMenuItem = (itemIdx, patch, mode = 'scan') => {
+    const source = mode === 'edit' ? editResult : scanResult;
+    const menuItems = [...(source?.menuItems || [])];
+    menuItems[itemIdx] = { ...menuItems[itemIdx], ...patch };
+    if (mode === 'edit') setEditResult({ ...editResult, menuItems });
+    else setScanResult({ ...scanResult, menuItems });
+  };
+
+  const updateIngredient = (itemIdx, ingIdx, patch, mode = 'scan') => {
+    const source = mode === 'edit' ? editResult : scanResult;
+    const menuItems = [...(source?.menuItems || [])];
+    const ingredients = [...(menuItems[itemIdx].ingredients || [])];
+    ingredients[ingIdx] = { ...ingredients[ingIdx], ...patch };
+    menuItems[itemIdx] = { ...menuItems[itemIdx], ingredients };
+    if (mode === 'edit') setEditResult({ ...editResult, menuItems });
+    else setScanResult({ ...scanResult, menuItems });
+  };
+
+  const removeIngredient = (itemIdx, ingIdx, mode = 'scan') => {
+    const source = mode === 'edit' ? editResult : scanResult;
+    const item = (source?.menuItems || [])[itemIdx] || {};
+    const ingredients = [...(item.ingredients || [])];
+    ingredients.splice(ingIdx, 1);
+    updateMenuItem(itemIdx, { ingredients }, mode);
+  };
+
+  const addIngredientToItem = (itemIdx, mode = 'scan') => {
+    const source = mode === 'edit' ? editResult : scanResult;
+    const item = (source?.menuItems || [])[itemIdx] || {};
+    updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', confidence: 'manual' }] }, mode);
+  };
+
+  const addMenuItemToEdit = () => {
+    setEditResult({
+      ...(editResult || {}),
+      menuItems: [...(editResult?.menuItems || []), { name: '', category: '', description: '', ingredients: [{ name: '', matchedInventoryItemId: '', confidence: 'manual' }] }]
+    });
+  };
+
+  const removeEditMenuItem = (itemIdx) => {
+    const menuItems = [...(editResult?.menuItems || [])];
+    menuItems.splice(itemIdx, 1);
+    setEditResult({ ...editResult, menuItems });
+  };
 
   if (!allowed) {
     return (
@@ -212,15 +380,34 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   }
 
   const scanMenu = async () => {
+    if (scanBusyRef.current) return;
     if (!file) return addToast('Choose File', 'Upload a menu image or PDF first.');
     if (file.size > 20 * 1024 * 1024) return addToast('Menu Too Large', 'This menu file is over 20MB. Compress it, split the PDF, or upload fewer pages.');
+    scanBusyRef.current = true;
     setBusy(true);
+    const scanStartedAt = Date.now();
+    setProgressTick(scanStartedAt);
+    setScanProgress({ label: 'Uploading menu', detail: 'Sending the file to secure storage.', percent: 8, startedAt: scanStartedAt });
     try {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);
       const path = `${appUser.restaurantId}/menuUploads/menu-${Date.now()}-${safeName}`;
       const fileRef = ref(storage, path);
-      await uploadBytes(fileRef, file, { contentType: file.type || 'application/octet-stream' });
+      setScanProgress({ label: 'Uploading menu', detail: 'Starting secure upload.', percent: 8, startedAt: scanStartedAt });
+      const uploadTask = uploadBytesResumable(fileRef, file, { contentType: file.type || 'application/octet-stream' });
+      await new Promise((resolve, reject) => {
+        uploadTask.on('state_changed', snapshot => {
+          const ratio = snapshot.totalBytes ? snapshot.bytesTransferred / snapshot.totalBytes : 0;
+          setScanProgress({
+            label: 'Uploading menu',
+            detail: `Uploaded ${formatUploadBytes(snapshot.bytesTransferred)} of ${formatUploadBytes(snapshot.totalBytes || file.size)}.`,
+            percent: 8 + Math.round(ratio * 34),
+            startedAt: scanStartedAt
+          });
+        }, reject, resolve);
+      });
+      setScanProgress({ label: 'Upload complete', detail: 'Preparing the AI menu reader.', percent: 42, startedAt: scanStartedAt });
       const downloadUrl = await getDownloadURL(fileRef);
+      setScanProgress({ label: 'Reading menu with AI', detail: 'Finding menu items, ingredients, and inventory matches. This can take a minute for big menus.', percent: 55, startedAt: scanStartedAt });
       const response = await secureFetch('/api/scan-menu', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -233,75 +420,203 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
           inventoryItems: inventoryItems.map(i => ({ id: i.id, name: i.name, category: i.category }))
         })
       });
+      setScanProgress({ label: 'Building review screen', detail: 'Loading the menu matches for approval.', percent: 88, startedAt: scanStartedAt });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Menu scan failed.');
       setScanResult({ ...result, storagePath: path, downloadUrl, fileName: file.name });
       setReviewOpen(true);
+      setScanProgress({ label: 'Menu scan ready', detail: 'Review the AI matches before saving.', percent: 100, done: true, startedAt: scanStartedAt });
       addToast('Menu Scanned', 'Review the AI matches before saving.');
+      setTimeout(() => setScanProgress(null), 1400);
     } catch (err) {
+      setScanProgress({ label: 'Scan stopped', detail: err.message || 'Could not scan menu.', percent: 100, done: true, startedAt: scanStartedAt });
       addToast('Scan Failed', err.message || 'Could not scan menu.');
+      setTimeout(() => setScanProgress(null), 2200);
+    } finally {
+      scanBusyRef.current = false;
+      setBusy(false);
     }
-    setBusy(false);
-  };
-
-  const updateMenuItem = (itemIdx, patch) => {
-    const menuItems = [...(scanResult?.menuItems || [])];
-    menuItems[itemIdx] = { ...menuItems[itemIdx], ...patch };
-    setScanResult({ ...scanResult, menuItems });
-  };
-
-  const updateIngredient = (itemIdx, ingIdx, patch) => {
-    const menuItems = [...(scanResult?.menuItems || [])];
-    const ingredients = [...(menuItems[itemIdx].ingredients || [])];
-    ingredients[ingIdx] = { ...ingredients[ingIdx], ...patch };
-    menuItems[itemIdx] = { ...menuItems[itemIdx], ingredients };
-    setScanResult({ ...scanResult, menuItems });
   };
 
   const approveMenu = async () => {
+    if (approvingRef.current) return;
+    approvingRef.current = true;
     const menuItems = scanResult?.menuItems || [];
+    const totalLinks = menuItems.reduce((sum, item) => sum + (item.ingredients || []).filter(ingredient => ingredient.matchedInventoryItemId).length, 0);
     let saved = 0;
-    for (const item of menuItems) {
-      for (const ingredient of item.ingredients || []) {
-        if (!ingredient.matchedInventoryItemId) continue;
-        const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
-        await addDoc(collection(db, 'menuDependencies'), {
-          restaurantId: appUser.restaurantId,
-          menuItemName: item.name || 'Menu item',
-          menuCategory: item.category || '',
-          menuDescription: item.description || '',
-          ingredientName: ingredient.name || inventoryItem?.name || '',
-          inventoryItemId: ingredient.matchedInventoryItemId,
-          inventoryItemName: inventoryItem?.name || ingredient.matchedInventoryItemName || ingredient.name || '',
-          confidence: ingredient.confidence || item.confidence || 'reviewed',
-          source: 'menu_intelligence_ai_review',
-          status: 'approved',
-          approvedAt: new Date().toISOString(),
-          approvedBy: appUser.name || appUser.email || appUser.id || '',
-          scanFileName: scanResult.fileName || '',
-          scanStoragePath: scanResult.storagePath || ''
-        });
-        saved++;
+    setApproving(true);
+    const approveStartedAt = Date.now();
+    setProgressTick(approveStartedAt);
+    setApproveProgress({ label: 'Approving menu links', detail: `Saving ${totalLinks} reviewed ingredient ${totalLinks === 1 ? 'link' : 'links'}.`, percent: 5, startedAt: approveStartedAt });
+    try {
+      for (const item of menuItems) {
+        for (const ingredient of item.ingredients || []) {
+          if (!ingredient.matchedInventoryItemId) continue;
+          const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
+          await addDoc(collection(db, 'menuDependencies'), {
+            restaurantId: appUser.restaurantId,
+            menuItemName: item.name || 'Menu item',
+            menuCategory: item.category || '',
+            menuDescription: item.description || '',
+            ingredientName: ingredient.name || inventoryItem?.name || '',
+            inventoryItemId: ingredient.matchedInventoryItemId,
+            inventoryItemName: inventoryItem?.name || ingredient.matchedInventoryItemName || ingredient.name || '',
+            confidence: ingredient.confidence || item.confidence || 'reviewed',
+            source: 'menu_intelligence_ai_review',
+            status: 'approved',
+            approvedAt: new Date().toISOString(),
+            approvedBy: appUser.name || appUser.email || appUser.id || '',
+            scanFileName: scanResult.fileName || '',
+            scanStoragePath: scanResult.storagePath || ''
+          });
+          saved++;
+          const pct = totalLinks ? Math.min(88, 8 + Math.round((saved / totalLinks) * 78)) : 70;
+          setApproveProgress({ label: 'Approving menu links', detail: `Saved ${saved} of ${totalLinks} reviewed links.`, percent: pct, startedAt: approveStartedAt });
+        }
       }
+      setApproveProgress({ label: 'Saving scan summary', detail: 'Locking in this approved menu scan.', percent: 92, startedAt: approveStartedAt });
+      await addDoc(collection(db, 'menuIntelligenceScans'), {
+        restaurantId: appUser.restaurantId,
+        fileName: scanResult.fileName || '',
+        storagePath: scanResult.storagePath || '',
+        downloadUrl: scanResult.downloadUrl || '',
+        menuItemCount: menuItems.length,
+        dependencyCount: saved,
+        status: 'approved',
+        createdAt: new Date().toISOString(),
+        approvedAt: new Date().toISOString(),
+        approvedBy: appUser.id || ''
+      });
+      await logAudit(appUser, 'MENU_INTELLIGENCE_APPROVED', `${menuItems.length} menu items`, `${saved} dependencies`);
+      setApproveProgress({ label: 'Menu Intelligence saved', detail: `${saved} ingredient links approved.`, percent: 100, done: true, startedAt: approveStartedAt });
+      addToast('Menu Intelligence Saved', `${saved} ingredient links approved.`);
+      setReviewOpen(false);
+      setScanResult(null);
+      setFile(null);
+      setTimeout(() => setApproveProgress(null), 1200);
+    } catch (err) {
+      setApproveProgress({ label: 'Approval stopped', detail: err.message || 'Could not approve menu links.', percent: 100, done: true, startedAt: approveStartedAt });
+      addToast('Approval Failed', err.message || 'Could not approve menu links.');
+      setTimeout(() => setApproveProgress(null), 2200);
+    } finally {
+      approvingRef.current = false;
+      setApproving(false);
     }
-    await addDoc(collection(db, 'menuIntelligenceScans'), {
-      restaurantId: appUser.restaurantId,
-      fileName: scanResult.fileName || '',
-      storagePath: scanResult.storagePath || '',
-      downloadUrl: scanResult.downloadUrl || '',
-      menuItemCount: menuItems.length,
-      dependencyCount: saved,
-      status: 'approved',
-      createdAt: new Date().toISOString(),
-      approvedAt: new Date().toISOString(),
-      approvedBy: appUser.id || ''
-    });
-    await logAudit(appUser, 'MENU_INTELLIGENCE_APPROVED', `${menuItems.length} menu items`, `${saved} dependencies`);
-    addToast('Menu Intelligence Saved', `${saved} ingredient links approved.`);
-    setReviewOpen(false);
-    setScanResult(null);
-    setFile(null);
   };
+
+  const saveEditedScan = async () => {
+    if (editSavingRef.current || !editingScan?.id) return;
+    editSavingRef.current = true;
+    setEditSaving(true);
+    try {
+      const existingDeps = await fetchScanDependencies(editingScan);
+      const existingIds = new Set(existingDeps.map(dep => dep.id).filter(Boolean));
+      const retainedIds = new Set();
+      let savedLinks = 0;
+      for (const item of editResult?.menuItems || []) {
+        for (const ingredient of item.ingredients || []) {
+          if (!ingredient.matchedInventoryItemId) continue;
+          const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
+          const payload = {
+            restaurantId: appUser.restaurantId,
+            menuItemName: item.name || 'Menu item',
+            menuCategory: item.category || '',
+            menuDescription: item.description || '',
+            ingredientName: ingredient.name || inventoryItem?.name || '',
+            inventoryItemId: ingredient.matchedInventoryItemId,
+            inventoryItemName: inventoryItem?.name || ingredient.matchedInventoryItemName || ingredient.name || '',
+            confidence: ingredient.confidence || 'manual_review',
+            source: ingredient.dependencyId ? 'menu_intelligence_manual_update' : 'menu_intelligence_manual_add',
+            status: 'approved',
+            updatedAt: new Date().toISOString(),
+            updatedBy: appUser.id || '',
+            scanFileName: editResult.fileName || editingScan.fileName || '',
+            scanStoragePath: editingScan.storagePath || ''
+          };
+          if (ingredient.dependencyId && existingIds.has(ingredient.dependencyId)) {
+            await updateDoc(doc(db, 'menuDependencies', ingredient.dependencyId), payload);
+            retainedIds.add(ingredient.dependencyId);
+          } else {
+            await addDoc(collection(db, 'menuDependencies'), {
+              ...payload,
+              approvedAt: new Date().toISOString(),
+              approvedBy: appUser.name || appUser.email || appUser.id || ''
+            });
+          }
+          savedLinks++;
+        }
+      }
+      for (const dep of existingDeps) {
+        if (dep.id && !retainedIds.has(dep.id)) await deleteDoc(doc(db, 'menuDependencies', dep.id));
+      }
+      await updateDoc(doc(db, 'menuIntelligenceScans', editingScan.id), {
+        fileName: editResult?.fileName || editingScan.fileName || '',
+        menuItemCount: (editResult?.menuItems || []).length,
+        dependencyCount: savedLinks,
+        updatedAt: new Date().toISOString(),
+        updatedBy: appUser.id || ''
+      });
+      await logAudit(appUser, 'MENU_INTELLIGENCE_SCAN_EDITED', editResult?.fileName || editingScan.fileName || 'Menu scan', `${savedLinks} dependencies`);
+      addToast('Menu Scan Updated', `${savedLinks} menu links saved.`);
+      setEditOpen(false);
+      setEditingScan(null);
+      setEditResult(null);
+    } catch (err) {
+      addToast('Update Failed', err.message || 'Could not update menu scan.');
+    } finally {
+      editSavingRef.current = false;
+      setEditSaving(false);
+    }
+  };
+
+  const deleteMenuScan = async (scan) => {
+    let deps = [];
+    try {
+      deps = await fetchScanDependencies(scan);
+    } catch (err) {
+      addToast('Delete Failed', err.message || 'Could not load linked menu ingredients for deletion.');
+      return;
+    }
+    if (!window.confirm(`Delete this menu scan and ${deps.length} linked ${deps.length === 1 ? 'ingredient' : 'ingredients'}? This removes the approved menu-impact links for this scan.`)) return;
+    try {
+      for (const dep of deps) {
+        if (dep.id) await deleteDoc(doc(db, 'menuDependencies', dep.id));
+      }
+      await deleteDoc(doc(db, 'menuIntelligenceScans', scan.id));
+      await logAudit(appUser, 'MENU_INTELLIGENCE_SCAN_DELETED', scan.fileName || 'Menu scan', `${deps.length} dependencies removed`);
+      addToast('Menu Scan Deleted', `${deps.length} linked ingredients removed.`);
+    } catch (err) {
+      addToast('Delete Failed', err.message || 'Could not delete menu scan.');
+    }
+  };
+
+  const renderMenuEditor = (source, mode = 'scan') => (
+    <div className="space-y-4">
+      {(source?.menuItems || []).length === 0 ? <SmartEmptyState title="Nothing found" desc="Add menu items and ingredient links before saving." /> : (source.menuItems || []).map((item, itemIdx) => (
+        <div key={itemIdx} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-3">
+          <div className={`grid ${mode === 'edit' ? 'sm:grid-cols-[1fr_.45fr_auto]' : 'sm:grid-cols-[1fr_.45fr]'} gap-2 items-center`}>
+            <input value={item.name || ''} onChange={e => updateMenuItem(itemIdx, { name: e.target.value }, mode)} className={T.input} placeholder="Menu item name" />
+            <input value={item.category || ''} onChange={e => updateMenuItem(itemIdx, { category: e.target.value }, mode)} className={T.input} placeholder="Category" />
+            {mode === 'edit' && <button type="button" onClick={() => removeEditMenuItem(itemIdx)} disabled={editSaving} className="p-3 rounded-xl border border-red-900/50 text-red-300 bg-red-900/10 disabled:opacity-50"><Trash2 size={16}/></button>}
+          </div>
+          <textarea value={item.description || ''} onChange={e => updateMenuItem(itemIdx, { description: e.target.value }, mode)} className={T.input} rows={2} placeholder="Description" />
+          <div className="space-y-2">
+            {(item.ingredients || []).map((ingredient, ingIdx) => (
+              <div key={`${ingredient.dependencyId || 'new'}-${ingIdx}`} className="grid sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                <input value={ingredient.name || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { name: e.target.value }, mode)} className={T.input} placeholder="Ingredient" />
+                <select value={ingredient.matchedInventoryItemId || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { matchedInventoryItemId: e.target.value }, mode)} className={T.input}>
+                  <option value="">No inventory match</option>
+                  {inventoryItems.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+                </select>
+                <button type="button" onClick={() => removeIngredient(itemIdx, ingIdx, mode)} disabled={approving || editSaving} className="p-3 rounded-xl border border-red-900/50 text-red-300 bg-red-900/10 disabled:opacity-50"><X size={16}/></button>
+              </div>
+            ))}
+            <button type="button" onClick={() => addIngredientToItem(itemIdx, mode)} disabled={approving || editSaving} className={`${T.btnAlt} disabled:opacity-50`}>Add Ingredient</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-24">
@@ -316,13 +631,14 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
         <div className={`${T.card} p-4 space-y-4`}>
           <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center bg-[#12161A]">
             <Upload className="mx-auto text-[#D4A381] mb-3" size={30}/>
-            <label className={`${T.btnAlt} inline-flex items-center gap-2 cursor-pointer`}>
+            <label className={`${T.btnAlt} inline-flex items-center gap-2 cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
               Choose Menu Image or PDF
-              <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
+              <input type="file" accept="image/*,application/pdf" disabled={busy} onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
             </label>
             <div className="text-xs font-bold text-slate-400 mt-3">{file ? file.name : 'No file selected'}</div>
           </div>
-          <button onClick={scanMenu} disabled={busy || !file} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{busy ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18}/>} Scan Menu</button>
+          {scanProgress && <WorkProgressBar label={scanProgress.label} detail={scanProgress.detail} percent={displayedPercent(scanProgress, busy ? 96 : 100)} elapsedSeconds={progressElapsed(scanProgress)} />}
+          <button onClick={scanMenu} disabled={busy || !file} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{busy ? <Upload size={18}/> : <Sparkles size={18}/>} {busy ? 'Scanning Menu' : 'Scan Menu'}</button>
           <div className="text-[10px] text-slate-500 font-bold leading-snug">AI results are not saved until you approve them. Regular staff cannot browse uploaded menu records unless the owner grants access.</div>
         </div>
 
@@ -340,42 +656,35 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       <div className={`${T.card} overflow-hidden`}>
         <div className={T.th}>Recent Menu Scans</div>
         {scans.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">No approved menu scans yet.</div> : scans.slice(0, 12).map(scan => (
-          <div key={scan.id} className={`${T.row} flex justify-between gap-3`}>
+          <div key={scan.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
             <div className="min-w-0"><div className="font-black text-white text-sm truncate">{scan.fileName || 'Menu scan'}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{scan.menuItemCount || 0} menu items, {scan.dependencyCount || 0} links</div></div>
-            <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest">{scan.status || 'saved'}</div>
+            <div className="flex items-center gap-2 justify-end">
+              <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest">{scan.status || 'saved'}</div>
+              <button type="button" onClick={() => openEditScan(scan)} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D]" title="Edit menu scan"><Edit3 size={15}/></button>
+              <button type="button" onClick={() => deleteMenuScan(scan)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50" title="Delete menu scan"><Trash2 size={15}/></button>
+            </div>
           </div>
         ))}
       </div>
 
-      <Modal isOpen={reviewOpen} onClose={() => setReviewOpen(false)} title="Review Menu Intelligence" sizeClass="max-w-5xl">
+      <Modal isOpen={reviewOpen} onClose={() => { if (!approving) setReviewOpen(false); }} title="Review Menu Intelligence" sizeClass="max-w-5xl">
         <div className="space-y-4">
-          {(scanResult?.menuItems || []).length === 0 ? <SmartEmptyState title="Nothing found" desc="The scanner did not return menu items." /> : (scanResult.menuItems || []).map((item, itemIdx) => (
-            <div key={itemIdx} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-3">
-              <div className="grid sm:grid-cols-[1fr_.45fr] gap-2">
-                <input value={item.name || ''} onChange={e => updateMenuItem(itemIdx, { name: e.target.value })} className={T.input} placeholder="Menu item name" />
-                <input value={item.category || ''} onChange={e => updateMenuItem(itemIdx, { category: e.target.value })} className={T.input} placeholder="Category" />
-              </div>
-              <textarea value={item.description || ''} onChange={e => updateMenuItem(itemIdx, { description: e.target.value })} className={T.input} rows={2} placeholder="Description" />
-              <div className="space-y-2">
-                {(item.ingredients || []).map((ingredient, ingIdx) => (
-                  <div key={ingIdx} className="grid sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
-                    <input value={ingredient.name || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { name: e.target.value })} className={T.input} placeholder="Ingredient" />
-                    <select value={ingredient.matchedInventoryItemId || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { matchedInventoryItemId: e.target.value })} className={T.input}>
-                      <option value="">No inventory match</option>
-                      {inventoryItems.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
-                    </select>
-                    <button type="button" onClick={() => {
-                      const ingredients = [...(item.ingredients || [])];
-                      ingredients.splice(ingIdx, 1);
-                      updateMenuItem(itemIdx, { ingredients });
-                    }} className="p-3 rounded-xl border border-red-900/50 text-red-300 bg-red-900/10"><X size={16}/></button>
-                  </div>
-                ))}
-                <button type="button" onClick={() => updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', confidence: 'manual' }] })} className={T.btnAlt}>Add Ingredient</button>
-              </div>
-            </div>
-          ))}
-          <button onClick={approveMenu} className={`${T.btn} w-full flex items-center justify-center gap-2`}><Check size={18}/> Approve Reviewed Menu Links</button>
+          {approveProgress && <WorkProgressBar label={approveProgress.label} detail={approveProgress.detail} percent={displayedPercent(approveProgress, approving ? 99 : 100)} elapsedSeconds={progressElapsed(approveProgress)} />}
+          {renderMenuEditor(scanResult, 'scan')}
+          <button onClick={approveMenu} disabled={approving} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}><Check size={18}/> {approving ? 'Approving Reviewed Menu Links' : 'Approve Reviewed Menu Links'}</button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={editOpen} onClose={() => { if (!editSaving) setEditOpen(false); }} title="Edit Menu Scan" sizeClass="max-w-5xl">
+        <div className="space-y-4">
+          <div>
+            <label className={T.label}>Menu scan name</label>
+            <input value={editResult?.fileName || ''} onChange={e => setEditResult({ ...(editResult || {}), fileName: e.target.value })} disabled={editSaving} className={T.input} placeholder="Menu scan name" />
+          </div>
+          {renderMenuEditor(editResult, 'edit')}
+          <button type="button" onClick={addMenuItemToEdit} disabled={editSaving} className={`${T.btnAlt} disabled:opacity-50`}>Add Menu Item</button>
+          <button onClick={saveEditedScan} disabled={editSaving} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{editSaving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} {editSaving ? 'Saving Menu Scan' : 'Save Menu Scan Changes'}</button>
+          <div className="text-[10px] text-slate-500 font-bold leading-snug">Deleting or removing a match here removes that approved menu-impact link. The original uploaded file stays in secure storage.</div>
         </div>
       </Modal>
     </div>
