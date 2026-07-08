@@ -1,36 +1,32 @@
 # 86 Chaos
 
-Current version: 15.0.11
+Current version: 15.0.12
 
-## 15.0.11 focus
+## 15.0.12 focus
 
-15.0.11 tightens kitchen 86 alerts, improves voice navigation, and makes the command centers feel more like simple service tools instead of a cockpit panel.
+15.0.12 adds a real public Help Center guide for Menu Intelligence so managers can use the intelligent menu without reading scattered release notes.
 
 ## What changed
 
-- 86 Voice now loads Inventory and Menu Intelligence context on demand when an 86 command is spoken, instead of relying only on whatever screen data was already loaded.
-- Spoken menu shorthand like `86 burger` has stronger matching for kitchen product names like `BEEF GR PTY`, `beef patty`, `hamburger`, or `ground beef`.
-- Voice-created 86 alerts now include matched inventory details and unavailable menu items when Menu Intelligence links exist.
-- Kitchen Command Center 86 posts now include Menu Intelligence impact and are flagged for Manager Brief and Kitchen Command Center.
-- Kitchen Command Center now subscribes to alert posts while that tab is open, so important 86 alerts are easier to see there.
-- Voice navigation now recognizes more plain-language destinations such as Manager Brief, Kitchen Command Center, Inventory, Prep, Time Off, Staff Roster, Financials, Help Center, and System Administrator.
-- Staff-facing command center wording was simplified so urgent work reads more clearly at a glance.
-- Help Center includes 15.0.11 release notes.
-- Administrator Manual includes 15.0.11 support and QA guidance.
+- Added a dedicated **Using Menu Intelligence** Help Center article.
+- The article explains how to upload menu photos/PDFs, wait through compression/upload/AI scan progress, review menu items, match ingredients to real inventory rows, approve reviewed menu links, edit scans, and delete scans.
+- The article explains how approved Menu Intelligence links help 86 alerts show affected/unavailable menu items.
+- Added practical examples for kitchen shorthand such as `86 burger` matching real inventory names like `BEEF GR PTY` or beef patties.
+- Added troubleshooting guidance for when an 86 alert does not show menu impact.
+- Administrator Manual includes 15.0.12 support and QA guidance.
 
 ## Deployment notes
 
 1. Deploy the app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.11` after deploy.
-3. Test voice command `86 burger` in a workspace with approved Menu Intelligence links.
-4. Confirm the Message Board shows the requested item, matched inventory item, and unavailable menu items.
-5. Confirm Manager Brief and Kitchen Command Center both show the alert.
-6. Test voice navigation phrases like `open kitchen command center`, `manager brief`, `open inventory`, and `open time off`.
-7. Run the 15.0.11 QA checklist before handing it to staff.
+2. Confirm `/version.json` reports `15.0.12` after deploy.
+3. Open Help Center and search `Menu Intelligence` or `intelligent menu`.
+4. Confirm the **Using Menu Intelligence** article appears and is public-facing.
+5. Confirm the article explains upload, review, approval, edit/delete, and 86 menu-impact behavior.
+6. Run the 15.0.12 QA checklist before handing it to staff.
 
 ## Separate publishing required
 
-- Firestore rules: no new changes from 15.0.10.
-- Storage rules: no new changes from 15.0.10.
+- Firestore rules: no new changes from 15.0.11.
+- Storage rules: no new changes from 15.0.11.
 - Vercel/API routes: deploy the updated app code.
 - New environment variables: none.
