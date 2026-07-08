@@ -21,6 +21,88 @@ if (!getApps().length) {
 }
 const db = getFirestore();
 
+const norm = (value = '') => String(value || '').toLowerCase().trim();
+const cleanId = (value = '') => String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+const memberDocId = (uid, restaurantId) => `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
+const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS, 'geoffm1985@gmail.com', 'geoffrm1985@gmail.com']
+  .filter(Boolean)
+  .flatMap(v => String(v).split(','))
+  .map(norm)
+  .filter(Boolean);
+
+function userHasWorkspace(user, restaurantId) {
+  return Boolean(
+    user?.restaurantId === restaurantId ||
+    user?.activeRestaurantId === restaurantId ||
+    user?.defaultRestaurantId === restaurantId ||
+    user?.workspaceIds?.includes?.(restaurantId) ||
+    user?.memberships?.[restaurantId]?.isActive === true
+  );
+}
+
+async function getCaller(decoded) {
+  const direct = await db.collection('users').doc(decoded.uid).get();
+  if (direct.exists) return { id: direct.id, ...direct.data() };
+  const email = norm(decoded.email);
+  if (!email) return { id: decoded.uid, email: '' };
+  const byEmail = await db.collection('users').where('email', '==', email).limit(1).get();
+  if (!byEmail.empty) return { id: byEmail.docs[0].id, ...byEmail.docs[0].data() };
+  return { id: decoded.uid, email };
+}
+
+async function readWorkspaceMember(uid, email, restaurantId) {
+  if (!restaurantId) return null;
+  const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
+  if (direct.exists && direct.data()?.isActive !== false) return { id: direct.id, ...direct.data() };
+  if (email) {
+    const byEmail = await db.collection('workspaceMembers')
+      .where('restaurantId', '==', restaurantId)
+      .where('email', '==', norm(email))
+      .limit(1)
+      .get();
+    if (!byEmail.empty && byEmail.docs[0].data()?.isActive !== false) return { id: byEmail.docs[0].id, ...byEmail.docs[0].data() };
+  }
+  return null;
+}
+
+async function loadPushUsersForRestaurant(restaurantId) {
+  const pushUserMap = new Map();
+  const usersSnap = await db.collection('users').where('restaurantId', '==', restaurantId).get();
+  usersSnap.forEach(doc => pushUserMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+  const membersSnap = await db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).get().catch(() => null);
+  const memberIds = [];
+  const memberEmails = [];
+  membersSnap?.forEach(memberDoc => {
+    const m = memberDoc.data() || {};
+    if (m.isActive === false) return;
+    if (m.userId || m.uid) memberIds.push(m.userId || m.uid);
+    if (m.email) memberEmails.push(norm(m.email));
+  });
+  await Promise.all([...new Set(memberIds.filter(Boolean))].slice(0, 200).map(async id => {
+    if (pushUserMap.has(id)) return;
+    const snap = await db.collection('users').doc(id).get();
+    if (snap.exists) pushUserMap.set(snap.id, { id: snap.id, ...snap.data(), restaurantId });
+  }));
+  await Promise.all([...new Set(memberEmails.filter(Boolean))].slice(0, 50).map(async email => {
+    const snap = await db.collection('users').where('email', '==', email).limit(1).get();
+    snap.forEach(doc => { if (!pushUserMap.has(doc.id)) pushUserMap.set(doc.id, { id: doc.id, ...doc.data(), restaurantId }); });
+  }));
+
+  return [...pushUserMap.values()];
+}
+
+function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
+  const email = norm(decoded.email || caller.email);
+  return Boolean(
+    decoded.superAdmin === true ||
+    caller?.isSuperAdmin === true ||
+    masterEmails().includes(email) ||
+    userHasWorkspace(caller, restaurantId) ||
+    member
+  );
+}
+
 export default async function handler(req, res) {
   // Only accept POST requests from your app
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
@@ -48,39 +130,23 @@ export default async function handler(req, res) {
 
     if (!restaurantId) return res.status(400).json({ error: 'Missing restaurant ID' });
 
-    const callerSnap = await db.collection('users').doc(decoded.uid).get();
-    let caller = callerSnap.exists ? callerSnap.data() : {};
-    if (!callerSnap.exists && decoded.email) {
-      const emailCandidates = [...new Set([decoded.email.toLowerCase(), decoded.email])];
-      for (const email of emailCandidates) {
-        const emailSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-        if (!emailSnap.empty) { caller = emailSnap.docs[0].data(); break; }
-      }
-    }
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
-    const callerEmail = (decoded.email || caller.email || '').toLowerCase();
-    const canSendForRestaurant =
-      decoded.superAdmin === true ||
-      callerEmail === masterEmail ||
-      caller?.isSuperAdmin === true ||
-      caller?.restaurantId === restaurantId;
+    const caller = await getCaller(decoded);
+    const member = await readWorkspaceMember(decoded.uid, decoded.email || caller.email, restaurantId);
+    const canSendForRestaurant = callerCanSendForRestaurant(caller, decoded, member, restaurantId);
 
     if (!canSendForRestaurant) {
       return res.status(403).json({ error: 'Forbidden: You can only send notifications for your own workspace.' });
     }
 
-    // 1. Fetch all staff members for this specific restaurant
-    const usersSnap = await db.collection('users')
-      .where('restaurantId', '==', restaurantId)
-      .get();
-
+    // 1. Fetch all staff members for this specific restaurant, including
+    // multi-workspace employees linked through workspaceMembers.
+    const users = await loadPushUsersForRestaurant(restaurantId);
     const tokens = [];
     
     // 2. Loop through staff. If they have a token AND didn't turn off schedule alerts, add them to the blast list
-    usersSnap.forEach(doc => {
-      const userData = doc.data();
+    users.forEach(userData => {
       // Check if they have a token and haven't explicitly disabled schedule alerts in their preferences
-      if (userData.fcmToken && userData.preferences?.notifSchedule !== false) {
+      if (userData.fcmToken && userData.preferences?.notifSchedule !== false && !tokens.includes(userData.fcmToken)) {
         tokens.push(userData.fcmToken);
       }
     });
@@ -92,7 +158,7 @@ export default async function handler(req, res) {
     // 3. Build the actual push notification payload
     const message = {
       notification: {
-        title: 'New Schedule Published! 🗓️',
+        title: 'New Schedule Published!',
         body: `${restaurantName || 'Your restaurant'} just posted a new schedule. Check your shifts now.`,
       },
       tokens: tokens, // Send to everyone in the array at once

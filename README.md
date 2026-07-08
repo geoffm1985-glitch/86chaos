@@ -1,18 +1,18 @@
 # 86 Chaos
 
-Current version: 14.0.9
+Current version: 14.0.10
 
-## Build: Push Token Repair Center
+## Build: Push, Schedule Alert, and Firebase Wiring Audit
 
-This build adds administrator repair tooling for stale and missing push notification tokens. It preserves the existing React/Vite/Firebase/Vercel structure and adds a secure Vercel API route for push-token repair actions.
+This build repairs push notification and schedule alert wiring while preserving the existing React/Firebase/Vercel structure. It keeps the Push Token Repair Center in place, fixes a push-route crash, and makes push, schedule alert, and repair routes respect canonical multi-workspace staff memberships.
 
-See `README_14_0_9_RELEASE_NOTES.md` and `QA_14_0_9_PUSH_TOKEN_REPAIR_CENTER.md` for this build.
+See `README_14_0_10_RELEASE_NOTES.md` and `QA_14_0_10_WIRING_AUDIT.md` for this build.
 
 ## Deploy notes
 
 1. Deploy through GitHub/Vercel.
-2. Confirm `/api/push-token-repair` is live.
-3. Publish `firestore.rules` because this build allows a user's own device to clear push repair flags after reconnecting.
+2. Confirm `/api/send-push`, `/api/send-schedule-alert`, and `/api/push-token-repair` are live.
+3. Publish `firestore.rules` if the currently deployed Firebase project does not already have the 14.0.9 push repair self-update fields.
 4. No Storage rule changes are required for this build.
 
 ## Firebase/Vercel requirements

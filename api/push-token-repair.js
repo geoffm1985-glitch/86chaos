@@ -1,5 +1,5 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 
 function loadServiceAccount() {
@@ -22,6 +22,38 @@ const MASTER_EMAILS = new Set([
   (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase(),
   'geoffrm1985@gmail.com'
 ]);
+if (process.env.MASTER_ADMIN_EMAILS) {
+  process.env.MASTER_ADMIN_EMAILS.split(',').map(v => v.toLowerCase().trim()).filter(Boolean).forEach(email => MASTER_EMAILS.add(email));
+}
+
+const norm = (value = '') => String(value || '').toLowerCase().trim();
+const cleanId = (value = '') => String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+const memberDocId = (uid, restaurantId) => `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
+
+function userHasWorkspace(user, restaurantId) {
+  return Boolean(
+    user?.restaurantId === restaurantId ||
+    user?.activeRestaurantId === restaurantId ||
+    user?.defaultRestaurantId === restaurantId ||
+    user?.workspaceIds?.includes?.(restaurantId) ||
+    user?.memberships?.[restaurantId]?.isActive === true
+  );
+}
+
+async function readWorkspaceMember(uid, email, restaurantId) {
+  if (!restaurantId) return null;
+  const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
+  if (direct.exists && direct.data()?.isActive !== false) return { id: direct.id, ...direct.data() };
+  if (email) {
+    const byEmail = await db.collection('workspaceMembers')
+      .where('restaurantId', '==', restaurantId)
+      .where('email', '==', norm(email))
+      .limit(1)
+      .get();
+    if (!byEmail.empty && byEmail.docs[0].data()?.isActive !== false) return { id: byEmail.docs[0].id, ...byEmail.docs[0].data() };
+  }
+  return null;
+}
 
 const parseTimeMs = (value) => {
   if (!value) return 0;
@@ -48,16 +80,44 @@ async function getCaller(decoded) {
   return { id: decoded.uid, email };
 }
 
-function callerCanRepair(caller, decoded, restaurantId) {
+async function callerCanRepair(caller, decoded, restaurantId) {
   const email = (decoded.email || caller.email || '').toLowerCase().trim();
   if (decoded.superAdmin === true || caller.isSuperAdmin === true || MASTER_EMAILS.has(email)) return true;
   if (!restaurantId) return false;
   const memberships = caller.memberships || {};
-  const member = memberships?.[restaurantId] || null;
+  const member = memberships?.[restaurantId] || await readWorkspaceMember(decoded.uid, email, restaurantId);
+  const legacyWorkspace = userHasWorkspace(caller, restaurantId);
+  const permissions = { ...((legacyWorkspace && caller.permissions) || {}), ...(member?.permissions || {}) };
   return Boolean(
-    caller.restaurantId === restaurantId && (caller.isAdmin === true || caller.isOwner === true || caller.accountOwner === true) ||
-    member && member.isActive !== false && (member.isAdmin === true || member.isOwner === true || member.accountOwner === true || member.workspaceOwner === true)
+    legacyWorkspace && (caller.isAdmin === true || caller.isOwner === true || caller.accountOwner === true || permissions.team === true || permissions.settings === true) ||
+    member && member.isActive !== false && (member.isAdmin === true || member.isOwner === true || member.accountOwner === true || member.workspaceOwner === true || permissions.team === true || permissions.settings === true)
   );
+}
+
+async function loadUsersForRestaurant(restaurantId) {
+  const userMap = new Map();
+  const usersSnap = await db.collection('users').where('restaurantId', '==', restaurantId).get();
+  usersSnap.forEach(doc => userMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+  const membersSnap = await db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).get().catch(() => null);
+  const memberIds = [];
+  const memberEmails = [];
+  membersSnap?.forEach(memberDoc => {
+    const m = memberDoc.data() || {};
+    if (m.isActive === false) return;
+    if (m.userId || m.uid) memberIds.push(m.userId || m.uid);
+    if (m.email) memberEmails.push(norm(m.email));
+  });
+  await Promise.all([...new Set(memberIds.filter(Boolean))].slice(0, 200).map(async id => {
+    if (userMap.has(id)) return;
+    const snap = await db.collection('users').doc(id).get();
+    if (snap.exists) userMap.set(snap.id, { id: snap.id, ...snap.data(), restaurantId });
+  }));
+  await Promise.all([...new Set(memberEmails.filter(Boolean))].slice(0, 50).map(async email => {
+    const snap = await db.collection('users').where('email', '==', email).limit(1).get();
+    snap.forEach(doc => { if (!userMap.has(doc.id)) userMap.set(doc.id, { id: doc.id, ...doc.data(), restaurantId }); });
+  }));
+  return [...userMap.values()];
 }
 
 function repairPayload({ mode = 'repair', clearToken = false, requestedBy = '', repairLink = '' } = {}) {
@@ -118,7 +178,7 @@ export default async function handler(req, res) {
       if (!targets.length) return res.status(404).json({ error: 'Target user not found.' });
       for (const target of targets) {
         const targetRestaurantId = restaurantId || target.restaurantId || target.activeRestaurantId || '';
-        if (!callerCanRepair(caller, decoded, targetRestaurantId)) {
+        if (!await callerCanRepair(caller, decoded, targetRestaurantId)) {
           return res.status(403).json({ error: `Forbidden: no push repair access for ${targetRestaurantId || target.id}.` });
         }
       }
@@ -131,16 +191,17 @@ export default async function handler(req, res) {
     }
 
     if (action === 'prune-stale') {
-      if (restaurantId && !callerCanRepair(caller, decoded, restaurantId)) return res.status(403).json({ error: 'Forbidden: no push repair access for this workspace.' });
-      if (!restaurantId && !callerCanRepair(caller, decoded, '')) return res.status(403).json({ error: 'Forbidden: global stale-token pruning is Super Admin only.' });
+      if (restaurantId && !await callerCanRepair(caller, decoded, restaurantId)) return res.status(403).json({ error: 'Forbidden: no push repair access for this workspace.' });
+      if (!restaurantId && !await callerCanRepair(caller, decoded, '')) return res.status(403).json({ error: 'Forbidden: global stale-token pruning is Super Admin only.' });
       const maxAgeMs = Math.max(1, Number(maxAgeDays) || 30) * 86400000;
-      const snap = restaurantId ? await db.collection('users').where('restaurantId', '==', restaurantId).get() : await db.collection('users').limit(1000).get();
+      const users = restaurantId
+        ? await loadUsersForRestaurant(restaurantId)
+        : (await db.collection('users').limit(1000).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const stale = [];
-      snap.forEach(doc => {
-        const u = doc.data();
+      users.forEach(u => {
         if (!u.fcmToken) return;
         const ms = parseTimeMs(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt);
-        if (!ms || Date.now() - ms > maxAgeMs) stale.push({ id: doc.id, ...u });
+        if (!ms || Date.now() - ms > maxAgeMs) stale.push(u);
       });
       const batch = db.batch();
       stale.slice(0, 450).forEach(u => {
@@ -157,7 +218,7 @@ export default async function handler(req, res) {
       const targets = snaps.filter(s => s.exists).map(s => ({ id: s.id, ...s.data() }));
       for (const target of targets) {
         const targetRestaurantId = restaurantId || target.restaurantId || target.activeRestaurantId || '';
-        if (!callerCanRepair(caller, decoded, targetRestaurantId)) return res.status(403).json({ error: `Forbidden: no push repair access for ${targetRestaurantId || target.id}.` });
+        if (!await callerCanRepair(caller, decoded, targetRestaurantId)) return res.status(403).json({ error: `Forbidden: no push repair access for ${targetRestaurantId || target.id}.` });
       }
       await Promise.all(targets.map(target => db.collection('users').doc(target.id).set({
         pushNeedsRepair: false,

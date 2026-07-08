@@ -23,7 +23,8 @@ const prodConfig = {
 };
 
 // 3. THE SMART BACKGROUND SWITCHER
-const firebaseConfig = self.location.hostname === 'app.86chaos.com' ? prodConfig : testConfig;
+const prodHosts = ['app.86chaos.com', '86chaos.com', 'www.86chaos.com'];
+const firebaseConfig = prodHosts.includes(String(self.location.hostname || '').toLowerCase()) ? prodConfig : testConfig;
 
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
