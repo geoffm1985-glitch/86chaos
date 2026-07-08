@@ -2,12 +2,80 @@
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
+const INVOICE_SCANNER_VERSION = '15.0.0';
+
 function cleanJsonText(text = '') {
   return String(text)
+    .replace(/^\uFEFF/, '')
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/i, '')
-    .replace(/```$/i, '')
+    .replace(/```\s*$/i, '')
     .trim();
+}
+
+function extractFencedJson(text = '') {
+  const match = String(text || '').match(/```(?:json)?\s*([\s\S]*?)```/i);
+  return match ? match[1].trim() : '';
+}
+
+function extractBalancedJson(text = '') {
+  const raw = String(text || '');
+  const start = raw.search(/[\[{]/);
+  if (start < 0) return '';
+
+  const opener = raw[start];
+  const stack = [opener === '{' ? '}' : ']'];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start + 1; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') {
+      if (stack[stack.length - 1] !== ch) return '';
+      stack.pop();
+      if (stack.length === 0) return raw.slice(start, i + 1).trim();
+    }
+  }
+
+  return '';
+}
+
+function parseGeminiJson(text = '') {
+  const raw = String(text || '').trim();
+  const fenced = extractFencedJson(raw);
+  const candidates = [
+    raw,
+    cleanJsonText(raw),
+    fenced,
+    cleanJsonText(fenced),
+    extractBalancedJson(raw),
+    extractBalancedJson(fenced)
+  ].filter(Boolean);
+
+  const uniqueCandidates = Array.from(new Set(candidates));
+  for (const candidate of uniqueCandidates) {
+    try { return JSON.parse(candidate); }
+    catch (_) {}
+    try { return JSON.parse(candidate.replace(/,\s*([}\]])/g, '$1')); }
+    catch (_) {}
+  }
+
+  throw new Error('No valid JSON object could be extracted from Gemini response.');
 }
 
 function parseMoneyNumber(value) {
@@ -139,7 +207,7 @@ function normalizeInvoicePayload(parsed) {
     extractionNotes: data.extractionNotes || [],
     extractionWarnings: data.extractionWarnings || [],
     confidence: data.confidence || 'review',
-    scannerVersion: '13.1.10'
+    scannerVersion: INVOICE_SCANNER_VERSION
   };
 }
 
@@ -460,9 +528,14 @@ async function handler(req, res) {
 
     let parsed;
     try {
-      parsed = JSON.parse(cleanJsonText(text));
+      parsed = parseGeminiJson(text);
     } catch (err) {
-      return res.status(502).json({ error: 'Gemini returned invalid JSON.', rawText: text.slice(0, 4000), scanInputMethod });
+      return res.status(502).json({
+        error: 'Gemini returned invalid JSON.',
+        details: err.message || 'Could not parse invoice scan response.',
+        rawText: text.slice(0, 4000),
+        scanInputMethod
+      });
     }
 
     const normalized = normalizeInvoicePayload(parsed);
@@ -474,7 +547,7 @@ async function handler(req, res) {
     normalized.scanOriginalBytes = scanSource?.originalBytes || null;
     normalized.geminiFileName = geminiFile?.name || '';
     normalized.processedAt = new Date().toISOString();
-    normalized.scannerVersion = '13.1.10';
+    normalized.scannerVersion = INVOICE_SCANNER_VERSION;
 
     if (geminiFile) deleteGeminiFileQuietly(apiKey, geminiFile);
     return res.status(200).json(normalized);
@@ -490,7 +563,7 @@ async function handler(req, res) {
         ? 'Upload the invoice through Firebase Storage mode instead of sending it through Vercel.'
         : undefined,
       scanSource: scanSource?.source || 'unknown',
-      scannerVersion: '13.1.10'
+      scannerVersion: INVOICE_SCANNER_VERSION
     });
   }
 }

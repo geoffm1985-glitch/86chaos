@@ -79,8 +79,11 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
     if(text.trim()) { 
       const parsedItems = parsePrepCommandItems(text);
       const results = [];
+      const firstTargetDate = parsedItems.find(item => item.prepDate)?.prepDate || '';
       for (const parsed of parsedItems.length ? parsedItems : [{ itemText: text.trim(), amount: 1, unit: 'item', increment: false }]) {
-        const match = findPrepMatch(activePrep, parsed, prepDate);
+        const targetPrepDate = parsed.prepDate || prepDate;
+        const activePrepForDate = prepItems.filter(p => p.date === targetPrepDate || p.isMaster);
+        const match = findPrepMatch(activePrepForDate, parsed, targetPrepDate);
         if (match?.id) {
           await safePrepWrite({
             action: 'update',
@@ -88,7 +91,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
             docId: match.id,
             label: "Prep quantity",
             before: match,
-            data: buildPrepQuantityUpdate({ existingItem: match, parsedItem: parsed, actorName: appUser.name, prepDate, source: 'manual_smart_prep' })
+            data: buildPrepQuantityUpdate({ existingItem: match, parsedItem: parsed, actorName: appUser.name, prepDate: targetPrepDate, source: 'manual_smart_prep' })
           });
           results.push({ type: 'updated', name: match.text || parsed.itemText });
         } else {
@@ -96,11 +99,12 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
             action: 'add',
             collectionName: "prepItems",
             label: "Prep item",
-            data: buildPrepCreatePayload({ parsedItem: parsed, appUser, prepDate, station, isMaster, sourceText: text, source: 'manual_smart_prep' })
+            data: buildPrepCreatePayload({ parsedItem: parsed, appUser, prepDate: targetPrepDate, station, isMaster: parsed.prepDate ? false : isMaster, sourceText: text, source: 'manual_smart_prep' })
           });
           results.push({ type: 'created', name: parsed.itemText });
         }
       }
+      if (firstTargetDate) setPrepDate(firstTargetDate);
       if (addToast) addToast('Prep Updated', summarizePrepResults(results));
       setText(''); 
     } 

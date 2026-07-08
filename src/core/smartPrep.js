@@ -13,6 +13,14 @@ const PREP_UNITS = [
   'portion', 'portions', 'each', 'ea', 'item', 'items'
 ];
 
+const PREP_ACTION_WORDS = [
+  'slice', 'sliced', 'dice', 'diced', 'chop', 'chopped', 'cut', 'julienne',
+  'shred', 'shredded', 'portion', 'portioned', 'pull', 'pulled', 'thaw',
+  'thawed', 'wash', 'washed', 'rinse', 'rinsed', 'peel', 'peeled', 'mix',
+  'mixed', 'batch', 'batches', 'tray', 'trayed', 'pan', 'panned', 'label',
+  'labeled', 'stock', 'restock'
+];
+
 const PROTECTED_AND_PHRASES = [
   'mac and cheese',
   'salt and pepper',
@@ -23,10 +31,83 @@ const PROTECTED_AND_PHRASES = [
   'peanut butter and jelly'
 ];
 
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const MONTHS = {
+  january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3,
+  may: 4, june: 5, jun: 5, july: 6, jul: 6, august: 7, aug: 7,
+  september: 8, sep: 8, sept: 8, october: 9, oct: 9, november: 10, nov: 10,
+  december: 11, dec: 11
+};
+
+const formatPrepDateKey = (date = new Date()) => {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const addPrepDays = (date, days) => {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  d.setDate(d.getDate() + days);
+  return d;
+};
+
+const nextPrepWeekday = (weekdayIndex, now = new Date(), forceFuture = false) => {
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  let delta = (weekdayIndex - base.getDay() + 7) % 7;
+  if (forceFuture && delta === 0) delta = 7;
+  base.setDate(base.getDate() + delta);
+  return base;
+};
+
+export const parsePrepTargetDate = (input = '', now = new Date()) => {
+  const raw = String(input || '');
+  const q = raw.toLowerCase();
+  let date = '';
+  let cleanedText = raw;
+
+  const apply = (nextDate, pattern) => {
+    if (!date && nextDate) date = formatPrepDateKey(nextDate);
+    if (pattern) cleanedText = cleanedText.replace(pattern, ' ');
+  };
+
+  const numericDate = q.match(/\b(?:for|on|by)?\s*(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/i);
+  if (numericDate) {
+    const yearRaw = numericDate[3] ? Number(numericDate[3]) : now.getFullYear();
+    const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+    apply(new Date(year, Number(numericDate[1]) - 1, Number(numericDate[2]), 12, 0, 0), new RegExp(numericDate[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+  }
+
+  if (!date) {
+    const monthPattern = Object.keys(MONTHS).join('|');
+    const monthDate = q.match(new RegExp(`\\b(?:for|on|by)?\\s*(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*,?\\s*(\\d{4}))?\\b`, 'i'));
+    if (monthDate) {
+      apply(new Date(Number(monthDate[3] || now.getFullYear()), MONTHS[monthDate[1]], Number(monthDate[2]), 12, 0, 0), new RegExp(monthDate[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    }
+  }
+
+  if (!date && /\b(day after tomorrow)\b/i.test(q)) apply(addPrepDays(now, 2), /\b(?:for|on|by)?\s*day after tomorrow\b/i);
+  if (!date && /\btomorrow\b/i.test(q)) apply(addPrepDays(now, 1), /\b(?:for|on|by)?\s*tomorrow\b/i);
+  if (!date && /\b(today|tonight)\b/i.test(q)) apply(now, /\b(?:for|on|by)?\s*(today|tonight)\b/i);
+
+  if (!date) {
+    const weekdayMatch = q.match(/\b(?:for|on|by)?\s*(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i);
+    if (weekdayMatch) {
+      const idx = WEEKDAYS.indexOf(weekdayMatch[2]);
+      apply(nextPrepWeekday(idx, now, Boolean(weekdayMatch[1])), new RegExp(weekdayMatch[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    }
+  }
+
+  return {
+    date,
+    cleanedText: cleanedText.replace(/\s+/g, ' ').trim()
+  };
+};
+
 export const normalizePrepText = (value = '') => String(value || '')
   .toLowerCase()
   .replace(/&/g, ' and ')
   .replace(/[^a-z0-9]+/g, ' ')
+  .replace(new RegExp(`\\b(${PREP_ACTION_WORDS.join('|')})\\b`, 'g'), ' ')
   .replace(/\b(the|a|an|of|for|to|prep|prepare|task|list|need|needs|needed|make|made|add|added|please|more|extra|another|additional)\b/g, ' ')
   .replace(/\b(pans?|quarts?|gallons?|lbs?|pounds?|cases?|batches?|trays?|buckets?|containers?|orders?|cups?|bags?|boxes?|bottles?|portions?|each|ea|items?)\b/g, ' ')
   .replace(/\b(\d+(?:\.\d+)?)\b/g, ' ')
@@ -60,7 +141,9 @@ const parseUnit = (segment = '') => {
 const stripCommandWords = (value = '') => {
   const numberWords = Object.keys(NUMBER_WORDS).join('|');
   const unitPattern = PREP_UNITS.join('|');
+  const dateCleaned = parsePrepTargetDate(value).cleanedText || value;
   return String(value || '')
+    .replace(value, dateCleaned)
     .toLowerCase()
     .replace(/\b(we need to|we need|need to|need|can you|could you|please|add|create|put|make|prep|prepare|task|list|prep list|to prep|to the prep list|of|for|the|a|an)\b/g, ' ')
     .replace(new RegExp(`\\b(${numberWords})\\b`, 'g'), ' ')
@@ -70,10 +153,27 @@ const stripCommandWords = (value = '') => {
     .trim();
 };
 
+export const isLikelyPrepCommand = (input = '') => {
+  const q = String(input || '').toLowerCase().trim();
+  if (!q) return false;
+  if (/\b(prep|prepare)\b/.test(q) || /we need\s+(.+)/.test(q) || /add\s+(.+)\s+to\s+prep/.test(q)) return true;
+
+  const actionPattern = PREP_ACTION_WORDS.join('|');
+  const hasPrepAction = new RegExp(`\\b(${actionPattern})\\b`, 'i').test(q);
+  const parsedName = stripCommandWords(parsePrepTargetDate(q).cleanedText || q);
+  if (hasPrepAction && normalizePrepText(parsedName)) return true;
+
+  const numberWords = Object.keys(NUMBER_WORDS).join('|');
+  const unitPattern = PREP_UNITS.join('|');
+  const quantityUnitPattern = new RegExp(`\\b(\\d+(?:\\.\\d+)?|${numberWords})\\b\\s+\\b(${unitPattern})\\b`, 'i');
+  return quantityUnitPattern.test(q) && normalizePrepText(parsedName);
+};
+
 export const parsePrepCommandItems = (input = '') => {
   const raw = String(input || '').trim();
   if (!raw) return [];
-  const lowered = raw.toLowerCase();
+  const targetDate = parsePrepTargetDate(raw);
+  const lowered = (targetDate.cleanedText || raw).toLowerCase();
   const increment = /\b(more|extra|another|additional)\b/.test(lowered);
   let prepared = lowered
     .replace(/[;,\n]+/g, ' | ')
@@ -102,6 +202,7 @@ export const parsePrepCommandItems = (input = '') => {
       amount: Math.max(0, amount || 1),
       unit: unit || 'item',
       increment,
+      prepDate: targetDate.date || '',
       sourceSegment: segment
     };
   }).filter(item => item.itemText && normalizePrepText(item.itemText));

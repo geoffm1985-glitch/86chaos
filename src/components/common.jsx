@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
-import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
+import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, isLikelyPrepCommand, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
 import { buildMenuImpactText, canUseMenuIntelligence } from '../core/menuIntelligence';
 import { parseReminderCommand } from '../core/reminderUtils';
 
@@ -712,15 +712,17 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
     // Prep tasks. Only the useful item name goes into the prep name field.
     // Quantities are stored separately so “prep 2 of ranch” becomes qty=2, text=Ranch.
-    if (/\b(prep|prepare)\b/.test(q) || /we need\s+(.+)/.test(q) || /add\s+(.+)\s+to\s+prep/.test(q)) {
+    if (isLikelyPrepCommand(raw)) {
       const parsedPrepItems = parsePrepCommandItems(raw);
       if (parsedPrepItems.length) {
+        const prepDate = parsedPrepItems.find(item => item.prepDate)?.prepDate || getToday();
         const preview = parsedPrepItems.slice(0, 3).map(item => `${item.itemText} (${formatPrepAmount(item.amount, item.unit)})`).join(', ');
         return {
           intent:'smart_prep',
           label:'Update prep list',
           prepItems: parsedPrepItems,
-          summary:`Update prep list: ${preview}${parsedPrepItems.length > 3 ? '...' : ''}.`,
+          prepDate,
+          summary:`Update prep list for ${formatDisplayDate(prepDate)}: ${preview}${parsedPrepItems.length > 3 ? '...' : ''}.`,
           needsConfirmation:false
         };
       }
@@ -939,16 +941,17 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const today = getToday();
+        const targetPrepDate = actionToRun.prepDate || getToday();
         const results = [];
         for (const parsed of actionToRun.prepItems || []) {
-          const match = findPrepMatch(prepItems, parsed, today);
+          const prepDate = parsed.prepDate || targetPrepDate;
+          const match = findPrepMatch(prepItems, parsed, prepDate);
           if (match?.id) {
             const data = buildPrepQuantityUpdate({
               existingItem: match,
               parsedItem: parsed,
               actorName: appUser.name || appUser.email || 'Voice Command',
-              prepDate: today,
+              prepDate,
               source: '86_voice_smart_prep'
             });
             await updateDoc(doc(db, 'prepItems', match.id), data);
@@ -957,7 +960,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
             await addDoc(collection(db, 'prepItems'), buildPrepCreatePayload({
               parsedItem: parsed,
               appUser,
-              prepDate: today,
+              prepDate,
               station: 'Voice',
               isMaster: false,
               sourceText,
@@ -967,7 +970,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           }
           await logAudit(appUser, 'VOICE_SMART_PREP', parsed.itemText, sourceText);
         }
-        addToast('Prep Updated', summarizePrepResults(results));
+        if (setCurrentDate) setCurrentDate(targetPrepDate);
+        addToast('Prep Updated', `${summarizePrepResults(results)} for ${formatDisplayDate(targetPrepDate)}`);
         setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'create_prep') {
