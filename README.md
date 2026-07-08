@@ -1,34 +1,32 @@
 # 86 Chaos
 
-Current version: 15.0.10
+Current version: 15.0.12
 
-## 15.0.10 focus
+## 15.0.12 focus
 
-15.0.10 improves 86 Voice alerts and command-center naming.
+15.0.12 adds a real public Help Center guide for Menu Intelligence so managers can use the intelligent menu without reading scattered release notes.
 
 ## What changed
 
-- 86 Voice can use Menu Intelligence links to resolve spoken menu shorthand to the right inventory product.
-- Example: saying “86 burger” can match an inventory item like `BEEF GR PTY` when approved menu links point burgers to that product.
-- 86 alert Message Board posts now include unavailable menu items from Menu Intelligence.
-- The same 86 alert is flagged for Manager Brief and Kitchen Command Center without creating duplicate alert records.
-- The side menu now says **Manager Brief** instead of Today Command Center.
-- The side menu now says **Kitchen Command Center** instead of Ops Command Center.
-- Help Center includes 15.0.10 release notes.
-- Administrator Manual includes 15.0.10 setup, QA, and support guidance.
+- Added a dedicated **Using Menu Intelligence** Help Center article.
+- The article explains how to upload menu photos/PDFs, wait through compression/upload/AI scan progress, review menu items, match ingredients to real inventory rows, approve reviewed menu links, edit scans, and delete scans.
+- The article explains how approved Menu Intelligence links help 86 alerts show affected/unavailable menu items.
+- Added practical examples for kitchen shorthand such as `86 burger` matching real inventory names like `BEEF GR PTY` or beef patties.
+- Added troubleshooting guidance for when an 86 alert does not show menu impact.
+- Administrator Manual includes 15.0.12 support and QA guidance.
 
 ## Deployment notes
 
 1. Deploy the app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.10` after deploy.
-3. Test 86 Voice with a phrase like `86 burger` in a workspace with approved Menu Intelligence links.
-4. Confirm the Message Board post includes the inventory match and unavailable menu items.
-5. Confirm Manager Brief and Kitchen Command Center show the important alert.
-6. Run the 15.0.10 QA checklist before handing it to staff.
+2. Confirm `/version.json` reports `15.0.12` after deploy.
+3. Open Help Center and search `Menu Intelligence` or `intelligent menu`.
+4. Confirm the **Using Menu Intelligence** article appears and is public-facing.
+5. Confirm the article explains upload, review, approval, edit/delete, and 86 menu-impact behavior.
+6. Run the 15.0.12 QA checklist before handing it to staff.
 
 ## Separate publishing required
 
-- Firestore rules: no new changes from 15.0.9.
-- Storage rules: no new changes from 15.0.9.
+- Firestore rules: no new changes from 15.0.11.
+- Storage rules: no new changes from 15.0.11.
 - Vercel/API routes: deploy the updated app code.
 - New environment variables: none.

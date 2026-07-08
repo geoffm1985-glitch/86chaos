@@ -4,13 +4,14 @@ const normalize = (value = '') => String(value || '').toLowerCase().replace(/[^a
 const tokenize = (value = '') => normalize(value).split(' ').filter(w => w.length > 1);
 
 const EIGHTY_SIX_MENU_ALIASES = {
-  burger: ['burger', 'hamburger', 'patty', 'pty', 'beef', 'ground', 'gr', 'grnd', 'chuck', '80 20'],
-  burgers: ['burger', 'hamburger', 'patty', 'pty', 'beef', 'ground', 'gr', 'grnd', 'chuck', '80 20'],
-  cheeseburger: ['burger', 'hamburger', 'patty', 'pty', 'beef', 'ground', 'gr', 'grnd', 'cheese'],
-  chicken: ['chicken', 'chix', 'ckn', 'breast', 'thigh', 'tender', 'strip'],
+  burger: ['burger', 'hamburger', 'cheeseburger', 'patty', 'patties', 'pty', 'beef', 'ground', 'gr', 'grnd', 'chuck', '80 20', 'gr pty', 'beef gr pty', 'beef patty'],
+  burgers: ['burger', 'hamburger', 'cheeseburger', 'patty', 'patties', 'pty', 'beef', 'ground', 'gr', 'grnd', 'chuck', '80 20', 'gr pty', 'beef gr pty', 'beef patty'],
+  hamburger: ['burger', 'hamburger', 'patty', 'patties', 'pty', 'beef', 'ground', 'gr', 'grnd', 'chuck', '80 20', 'gr pty', 'beef gr pty', 'beef patty'],
+  cheeseburger: ['burger', 'hamburger', 'cheeseburger', 'patty', 'patties', 'pty', 'beef', 'ground', 'gr', 'grnd', 'cheese'],
+  chicken: ['chicken', 'chix', 'ckn', 'breast', 'thigh', 'tender', 'tenders', 'strip', 'strips', 'chkn'],
   wings: ['wing', 'wings', 'jumbo wing', 'chicken wing'],
-  fries: ['fries', 'fry', 'potato', 'french fry'],
-  pizza: ['pizza', 'dough', 'crust', 'mozzarella', 'pepperoni', 'sauce'],
+  fries: ['fries', 'fry', 'potato', 'potatoes', 'french fry', 'ff'],
+  pizza: ['pizza', 'dough', 'crust', 'mozzarella', 'moz', 'pepperoni', 'pep', 'sauce'],
   fish: ['fish', 'cod', 'haddock', 'walleye', 'perch', 'tilapia'],
   steak: ['steak', 'sirloin', 'ribeye', 'beef'],
   bacon: ['bacon'],
@@ -38,9 +39,13 @@ const scoreTextMatch = (candidateText = '', spoken = '') => {
   let score = 0;
   if (candidate === q) score += 100;
   if (candidate.includes(q) || q.includes(candidate)) score += 55;
-  const qWords = tokenize(q).filter(w => w.length > 2);
-  const cWords = tokenize(candidate).filter(w => w.length > 2);
-  score += qWords.filter(w => cWords.some(c => c.includes(w) || w.includes(c))).length * 15;
+  const qWords = tokenize(q).filter(w => w.length > 1);
+  const cWords = tokenize(candidate).filter(w => w.length > 1);
+  score += qWords.filter(w => cWords.some(c => c === w || c.includes(w) || w.includes(c))).length * 15;
+  const aliasTokens = aliasTokensFor(q).flatMap(alias => tokenize(alias));
+  const aliasHits = aliasTokens.filter(w => w.length > 1 && cWords.some(c => c === w || c.includes(w) || w.includes(c))).length;
+  score += aliasHits * 9;
+  if (qWords.length && qWords.every(w => cWords.some(c => c === w || c.includes(w) || w.includes(c)))) score += 20;
   return score;
 };
 
@@ -79,10 +84,16 @@ export const canUseMenuIntelligence = (user = {}, clientData = {}) => {
 
 export const getMenuImpactForInventoryItem = (item = {}, menuDependencies = []) => {
   const itemKey = normalize(item.name);
+  const itemBlob = normalize([item.name, item.category, item.supplierName, item.vendorName, item.packSize, item.pfgCode, item.code, item.sku].filter(Boolean).join(' '));
+  const aliases = aliasTokensFor(itemBlob || itemKey);
   const hits = (menuDependencies || []).filter(dep => {
     if (dep.inventoryItemId && dep.inventoryItemId === item.id) return true;
     const depKey = normalize(dep.inventoryItemName || dep.ingredientName || dep.itemName);
-    return itemKey && depKey && (depKey === itemKey || depKey.includes(itemKey) || itemKey.includes(depKey));
+    const menuKey = normalize(dep.menuItemName || dep.recipeName || dep.dishName || dep.name);
+    if (itemKey && depKey && (depKey === itemKey || depKey.includes(itemKey) || itemKey.includes(depKey))) return true;
+    if (itemBlob && depKey && scoreTextMatch(depKey, itemBlob) >= 55) return true;
+    if (itemBlob && menuKey && scoreTextMatch(menuKey, itemBlob) >= 65) return true;
+    return aliases.some(alias => alias && depKey && (depKey.includes(alias) || alias.includes(depKey)));
   });
   const byName = new Map();
   hits.forEach(dep => {
@@ -109,7 +120,49 @@ export const buildMenuImpactText = (item = {}, menuDependencies = []) => {
   if (!impacts.length) return '';
   const names = impacts.slice(0, 6).map(i => i.name).join(', ');
   const extra = impacts.length > 6 ? ` and ${impacts.length - 6} more` : '';
-  return `Unavailable menu items: ${names}${extra}`;
+  return `No longer available from the menu: ${names}${extra}`;
+};
+
+
+const scoreInventoryItemForSpoken = (item = {}, spoken = '') => {
+  const q = normalize(spoken);
+  const name = item.name || item.title || '';
+  const searchBlob = [
+    name,
+    item.category,
+    item.supplierName,
+    item.vendorName,
+    item.packSize,
+    item.pfgCode,
+    item.code,
+    item.sku,
+    item.notes
+  ].filter(Boolean).join(' ');
+  let score = scoreTextMatch(searchBlob, q);
+  const itemKey = normalize(searchBlob);
+  aliasTokensFor(q).forEach(alias => {
+    const aliasKey = normalize(alias);
+    if (!aliasKey) return;
+    if (itemKey.includes(aliasKey) || aliasKey.includes(itemKey)) score += 28;
+    const aliasWords = tokenize(aliasKey);
+    score += aliasWords.filter(w => w.length > 1 && itemKey.includes(w)).length * 10;
+  });
+  return score;
+};
+
+export const buildEightySixAlertDetails = ({ requestedName = '', inventoryItem = null, menuDependencies = [], matchMethod = '', matchedMenuItemName = '' } = {}) => {
+  const inventoryName = String(inventoryItem?.name || requestedName || 'Item').trim();
+  const impactText = inventoryItem ? buildMenuImpactText(inventoryItem, menuDependencies) : '';
+  const impactedItems = inventoryItem ? getMenuImpactForInventoryItem(inventoryItem, menuDependencies).map(i => i.name).filter(Boolean) : [];
+  const matchText = inventoryItem && normalize(inventoryName) !== normalize(requestedName)
+    ? `Inventory match: ${inventoryName}${matchMethod === 'menuIntelligence' ? ' (matched through Menu Intelligence)' : ''}.`
+    : '';
+  const details = [
+    matchText,
+    impactText,
+    matchedMenuItemName ? `Menu phrase matched: ${matchedMenuItemName}.` : ''
+  ].filter(Boolean).join('\n');
+  return { inventoryName, impactText, impactedItems, matchText, details };
 };
 
 export const resolveEightySixInventoryMatch = (spoken = '', inventoryItems = [], menuDependencies = []) => {
@@ -117,24 +170,19 @@ export const resolveEightySixInventoryMatch = (spoken = '', inventoryItems = [],
   if (!q) return { item: null, confidence: 0, method: 'empty', requestedName: '' };
   const aliasTokens = aliasTokensFor(q);
 
-  const inventoryMatches = (inventoryItems || []).map(item => {
-    const name = item.name || item.title || '';
-    let score = scoreTextMatch(name, q);
-    const itemKey = normalize(name);
-    aliasTokens.forEach(alias => {
-      if (itemKey.includes(alias) || alias.includes(itemKey)) score += 28;
-      const aliasWords = tokenize(alias).filter(w => w.length > 2);
-      score += aliasWords.filter(w => itemKey.includes(w)).length * 10;
-    });
-    return { item, score, method: 'inventory' };
-  }).sort((a, b) => b.score - a.score);
+  const inventoryMatches = (inventoryItems || []).map(item => ({
+    item,
+    score: scoreInventoryItemForSpoken(item, q),
+    method: 'inventory'
+  })).sort((a, b) => b.score - a.score);
 
   const menuMatches = (menuDependencies || []).map(dep => {
     const menuName = dep.menuItemName || dep.recipeName || dep.dishName || dep.name || '';
     const ingredientName = dep.inventoryItemName || dep.ingredientName || dep.itemName || '';
     const inventoryItem = findInventoryByDependency(dep, inventoryItems);
     const inventoryName = inventoryItem?.name || ingredientName;
-    let score = scoreTextMatch(menuName, q) + Math.round(scoreTextMatch(ingredientName, q) * 0.9) + Math.round(scoreTextMatch(inventoryName, q) * 0.9);
+    let score = scoreTextMatch(menuName, q) + Math.round(scoreTextMatch(ingredientName, q) * 0.9) + Math.round(scoreInventoryItemForSpoken(inventoryItem || { name: inventoryName }, q) * 0.9);
+    if (scoreTextMatch(menuName, q) >= 55 && inventoryItem?.id) score += 30;
     const menuKey = normalize(menuName);
     const ingredientKey = normalize(`${ingredientName} ${inventoryName}`);
     aliasTokens.forEach(alias => {
