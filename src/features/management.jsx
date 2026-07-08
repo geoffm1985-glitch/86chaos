@@ -2256,7 +2256,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [totalInstalls, setTotalInstalls] = useState(0);
   const [presenceSnapshot, setPresenceSnapshot] = useState({ users: [], recentUsers: [], fetchedAt: '', windowMinutes: 15, livePresenceCount: 0, onlineCount: 0, recentCount: 0 });
   const [isPresenceSnapshotLoading, setIsPresenceSnapshotLoading] = useState(false);
-  const [presenceSnapshotError, setPresenceSnapshotError] = useState(''); 
+  const [presenceSnapshotError, setPresenceSnapshotError] = useState('');
+  const [securityReport, setSecurityReport] = useState(null);
+  const [isSecurityLoading, setIsSecurityLoading] = useState(false);
+  const [securityError, setSecurityError] = useState(''); 
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -2369,6 +2372,26 @@ const [editingRest, setEditingRest] = useState(null);
     }).catch(err => console.warn('Role matrix load failed', err?.message || err));
     return () => { canceled = true; };
   }, []);
+
+  const loadSecurityCenter = async ({ silent = false } = {}) => {
+    if (isSecurityLoading) return;
+    setIsSecurityLoading(true);
+    setSecurityError('');
+    try {
+      const response = await secureFetch('/api/security-diagnostics', { method: 'GET' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || `Security check failed with status ${response.status}`);
+      setSecurityReport(data);
+      if (!silent) addToast('Security Center Refreshed', `${data.riskyUsers?.length || 0} risky user(s), ${data.suspiciousActivity?.count || 0} suspicious event(s).`);
+    } catch (err) {
+      const msg = err?.message || 'Security diagnostics failed.';
+      setSecurityError(msg);
+      if (!silent) addToast('Security Error', msg);
+    } finally {
+      setIsSecurityLoading(false);
+    }
+  };
+
   const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
   const printWorkspaceLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
@@ -3985,6 +4008,11 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.13 Shared Reminders & Security Center', group: 'System Administrator', keywords: 'v15 15.0.13 shared reminders security center app check mfa rate limiting file upload protection professional polish', body: ['15.0.13 adds shared reminders so a manager can assign a reminder to a teammate from a dropdown while keeping private reminders available.', 'System Administrator now includes a Security Center foundation with plain-English checks for Firestore rules, Storage rules, App Check setup, missing environment variables, cron readiness, rate-limit activity, risky elevated users, and suspicious activity signals.', 'Scanner and AI-related API routes now use route-level rate limiting to reduce expensive spam. Menu and invoice scanner routes also verify storage path, file type, size, and scan purpose before downloading files.', 'Storage rules now require purpose metadata for menu and invoice scan uploads. Publish the included Storage rules after deploying.', 'This build also starts a cleaner visual system with more consistent button sizing, card radius, status colors, mobile controls, loading skeletons, and print-paper helpers.'] },
+    { title: '15.0.13 deployment checklist', group: 'System Administrator', keywords: '15.0.13 deploy checklist firestore rules storage rules app check mfa security center reminders rate limits', body: ['Deploy the updated app through Vercel and confirm public/version.json reports 15.0.13.', 'Publish the included Firestore rules so shared reminders are protected by creator/recipient access rules.', 'Publish the included Storage rules so menu and invoice scanner uploads must include the correct purpose metadata.', 'Open System Administrator → Security Center and press Refresh Security Center. Confirm Firestore rules, Storage rules, env vars, cron, risky users, and suspicious activity cards load.', 'Set REACT_APP_FIREBASE_APPCHECK_SITE_KEY in Vercel, enable Firebase App Check in the Firebase console, then enforce App Check for Firestore, Storage, and callable services after testing.', 'Enable multi-factor login for owner, manager, and system admin accounts in Firebase Authentication or Identity Platform. The app can flag elevated users missing MFA metadata, but enforcement is completed in Firebase auth setup.', 'Record the current Firestore rules version, Storage rules version, and last publish dates in the deployment checklist before pushing to production.'] },
+    { title: 'Shared Reminders support routine', group: 'Admin Tab Guide', keywords: 'shared reminders personal reminders assigned teammate dropdown permissions creator recipient done delete edit', body: ['My Reminders now supports private reminders and shared reminders. The creator chooses Just me or a teammate from the Share With dropdown.', 'The assigned teammate can see the reminder and mark it done or cancelled. The creator can edit or delete it.', 'If a shared reminder does not appear for the teammate, check that both people are active in the same restaurant/workspace and that the included Firestore rules were published.', 'Voice-created reminders remain private by default. Shared reminders currently use the typed reminder form so the assignee can be chosen clearly.'] },
+    { title: 'Security Center support routine', group: 'Admin Tab Guide', keywords: 'security center app check mfa rules storage cron env vars risky users suspicious activity rate limiting diagnostics', body: ['Security Center is a Super Admin diagnostic view. It does not replace Firebase console setup, but it gives admins one plain-English place to check important security readiness signals.', 'Rules status and last publish date are read from the workspace/system security status document when available. Keep those stamps updated during each deploy.', 'App Check status depends on Firebase App Check setup and the browser token. Add the App Check site key, deploy, verify the app works, then enforce App Check in Firebase once testing passes.', 'Risky Users highlights elevated owner/manager/admin accounts that do not show MFA metadata. Treat this as an operations warning and finish MFA enforcement in Firebase Authentication.', 'Suspicious Activity is built from audit/rate-limit signals such as permission denied spikes, odd uploads, repeated scan failures, failed logins, or route throttling. Review logs before taking action.'] },
+    { title: 'Secret rotation schedule', group: 'System Administrator', keywords: 'secret rotation cron secret gemini keys firebase service keys vercel env vars rotate schedule', body: ['Rotate CRON_SECRET, Gemini/API keys, Firebase service account material, and Vercel secrets on a regular schedule. A practical starting point is quarterly, plus immediately after any suspected exposure or staff/vendor access change.', 'After rotation, update Vercel environment variables, redeploy, run Security Center, and test cron, push, invoice scan, menu scan, reminders, and voice commands.', 'Never paste production secrets into public support tickets or the public Help Center. Keep rotation notes in admin-only records.'] },
     { title: 'Version 15.0.12 Menu Intelligence Help Guide', group: 'System Administrator', keywords: 'v15 15.0.12 help center menu intelligence instructions intelligent menu scan approve edit delete 86 impact', body: ['15.0.12 adds a dedicated public Help Center article for Menu Intelligence so managers have step-by-step instructions instead of only scattered release notes.', 'The new article explains who should use Menu Intelligence, how to upload a menu photo or PDF, how to review AI-detected menu items, how to match ingredients to real inventory rows, and how to approve reviewed links.', 'It also explains how to edit or delete Recent Menu Scans, what happens when an item is 86d, and why inventory aliases such as burger, patty, or BEEF GR PTY should be linked carefully.', 'This is a documentation/help polish build only. Firestore rules, Storage rules, API routes, and environment variables are unchanged.'] },
     { title: '15.0.12 deployment checklist', group: 'System Administrator', keywords: '15.0.12 deploy qa help center menu intelligence instructions administrator manual', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.12.', 'Open Help Center and search Menu Intelligence, intelligent menu, scan menu, burger, and 86 impact. Confirm the new Using Menu Intelligence article appears.', 'Read the article as a manager and confirm it explains upload, compression, review, approve, edit, delete, and 86 impact without exposing System Administrator, Forensics, or security internals.', 'Open Administrator Manual and confirm this 15.0.12 guidance exists. Firestore rules, Storage rules, API routes, and Vercel environment variables are unchanged.'] },
     { title: 'Version 15.0.11 Kitchen Alerts & Simple Voice', group: 'System Administrator', keywords: 'v15 15.0.11 86 alerts voice navigation kitchen command center manager brief simple kitchen menu intelligence', body: ['15.0.11 fixes the kitchen 86 alert path so voice commands fetch the latest Inventory and Menu Intelligence context only when an 86 command runs. This avoids constant listener cost while still letting phrases like “86 burger” find a linked inventory item such as BEEF GR PTY.', '86 voice alerts save the requested phrase, matched inventory item, and unavailable menu items when Menu Intelligence links exist. Inventory quantities are not changed by 86 voice alerts.', 'Kitchen Command Center 86 posts now include Menu Intelligence impact, and alert events are flagged for Manager Brief and Kitchen Command Center.', 'Voice navigation now recognizes more plain-language destinations, including Manager Brief, Kitchen Command Center, Inventory, Prep, Time Off, Financials, Help Center, and System Administrator. It still respects permissions and enabled modules.', 'Staff-facing command center wording was simplified so managers can see what to do next quickly during service.'] },
@@ -4481,34 +4509,39 @@ Type RESTORE to continue.`);
   };
 
   const adminTabGroups = [
-    { title:'Overview', summary:'Status, readiness, and active users', tabs:[
+    { title:'Security', summary:'App Check, MFA, rules, risky users', tabs:[
+      {id:'security', label:'Security Center', short:'Security'},
+      {id:'admins', label:'Access Control', short:'Access'}
+    ]},
+    { title:'Deployments', summary:'Readiness, health, diagnostics, versions', tabs:[
       {id:'overview', label:'Command Center', short:'Home'},
+      {id:'deployment', label:'Deployment Readiness', short:'Deploy'},
       {id:'health', label:'Health Dashboard', short:'Health'},
       {id:'v14', label:'14.0 Robustness Suite', short:'V14'},
-      {id:'deployment', label:'Deployment Readiness', short:'Deploy'},
-      {id:'live', label:'Manual Presence Snapshot', short:'Presence'}
+      {id:'history', label:'Settings Version History', short:'History'}
     ]},
-    { title:'Customer Operations', summary:'Workspaces, people, roles, setup', tabs:[
+    { title:'Customers', summary:'Workspaces, people, roles, setup', tabs:[
       {id:'tenants', label:'Workspaces', short:'Clients'},
       {id:'users', label:'People Directory', short:'People'},
       {id:'roles', label:'Permission & Role Manager', short:'Roles'},
       {id:'setup', label:'Workspace Setup Wizard', short:'Setup'}
     ]},
-    { title:'Support & Safety', summary:'Push, diagnostics, audits, backups', tabs:[
+    { title:'Diagnostics', summary:'Push, presence, support, imports', tabs:[
       {id:'push', label:'Push Control Center', short:'Push'},
+      {id:'live', label:'Manual Presence Snapshot', short:'Presence'},
       {id:'support', label:'Support Desk', short:'Support'},
-      {id:'forensics', label:'Audit & Forensics', short:'Audit'},
       {id:'data', label:'Import / Export Center', short:'Data'}
     ]},
-    { title:'Platform Settings', summary:'History, maintenance, branding, danger', tabs:[
-      {id:'admins', label:'Access Control', short:'Access'},
-      {id:'history', label:'Settings Version History', short:'History'},
-      {id:'maintenance', label:'Maintenance Mode', short:'Maint'},
-      {id:'branding', label:'Branding / Display', short:'Brand'}
+    { title:'Backups', summary:'Backups, audits, guarded tools', tabs:[
+      {id:'forensics', label:'Audit & Forensics', short:'Audit'},
+      {id:'danger', label:'Danger Zone', short:'Danger'}
     ]},
-    { title:'Reference', summary:'Manual and guarded destructive tools', tabs:[
-      {id:'danger', label:'Danger Zone', short:'Danger'},
-      {id:'ops', label:'Platform Operations', short:'Ops'},
+    { title:'AI Tools', summary:'Scanner safety and platform operations', tabs:[
+      {id:'ops', label:'Platform Operations', short:'Ops'}
+    ]},
+    { title:'Audit', summary:'Manual, maintenance, branding', tabs:[
+      {id:'maintenance', label:'Maintenance Mode', short:'Maint'},
+      {id:'branding', label:'Branding / Display', short:'Brand'},
       {id:'manual', label:'Administrator Manual', short:'Manual'}
     ]}
   ];
@@ -5445,6 +5478,64 @@ Type RESTORE to continue.`);
                 {lastDiagnosticsReport && <div className="mt-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-bold text-slate-400">Last report: {formatBackupTimestamp(lastDiagnosticsReport.generatedAt)} • Duration {lastDiagnosticsReport.durationMs || 0}ms • Integrity {lastDiagnosticsReport.backupIntegrity?.status || 'unknown'}</div>}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'security' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          {securityError && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Security diagnostics failed: {securityError}</div>}
+          <div className={`${T.card} p-5 border border-blue-900/40`}>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">System Administrator</div>
+                <h2 className="text-3xl font-black text-white mt-1 flex items-center gap-2"><Shield size={28} className="text-blue-300"/> Security Center</h2>
+                <p className="text-xs text-slate-400 font-bold mt-1">One-button security snapshot for rules, App Check, MFA risk, env vars, cron, rate limits, and suspicious activity.</p>
+              </div>
+              <button onClick={() => loadSecurityCenter()} disabled={isSecurityLoading} className={`${T.btn} flex items-center gap-2 justify-center`}>{isSecurityLoading ? <Loader2 className="animate-spin" size={16}/> : <Shield size={16}/>} Refresh Security Center</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <StatusTile label="Firestore Rules" value={securityReport?.security?.firestoreRules?.status || 'Not checked'} />
+            <StatusTile label="Storage Rules" value={securityReport?.security?.storageRules?.status || 'Not checked'} />
+            <StatusTile label="App Check" value={securityReport?.security?.appCheck?.status || 'Not checked'} />
+            <StatusTile label="Risky Users" value={securityReport?.riskyUsers?.length ?? '—'} />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className={`${T.card} overflow-hidden`}>
+              <div className={T.th}>Missing / Important Vercel Env Vars</div>
+              {(securityReport?.envVars || []).length === 0 ? <SmartEmptyState title="Not checked yet" desc="Press Refresh Security Center." /> : (securityReport.envVars || []).map(env => (
+                <div key={env.name} className={`${T.row} flex items-center justify-between gap-3`}><div className="font-mono text-xs text-white">{env.name}</div><SignalPip tone={env.present ? 'emerald' : 'red'} label={env.present ? 'set' : 'missing'} /></div>
+              ))}
+            </div>
+            <div className={`${T.card} overflow-hidden`}>
+              <div className={T.th}>Cron + Rate Limit Status</div>
+              <div className={`${T.row}`}><div className="font-black text-white text-sm">CRON_SECRET</div><div className="text-xs text-slate-400 font-bold mt-1">{securityReport?.cron?.cronSecretConfigured ? 'Configured' : 'Missing or not checked'}</div></div>
+              <div className={`${T.row}`}><div className="font-black text-white text-sm">Last Backup</div><div className="text-xs text-slate-400 font-bold mt-1">{securityReport?.cron?.lastBackupAt ? formatClockDateTime(securityReport.cron.lastBackupAt) : 'Not checked'}</div></div>
+              {(securityReport?.rateLimits?.recentLimitedRoutes || []).length === 0 ? <div className={`${T.row} text-xs text-slate-500 font-bold`}>No recent rate-limit trips found.</div> : securityReport.rateLimits.recentLimitedRoutes.map((row, idx) => <div key={idx} className={`${T.row}`}><div className="font-black text-amber-200 text-sm">{row.routeName}</div><div className="text-[10px] text-slate-500 font-bold">{row.count}/{row.limit} • {row.updatedAt}</div></div>)}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className={`${T.card} overflow-hidden`}>
+              <div className={T.th}>Risky Users: MFA Needed</div>
+              {(securityReport?.riskyUsers || []).length === 0 ? <SmartEmptyState title="No risky users found" desc="Elevated accounts with MFA flags will stay out of this list." /> : securityReport.riskyUsers.map(user => (
+                <div key={user.id} className={`${T.row}`}><div className="font-black text-white text-sm">{user.name || user.email || user.id}</div><div className="text-[10px] text-red-200 font-bold mt-1">{user.role || 'Elevated'} • {user.restaurantId || 'no workspace'} • {user.risk}</div></div>
+              ))}
+            </div>
+            <div className={`${T.card} overflow-hidden`}>
+              <div className={T.th}>Suspicious Activity</div>
+              {(securityReport?.suspiciousActivity?.events || []).length === 0 ? <SmartEmptyState title="No suspicious activity found" desc="Failed, denied, risky upload, and destructive-action logs show here." /> : securityReport.suspiciousActivity.events.map(event => (
+                <div key={event.id} className={`${T.row}`}><div className="font-black text-white text-sm">{event.action || 'Event'}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{event.userName || 'Unknown'} • {event.restaurantId || 'platform'} • {event.timestamp ? formatClockDateTime(event.timestamp) : 'no time'}</div><div className="text-[10px] text-slate-400 font-mono mt-1 truncate">{event.target || ''}</div></div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-4 text-xs text-slate-400 font-bold leading-relaxed">
+            <div className="text-white font-black text-sm mb-2">Security setup notes</div>
+            <p>Firebase App Check also needs to be enabled/enforced inside Firebase Console for Firestore, Storage, and callable services. Set <span className="font-mono text-slate-200">REACT_APP_FIREBASE_APPCHECK_SITE_KEY</span> at build time, then set <span className="font-mono text-slate-200">APP_CHECK_ENFORCE=true</span> when you are ready to make API routes reject missing App Check tokens.</p>
           </div>
         </div>
       )}
@@ -6716,6 +6807,9 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15013', title:'What changed in version 15.0.13', group:'Release Notes', keywords:'new update 15.0.13 shared reminders security center app check mfa rate limiting upload protection professional look', body:['Reminders can now be shared with a teammate from a dropdown. Choose Just me for a private reminder or choose a team member so they can see and complete it.', 'Security Center was added for system admins to check setup health, including rules status, storage status, App Check readiness, missing environment variables, cron status, risky elevated users, and suspicious activity signals.', 'Expensive routes such as AI scans, voice, push, and reminder dispatch now include rate limiting so one device cannot hammer costly actions.', 'Menu and invoice uploads now include stricter file purpose, path, type, and size protection.', 'The app also starts a cleaner visual system with more consistent spacing, buttons, badges, mobile controls, and status colors.'] },
+  { id:'shared-reminders-guide', title:'Sharing Reminders', group:'Reminders', keywords:'shared reminders share reminder teammate assign dropdown just me personal reminders team member', body:['Open My Reminders and type the reminder you want to create.', 'Use Share With to choose Just me for a private reminder or select a teammate from the list.', 'Pick the reminder date and time, then save it. Shared reminders appear for both the person who created them and the teammate they were assigned to.', 'The assigned teammate can mark the reminder done. The person who created the reminder can edit or delete it.', 'Use shared reminders for simple handoffs like check the walk-in, order buns, call vendor, prep sauce, or follow up on a maintenance item.'] },
+  { id:'security-center-overview', title:'Security Center Overview', group:'Security', keywords:'security center rules app check mfa risky users suspicious activity environment variables cron status', body:['Security Center gives system admins a plain-English snapshot of important setup checks.', 'It can show whether rules, storage protection, App Check readiness, cron setup, environment variables, rate limiting, and risky elevated accounts need attention.', 'Some security steps still happen outside the app in Firebase or Vercel. For example, App Check enforcement, MFA/two-step login, and secret rotation must be completed in those admin consoles.', 'If a card shows warning or action needed, follow the Administrator Manual checklist before changing production settings.'] },
   { id:'new-15012', title:'What changed in version 15.0.12', group:'Release Notes', keywords:'new update 15.0.12 menu intelligence help guide intelligent menu instructions scan approve edit delete 86 impact', body:['Help Center now has a dedicated Using Menu Intelligence guide instead of only release notes.', 'The guide walks managers through menu upload, file compression, AI review, matching ingredients to inventory, approving links, editing scans, deleting scans, and checking menu impact when something is 86d.', 'The article uses public-facing wording and avoids System Administrator, Forensics, backup, and security internals.', 'No Firebase rules, Storage rules, API routes, or environment variables changed in this help-only polish build.'] },
   { id:'menu-intelligence-guide', title:'Using Menu Intelligence', group:'Menu Intelligence', keywords:'menu intelligence intelligent menu menu scanner scan menu upload photo pdf approve reviewed menu links ingredient match inventory link unavailable menu items 86 burger patty beef gr pty edit delete recent menu scans', body:['Menu Intelligence helps managers connect menu items to the inventory products that make them. Once those links are approved, 86 Chaos can tell staff which menu items are affected when an ingredient is 86d or unavailable.', 'Open Menu Intelligence, choose a clear menu photo or PDF, and start the scan. Large photos are compressed before upload when possible. If a PDF is still too large, split it into smaller sections or export fewer pages.', 'When the scan finishes, review the detected menu items. The AI is a helper, not the boss. Check names, ingredients, and suggested inventory matches before approving anything.', 'For each menu item, connect the ingredients to the real inventory rows your kitchen uses. Use the actual product name when possible. For example, a burger may need to link to an inventory item named BEEF GR PTY, beef patty, hamburger patty, bun, cheese, lettuce, tomato, or other items you track.', 'Click Approve Reviewed Menu Links after the matches look right. The approval button shows progress and locks while saving so duplicate links are not created by extra clicks.', 'Use Recent Menu Scans to edit a scan when an ingredient match is wrong or delete a scan when it is outdated. Deleting a scan removes its menu-impact links so old menus do not keep affecting 86 alerts.', 'When someone posts or says an 86 alert such as 86 burger, the app can use approved Menu Intelligence links to find the best inventory match and show unavailable menu items on the Message Board, Manager Brief, and Kitchen Command Center.', 'For best results, approve links for common shorthand items staff actually say: burger, patty, wings, fries, chicken, buns, ranch, cheese, lettuce, tomatoes, and sauces. If an 86 alert does not show menu impact, edit the menu scan and make sure that ingredient is linked to the correct inventory item.'] },
   { id:'new-15011', title:'What changed in version 15.0.11', group:'Release Notes', keywords:'new update 15.0.11 kitchen 86 alerts voice navigation menu intelligence burger simple command center', body:['86 Voice now refreshes Inventory and Menu Intelligence context only when an 86 command runs, so alerts are smarter without adding constant reads.', 'Kitchen phrases like “86 burger” can match approved Menu Intelligence links and inventory names such as beef patties, hamburger patties, or BEEF GR PTY.', '86 alert posts now show the matched inventory item and unavailable menu items when the app can identify them.', 'Voice navigation understands more plain screen names, including Manager Brief, Kitchen Command Center, Inventory, Prep, Time Off, Financials, and Help Center.', 'Kitchen Command Center wording was simplified so the screen is easier to use during service.'] },

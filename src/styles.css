@@ -93,3 +93,59 @@ img {
 .leaflet-tile-container img {
   max-width: none !important;
 }
+
+/* 15.0.13: calmer kitchen-first visual polish. */
+:root {
+  --chaos-radius-card: 16px;
+  --chaos-radius-button: 12px;
+  --chaos-border: #2A353D;
+  --chaos-card: #1A2126;
+  --chaos-panel: #12161A;
+  --chaos-good: #34d399;
+  --chaos-warning: #fbbf24;
+  --chaos-critical: #f87171;
+  --chaos-info: #60a5fa;
+}
+
+button,
+input,
+textarea,
+select {
+  border-radius: var(--chaos-radius-button);
+}
+
+@media (max-width: 640px) {
+  .fixed,
+  [role="dialog"] {
+    max-width: 100vw;
+  }
+
+  button {
+    min-height: 42px;
+  }
+}
+
+.kitchen-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #12161A;
+  border-radius: 12px;
+}
+.kitchen-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent);
+  animation: kitchenSkeleton 1.35s infinite;
+}
+@keyframes kitchenSkeleton {
+  100% { transform: translateX(100%); }
+}
+
+.print-paper {
+  background: white;
+  color: #111827;
+  border-radius: 0;
+  box-shadow: none;
+}

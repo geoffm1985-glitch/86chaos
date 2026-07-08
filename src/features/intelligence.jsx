@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Share2, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
@@ -57,20 +57,65 @@ const WorkProgressBar = ({ label, detail, percent = 0, elapsedSeconds = 0 }) => 
 
 const TabPersonalReminders = ({ appUser, addToast }) => {
   const initial = getInitialReminderDate();
-  const reminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+  const ownReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
     whereClauses: [['userId', '==', appUser?.id || '']],
     limitCount: 200,
     fallbackLimitCount: 100
   });
+  const createdReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+    whereClauses: [['createdBy', '==', appUser?.id || '']],
+    limitCount: 200,
+    fallbackLimitCount: 100
+  });
+  const assignedReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+    whereClauses: [['assignedToUserId', '==', appUser?.id || '']],
+    limitCount: 200,
+    fallbackLimitCount: 100
+  });
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [teamLoadError, setTeamLoadError] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [dateInput, setDateInput] = useState(initial.date);
   const [timeInput, setTimeInput] = useState(initial.time);
+  const [shareMode, setShareMode] = useState('self');
+  const [assignedToUserId, setAssignedToUserId] = useState(appUser?.id || '');
   const [editing, setEditing] = useState(null);
   const [listening, setListening] = useState(false);
-  const sortedReminders = [...reminders].sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')));
+  const reminderMap = new Map();
+  [...ownReminders, ...createdReminders, ...assignedReminders].forEach(reminder => reminder?.id && reminderMap.set(reminder.id, reminder));
+  const sortedReminders = [...reminderMap.values()].sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')));
   const pendingReminders = sortedReminders.filter(r => r.status !== 'done' && r.status !== 'cancelled');
   const completedReminders = sortedReminders.filter(r => r.status === 'done' || r.status === 'cancelled').slice(0, 20);
+  const currentUserId = appUser?.id || '';
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!appUser?.restaurantId) {
+      setTeamMembers([]);
+      return undefined;
+    }
+    const loadTeam = async () => {
+      try {
+        setTeamLoadError('');
+        const snap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', appUser.restaurantId)));
+        if (cancelled) return;
+        const rows = snap.docs
+          .map(row => ({ id: row.id, ...row.data() }))
+          .filter(row => row.active !== false && row.disabled !== true)
+          .sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
+        const hasSelf = rows.some(row => row.id === appUser.id);
+        setTeamMembers(hasSelf ? rows : [{ id: appUser.id, name: appUser.name, email: appUser.email, role: appUser.role }, ...rows]);
+      } catch (err) {
+        if (!cancelled) {
+          setTeamLoadError(err?.message || 'Team list could not load.');
+          setTeamMembers([{ id: appUser.id, name: appUser.name, email: appUser.email, role: appUser.role }]);
+        }
+      }
+    };
+    loadTeam();
+    return () => { cancelled = true; };
+  }, [appUser?.restaurantId, appUser?.id]);
 
   const applyParsedText = (value) => {
     const parsed = parseReminderCommand(value);
@@ -112,6 +157,8 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     setNotes('');
     setDateInput(next.date);
     setTimeInput(next.time);
+    setShareMode('self');
+    setAssignedToUserId(appUser?.id || '');
     setEditing(null);
   };
 
@@ -120,16 +167,27 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     if (!title.trim()) return addToast('Missing Text', 'Type what you want to be reminded about.');
     const scheduledDate = makeReminderDate(dateInput, timeInput);
     if (!scheduledDate) return addToast('Missing Time', 'Choose a valid reminder date and time.');
+    const targetUserId = shareMode === 'team' ? (assignedToUserId || appUser.id || '') : (appUser.id || '');
+    const targetUser = teamMembers.find(u => u.id === targetUserId) || appUser || {};
+    const isShared = Boolean(targetUserId && targetUserId !== appUser.id);
     const payload = {
       restaurantId: appUser.restaurantId,
-      userId: appUser.id || '',
-      userEmail: appUser.email || '',
+      userId: targetUserId,
+      userEmail: targetUser.email || (isShared ? '' : appUser.email || ''),
+      assignedToUserId: targetUserId,
+      assignedToName: targetUser.name || targetUser.email || (isShared ? 'Team member' : appUser.name || 'Me'),
+      assignedToEmail: targetUser.email || '',
+      createdBy: editing?.createdBy || appUser.id || '',
+      createdByName: editing?.createdByName || appUser.name || appUser.email || '',
+      createdByEmail: editing?.createdByEmail || appUser.email || '',
+      shared: isShared,
+      visibility: isShared ? 'shared_reminder' : 'private_reminder',
       title: title.trim(),
       notes: notes.trim(),
       scheduledAt: scheduledDate.toISOString(),
       status: 'scheduled',
       updatedAt: new Date().toISOString(),
-      source: editing ? 'manual_update' : 'manual_private_reminder'
+      source: editing ? 'manual_update' : (isShared ? 'manual_shared_reminder' : 'manual_private_reminder')
     };
     if (editing?.id) {
       await updateDoc(doc(db, 'personalReminders', editing.id), payload);
@@ -138,7 +196,6 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       await addDoc(collection(db, 'personalReminders'), {
         ...payload,
         createdAt: new Date().toISOString(),
-        createdBy: appUser.id || '',
         dispatchedAt: null,
         dispatchKey: ''
       });
@@ -155,6 +212,9 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     setNotes(reminder.notes || '');
     setDateInput(toDateInputValue(d));
     setTimeInput(toTimeInputValue(d));
+    const targetUserId = reminder.assignedToUserId || reminder.userId || appUser?.id || '';
+    setAssignedToUserId(targetUserId);
+    setShareMode(targetUserId && targetUserId !== appUser?.id ? 'team' : 'self');
   };
 
   const markDone = async (reminder) => {
@@ -163,7 +223,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   };
 
   const removeReminder = async (reminder) => {
-    if (!window.confirm('Delete this private reminder?')) return;
+    if (!window.confirm('Delete this reminder? Shared reminders disappear for the assigned teammate too.')) return;
     await deleteDoc(doc(db, 'personalReminders', reminder.id));
     addToast('Reminder Deleted', reminder.title || 'Reminder');
   };
@@ -173,12 +233,12 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
         <div>
           <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Bell size={24} className={T.copper}/> My Reminders</h2>
-          <p className="text-xs text-slate-400 font-bold mt-1">Private reminders for this signed-in user only.</p>
+          <p className="text-xs text-slate-400 font-bold mt-1">Remind yourself or share a reminder with one teammate.</p>
         </div>
         <button type="button" onClick={startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
       </div>
 
-      <form onSubmit={saveReminder} className={`${T.card} p-4 grid lg:grid-cols-[1.4fr_.7fr_.55fr_auto] gap-3 items-end`}>
+      <form onSubmit={saveReminder} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}>
         <div>
           <label className={T.label}>Reminder</label>
           <input value={title} onChange={e => setTitle(e.target.value)} onBlur={e => /^remind me/i.test(e.target.value) && applyParsedText(e.target.value)} className={T.input} placeholder="Remind me tomorrow at 9 AM to order buns" />
@@ -191,31 +251,45 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
           <label className={T.label}>Time</label>
           <input type="time" value={timeInput} onChange={e => setTimeInput(e.target.value)} className={T.input} />
         </div>
+        <div>
+          <label className={T.label}>Share With</label>
+          <select value={shareMode === 'team' ? assignedToUserId : appUser?.id || ''} onChange={e => { const value = e.target.value; setAssignedToUserId(value); setShareMode(value && value !== appUser?.id ? 'team' : 'self'); }} className={T.input}>
+            <option value={appUser?.id || ''}>Just me</option>
+            {teamMembers.filter(member => member.id !== appUser?.id).map(member => <option key={member.id} value={member.id}>{member.name || member.email || 'Team member'}{member.role ? ` • ${member.role}` : ''}</option>)}
+          </select>
+        </div>
         <button className={`${T.btn} h-11 flex items-center justify-center gap-2`}>{editing ? <Save size={16}/> : <Plus size={16}/>} {editing ? 'Save' : 'Add'}</button>
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-5">
           <label className={T.label}>Notes</label>
           <input value={notes} onChange={e => setNotes(e.target.value)} className={T.input} placeholder="Optional private note" />
           {editing && <button type="button" onClick={resetForm} className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Cancel edit</button>}
+          {teamLoadError && <div className="mt-2 text-[10px] font-bold text-amber-300">Team dropdown is using fallback data: {teamLoadError}</div>}
         </div>
       </form>
 
       <div className="grid lg:grid-cols-[1fr_.8fr] gap-4">
         <div className={`${T.card} overflow-hidden`}>
           <div className={T.th}>Upcoming</div>
-          {pendingReminders.length === 0 ? <SmartEmptyState title="No reminders yet" desc="Add one by typing or using the mic." /> : pendingReminders.map(reminder => (
+          {pendingReminders.length === 0 ? <SmartEmptyState title="No reminders yet" desc="Add one by typing, sharing, or using the mic." /> : pendingReminders.map(reminder => {
+            const createdByMe = (reminder.createdBy || reminder.userId) === currentUserId;
+            const assignedToMe = (reminder.assignedToUserId || reminder.userId) === currentUserId;
+            const canEditReminder = createdByMe;
+            const canDeleteReminder = createdByMe;
+            const shareLabel = reminder.shared ? (createdByMe ? `For ${reminder.assignedToName || 'team member'}` : `From ${reminder.createdByName || 'team member'}`) : 'Just me';
+            return (
             <div key={reminder.id} className={`${T.row} flex items-center justify-between gap-3`}>
               <div className="min-w-0">
-                <div className="font-black text-white text-sm truncate">{reminder.title}</div>
-                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex items-center gap-1"><Clock size={12}/> {reminder.scheduledAt ? formatClockDateTime(reminder.scheduledAt) : 'No time'}</div>
+                <div className="font-black text-white text-sm truncate flex items-center gap-2">{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div>
+                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex items-center gap-1"><Clock size={12}/> {reminder.scheduledAt ? formatClockDateTime(reminder.scheduledAt) : 'No time'} • {shareLabel}</div>
                 {reminder.notes && <div className="text-xs text-slate-500 font-bold mt-1 truncate">{reminder.notes}</div>}
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => markDone(reminder)} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={16}/></button>
-                <button onClick={() => editReminder(reminder)} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D]"><Calendar size={16}/></button>
-                <button onClick={() => removeReminder(reminder)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><Trash2 size={16}/></button>
+                <button onClick={() => markDone(reminder)} disabled={!assignedToMe && !createdByMe} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button>
+                <button onClick={() => editReminder(reminder)} disabled={!canEditReminder} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Calendar size={16}/></button>
+                <button onClick={() => removeReminder(reminder)} disabled={!canDeleteReminder} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button>
               </div>
             </div>
-          ))}
+          );})}
         </div>
         <div className={`${T.card} overflow-hidden`}>
           <div className={T.th}>Recently Closed</div>

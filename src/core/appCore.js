@@ -34,25 +34,28 @@ export const T = {
 };
 
 // --- Firebase Initialization ---
+const env = (key, fallback = '') => (process.env[key] || fallback);
+
 // 1. TEST DATABASE CONFIG (Sandbox)
+// Prefer Vercel env vars so preview/testing and production can stay completely separate.
 export const testConfig = {
-  apiKey: "AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw",
-  authDomain: "chaos-test-d1601.firebaseapp.com",
-  projectId: "chaos-test-d1601",
-  storageBucket: "chaos-test-d1601.firebasestorage.app",
-  messagingSenderId: "534993379994",
-  appId: "1:534993379994:web:9fefb6e10309223afe7523"
+  apiKey: env('REACT_APP_TEST_FIREBASE_API_KEY', 'AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw'),
+  authDomain: env('REACT_APP_TEST_FIREBASE_AUTH_DOMAIN', 'chaos-test-d1601.firebaseapp.com'),
+  projectId: env('REACT_APP_TEST_FIREBASE_PROJECT_ID', 'chaos-test-d1601'),
+  storageBucket: env('REACT_APP_TEST_FIREBASE_STORAGE_BUCKET', 'chaos-test-d1601.firebasestorage.app'),
+  messagingSenderId: env('REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID', '534993379994'),
+  appId: env('REACT_APP_TEST_FIREBASE_APP_ID', '1:534993379994:web:9fefb6e10309223afe7523')
 };
 
 // 2. MAIN PRODUCTION DATABASE CONFIG (Live Data)
 export const prodConfig = {
-  apiKey: "AIzaSyA0kkmRCqGNoB1LXKfuCNIl1JKDyQci9hA",
-  authDomain: "cheers-34b8d.firebaseapp.com",
-  projectId: "cheers-34b8d",
-  storageBucket: "cheers-34b8d.firebasestorage.app",
-  messagingSenderId: "762225019248",
-  appId: "1:762225019248:web:3e142c9563e58ca762a7b5",
-  measurementId: "G-JFZ6EZB0E3"
+  apiKey: env('REACT_APP_PROD_FIREBASE_API_KEY', 'AIzaSyA0kkmRCqGNoB1LXKfuCNIl1JKDyQci9hA'),
+  authDomain: env('REACT_APP_PROD_FIREBASE_AUTH_DOMAIN', 'cheers-34b8d.firebaseapp.com'),
+  projectId: env('REACT_APP_PROD_FIREBASE_PROJECT_ID', 'cheers-34b8d'),
+  storageBucket: env('REACT_APP_PROD_FIREBASE_STORAGE_BUCKET', 'cheers-34b8d.firebasestorage.app'),
+  messagingSenderId: env('REACT_APP_PROD_FIREBASE_MESSAGING_SENDER_ID', '762225019248'),
+  appId: env('REACT_APP_PROD_FIREBASE_APP_ID', '1:762225019248:web:3e142c9563e58ca762a7b5'),
+  measurementId: env('REACT_APP_PROD_FIREBASE_MEASUREMENT_ID', 'G-JFZ6EZB0E3')
 };
 
 export const PROD_FIREBASE_HOSTS = ['app.86chaos.com', '86chaos.com', 'www.86chaos.com'];
@@ -74,7 +77,7 @@ export const auth = getAuth(app);
 // --- OPTIONAL APP CHECK + SECURE API KEYCHAIN ---
 // Put your Firebase App Check reCAPTCHA Enterprise site key here after enabling App Check in Firebase.
 // Example: const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '6Lc...';
-const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '';
+const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = process.env.REACT_APP_FIREBASE_APPCHECK_SITE_KEY || '';
 let appCheckInstance = null;
 
 if (typeof window !== "undefined" && APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY && !window.__chaosAppCheckBooted) {
@@ -153,7 +156,7 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.12';
+export const CURRENT_VERSION = '15.0.13';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

@@ -52,6 +52,22 @@ function initAdmin() {
   const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
   return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
 }
+function appCheckEnforced() {
+  return ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
+}
+async function requireAppCheckIfEnforced(app, req) {
+  if (!appCheckEnforced()) return { ok: true, enforced: false };
+  const token = String(req.headers['x-firebase-appcheck'] || req.headers['X-Firebase-AppCheck'] || '').trim();
+  if (!token) return { ok: false, status: 401, error: 'App Check verification is required. Refresh the app after deployment and try again.' };
+  try {
+    const verifier = typeof app?.appCheck === 'function' ? app.appCheck() : (typeof admin.appCheck === 'function' ? admin.appCheck(app) : null);
+    if (!verifier || typeof verifier.verifyToken !== 'function') throw new Error('Firebase Admin App Check verifier is not available in this runtime.');
+    await verifier.verifyToken(token);
+    return { ok: true, enforced: true };
+  } catch (err) {
+    return { ok: false, status: 401, error: `App Check verification failed: ${err.message}` };
+  }
+}
 async function readBody(req) {
   if (!req.body) return {};
   if (typeof req.body === 'object') return req.body;
@@ -105,4 +121,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, readBody, authorize, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace };
+module.exports = { admin, initAdmin, readBody, authorize, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace };

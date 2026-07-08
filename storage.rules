@@ -7,6 +7,10 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function uploadPurposeIs(expected) {
+      return request.resource != null && request.resource.metadata is map && request.resource.metadata.purpose == expected;
+    }
+
     function userPath() {
       return /databases/(default)/documents/users/$(request.auth.uid);
     }
@@ -132,6 +136,7 @@ service firebase.storage {
 
     function isAllowedInvoiceScan() {
       return request.resource != null &&
+        uploadPurposeIs('invoice-scan') &&
         request.resource.size <= 20 * 1024 * 1024 &&
         (
           request.resource.contentType.matches('image/.*') ||
@@ -141,6 +146,7 @@ service firebase.storage {
 
     function isAllowedMenuUpload() {
       return request.resource != null &&
+        uploadPurposeIs('menu-scan') &&
         request.resource.size <= 20 * 1024 * 1024 &&
         (
           request.resource.contentType.matches('image/.*') ||
