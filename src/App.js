@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
+import { Bell, BookOpen, Bug, Calendar, ChefHat, ChevronLeft, ChevronRight, ClipboardList, Clock, Globe, LayoutDashboard, Loader2, Menu, MessageSquare, Moon, Package, Scale, Search, Settings, Shield, Sparkles, Star, Users, Wrench, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue } from './core/appCore';
+import { canUseMenuIntelligence } from './core/menuIntelligence';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools } from './features';
 
@@ -1316,6 +1317,40 @@ What I clicked / expected:
   const appAccentColor = /^#[0-9A-Fa-f]{6}$/.test(displayClientData?.systemSettings?.accentColor || '') ? displayClientData.systemSettings.accentColor : '#FF7A1A';
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
+  const navPerms = liveAppUser?.permissions || {};
+  const navIsGod = Boolean((MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isSuperAdmin || serverSaysSuperAdmin);
+  const featureOn = (feat) => displayClientFeatures?.[feat] !== false;
+  const navItems = [];
+  navItems.push({ id: 'today', label: 'Command Center', short: 'Home', icon: <LayoutDashboard size={18} />, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
+  if (featureOn('schedule')) navItems.push({ id: 'published', label: 'Time Clock & Schedule', short: 'Schedule', icon: <Clock size={18} />, dot: hasMyShiftAlert });
+  if ((featureOn('labor') || featureOn('sales')) && (navIsGod || liveAppUser?.isAdmin || navPerms.labor || navPerms.schedule || navPerms.sales)) navItems.push({ id: 'financials', label: 'Financials', short: 'Money', icon: <Scale size={18} /> });
+  if (featureOn('ops') && (navIsGod || liveAppUser?.isAdmin || navPerms.ops)) navItems.push({ id: 'ops', label: 'Kitchen Command', short: 'Kitchen', icon: <ChefHat size={18} /> });
+  if (featureOn('messages')) navItems.push({ id: 'messages', label: 'Message Board', short: 'Board', icon: <MessageSquare size={18} />, dot: hasUnreadMessages });
+  if (featureOn('events') && (liveAppUser?.isAdmin || navPerms.events || navPerms.schedule || navPerms.team)) navItems.push({ id: 'events', label: 'Event Calendar', short: 'Events', icon: <Calendar size={18} /> });
+  if (featureOn('prep') && (liveAppUser?.isAdmin || liveAppUser?.role === 'Kitchen' || navPerms.prep)) navItems.push({ id: 'prep', label: 'Prep & Tasks', short: 'Prep', icon: <ClipboardList size={18} /> });
+  if (featureOn('recipes') && (liveAppUser?.isAdmin || liveAppUser?.role === 'Kitchen' || navPerms.prep || navPerms.team)) navItems.push({ id: 'recipes', label: 'Recipe Book', short: 'Recipes', icon: <BookOpen size={18} /> });
+  if (featureOn('inventory') && (liveAppUser?.isAdmin || navPerms.inventory || navPerms.team)) navItems.push({ id: 'inventory', label: 'Inventory & Orders', short: 'Stock', icon: <Package size={18} /> });
+  if (!liveAppUser?.isDemo && (liveAppUser?.isAdmin || navPerms.inventory || navPerms.prep || navPerms.team || canUseMenuIntelligence(liveAppUser, displayClientData))) navItems.push({ id: 'ai-tools', label: 'AI Tools', short: 'AI', icon: <Sparkles size={18} /> });
+  if (canUseMenuIntelligence(liveAppUser, displayClientData)) navItems.push({ id: 'menu-intelligence', label: 'Menu Intelligence', short: 'Menu AI', icon: <Sparkles size={18} /> });
+  navItems.push({ id: 'reminders', label: 'My Reminders', short: 'Reminders', icon: <Bell size={18} /> });
+  if (featureOn('team')) navItems.push({ id: 'team', label: 'Staff Roster', short: 'Staff', icon: <Users size={18} /> });
+  if (featureOn('maintenance') && (liveAppUser?.isAdmin || navPerms.team)) navItems.push({ id: 'maintenance', label: 'Maintenance Log', short: 'Fixes', icon: <Wrench size={18} /> });
+  if (navIsGod) navItems.push({ id: 'godmode', label: 'System Administrator', short: 'Admin', icon: <Globe size={18} /> });
+  if (!liveAppUser?.isDemo && (liveAppUser?.isAdmin || navIsGod)) navItems.push({ id: 'audit', label: 'System Audit', short: 'Audit', icon: <Shield size={18} /> });
+  navItems.push({ id: 'help', label: 'Help Center', short: 'Help', icon: <BookOpen size={18} />, dot: hasHelpUpdate });
+  if (!liveAppUser?.isDemo) navItems.push({ id: 'settings', label: 'Settings', short: 'Settings', icon: <Settings size={18} /> });
+  const activeNavItem = navItems.find(item => item.id === activeTabState) || navItems[0];
+  const todayPrepCount = (prepItems || []).filter(item => item.date === currentDate || item.date === getToday()).length;
+  const outOfStockCount = (inventoryItems || []).filter(item => Number(item.quantity ?? item.onHand ?? item.qty ?? 0) <= 0).length;
+  const nextShift = (shifts || []).find(shift => String(shift.date || '') >= getToday());
+  const backupStamp = displayClientData?.backupStatus?.lastSuccessfulBackupAt || displayClientData?.lastSuccessfulBackupAt || displayClientData?.lastBackupAt || '';
+  const commandTiles = [
+    { label: '86 Alerts', value: String(outOfStockCount), detail: outOfStockCount === 1 ? 'item out' : 'items out', tone: outOfStockCount > 0 ? 'danger' : 'good' },
+    { label: 'Prep Tasks', value: String(todayPrepCount), detail: 'due today', tone: todayPrepCount > 0 ? 'good' : 'neutral' },
+    { label: 'Next Shift', value: nextShift?.startTime || 'Ready', detail: nextShift?.role || nextShift?.position || nextShift?.employeeName || 'line status', tone: 'info' },
+    { label: 'Backup Status', value: backupStamp ? 'Tracked' : 'Check', detail: backupStamp ? 'latest stamp saved' : 'open Backup Center', tone: backupStamp ? 'good' : 'warn' }
+  ];
+
 return (
     <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`ui-v13-polished ui-v12-compact cockpit-shell chaos-command-theme ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
@@ -1334,7 +1369,7 @@ return (
       
       <style>{`
         html, body { overflow-x: hidden !important; max-width: 100vw !important; width: 100% !important; background: #05090D !important; }
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes slideIn { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -1490,32 +1525,81 @@ return (
         </div>
       )}
 
-      <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
-        <CheersLogo clientData={displayClientData} />
-
-        {/* ACTIVE WORKSPACE NAME / SWITCHER */}
-        {liveAppUser && (
-          <div className="flex-1 text-center px-4 truncate mt-1">
+      <aside className="chaos-desktop-nav" aria-label="86 Chaos primary navigation">
+        <div className="chaos-desktop-nav-brand">
+          <CheersLogo clientData={displayClientData} />
+          <div className="chaos-desktop-nav-kicker">Kitchen Management OS</div>
+        </div>
+        <div className="chaos-desktop-nav-section-label">Command Center</div>
+        <nav className="chaos-desktop-nav-list">
+          {navItems.map(item => (
             <button
+              key={item.id}
               type="button"
-              onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
-              className={`max-w-full truncate text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
-              title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
+              onClick={() => setActiveTab(item.id)}
+              className={`chaos-nav-button ${activeTabState === item.id ? 'is-active' : ''}`}
+              title={item.label}
             >
-              {liveAppUser.restaurantName || "Restaurant"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
+              <span className="chaos-nav-icon">{item.icon}</span>
+              <span className="chaos-nav-text">{item.label}</span>
+              {item.dot && <span className="chaos-nav-dot" />}
             </button>
+          ))}
+        </nav>
+        <div className="chaos-desktop-nav-footer">
+          <button
+            type="button"
+            onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
+            className="chaos-workspace-pill"
+            title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
+          >
+            <Globe size={14} />
+            <span>{liveAppUser?.restaurantName || displayClientData?.name || 'Restaurant'}</span>
+          </button>
+          <div className="chaos-user-chip">
+            <div className="chaos-user-orb">{String(liveAppUser?.name || '86').slice(0,1).toUpperCase()}</div>
+            <div className="min-w-0">
+              <div className="chaos-user-name">{liveAppUser?.name || 'Staff'}</div>
+              <div className="chaos-user-role">{liveAppUser?.role || 'Team'}</div>
+            </div>
           </div>
-        )}
+        </div>
+      </aside>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
-          {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
-          <Menu size={20} />
-          {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
+      <header className="chaos-topbar sticky top-0 z-40">
+        <div className="chaos-mobile-logo"><CheersLogo clientData={displayClientData} /></div>
+        <div className="chaos-topbar-title">
+          <div className="chaos-topbar-kicker">86 Chaos Command Center</div>
+          <div className="chaos-topbar-heading">{activeNavItem?.label || 'Command Center'}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsGlobalSearchOpen(true)}
+          className="chaos-topbar-search"
+          title="Search 86 Chaos"
+        >
+          <Search size={16} />
+          <span>Search tools, staff, recipes...</span>
         </button>
+        <div className="chaos-topbar-actions">
+          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="chaos-icon-button hidden sm:flex" title="Report a problem"><Bug size={18}/></button>
+          {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="chaos-queue-pill" title="Offline queued actions">Queue {offlineQueue.length}</button>}
+          <button onClick={() => setIsMenuOpen(true)} className="chaos-menu-button" aria-label="Open navigation menu">
+            <Menu size={20} />
+            {hasAnyMenuAlert && <span className="chaos-menu-alert" />}
+          </button>
         </div>
       </header>
+
+      <div className="chaos-mobile-nav-strip no-scrollbar" aria-label="Quick navigation">
+        {navItems.slice(0, 12).map(item => (
+          <button key={item.id} type="button" onClick={() => setActiveTab(item.id)} className={`chaos-mobile-nav-chip ${activeTabState === item.id ? 'is-active' : ''}`}>
+            {item.icon}
+            <span>{item.short || item.label}</span>
+            {item.dot && <span className="chaos-mobile-chip-dot" />}
+          </button>
+        ))}
+      </div>
 
       {/* SYSTEM BROADCAST BANNER */}
       {displayClientData?.systemBanner && (
@@ -1562,7 +1646,7 @@ return (
       )}
       
       {['schedule', 'events', 'published', 'month', 'financials', 'sales', 'prep'].includes(activeTabState) && (
-        <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
+        <div className="chaos-date-bar py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {(activeTabState === 'sales' || activeTabState === 'financials') ? (
             <div className="w-full text-center">
               <h2 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase">Financials</h2>
@@ -1644,8 +1728,35 @@ return (
         </div>}
       </Modal>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
-        {renderMainContent()}
+      <section className="chaos-command-overview" aria-label="Operational overview">
+        <div className="chaos-page-intro">
+          <div>
+            <div className="chaos-page-kicker">Live Restaurant Console</div>
+            <h1>{activeNavItem?.label || 'Command Center'}</h1>
+          </div>
+          <div className="chaos-page-actions">
+            <button type="button" onClick={() => setActiveTab('ops')} className="chaos-outline-action"><ChefHat size={15}/> Kitchen</button>
+            <button type="button" onClick={() => setIsGlobalSearchOpen(true)} className="chaos-primary-action"><Search size={15}/> Search</button>
+          </div>
+        </div>
+        <div className="chaos-command-tiles">
+          {commandTiles.map(tile => (
+            <button key={tile.label} type="button" onClick={() => tile.label === 'Backup Status' && navIsGod ? setActiveTab('godmode') : null} className={`chaos-command-tile tone-${tile.tone}`}>
+              <div className="chaos-command-tile-top">
+                <span>{tile.label}</span>
+                <span className="chaos-status-dot" />
+              </div>
+              <div className="chaos-command-tile-value">{tile.value}</div>
+              <div className="chaos-command-tile-detail">{tile.detail}</div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <main className="chaos-main-stage flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+        <div className="chaos-content-glass">
+          {renderMainContent()}
+        </div>
       </main>
       
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
@@ -1658,7 +1769,7 @@ return (
         ))}
       </div>
       
-      <div className="w-full flex flex-col items-center justify-center py-5 border-t z-10 mt-auto bg-[#05090D]/95 border-[#FF7A1A]/20">
+      <div className="chaos-footer w-full flex flex-col items-center justify-center py-5 border-t z-10 mt-auto bg-[#05090D]/95 border-[#FF7A1A]/20">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
         <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version {CURRENT_VERSION}</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>

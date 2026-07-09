@@ -107,9 +107,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-[70] flex justify-end">
-          <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
-          <div className={`w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+        <div className="fixed inset-0 z-[70] flex justify-start">
+          <div className="absolute inset-0 bg-[#020609]/76 backdrop-blur-md" onClick={onClose}></div>
+          <div className={`chaos-mobile-drawer w-80 max-w-[88vw] bg-[#071017] border-r border-[#FF7A1A]/25 h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
             <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
                <div className="flex items-center gap-3">
                  <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
