@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp } from 'lucide-react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
@@ -2978,6 +2978,365 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
   );
 };
 
+
+const ADMIN_TROUBLESHOOTING_ARTICLES = [
+  {
+    "title": "Version 15.0.30 Deployment Access Hotfix",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.30 deployment access hotfix version mismatch system administrator locked out master admin env whoami",
+    "body": [
+      "15.0.30 forces all browser/API version files to 15.0.30 so a deployment mismatch is obvious from /version.json, the footer, and System Administrator diagnostics.",
+      "System Administrator lockout now shows a plain-English access report instead of the generic page-not-available card. It shows the signed-in email, Firebase UID, frontend env match, server /api/whoami result, master-admin env status, custom claim status, and Firestore super-admin flag status.",
+      "The app now asks /api/whoami whether the server recognizes the account as Super Admin. This helps when MASTER_ADMIN_EMAIL is configured in Vercel server env but REACT_APP_MASTER_ADMIN_EMAIL was not set for frontend menu visibility.",
+      "System Administrator includes an Admin Access signal card that explains which authority source opened the tab: server master-admin env, Firebase custom claim, Firestore profile flag, or local profile state.",
+      "The 15.0.29 question-mark helpers, menu-search cleanup, and backup troubleshooting manual remain included."
+    ]
+  },
+  {
+    "title": "System Administrator account is locked out after productization cleanup",
+    "group": "Access / Troubleshooting",
+    "keywords": "system administrator locked out master admin geoff master_admin_email react_app_master_admin_email superAdmin custom claim firestore isSuperAdmin",
+    "body": [
+      "Version 15.0.28 removed hardcoded personal-email master-admin fallbacks for public release readiness. That means every platform admin must come from real configuration instead of a baked-in email.",
+      "Fast rescue: set MASTER_ADMIN_EMAIL and MASTER_ADMIN_EMAILS in the correct Vercel environment. Preview/testing and Production are separate. Add the locked-out email and redeploy.",
+      "For the menu to show System Administrator before /api/whoami finishes, also set REACT_APP_MASTER_ADMIN_EMAIL for the same environment and redeploy. React env vars are baked into the browser build at deploy time.",
+      "Long-term fix: use Firebase custom claim superAdmin=true or Firestore users/{uid}.isSuperAdmin=true / systemAccess.superAdmin=true, granted from Access Control by an existing Super Admin.",
+      "If one admin email works and another does not, compare their Firestore profile flags, custom claims, and whether the email is included in MASTER_ADMIN_EMAILS."
+    ]
+  },
+  {
+    "title": "Why the automatic backup did not run",
+    "group": "Backups / Troubleshooting",
+    "keywords": "automatic backup did not run 53h ago stale backup cron preview production vercel scheduled",
+    "body": [
+      "Vercel Cron jobs are invoked from production deployments, not preview/testing deployments. If you are looking at a testing branch URL, the countdown is a plan, but the real scheduled call will not fire there.",
+      "For testing, use Run Backup Now. For production, open Vercel \u2192 Project \u2192 Deployments/Logs or Cron Jobs and confirm /api/firestore-backup ran near 9:00 UTC / 4:00 AM Central.",
+      "If production missed it, check CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, FIREBASE_PROJECT_ID, FIREBASE_STORAGE_BUCKET, and whether the latest production deployment includes vercel.json with the /api/firestore-backup cron.",
+      "If Run Backup Now works but automatic does not, the Firebase wiring is probably fine and the issue is scheduling, production deployment, cron auth, or Vercel cron configuration."
+    ]
+  },
+  {
+    "title": "Backup triage flow",
+    "group": "Backups / Troubleshooting",
+    "keywords": "backup triage last backup stale cron secret storage bucket firestore backup failed",
+    "body": [
+      "Step 1: Check Last Backup. Anything older than roughly 30 hours means the daily window was probably missed.",
+      "Step 2: Click Run Backup Now. If manual backup fails, read the toast/error and then open Vercel function logs for /api/firestore-backup.",
+      "Step 3: If manual works but automatic is stale, confirm the deployment is production and that Vercel Cron is listed for /api/firestore-backup.",
+      "Step 4: Check Storage for backups/firestore/scheduled. If only manual backups exist, the cron trigger is not firing.",
+      "Step 5: After a successful backup, verify document count, collection count, integrity status, Storage path, and restore-drill status before risky releases."
+    ]
+  },
+  {
+    "title": "CRON_SECRET troubleshooting",
+    "group": "Backups / Troubleshooting",
+    "keywords": "cron_secret authorization bearer vercel cron unauthorized backup route",
+    "body": [
+      "The backup route accepts Vercel Cron when the Authorization header matches Bearer CRON_SECRET.",
+      "If CRON_SECRET is missing from Vercel, the app may still show Configured incorrectly if you are checking a different environment. Confirm it is set in the production environment that actually runs cron.",
+      "If you rotate CRON_SECRET, redeploy after editing env vars. Old deployments keep old environment values.",
+      "If manual backup works but cron says unauthorized, compare the production env var scope and make sure the cron route is not protected by deployment auth or preview-only settings."
+    ]
+  },
+  {
+    "title": "Backup integrity failed",
+    "group": "Backups / Troubleshooting",
+    "keywords": "backup integrity failed gzip checksum sha json storage round trip",
+    "body": [
+      "Do not restore from a backup marked failed unless you have manually inspected it.",
+      "Run Backup Now again. A second good backup is safer than debugging a bad archive during a customer emergency.",
+      "Open Storage and confirm the file exists under backups/firestore and ends in .json.gz.",
+      "Use Backup Center download to confirm the file can be downloaded. If download works but integrity fails, check gzip/contentEncoding metadata and Vercel logs.",
+      "If multiple integrity failures occur, stop destructive changes and copy a forensic bundle before continuing."
+    ]
+  },
+  {
+    "title": "Restore drill monthly routine",
+    "group": "Backups / Restore Drill",
+    "keywords": "restore drill monthly safe test project backup verify recovery",
+    "body": [
+      "A backup is only trusted after you prove it can restore into a safe testing project.",
+      "Once per month, pick a recent backup, restore into a non-production Firebase project, confirm critical collections exist, then record the drill in Security Center.",
+      "Never run a drill directly into production. Use a test project and test Vercel environment.",
+      "Record who ran it, which backup path was used, whether counts matched, and any follow-up notes."
+    ]
+  },
+  {
+    "title": "System Administrator signal cards",
+    "group": "System Administrator / Help",
+    "keywords": "question marks signal cards command deck tooltip explain displays",
+    "body": [
+      "Click the small question mark on a metric or signal to see what it means, what makes it green/yellow/red, and where to go next.",
+      "Use the signal board as a first-response map: red means act now, amber means inspect soon, green means synchronized/healthy, and blue/purple usually means informational.",
+      "Question marks are support training wheels, not customer-facing help. They are intentionally inside System Administrator only."
+    ]
+  },
+  {
+    "title": "Platform status card",
+    "group": "System Administrator / Displays",
+    "keywords": "platform status needs attention monitoring clean action queue",
+    "body": [
+      "Platform summarizes the biggest risk queues: stale backups, permission blocks, missing owners, duplicate users, crashes, stale clients, and deployment readiness.",
+      "Click it to jump to the command overview and action queue.",
+      "If Platform is red, copy diagnostics before changing data so support has a before/after trail."
+    ]
+  },
+  {
+    "title": "Health card",
+    "group": "System Administrator / Displays",
+    "keywords": "health firestore latency api routes backup integrity diagnostics",
+    "body": [
+      "Health combines Firestore latency, API route readiness, backup integrity, and server diagnostics.",
+      "Run Refresh Health before blaming Firebase, Vercel, or the browser.",
+      "If API checks fail, open Vercel logs for the matching route and confirm environment variables are scoped to the deployment being tested."
+    ]
+  },
+  {
+    "title": "Manual presence card",
+    "group": "System Administrator / Displays",
+    "keywords": "manual presence live users online recent users snapshot cost reads",
+    "body": [
+      "Manual Presence uses an on-demand snapshot so the app does not constantly read online status for every customer.",
+      "Refresh only when troubleshooting live-user visibility, push repair, or shift accountability.",
+      "If only one person appears online, check browser visibility, service worker/presence heartbeat, and whether the user has opened the current workspace recently."
+    ]
+  },
+  {
+    "title": "Push opt-in card",
+    "group": "Push / Troubleshooting",
+    "keywords": "push opt in fcm tokens notifications not receiving device stale token",
+    "body": [
+      "Push Opt-In shows how many user profiles have usable push tokens.",
+      "Low opt-in usually means staff declined browser notifications, service worker registration failed, or tokens are stale after a deploy/domain change.",
+      "Use Push Control Center to send a test, request repair, clear stale tokens, and copy a reconnect link for the employee."
+    ]
+  },
+  {
+    "title": "Stale clients card",
+    "group": "Clients / Troubleshooting",
+    "keywords": "stale clients inactive 21 days customer no activity workspace dormant",
+    "body": [
+      "Stale Clients counts workspaces that look inactive for 21+ days.",
+      "Before changing billing or locking a customer, inspect their recent users, last active dates, audit logs, and support history.",
+      "A stale count can also mean lastActive is not being written correctly, so check presence/session updates before assuming a customer quit."
+    ]
+  },
+  {
+    "title": "Missing owner accounts",
+    "group": "Users / Troubleshooting",
+    "keywords": "missing owner account owner email no user doc auth firestore mismatch",
+    "body": [
+      "Missing Owner means a restaurant has an ownerEmail but no matching user profile in Firestore.",
+      "The owner may exist in Firebase Authentication but lack users/{uid}, or the owner email may be misspelled on the restaurant record.",
+      "Use Account Repair or create/link the correct user profile. Do not make a second ghost account unless you know the intended UID and workspace."
+    ]
+  },
+  {
+    "title": "Duplicate emails",
+    "group": "Users / Troubleshooting",
+    "keywords": "duplicate email auth profile user duplicate ghost account login wrong workspace",
+    "body": [
+      "Duplicate email groups are dangerous because the app may not know which profile owns permissions or restaurant routing.",
+      "Compare UIDs, restaurantId, membership records, and Auth user. Keep the correct active account and disable/archive the wrong profile only after taking notes.",
+      "If the user can log in but sees the wrong restaurant, duplicate profiles or workspace memberships are prime suspects."
+    ]
+  },
+  {
+    "title": "No restaurantId users",
+    "group": "Users / Troubleshooting",
+    "keywords": "no restaurantid orphan user cannot see data blank app no workspace",
+    "body": [
+      "A user without restaurantId or workspace membership may log in but see blank screens or wrong defaults.",
+      "Find the correct workspace, repair the profile, and confirm the user appears in Staff Roster/Workspace Members.",
+      "After repair, have the user log out and back in so cached session data refreshes."
+    ]
+  },
+  {
+    "title": "Permission denied fires",
+    "group": "Rules / Troubleshooting",
+    "keywords": "permission denied firestore rules blocked missing tab cannot save",
+    "body": [
+      "Permission denied means Firestore rules blocked a read or write. It is usually a rules/role mismatch, not a broken button.",
+      "Check which screen/action failed, the user role, restaurantId, workspace membership, and the exact collection path if logs show it.",
+      "For security-related changes, fix both the frontend permission check and Firestore rules. Hiding a button alone is not protection."
+    ]
+  },
+  {
+    "title": "MFA enrollment troubleshooting",
+    "group": "MFA / Troubleshooting",
+    "keywords": "mfa sms two step login enroll phone region unverified email recaptcha operation not allowed",
+    "body": [
+      "Email must be verified before Firebase lets a user enroll SMS MFA.",
+      "SMS MFA must be enabled in the same Firebase project used by the app. Browser Project and API/Admin Project should match in Account Security debug.",
+      "If Firebase blocks SMS setup, check SMS regions first. A missing United States region can cause operation-not-allowed even when MFA is enabled.",
+      "Use full phone format such as +19205551234. Test phone numbers use the fake code you configured in Firebase."
+    ]
+  },
+  {
+    "title": "MFA lost phone recovery",
+    "group": "MFA / Troubleshooting",
+    "keywords": "lost phone broken phone mfa reset recovery code backup phone",
+    "body": [
+      "Use recovery codes first when the user saved them. A used code is burned and cannot be reused.",
+      "If the user has a backup phone, enroll or challenge the backup factor.",
+      "If neither is available, a Super Admin can reset MFA factors after verifying the person in real life and entering a written reason.",
+      "The reset should create audit/security alerts. The user must immediately re-enroll a new MFA method after logging in."
+    ]
+  },
+  {
+    "title": "Account deletion request flow",
+    "group": "Privacy / Troubleshooting",
+    "keywords": "account deletion request app store privacy delete user customer request",
+    "body": [
+      "Account Deletion Request records a reviewable request instead of instantly destroying operational records.",
+      "Before approving, identify whether the person is an employee, owner, or platform admin. Owners may have workspace/business records that require retention or handoff.",
+      "Archive/export necessary payroll, scheduling, ledger, and audit records according to the restaurant policy before final deletion.",
+      "Document the action in audit logs and notify the requester when complete."
+    ]
+  },
+  {
+    "title": "App Check troubleshooting",
+    "group": "Security / Troubleshooting",
+    "keywords": "app check recaptcha enterprise enforce firebase blocked invalid token aud project mismatch",
+    "body": [
+      "Do not enforce App Check until login, Firestore, Storage uploads, scanners, reminders, push, and Security Center all work in testing.",
+      "Project mismatch errors usually mean the browser is using one Firebase project while Vercel Admin credentials use another.",
+      "The site key belongs to reCAPTCHA Enterprise for the matching project. Domains must be bare domains, no https, slash, or path.",
+      "Keep APP_CHECK_ENFORCE=false until all critical workflows pass on the same environment."
+    ]
+  },
+  {
+    "title": "Environment variable mismatch",
+    "group": "Deployment / Troubleshooting",
+    "keywords": "vercel env vars project mismatch firebase id token incorrect aud claim test prod",
+    "body": [
+      "If Firebase ID token aud says one project but API expects another, browser Firebase config and Vercel Admin credentials are mixed.",
+      "Testing should use chaos-test style project IDs and test service account JSON. Production should use production project IDs and production service account JSON.",
+      "Check Vercel variable scope: Production, Preview, Development, and branch-specific settings can differ.",
+      "After editing env vars, redeploy. Old deployments keep old values."
+    ]
+  },
+  {
+    "title": "Deployment failed with no obvious summary",
+    "group": "Deployment / Troubleshooting",
+    "keywords": "vercel deployment failed npm run build exited 1 no summary syntax error",
+    "body": [
+      "Open the failed deployment and check Build Logs. If the UI summary is empty, use Vercel build logs and inspect the latest commit for syntax changes.",
+      "Common causes in this app are unescaped apostrophes in strings, JSX tags not closed, accidental merge conflict text, or package/version mismatches.",
+      "Run a React/JSX parse check locally if possible before pushing a hotfix.",
+      "If only a help/manual string changed, check quotes first. Tiny apostrophe goblins can stop the whole build."
+    ]
+  },
+  {
+    "title": "Menu drawer search auto-filled",
+    "group": "Navigation / Troubleshooting",
+    "keywords": "hamburger menu search auto populated drawer search old query clears",
+    "body": [
+      "The drawer search is a convenience filter for tabs and support actions.",
+      "If the drawer opens with old text, clear the search and refresh. Version 15.0.30 resets drawer search on open/close so stale queries do not linger.",
+      "If it still appears, check whether a voice command or global search shortcut is sending text into the menu state."
+    ]
+  },
+  {
+    "title": "Invoice scanner troubleshooting",
+    "group": "AI Scans / Troubleshooting",
+    "keywords": "invoice scanner upload failed payload too large invalid json stuck spinner gemini",
+    "body": [
+      "If upload fails, check file size, type, Storage rules, and whether the file was compressed before upload.",
+      "If Gemini returns invalid JSON, use the raw scan review panel and retry with a clearer image or smaller PDF.",
+      "The scanner should not silently change inventory. Managers should review matched rows, raw rows, skipped rows, quantities, and units before saving.",
+      "If the route times out, check Vercel logs for /api/scan-invoice and Gemini API key/env vars."
+    ]
+  },
+  {
+    "title": "Menu Intelligence troubleshooting",
+    "group": "AI Scans / Troubleshooting",
+    "keywords": "menu intelligence confidence needs review approve skip ingredient inventory match unavailable menu item",
+    "body": [
+      "Confidence badges are hints, not permission to skip review.",
+      "Approve only ingredients that match real inventory rows. Skip or edit low-confidence rows.",
+      "If 86 alerts do not show menu impact, inspect approved menu links for that ingredient and add synonyms staff actually say.",
+      "Deleting an outdated menu scan should remove old menu-impact links so stale menus do not affect service."
+    ]
+  },
+  {
+    "title": "Voice Assistant Preview troubleshooting",
+    "group": "Voice / Troubleshooting",
+    "keywords": "voice assistant preview microphone beta permissions command wrong tab prep duplicate",
+    "body": [
+      "If voice does nothing, check browser microphone permission and whether the current device supports speech recognition.",
+      "Voice navigation must respect user permissions. If a user asks for a restricted tab, the app should block the action instead of routing there.",
+      "Prep voice should update matching prep rows instead of duplicating when there is a confident match.",
+      "For bad voice parses, copy the original phrase into Report Problem so the parser can be trained around real kitchen wording."
+    ]
+  },
+  {
+    "title": "Staff cannot see a tab",
+    "group": "Permissions / Troubleshooting",
+    "keywords": "missing tab staff cannot see inventory financials schedule permissions role",
+    "body": [
+      "Check whether the module is enabled for the workspace and whether the user role/permissions allow it.",
+      "If the tab appears but data is blank, check restaurantId/workspace membership and Firestore rules.",
+      "Financials should be tightly restricted. Inventory, recipes, and schedule editing should follow role settings and owner selections.",
+      "Use Full Permissions Preview before changing a real customer's access."
+    ]
+  },
+  {
+    "title": "Clock in/out troubleshooting",
+    "group": "Time Clock / Troubleshooting",
+    "keywords": "clock in clock out stuck wrong status refresh geofence unscheduled punch tip declaration",
+    "body": [
+      "If a user says clock in/out is backwards, compare local cached user state to the latest timePunches record.",
+      "If geofence blocks or flags a punch, inspect device location permission, workspace address/GPS, radius, and clock-out status.",
+      "Open punches need manager review before payroll export. Long shifts, negative hours, and unscheduled punches should be corrected with a reason.",
+      "Tip declaration issues usually need role/user permission plus the active punch record checked."
+    ]
+  },
+  {
+    "title": "Schedule Builder troubleshooting",
+    "group": "Scheduling / Troubleshooting",
+    "keywords": "schedule builder cannot edit july publish overwrite duplicate shifts roles coverage targets",
+    "body": [
+      "Schedule Builder should use the same role source as Schedule Copilot and Staff Roster.",
+      "If a month cannot edit, check rescue protection flags, published/draft status, restored legacy shifts, and date filters.",
+      "If importing/recovering a month, run backup first, then overwrite the target month cleanly instead of layering duplicate shifts.",
+      "After publish, test employee view, next shift tile, full schedule, and notifications."
+    ]
+  },
+  {
+    "title": "Push notification troubleshooting",
+    "group": "Push / Troubleshooting",
+    "keywords": "push notifications stopped stale token test push fcm service worker android ios",
+    "body": [
+      "Check browser permission first. If it is denied, the app cannot force notifications on.",
+      "Stale tokens should be repaired through Push Control Center. Force-refresh only the affected user when possible.",
+      "A test push should report sent/failed counts. If route fails, check Vercel logs for /api/send-push and Firebase Admin credentials.",
+      "Users may need to reopen the app after service worker or domain changes."
+    ]
+  },
+  {
+    "title": "Customer onboarding troubleshooting",
+    "group": "Onboarding / Troubleshooting",
+    "keywords": "customer onboarding wizard first restaurant setup owner staff roles push mfa setup",
+    "body": [
+      "A new restaurant should complete name, owner, staff import, roles, schedule settings, notification setup, MFA setup for elevated users, first test push, and first backup.",
+      "If the owner cannot log in, check Auth user, Firestore user profile, ownerEmail on restaurant, workspace membership, and temporary password handoff.",
+      "Do not enable elevated-role MFA enforcement until the owner/Super Admin is enrolled and recovery is tested.",
+      "Create a review stamp after onboarding so support knows the setup was verified."
+    ]
+  },
+  {
+    "title": "When to use Report Problem",
+    "group": "Support / Troubleshooting",
+    "keywords": "report problem error bug support diagnostics screenshot device camera mic storage",
+    "body": [
+      "Use Report Problem when a major error toast appears, a scan fails, voice misreads a command, or a customer reports a broken workflow.",
+      "The report should include device diagnostics where possible, the screen name, what the user expected, what actually happened, and whether the issue repeats.",
+      "For customer support, ask for a screenshot only after collecting the app's own report so you do not lose technical clues."
+    ]
+  }
+];
+
 const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
   const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -3014,6 +3373,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const defaultDemoFeatures = { published:true, schedule:true, events:true, ops:true, messages:true, prep:true, recipes:true, inventory:true, financials:true, team:true, maintenance:true, help:true };
   const [demoFeatures, setDemoFeatures] = useState(defaultDemoFeatures);
   const [adminManualSearch, setAdminManualSearch] = useState('');
+  const [adminHelpModal, setAdminHelpModal] = useState(null);
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0);
   const [presenceSnapshot, setPresenceSnapshot] = useState({ users: [], recentUsers: [], fetchedAt: '', windowMinutes: 15, livePresenceCount: 0, onlineCount: 0, recentCount: 0 });
@@ -4329,12 +4689,15 @@ const handleRevokeAccess = async (user) => {
     .map(r => parseAnyDate(r.lastWeeklyMaintenanceAt || r.weeklyMaintenance?.lastRunAt || r.weeklyMaintenance?.lastSuccessfulRunAt))
     .filter(Boolean)
     .sort((a,b) => b.getTime() - a.getTime())[0] || null;
-  const lastBackupDate = parseAnyDate(backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastExportAt || backupStatus?.lastRunAt) || latestWorkspaceMaintenance;
+  const lastActualBackupDate = parseAnyDate(backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastExportAt);
+  const lastBackupDate = lastActualBackupDate || parseAnyDate(backupStatus?.lastRunAt) || latestWorkspaceMaintenance;
   const backupAgeHours = lastBackupDate ? Math.round((Date.now() - lastBackupDate.getTime()) / 36e5) : null;
+  const actualBackupAgeHours = lastActualBackupDate ? Math.round((Date.now() - lastActualBackupDate.getTime()) / 36e5) : null;
   const backupRunning = backupStatus?.status === 'running';
-  const backupStatusLabel = backupRunning ? 'Running...' : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported');
-  const backupIsStale = !backupRunning && (!lastBackupDate || backupAgeHours > 7 * 24);
-  const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp' : 'No backup status doc'));
+  const backupStatusLabel = backupRunning ? 'Running...' : (lastActualBackupDate ? `${Math.max(0, actualBackupAgeHours)}h ago` : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported'));
+  const backupMissedDailyWindow = !backupRunning && (!lastActualBackupDate || actualBackupAgeHours > 30);
+  const backupIsStale = backupMissedDailyWindow;
+  const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp only' : 'No backup status doc'));
   const restoreDrillDate = parseAnyDate(restoreDrillStatus?.lastDrillAt || restoreDrillStatus?.updatedAt);
   const restoreDrillAgeDays = restoreDrillDate ? Math.floor((Date.now() - restoreDrillDate.getTime()) / 86400000) : null;
   const restoreDrillStale = !restoreDrillDate || restoreDrillAgeDays > 35 || ['failed', 'needs_followup'].includes(String(restoreDrillStatus?.status || '').toLowerCase());
@@ -4362,6 +4725,23 @@ const handleRevokeAccess = async (user) => {
   const nextBackupLocalTime = nextAutoBackupDate.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
   const backupCommandDeckDetail = `${backupDetail} • Next: ${nextBackupCountdown}`;
   const filteredBackupList = backupList.filter(b => backupListFilter === 'all' || b.mode === backupListFilter);
+  const envReport = typeof window !== 'undefined' ? {
+    host: window.location.host,
+    path: window.location.pathname,
+    online: navigator.onLine,
+    serviceWorker: 'serviceWorker' in navigator,
+    indexedDb: 'indexedDB' in window,
+    notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+    storageUser: !!(localStorage.getItem('86chaosUser') || sessionStorage.getItem('86chaosUser')),
+    userAgent: navigator.userAgent
+  } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
+  const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
+  const autoBackupEnvironmentNote = isPreviewLikeHost
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production.'
+    : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
+  const backupTroubleshootingSummary = backupMissedDailyWindow
+    ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
+    : autoBackupEnvironmentNote;
 
   // --- NEW SAAS HEALTH METRICS ---
 const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length;
@@ -4454,16 +4834,15 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
   const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
-  const envReport = typeof window !== 'undefined' ? {
-    host: window.location.host,
-    path: window.location.pathname,
-    online: navigator.onLine,
-    serviceWorker: 'serviceWorker' in navigator,
-    indexedDb: 'indexedDB' in window,
-    notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
-    storageUser: !!(localStorage.getItem('86chaosUser') || sessionStorage.getItem('86chaosUser')),
-    userAgent: navigator.userAgent
-  } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
+
+  const adminAccessSourceLabel = appUser?.serverAdminCheck?.serverMasterAdminMatched ? 'Server env' :
+    appUser?.serverAdminCheck?.customClaimSuperAdmin ? 'Custom claim' :
+    appUser?.serverAdminCheck?.firestoreSuperAdmin ? 'Firestore flag' :
+    appUser?.isSuperAdmin ? (appUser?.superAdminAccessSource || 'Profile flag') : 'Unknown';
+  const adminAccessDetail = appUser?.serverAdminCheck?.masterAdminEnvConfigured
+    ? `${appUser.serverAdminCheck.masterAdminEmailCount || 1} master email(s) configured`
+    : 'Check MASTER_ADMIN_EMAIL(S) and REACT_APP_MASTER_ADMIN_EMAIL';
+
   const currentAdminSessionId = (() => {
     try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; }
   })();
@@ -4498,7 +4877,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     usersWithoutRestaurant.length > 0 ? { tone: 'amber', title: 'Users missing restaurantId', detail: `${usersWithoutRestaurant.length} user profile(s) cannot route correctly.`, jump: 'support' } : null,
     duplicateEmailGroups.length > 0 ? { tone: 'red', title: 'Duplicate user emails', detail: `${duplicateEmailGroups.length} duplicate email group(s) found.`, jump: 'support' } : null,
     pushOptInRate < 30 && allUsers.length > 0 ? { tone: 'amber', title: 'Low push adoption', detail: `${pushOptInRate}% of users have notification tokens.`, jump: 'users' } : null,
-    backupIsStale ? { tone: 'amber', title: 'Backup status stale', detail: `Last reported backup/maintenance: ${backupStatusLabel}.`, jump: 'health' } : null,
+    backupIsStale ? { tone: 'amber', title: 'Backup window missed', detail: `Last successful backup: ${backupStatusLabel}. ${isPreviewLikeHost ? 'Preview cron will not auto-run.' : 'Check production cron.'}`, jump: 'health' } : null,
     (backupStatus?.lastIntegrityStatus === 'failed' || backupStatus?.backupIntegrity?.status === 'failed') ? { tone: 'red', title: 'Backup integrity failed', detail: 'Latest backup did not pass Storage round-trip verification.', jump: 'health' } : null
   ].filter(Boolean);
   const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
@@ -4823,6 +5202,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    ...ADMIN_TROUBLESHOOTING_ARTICLES,
     { title: 'Version 15.0.28 Productization Cleanup', group: 'System Administrator', keywords: 'v15 15.0.28 public release productization hardcoded admin account deletion restore drill security center', body: ['15.0.28 removes hardcoded personal master-admin fallbacks from app and API checks. Use MASTER_ADMIN_EMAIL, MASTER_ADMIN_EMAILS, custom claims, or isSuperAdmin profile flags instead.', 'Account Security now includes an in-app account deletion request flow for app-store/privacy readiness. It records a request for admin review instead of silently deleting operational records.', 'Security Center now includes restore-drill readiness so backups are paired with monthly safe test restores into a non-production project.', 'Public wording was cleaned for old internal System Administrator and restaurant-specific labels.'] },
     { title: 'Version 15.0.27 Public-Readiness Security Polish', group: 'System Administrator', keywords: 'v15 15.0.27 recovery codes mfa lost phone security alerts voice preview security center', body: ['15.0.27 adds one-time recovery codes for MFA accounts. Save the codes after generating them because they are shown once.', 'The two-step login screen now has a recovery-code reset path for lost or broken phones. A used code is burned and cannot be reused.', 'When a System Administrator resets a user MFA factors, the app writes a security alert for the affected user and records the action in audit logs.', 'Account Security now shows a simple readiness status so owners know whether it is safe to turn on elevated-role MFA enforcement.', 'The voice control now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
     { title: 'Version 15.0.26 MFA Recovery & Safer Enforcement', group: 'System Administrator', keywords: 'v15 15.0.26 mfa recovery reset lost phone backup phone elevated roles enforcement', body: ['15.0.26 adds Super Admin MFA Recovery inside Account Security so a lost or broken phone can be handled without disabling MFA for everyone.', 'Recovery lets a Super Admin inspect a user MFA status, remove enrolled Firebase MFA factors, require a written reason, and write the action to audit logs.', 'Account Security now supports adding a backup SMS phone after the first factor is enrolled. MFA should be required for owners, managers, admins, and System Administrators when enforcement is on. Standard employees can enroll optionally.'] },
@@ -5333,17 +5713,77 @@ Type RESTORE to continue.`);
     return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'quiet'} ${colors.split(' ')[1]}`}></span>{label}</span>;
   };
 
-  const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false, onClick }) => {
-    const Wrapper = onClick ? 'button' : 'div';
+  const ADMIN_METRIC_HELP = {
+    'Platform': 'Overall platform condition. It rolls up urgent action items such as stale backups, permission blocks, crashes, missing owners, duplicate users, stale clients, and deployment readiness. Click the card to jump to the command overview.',
+    'Health': 'Live technical health. It focuses on Firestore latency, API route readiness, and backup integrity. Run Refresh Health before opening Vercel/Firebase logs.',
+    'Manual Presence': 'On-demand online/recent-user snapshot. It is manual to avoid expensive constant presence reads across customers.',
+    'MRR': 'Estimated monthly recurring revenue from workspace plan/pricing data. Use it as a planning signal, not final accounting.',
+    'Crashes 24h': 'Crash/error reports seen in the last 24 hours. Open Support logs before deploying if this is hot.',
+    'Push Opt-In': 'Share of users/devices with push tokens. Low opt-in points to denied browser permissions, stale service workers, or users who never enabled notifications.',
+    'Stale Clients': 'Workspaces with no recent activity. Inspect before assuming churn because stale lastActive fields can also mean presence writes are broken.',
+    'Last Backup': 'Age of the latest successful Firestore backup. Daily backups should usually be under 30 hours old. Preview/testing deployments do not auto-run Vercel Cron.',
+    'Connected Devices': 'Users with saved push tokens. This is the starting count for push troubleshooting.',
+    'Stale Tokens': 'Push tokens older than the repair window. Clear/repair these when notifications stop working after device, browser, or domain changes.',
+    'Browser Permission': 'Notification permission on this admin device. It does not prove every employee device is configured.',
+    'Last Push Result': 'Most recent server push result when the route recorded one. Use it to see sent/failed counts.',
+    'Firestore Latency': 'How quickly Firestore responded during the latest health check. High latency can be network, rules, query shape, or Firebase service health.',
+    'Backup Storage': 'Total Storage usage detected for backup files. Use it to watch backup growth and prune behavior.',
+    'API Routes': 'How many Vercel API routes responded during health checks. A failed route usually needs Vercel logs and env-var scope review.',
+    'Last Successful Sync': 'Most recent successful backup/status sync written by the backup route.',
+    'Backup Integrity': 'Round-trip verification status for the latest backup. Failed integrity means do not rely on that backup for restore.',
+    'Permission Denied': 'Count of Firestore rule blocks seen in logs. Usually indicates a role/rules/path mismatch.',
+    'Missing Owners': 'Restaurants whose owner email does not match an existing user profile. Fix before onboarding or billing handoff.',
+    'No Restaurant ID': 'Users without workspace routing. These users can log in but may see blank or wrong data.',
+    'Duplicate Emails': 'Multiple profiles with the same email. This can cause ghost accounts and wrong permissions.',
+    'Audit Logs': 'Recent global/platform action records. Use this for incident timelines.',
+    'Ghost Actions': 'Support possession or ghost-mode actions. These deserve extra review.',
+    'Destructive': 'Deletes, nukes, locks, sweeps, or other high-risk actions.',
+    'Support Edits': 'Profile/routing/support changes made by admin tools.',
+    'Access Changes': 'Grant/revoke/admin access changes. Review these during security audits.',
+    'Rule Blocks': 'Permission-denied clues from Firestore rules.',
+    'Orphan Users': 'Users missing restaurantId/workspace membership.',
+    'Backup Status': 'Combined backup age/status. Open Forensics & Backups for backup list, restore, and restore drill tools.',
+    'Version': 'Current deployed 86 Chaos version reported by the browser build.',
+    'Admin Access': 'Shows whether this session is running with Super Admin authority. If the wrong account is locked out, check MASTER_ADMIN_EMAIL, MASTER_ADMIN_EMAILS, REACT_APP_MASTER_ADMIN_EMAIL, Firebase custom claims, and Firestore isSuperAdmin/systemAccess flags.',
+    'Restore Drill': 'Shows the last time a backup was safely restored into a test/sandbox project. Backups are not proven until a restore drill has passed.'
+  };
+
+  const AdminInfoButton = ({ title, body }) => (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setAdminHelpModal({ title, body });
+      }}
+      className="inline-flex items-center justify-center w-5 h-5 rounded-full border border-[#2A353D] bg-[#12161A] text-slate-500 hover:text-[#D4A381] hover:border-[#D4A381]/60 transition-colors flex-shrink-0"
+      title={`Explain ${title}`}
+      aria-label={`Explain ${title}`}
+    >
+      <HelpCircle size={12} />
+    </button>
+  );
+
+  const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false, onClick, help }) => {
+    const metricHelp = help || ADMIN_METRIC_HELP[label] || 'This System Administrator display summarizes live support data. Click through or search the Administrator Manual for the label name to see deeper troubleshooting steps.';
     return (
-      <Wrapper type={onClick ? 'button' : undefined} onClick={onClick} className={`w-full text-left cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between ${onClick ? 'hover:border-[#D4A381]/50 hover:bg-[#12161A]/70 transition-all cursor-pointer' : ''}`}>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(event) => { if (onClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onClick(); } }}
+      className={`w-full text-left cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between ${onClick ? 'hover:border-[#D4A381]/50 hover:bg-[#12161A]/70 transition-all cursor-pointer' : ''}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
+        <div className="flex items-center gap-2">
+          <AdminInfoButton title={label} body={metricHelp} />
           <SignalPip tone={tone} label={hot ? 'HOT' : 'SYNC'} hot={hot} />
         </div>
-        <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
-        <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
-      </Wrapper>
+      </div>
+      <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
+      <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
+    </div>
     );
   };
 
@@ -5499,6 +5939,12 @@ Type RESTORE to continue.`);
           <button type="button" onClick={() => setCreatedWorkspaceLogin(null)} className={`w-full ${T.btn}`}>Done</button>
         </div>}
       </Modal>
+      <Modal isOpen={!!adminHelpModal} onClose={() => setAdminHelpModal(null)} title={adminHelpModal?.title || 'System Administrator Help'}>
+        {adminHelpModal && <div className="space-y-3">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-4 text-sm font-bold text-slate-300 leading-relaxed whitespace-pre-line">{adminHelpModal.body}</div>
+          <button type="button" onClick={() => setAdminHelpModal(null)} className={T.btn}>Got it</button>
+        </div>}
+      </Modal>
       {/* ADMIN TOP BAR */}
       <div className="cockpit-panel rounded-2xl p-4 overflow-hidden relative">
         <div className="absolute inset-0 cockpit-grid opacity-35 pointer-events-none"></div>
@@ -5584,17 +6030,19 @@ Type RESTORE to continue.`);
               <div className="relative space-y-2">
                 <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} action item(s)`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} onClick={() => jumpToAdminIssue('overview')} />
                 <CockpitMetric label="Health" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Check'} detail={`Integrity: ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}`} tone={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : healthSnapshot?.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} onClick={() => jumpToAdminIssue('health')} />
+                <CockpitMetric label="Admin Access" value={adminAccessSourceLabel} detail={adminAccessDetail} tone={adminAccessSourceLabel === 'Unknown' ? 'amber' : 'emerald'} help="Explains why this account can open System Administrator. Good sources are MASTER_ADMIN_EMAIL(S) in Vercel server env, REACT_APP_MASTER_ADMIN_EMAIL for frontend menu visibility, Firebase custom claim superAdmin, or Firestore isSuperAdmin/systemAccess.superAdmin. If an account is locked out, check the deployment environment scope first." />
                 <CockpitMetric label="Manual Presence" value={presenceSnapshot.fetchedAt ? onlineUsers.length : '—'} detail={presenceSnapshot.fetchedAt ? `${onlineRestaurants.length} workspaces` : 'Press refresh'} tone={presenceSnapshot.fetchedAt ? 'emerald' : 'blue'} onClick={() => jumpToAdminIssue('live')} />
                 <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" onClick={() => jumpToAdminIssue('tenants')} />
                 <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
                 <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('users')} />
                 <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('tenants')} />
                 <CockpitMetric label="Last Backup" value={backupStatusLabel} detail={backupCommandDeckDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} onClick={() => jumpToAdminIssue('forensics')} />
-                <button type="button" onClick={() => jumpToAdminIssue('forensics')} className="w-full text-left bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381]/50 rounded-xl p-3 transition-colors">
-                  <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Next Automatic Backup</span><SignalPip tone={backupRunning ? 'blue' : 'emerald'} label={backupRunning ? 'RUNNING' : 'COUNTDOWN'} hot={backupRunning} /></div>
+                <div role="button" tabIndex={0} onClick={() => jumpToAdminIssue('forensics')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); jumpToAdminIssue('forensics'); } }} className="w-full text-left bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381]/50 rounded-xl p-3 transition-colors cursor-pointer">
+                  <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Next Automatic Backup</span><div className="flex items-center gap-2"><AdminInfoButton title="Next Automatic Backup" body={backupTroubleshootingSummary} /><SignalPip tone={backupRunning ? 'blue' : backupMissedDailyWindow ? 'amber' : 'emerald'} label={backupRunning ? 'RUNNING' : backupMissedDailyWindow ? 'CHECK' : 'COUNTDOWN'} hot={backupRunning || backupMissedDailyWindow} /></div></div>
                   <div className="text-xl font-black text-white mt-2">{nextBackupCountdown}</div>
                   <div className="text-[10px] font-bold text-slate-400 mt-1">Scheduled for {nextBackupLocalTime}</div>
-                </button>
+                  {backupMissedDailyWindow && <div className="mt-2 bg-amber-900/15 border border-amber-500/30 rounded-lg p-2 text-[10px] font-bold text-amber-200 leading-snug">{backupTroubleshootingSummary}</div>}
+                </div>
                 <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white transition-colors flex items-center justify-center gap-2">
                   {(isBackupRunning || backupRunning) ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
                   {(isBackupRunning || backupRunning) ? 'Backup Running' : 'Run Backup Now'}
@@ -6891,7 +7339,9 @@ another@email.com"></textarea>
                 <div className="flex items-center justify-between mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Access Model</div><SignalPip tone="purple" label="RULES"/></div>
                 <div className="space-y-1.5 text-[10px] font-bold text-slate-400">
                   <div className="flex justify-between gap-2"><span>Super admins</span><span className="text-white">{superAdmins.length}</span></div>
-                  <div className="flex justify-between gap-2"><span>Master email</span><span className="text-[#D4A381]">{MASTER_ADMIN_EMAIL}</span></div>
+                  <div className="flex justify-between gap-2"><span>Access source</span><span className="text-[#D4A381]">{adminAccessSourceLabel}</span></div>
+                  <div className="flex justify-between gap-2"><span>Frontend master env</span><span className="text-[#D4A381]">{MASTER_ADMIN_EMAIL || 'not set'}</span></div>
+                  <div className="flex justify-between gap-2"><span>Server master env</span><span className={appUser?.serverAdminCheck?.masterAdminEnvConfigured ? 'text-emerald-400' : 'text-amber-400'}>{appUser?.serverAdminCheck?.masterAdminEnvConfigured ? `${appUser.serverAdminCheck.masterAdminEmailCount || 1} configured` : 'not confirmed'}</span></div>
                   <div className="flex justify-between gap-2"><span>Ghost needs rules</span><span className="text-emerald-400">isSuperAdmin()</span></div>
                   <div className="flex justify-between gap-2"><span>Read-only clients</span><span className="text-blue-400">{readOnlyWorkspaces.length}</span></div>
                   <div className="flex justify-between gap-2"><span>Past due lockouts</span><span className="text-red-400">{pastDueWorkspaces.length}</span></div>
@@ -7077,11 +7527,12 @@ another@email.com"></textarea>
               </div>
             </div>
             <div className="grid md:grid-cols-4 gap-2">
-              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div></div>
+              <div className={`bg-[#0B0E11] border ${backupMissedDailyWindow ? 'border-amber-500/40' : 'border-[#2A353D]'} rounded-xl p-3`}><div className="flex items-center justify-between gap-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><AdminInfoButton title="Next Auto Backup" body={backupTroubleshootingSummary} /></div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div>{backupMissedDailyWindow && <div className="text-[9px] text-amber-300 font-black uppercase tracking-widest mt-1">Daily window missed</div>}</div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Data Watchlist</div><div className="text-lg font-black text-white">{usersWithoutRestaurant.length + missingOwnerAccounts.length + duplicateEmailGroups.length}</div><div className="text-[9px] text-slate-500 font-bold">routing / owner / duplicates</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Sensitive Actions</div><div className="text-lg font-black text-white">{destructiveAuditLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">delete / nuke / lock / sweep</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Rule Blocks</div><div className={`text-lg font-black ${permissionDeniedLogs.length ? 'text-red-300' : 'text-emerald-400'}`}>{permissionDeniedLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">permission-denied logs</div></div>
             </div>
+            {backupMissedDailyWindow && <div className="mt-3 bg-amber-900/15 border border-amber-500/30 rounded-xl p-3 text-xs font-bold text-amber-100 leading-relaxed"><div className="font-black uppercase tracking-widest text-amber-300 text-[10px] mb-1">Automatic backup needs review</div>{backupTroubleshootingSummary}</div>}
           </div>
 
           <div className="grid lg:grid-cols-3 gap-4">
@@ -7688,6 +8139,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15030', title:'What changed in version 15.0.30', group:'Release Notes', keywords:'new update 15.0.30 deployment access hotfix system administrator locked out version mismatch whoami admin access', body:['Deployment/version checks were tightened so /version.json, footer/version labels, API metadata, README, and release files all report 15.0.30.', 'If a user opens System Administrator without access, the app now shows exactly why access was denied instead of a generic unavailable page.', 'The app now calls /api/whoami to see whether the server recognizes the signed-in email through MASTER_ADMIN_EMAIL(S), Firebase custom claims, or Firestore super-admin flags.', 'System Administrator includes an Admin Access signal card explaining the current Super Admin authority source.', 'The 15.0.29 question-mark helpers, drawer search reset, and backup troubleshooting manual remain included.'] },
   { id:'new-15028', title:'What changed in version 15.0.28', group:'Release Notes', keywords:'new update 15.0.28 productization account deletion restore drill security center hardcoded admin', body:['Account Security now has an Account Deletion Request flow that records a reviewable request instead of silently deleting operational records.', 'Security Center now includes Restore Drill status so backups can be proven with a safe test restore.', 'System Administrator access no longer relies on hardcoded personal email fallbacks. Use configured env vars, custom claims, or Super Admin profile flags.', 'Several internal/testing labels were cleaned up for public-readiness polish.'] },
   { id:'new-15027', title:'What changed in version 15.0.27', group:'Release Notes', keywords:'new update 15.0.27 recovery codes mfa lost phone security alerts voice preview', body:['Account Security now supports one-time recovery codes for lost-phone MFA recovery.', 'The two-step login screen can use a saved recovery code to reset MFA and let the user sign in again.', 'System Administrator MFA reset now writes a security alert for the affected user and keeps the audit trail clear.', 'Account Security has a simple readiness status so owners know whether enforcement is safe.', 'The floating voice button now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
   { id:'new-15026', title:'What changed in version 15.0.26', group:'Release Notes', keywords:'new update 15.0.26 mfa recovery reset lost phone backup phone elevated roles', body:['Account Security now supports backup SMS MFA phone enrollment after the first factor is enabled.', 'Super Admin MFA Recovery can inspect a user MFA status, reset lost-phone MFA factors, require a written reason, and log the action for audit review.', 'MFA enforcement guidance now clearly targets owners, managers, admins, and System Administrators while keeping regular employee enrollment optional.'] },

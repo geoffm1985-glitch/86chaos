@@ -92,6 +92,7 @@ export default function App() {
   const [workspaceMembershipRefreshKey] = useState(0);
   const [isPushRepairing, setIsPushRepairing] = useState(false);
   const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
+  const [serverAdminCheck, setServerAdminCheck] = useState(null);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
@@ -133,6 +134,43 @@ export default function App() {
     window.addEventListener('appinstalled', handleAppInstall);
     return () => window.removeEventListener('appinstalled', handleAppInstall);
   }, []);
+
+
+  useEffect(() => {
+    if (!appUser?.id || appUser.id === 'dev-backdoor') {
+      setServerAdminCheck(null);
+      return;
+    }
+    let canceled = false;
+    const checkServerAdminAccess = async () => {
+      try {
+        const res = await secureFetch('/api/whoami');
+        const data = await res.json().catch(() => ({}));
+        if (canceled) return;
+        setServerAdminCheck({ ok: res.ok, ...data });
+        if (res.ok && data.superAdmin === true) {
+          setAppUser(prev => {
+            if (!prev?.id || prev.id !== appUser.id || prev.isSuperAdmin === true) return prev;
+            const next = {
+              ...prev,
+              isSuperAdmin: true,
+              systemAccess: { ...(prev.systemAccess || {}), superAdmin: true },
+              superAdminAccessSource: data.serverMasterAdminMatched ? 'server-master-admin-env' : data.customClaimSuperAdmin ? 'firebase-custom-claim' : data.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami'
+            };
+            try {
+              const storage = localStorage.getItem('86chaosUser') ? localStorage : sessionStorage;
+              storage.setItem('86chaosUser', JSON.stringify(next));
+            } catch (_) {}
+            return next;
+          });
+        }
+      } catch (err) {
+        if (!canceled) setServerAdminCheck({ ok: false, error: err?.message || 'Could not check server admin config.' });
+      }
+    };
+    checkServerAdminAccess();
+    return () => { canceled = true; };
+  }, [appUser?.id, appUser?.email]);
 
 const [currentDate, setCurrentDate] = useState(getToday());
 
@@ -318,6 +356,17 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }
   }
 
+
+  const serverSaysSuperAdmin = Boolean(serverAdminCheck?.superAdmin === true);
+  if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
+    liveAppUser = {
+      ...liveAppUser,
+      isSuperAdmin: true,
+      systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
+      superAdminAccessSource: serverAdminCheck.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami'
+    };
+  }
+
   // --- REMOTE SESSION KILL SWITCH ---
   useEffect(() => {
     if (liveAppUser?.forceLogout) {
@@ -420,7 +469,7 @@ if (liveAppUser && clientData) {
   const wageEditAccess = Array.isArray(wageSettings.wageEditAccess) ? wageSettings.wageEditAccess : [];
   const sessionEmail = (liveAppUser?.email || appUser?.email || '').toLowerCase().trim();
   const sessionOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
+  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
   const sessionCanViewWages = Boolean(sessionIsOwner || liveAppUser?.permissions?.wageView || liveAppUser?.permissions?.wageEdit || wageViewAccess.includes(liveAppUser?.id) || wageEditAccess.includes(liveAppUser?.id));
 
   const displayUsers = useMemo(() => {
@@ -1187,7 +1236,34 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && ((MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isSuperAdmin === true)) return <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode' && (liveAppUser?.isSuperAdmin === true || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode') return (
+      <div className={`${T.card} p-5 sm:p-8 max-w-3xl mx-auto space-y-4 border-red-900/40`}>
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>
+          <div>
+            <h2 className="text-xl font-black text-white">System Administrator access is not active for this account</h2>
+            <p className="text-sm font-bold text-slate-400 mt-2">The old hardcoded master-admin backdoor was removed for public-readiness. This account now needs a real Super Admin source: Vercel master-admin env var, Firebase custom claim, or Firestore user flag.</p>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-2 text-[11px] font-bold">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Signed-in email</div><div className="text-white break-all">{liveAppUser?.email || appUser?.email || 'Unknown'}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Firebase UID</div><div className="text-white break-all">{liveAppUser?.id || appUser?.id || 'Unknown'}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Frontend env match</div><div className="text-white">{MASTER_ADMIN_EMAIL ? ((MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) ? 'Matched' : 'Not matched') : 'REACT_APP_MASTER_ADMIN_EMAIL not set'}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Server admin check</div><div className="text-white">{serverAdminCheck?.ok ? (serverAdminCheck.superAdmin ? 'Allowed by server' : 'Server says not Super Admin') : (serverAdminCheck?.error || 'Checking /api/whoami...')}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Server master env</div><div className="text-white">{serverAdminCheck?.masterAdminEnvConfigured ? `${serverAdminCheck.masterAdminEmailCount || 1} configured` : 'Missing or not visible to this deployment'}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Firestore / claim</div><div className="text-white">Claim: {serverAdminCheck?.customClaimSuperAdmin ? 'yes' : 'no'} • Firestore: {serverAdminCheck?.firestoreSuperAdmin ? 'yes' : 'no'}</div></div>
+        </div>
+        <div className="bg-amber-900/10 border border-amber-700/40 rounded-xl p-3 text-xs font-bold text-amber-100 leading-relaxed">
+          Fast fix: in Vercel Preview env vars, set <span className="font-mono text-white">MASTER_ADMIN_EMAIL</span> and <span className="font-mono text-white">MASTER_ADMIN_EMAILS</span> to include this email, then redeploy. For frontend menu visibility, also set <span className="font-mono text-white">REACT_APP_MASTER_ADMIN_EMAIL</span>. Or log in with an existing Super Admin and grant this account from Access Control.
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button onClick={() => setActiveTab('settings')} className={T.btn}>Open Settings</button>
+          <button onClick={() => setActiveTab('help')} className={T.btnAlt}>Open Help</button>
+          <button onClick={() => { localStorage.removeItem('86chaosUser'); sessionStorage.removeItem('86chaosUser'); setAppUser(null); }} className={T.btnAlt}>Log Out</button>
+        </div>
+      </div>
+    );
     if (activeTabState === 'audit' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin)) return <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />;
 
     return (
@@ -1212,6 +1288,7 @@ What I clicked / expected:
   // the platform owner/super-admin account that needs to lift the lockdown.
   const maintenanceBypass = Boolean(
     liveAppUser?.isSuperAdmin === true ||
+    serverSaysSuperAdmin ||
     (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())
   );
   const maintenanceEndsMs = clientData?.maintenanceEndsAt ? new Date(clientData.maintenanceEndsAt).getTime() : 0;

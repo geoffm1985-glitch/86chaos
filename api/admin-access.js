@@ -24,8 +24,10 @@ async function verifySuperAdmin(req) {
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
-  if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) {
+  const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
+  const masterEmails = Array.from(new Set([process.env.MASTER_ADMIN_EMAIL, ...(process.env.MASTER_ADMIN_EMAILS || '').split(',')].map(normalizeEmail).filter(Boolean)));
+  const callerEmail = normalizeEmail(decoded.email);
+  if (decoded.superAdmin !== true && !masterEmails.includes(callerEmail)) {
     throw new Error('Super admin access required.');
   }
   const mfa = requireMfaIfEnforced(decoded, {}, true);

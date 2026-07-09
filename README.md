@@ -1,36 +1,32 @@
 # 86 Chaos
 
-Current Version: 15.0.28 - Productization Cleanup
+Current Version: 15.0.30 - Deployment Access Hotfix
 
-## 15.0.28 focus
+## 15.0.30 focus
+- Forced all current version files/metadata to `15.0.30` so deployment mismatch is easier to catch.
+- Added a server-backed Super Admin check through `/api/whoami` so the browser can recognize server-configured master admins after login.
+- Added a clear System Administrator lockout explanation screen showing the signed-in email, UID, frontend env match, server admin check, master-admin env status, Firebase custom claim status, and Firestore super-admin flag status.
+- Added an **Admin Access** diagnostic card inside System Administrator.
+- Kept the 15.0.29 question-mark helpers, drawer search cleanup, backup stale warning, and expanded Administrator Manual troubleshooting.
+- Fixed a 15.0.29 admin-screen runtime ordering issue by defining browser runtime diagnostics before backup/cron checks use them.
 
-This build continues the public-readiness pass after MFA recovery: safer Super Admin configuration, account deletion request intake, restore-drill proof, and cleaner customer-facing wording.
+## Super Admin access notes
+For testing/preview, make sure these are set in the **Preview** Vercel environment if you want a specific email to open System Administrator:
 
-## What changed
+```env
+MASTER_ADMIN_EMAIL=your-admin@example.com
+MASTER_ADMIN_EMAILS=your-admin@example.com,backup-admin@example.com
+REACT_APP_MASTER_ADMIN_EMAIL=your-admin@example.com
+```
 
-- Removed hardcoded personal master-admin email fallbacks from frontend and API authorization checks.
-- Super Admin access now depends on configured Vercel env vars, Firebase custom claims, or the Firestore `isSuperAdmin`/`systemAccess.superAdmin` flags.
-- Added in-app Account Deletion Request intake inside Settings → Account Security.
-- Added `/api/account-deletion-request` so users can request/cancel account deletion review without immediately deleting operational records.
-- Added `/api/restore-drill` and Security Center restore-drill status so backups can be paired with a monthly safe restore test.
-- Added restore-drill tiles/cards to Security Center and System Administrator signals.
-- Cleaned more visible legacy/internal labels toward public-product wording.
-- Updated Security Center diagnostics, API health manifest, Help Center, README, release notes, and QA checklist.
+`MASTER_ADMIN_EMAIL` and `MASTER_ADMIN_EMAILS` are used by Vercel/API routes. `REACT_APP_MASTER_ADMIN_EMAIL` is baked into the browser bundle and helps the menu show System Administrator immediately. Long-term, prefer Firebase custom claim `superAdmin=true` or Firestore `users/{uid}.isSuperAdmin=true` / `systemAccess.superAdmin=true`.
 
-## Deploy / test notes
+## Deployment notes
+- Deploy through GitHub/Vercel as usual.
+- Vercel/API route deployment is needed because `/api/whoami`, `/api/admin-access`, and version metadata changed.
+- No Firestore rules changes.
+- No Storage rules changes.
+- No new required Vercel environment variables, but Super Admin env vars should be configured correctly for Preview and Production.
 
-1. Deploy this ZIP through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.28`.
-3. Confirm at least one Super Admin still has access through `isSuperAdmin`, Firebase custom claim `superAdmin`, or Vercel `MASTER_ADMIN_EMAIL` / `MASTER_ADMIN_EMAILS`.
-4. Open Settings → Account Security and submit a test Account Deletion Request. Confirm it creates an `accountDeletionRequests/{uid}` document and a security alert.
-5. Cancel the request and confirm the request status changes to `canceled`.
-6. Open System Administrator → Security Center and confirm Restore Drill status appears.
-7. Record a restore drill after testing a backup restore into a safe/non-production Firebase project.
-8. Open System Administrator → Health Dashboard and confirm new API routes appear in the manifest.
-
-## Separate publishing
-
-- Firestore rules: no changes.
-- Storage rules: no changes.
-- API routes: deploy through Vercel because `/api/account-deletion-request`, `/api/restore-drill`, `/api/security-diagnostics`, and `/api/health-checks` changed.
-- Vercel env vars: confirm `MASTER_ADMIN_EMAIL` or `MASTER_ADMIN_EMAILS` is set unless all Super Admins already use Firebase custom claims or Firestore `isSuperAdmin`.
+## QA
+Use `QA_15_0_30_CHECKLIST.md` for this build.

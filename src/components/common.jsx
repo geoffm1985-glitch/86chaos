@@ -49,6 +49,12 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   const [menuSearch, setMenuSearch] = useState('');
 
+  // Reset the drawer search every time the hamburger menu opens/closes.
+  // This prevents an old search term from reappearing and making the drawer look auto-filled.
+  useEffect(() => {
+    setMenuSearch('');
+  }, [isOpen]);
+
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
