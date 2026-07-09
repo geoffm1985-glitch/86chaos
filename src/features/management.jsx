@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
@@ -805,6 +805,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [mfaCode, setMfaCode] = useState('');
   const [isMfaBusy, setIsMfaBusy] = useState(false);
   const [mfaError, setMfaError] = useState('');
+  const [isEmailVerifyBusy, setIsEmailVerifyBusy] = useState(false);
   const mfaEnrollRecaptchaRef = useRef(null);
 
   // --- Preferences State ---
@@ -890,6 +891,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const isElevatedForMfa = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.owner || appUser?.workspaceOwner || elevatedRolePattern.test(String(appUser?.role || appUser?.accountRole || '')));
   const accountMfaEnabled = Boolean(mfaStatus?.mfaEnabled || appUser?.mfaEnabled || appUser?.multiFactorEnabled || appUser?.accountSecurity?.mfaEnabled);
   const accountMfaEnforced = Boolean(mfaStatus?.mfaEnforcementEnabled || clientData?.systemSettings?.mfaEnforceElevatedRoles === true);
+  const accountEmailVerified = Boolean(mfaStatus?.emailVerified || auth.currentUser?.emailVerified || appUser?.emailVerified || appUser?.accountSecurity?.emailVerified);
 
   const normalizeMfaPhone = (value) => {
     const raw = String(value || '').trim();
@@ -1241,9 +1243,47 @@ const handleEnableNotifications = async () => {
     } catch (err) { addToast('Error', err.message); }
   };
 
+  const handleSendEmailVerificationLink = async () => {
+    setMfaError('');
+    if (!auth.currentUser) return setMfaError('Please log out and back in before sending a verification email.');
+    setIsEmailVerifyBusy(true);
+    try {
+      await sendEmailVerification(auth.currentUser, { url: window.location.origin });
+      addToast('Verification Email Sent', 'Open your inbox, click the Firebase verification link, then come back and refresh status.');
+    } catch (err) {
+      const msg = err?.code === 'auth/too-many-requests'
+        ? 'Firebase throttled verification emails for a bit. Wait a few minutes before trying again.'
+        : (err.message || 'Could not send verification email.');
+      setMfaError(msg);
+      addToast('Verification Error', msg);
+    } finally {
+      setIsEmailVerifyBusy(false);
+    }
+  };
+
+  const handleRefreshEmailVerification = async () => {
+    setMfaError('');
+    if (!auth.currentUser) return setMfaError('Please log out and back in before refreshing verification status.');
+    setIsEmailVerifyBusy(true);
+    try {
+      await auth.currentUser.reload();
+      await auth.currentUser.getIdToken(true);
+      await refreshAccountSecurityStatus({ silent: true });
+      addToast('Email Status Refreshed', auth.currentUser.emailVerified ? 'Email is verified. You can enroll two-step login now.' : 'Email still shows unverified. Click the verification email link first.');
+    } catch (err) {
+      const msg = err.message || 'Could not refresh email verification status.';
+      setMfaError(msg);
+      addToast('Refresh Failed', msg);
+    } finally {
+      setIsEmailVerifyBusy(false);
+    }
+  };
+
   const handleSendMfaEnrollmentCode = async () => {
     setMfaError('');
     if (!auth.currentUser) return setMfaError('Please log out and back in before enrolling two-step login.');
+    await auth.currentUser.reload().catch(() => null);
+    if (!auth.currentUser.emailVerified) return setMfaError('Verify your email first. Use Send verification email, click the inbox link, then refresh status before enrolling two-step login.');
     if (!mfaCurrentPassword) return setMfaError('Enter your current password first.');
     const normalizedPhone = normalizeMfaPhone(mfaPhone);
     if (!/^\+[1-9]\d{9,14}$/.test(normalizedPhone)) return setMfaError('Use E.164 phone format, like +19205551234.');
@@ -1437,11 +1477,23 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Enforcement</div><div className={accountMfaEnforced ? 'text-red-300 mt-1' : 'text-amber-300 mt-1'}>{accountMfaEnforced ? 'On' : 'Testing / Off'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Factors</div><div className="text-white mt-1">{mfaStatus?.mfaFactorCount ?? appUser?.mfaFactorCount ?? 0}</div></div>
             </div>
+            {!accountMfaEnabled && !accountEmailVerified && (
+              <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 space-y-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Email verification required</div>
+                  <p className="text-[10px] text-amber-100/80 font-bold leading-snug mt-1">Firebase requires your email address to be verified before SMS two-step login can be enrolled. Send the verification email, click the inbox link, then return here and refresh status.</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={handleSendEmailVerificationLink} disabled={isEmailVerifyBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isEmailVerifyBusy ? 'Working…' : 'Send Verification Email'}</button>
+                  <button type="button" onClick={handleRefreshEmailVerification} disabled={isEmailVerifyBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Email Status</button>
+                </div>
+              </div>
+            )}
             {!accountMfaEnabled && (
               <div className="grid sm:grid-cols-2 gap-3">
                 <div><label className={T.label}>Current Password</label><input type="password" value={mfaCurrentPassword} onChange={e => setMfaCurrentPassword(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Required to enroll" /></div>
                 <div><label className={T.label}>Mobile Phone for SMS MFA</label><input type="tel" value={mfaPhone} onChange={e => setMfaPhone(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="+19205551234" /></div>
-                <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : 'Send Setup Code'}</button>
+                <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy || !accountEmailVerified} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : accountEmailVerified ? 'Send Setup Code' : 'Verify Email First'}</button>
                 <div className="flex gap-2"><input type="text" inputMode="numeric" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="SMS code" /><button type="button" onClick={handleConfirmMfaEnrollment} disabled={isMfaBusy || !mfaVerificationId} className={`${T.btn} whitespace-nowrap disabled:opacity-50`}>Confirm</button></div>
               </div>
             )}
@@ -1470,11 +1522,23 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Enforcement</div><div className={accountMfaEnforced ? 'text-red-300 mt-1' : 'text-amber-300 mt-1'}>{accountMfaEnforced ? 'On' : 'Testing / Off'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Factors</div><div className="text-white mt-1">{mfaStatus?.mfaFactorCount ?? appUser?.mfaFactorCount ?? 0}</div></div>
             </div>
+            {!accountMfaEnabled && !accountEmailVerified && (
+              <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 space-y-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Email verification required</div>
+                  <p className="text-[10px] text-amber-100/80 font-bold leading-snug mt-1">Firebase requires your email address to be verified before SMS two-step login can be enrolled. Send the verification email, click the inbox link, then return here and refresh status.</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={handleSendEmailVerificationLink} disabled={isEmailVerifyBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isEmailVerifyBusy ? 'Working…' : 'Send Verification Email'}</button>
+                  <button type="button" onClick={handleRefreshEmailVerification} disabled={isEmailVerifyBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Email Status</button>
+                </div>
+              </div>
+            )}
             {!accountMfaEnabled && (
               <div className="grid sm:grid-cols-2 gap-3">
                 <div><label className={T.label}>Current Password</label><input type="password" value={mfaCurrentPassword} onChange={e => setMfaCurrentPassword(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Required to enroll" /></div>
                 <div><label className={T.label}>Mobile Phone for SMS MFA</label><input type="tel" value={mfaPhone} onChange={e => setMfaPhone(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="+19205551234" /></div>
-                <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : 'Send Setup Code'}</button>
+                <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy || !accountEmailVerified} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : accountEmailVerified ? 'Send Setup Code' : 'Verify Email First'}</button>
                 <div className="flex gap-2"><input type="text" inputMode="numeric" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="SMS code" /><button type="button" onClick={handleConfirmMfaEnrollment} disabled={isMfaBusy || !mfaVerificationId} className={`${T.btn} whitespace-nowrap disabled:opacity-50`}>Confirm</button></div>
               </div>
             )}
@@ -4186,6 +4250,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.22 Email Verification for MFA', group: 'System Administrator', keywords: 'v15 15.0.22 account security email verification mfa two step login sms', body: ['15.0.22 adds Send Verification Email and Refresh Email Status actions to Account Security because Firebase requires verified email before SMS MFA enrollment.', 'This update changes /api/account-security so the app can show emailVerified alongside MFA factor status.'] },
     { title: 'Version 15.0.21 Account Security Tab Fix', group: 'System Administrator', keywords: 'v15 15.0.21 account security settings mfa two step login tab visible mobile', body: ['15.0.21 makes Account Security a visible Settings tab and adds an Open Account Security button inside Profile so MFA setup is easy to find on mobile.', 'This is a UI routing fix only. It does not change Firebase rules, Storage rules, API routes, or Vercel environment variables.'] },
     { title: 'Version 15.0.20 MFA & Permissions Enforcement', group: 'System Administrator', keywords: 'v15 15.0.20 mfa two step login account security sms elevated roles permissions preview enforcement', body: ['15.0.20 adds Account Security two-step login enrollment under Settings, MFA-aware login prompts, a server-side account-security sync route, and an elevated-role enforcement switch for protected admin API routes.', 'Keep MFA enforcement off until Firebase SMS MFA is enabled and at least one owner or System Administrator has successfully enrolled and completed a fresh MFA login.'] },
     { title: '15.0.20 deployment checklist', group: 'System Administrator', keywords: '15.0.20 deploy qa firebase authentication identity platform sms mfa vercel env enforce permissions preview', body: ['Enable SMS MFA in Firebase Authentication / Identity Platform for the matching Firebase project.', 'Deploy through Vercel and confirm version.json reports 15.0.20.', 'Keep MFA_ENFORCE_ELEVATED_ROLES=false while enrolling and testing elevated accounts. Turn it true only after successful MFA login, then redeploy.', 'Open System Administrator → Permission & Role Manager and verify Full Permissions Preview shows allowed, blocked, and sensitive areas.'] },
@@ -7026,6 +7091,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15022', title:'What changed in version 15.0.22', group:'Release Notes', keywords:'new update 15.0.22 account security email verification mfa two step login sms', body:['Account Security now includes Send Verification Email for accounts blocked by Firebase auth/unverified-email.', 'After clicking the Firebase inbox link, Refresh Email Status reloads the Firebase Auth user and lets SMS MFA setup continue.', '/api/account-security now reports emailVerified, so Vercel redeploy is required.'] },
   { id:'new-15021', title:'What changed in version 15.0.21', group:'Release Notes', keywords:'new update 15.0.21 account security settings mfa two step login tab mobile', body:['Account Security now has its own visible Settings tab instead of being buried below the Profile form.', 'Profile also includes an Open Account Security button so elevated users can get to MFA setup quickly on phone screens.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15019', title:'What changed in version 15.0.19', group:'Release Notes', keywords:'new update 15.0.19 ai tools invoice scanner inventory shortcut invoices', body:['AI Tools now opens the Invoice Scanner directly on Inventory → Invoices instead of dropping users on the default Inventory view.', 'The button now says Open Invoice Scanner so it matches where it goes.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15018', title:'What changed in version 15.0.18', group:'Release Notes', keywords:'new update 15.0.18 owner setup onboarding prep voice invoice import mobile print export', body:['Mobile screens get safer touch targets, scrolling, modal sizing, and layout polish.', 'Invoice History and Invoice Details can now print or save as PDF.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },

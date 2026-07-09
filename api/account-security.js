@@ -79,6 +79,7 @@ module.exports = async function handler(req, res) {
     const secondFactorThisSession = decodedHadSecondFactor(decoded);
     const now = new Date().toISOString();
     const payload = {
+      emailVerified: authUser.emailVerified === true,
       mfaEnabled: enabled,
       multiFactorEnabled: enabled,
       mfaFactorCount: factors.length,
@@ -87,6 +88,7 @@ module.exports = async function handler(req, res) {
       mfaLastSyncAt: now,
       accountSecurity: {
         ...(user.accountSecurity || {}),
+        emailVerified: authUser.emailVerified === true,
         mfaEnabled: enabled,
         multiFactorEnabled: enabled,
         mfaFactorCount: factors.length,
@@ -108,7 +110,7 @@ module.exports = async function handler(req, res) {
       userEmail: decoded.email || authUser.email || '',
       action: 'ACCOUNT_SECURITY_SYNC',
       target: decoded.uid,
-      details: `MFA status synced. enabled=${enabled}; factors=${factors.length}; elevated=${elevated}; secondFactorThisSession=${secondFactorThisSession}`,
+      details: `Account security synced. emailVerified=${authUser.emailVerified === true}; mfaEnabled=${enabled}; factors=${factors.length}; elevated=${elevated}; secondFactorThisSession=${secondFactorThisSession}`,
       timestamp: now,
       restaurantId: user.activeRestaurantId || user.restaurantId || user.defaultRestaurantId || 'system',
       securityLevel: 'account-security'
@@ -118,6 +120,7 @@ module.exports = async function handler(req, res) {
       ok: true,
       uid: decoded.uid,
       email: decoded.email || authUser.email || '',
+      emailVerified: authUser.emailVerified === true,
       mfaEnabled: enabled,
       multiFactorEnabled: enabled,
       mfaFactorCount: factors.length,

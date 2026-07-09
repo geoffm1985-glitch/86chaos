@@ -1,28 +1,24 @@
 # 86 Chaos
 
-Current Version: 15.0.21 - Account Security Tab Fix
+Current Version: 15.0.22 - Email Verification for MFA
 
-## 15.0.21 focus
+## 15.0.22 focus
 
-15.0.21 makes Account Security / Two-Step Login visible as its own Settings tab and adds a Profile shortcut button so MFA setup is not buried below the profile form on mobile.
-
-## What changed
-
-- Added a visible **Account Security** tab in Settings.
-- Added an **Open Account Security** button inside Profile.
-- Account Security status refresh now runs when either Profile or Account Security is opened.
-- Updated in-app Help/Release Notes wording so users know where MFA enrollment lives.
+15.0.22 adds an email verification helper in Settings > Account Security so Firebase SMS MFA enrollment can proceed without needing manual console edits. Firebase requires verified email before enrolling second factors.
 
 ## Deploy notes
 
-1. Deploy through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.21`.
-3. Open Settings and confirm **Account Security** appears as a tab.
-4. Keep `MFA_ENFORCE_ELEVATED_ROLES=false` until an owner/super-admin has successfully enrolled and completed a fresh two-step login.
+- Deploy through GitHub/Vercel.
+- No Firestore rules changes.
+- No Storage rules changes.
+- API route update: /api/account-security now reports emailVerified.
+- Keep MFA enforcement env vars false until one elevated account has verified email, enrolled MFA, and completed a fresh MFA login.
 
-## Separate publishing
+## Post-deploy QA
 
-- Firestore rules: no changes.
-- Storage rules: no changes.
-- API routes: no changes.
-- Vercel env vars: no new required variables.
+1. Confirm `/version.json` reports `15.0.22`.
+2. Go to Settings > Account Security.
+3. Click Send Verification Email.
+4. Click the Firebase email verification link.
+5. Return to Account Security and click Refresh Email Status.
+6. Enroll SMS MFA only after email status is verified.

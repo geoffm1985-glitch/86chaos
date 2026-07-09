@@ -1,7 +1,7 @@
 {
-  "version": "15.0.21",
-  "name": "86 Chaos 15.0.21 Account Security Tab Fix",
+  "version": "15.0.22",
+  "name": "86 Chaos 15.0.22 Email Verification for MFA",
   "releasedAt": "2026-07-08",
-  "label": "86 Chaos 15.0.21",
-  "build": "15.0.21"
+  "label": "86 Chaos 15.0.22",
+  "build": "15.0.22"
 }
