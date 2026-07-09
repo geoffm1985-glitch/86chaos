@@ -35,9 +35,17 @@ service firebase.storage {
       return firestore.get(restaurantPath(restaurantId)).data;
     }
 
+    function isMasterEmail() {
+      return signedIn() && (
+        request.auth.token.email == 'geoffrm1985@gmail.com' ||
+        request.auth.token.email == 'geoffm1985@gmail.com'
+      );
+    }
+
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
+        isMasterEmail() ||
         (hasUserDoc() && (userDoc().isSuperAdmin == true || userDoc().systemAccess.superAdmin == true))
       );
     }

@@ -122,7 +122,7 @@ async function getCaller(decoded) {
 
 async function callerCanRepair(caller, decoded, restaurantId) {
   const email = (decoded.email || caller.email || '').toLowerCase().trim();
-  if (decoded.superAdmin === true || caller.isSuperAdmin === true || caller.systemAccess?.superAdmin === true || MASTER_EMAILS.has(email)) return true;
+  if (decoded.superAdmin === true || caller.isSuperAdmin === true || MASTER_EMAILS.has(email)) return true;
   if (!restaurantId) return false;
   const memberships = caller.memberships || {};
   const member = memberships?.[restaurantId] || await readWorkspaceMember(decoded.uid, email, restaurantId);

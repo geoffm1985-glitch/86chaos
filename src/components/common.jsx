@@ -1,39 +1,44 @@
-import React, { useState, useEffect } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
+import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, isLikelyPrepCommand, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
+import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
+import { parseReminderCommand } from '../core/reminderUtils';
 
 const CheersLogo = ({ clientData }) => {
-  const customerLogo = clientData?.logoUrl || clientData?.logoURL || clientData?.brandLogoUrl || clientData?.brandLogoURL || clientData?.customerLogoUrl || clientData?.logo;
+  const settings = clientData?.systemSettings || {};
+  const branding = settings.branding || clientData?.branding || {};
+  const logoUrl = settings.showRestaurantLogo === false || branding.showRestaurantLogo === false
+    ? ''
+    : (settings.restaurantLogoUrl || branding.restaurantLogoUrl || branding.logoUrl || '');
   return (
-    <div className="brand-logo-stack flex items-center gap-2 sm:gap-3 cursor-pointer transition-opacity hover:opacity-90 min-w-0">
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <img src="/wisco.png" alt="86 Chaos app icon" className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl shadow-[0_0_18px_rgba(249,115,22,.18)]" />
-        <img src="/6139.png" alt="86 Chaos OS" className="h-5 sm:h-6 w-auto max-w-[8.5rem]" />
+    <div className="brand-logo-stack flex items-center gap-2 sm:gap-3 cursor-pointer transition-opacity hover:opacity-80 min-w-0">
+      <div className="flex items-center gap-2 flex-shrink-0" title="86 Chaos branding is always displayed">
+        <img src="/wisco.png" alt="86 Chaos app icon" className="h-8 w-8 sm:h-9 w-auto" />
+        <img src="/6139.png" alt="86 Chaos" className="h-5 sm:h-6 w-auto" />
       </div>
-      {customerLogo && (
-        <div className="hidden sm:flex items-center gap-2 min-w-0">
-          <span className="h-7 w-px bg-[#33414B]" aria-hidden="true"></span>
-          <img src={customerLogo} alt={`${clientData?.name || 'Customer'} logo`} className="h-7 max-w-[7rem] rounded-lg bg-[#070A0D]/70 border border-[#33414B] px-1.5 py-1 object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
+      {logoUrl && (
+        <div className="hidden sm:flex items-center gap-2 min-w-0 pl-2 border-l border-[#2A353D]">
+          <img src={logoUrl} alt="Restaurant logo" className="h-8 sm:h-9 max-w-[92px] sm:max-w-[140px] object-contain rounded-md bg-white/5 p-1" />
         </div>
       )}
     </div>
   );
 };
 
-const Modal = ({ isOpen, onClose, title, children }) => {
+const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-[#05080A]/86 z-[60] flex items-center justify-center p-4 backdrop-blur-xl transition-opacity">
-      <div className={`${T.card} max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-[0_28px_90px_rgba(0,0,0,.55)]`}>
-        <div className={`flex justify-between items-center p-4 border-b ${T.border} bg-[#070A0D]/55`}>
-          <h3 className="font-black text-lg text-white tracking-tight">{title}</h3>
-          <button onClick={onClose} className="no-compact h-10 w-10 flex items-center justify-center hover:bg-[#151D24] rounded-xl text-slate-400 hover:text-white transition-colors border border-transparent hover:border-[#33414B]" aria-label="Close modal"><X size={20}/></button>
+    <div className="fixed inset-0 bg-[#12161A]/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md transition-opacity">
+      <div className={`${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto`}>
+        <div className={`flex justify-between items-center p-4 border-b ${T.border}`}>
+          <h3 className="font-bold text-lg text-white">{title}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors"><X size={20}/></button>
         </div>
         <div className="p-4">{children}</div>
       </div>
@@ -41,118 +46,112 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, clientFeatures = {}, clientData = {}, addToast }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   const [menuSearch, setMenuSearch] = useState('');
 
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
-  const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
+  const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin);
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
-  tabs.push({ id: 'today', label: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
-  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if (isEnabled('labor') && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'labor', label: 'Labor & Timesheets', icon: <Scale size={18}/> });
-  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Ops Command Center', icon: <ChefHat size={18}/> }); 
+  tabs.push({ id: 'today', label: 'Manager Brief', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
+  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
-  if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/>, dot: hasScheduleBuilderAlert });
-  if (isEnabled('team') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (!appUser?.isDemo && (appUser?.isAdmin || perms.inventory || perms.prep || perms.team || canUseMenuIntelligence(appUser, clientData))) tabs.push({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
+  if (canUseMenuIntelligence(appUser, clientData)) tabs.push({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
+  tabs.push({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/> });
+  if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
-  if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Daily Ledger', icon: <TrendingUp size={18}/> });
   
-  const isTrueGod = (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin === true;
+  const isTrueGod = Boolean((MASTER_ADMIN_EMAIL && (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin === true);
   if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
-  if (appUser?.isAdmin || isTrueGod) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
-  tabs.push({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/> });
-  tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
+  if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+  tabs.push({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
+  if (!appUser?.isDemo) tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   const menuActions = [
     { id: 'help-add-staff', label: 'How to add staff', tab: 'help', keywords: 'employee team roster invite user password' },
     { id: 'help-fix-punch', label: 'Fix a missed punch', tab: 'help', keywords: 'time clock timesheet labor punch clock out forgot' },
     { id: 'help-schedule-template', label: 'Create schedule templates', tab: 'help', keywords: 'copy week schedule template coverage smart fill' },
     { id: 'help-permissions', label: 'Update permissions', tab: 'help', keywords: 'tab access manage user permissions ops labor inventory' },
-    { id: 'go-labor-punch', label: 'Add/Edit Time Punch', tab: 'labor', keywords: 'timesheet labor clock in out edit punch payroll' },
-    { id: 'go-schedule-template', label: 'Schedule Templates', tab: 'schedule', keywords: 'builder copy previous week template smart fill coverage' },
+    { id: 'go-labor-punch', label: 'Add/Edit Time Punch', tab: 'financials', keywords: 'timesheet labor clock in out edit punch payroll financials' },
+    { id: 'go-schedule-template', label: 'Schedule Templates', tab: 'published', keywords: 'schedule builder copy previous week template smart fill coverage' },
     { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' }
   ];
   const q = menuSearch.trim().toLowerCase();
   const visibleTabs = q ? tabs.filter(t => `${t.label} ${t.id}`.toLowerCase().includes(q)) : tabs;
   const visibleActions = q ? menuActions.filter(a => `${a.label} ${a.keywords}`.toLowerCase().includes(q)).slice(0, 8) : [];
-  const groupedIds = new Set();
-  const menuSections = [
-    { title: 'Command', ids: ['today', 'published', 'messages', 'events'] },
-    { title: 'Kitchen Ops', ids: ['ops', 'prep', 'recipes', 'inventory', 'maintenance'] },
-    { title: 'Management', ids: ['schedule', 'labor', 'sales', 'team'] },
-    { title: 'System', ids: ['godmode', 'audit', 'help', 'settings'] }
-  ].map(section => {
-    const sectionTabs = visibleTabs.filter(tab => section.ids.includes(tab.id));
-    sectionTabs.forEach(tab => groupedIds.add(tab.id));
-    return { ...section, tabs: sectionTabs };
-  }).filter(section => section.tabs.length > 0);
-  const overflowTabs = visibleTabs.filter(tab => !groupedIds.has(tab.id));
-  if (overflowTabs.length) menuSections.push({ title: 'More', ids: overflowTabs.map(tab => tab.id), tabs: overflowTabs });
+  const activeWorkspaceLabel = activeWorkspaceName || appUser?.restaurantName || appUser?.workspaceName || appUser?.businessName || 'Current Restaurant';
+  const switchableWorkspaceCount = Array.isArray(availableWorkspaces) ? availableWorkspaces.filter(w => w?.isActive !== false).length : 0;
+  const canSwitchWorkspace = switchableWorkspaceCount > 1 && typeof onOpenWorkspaceSwitcher === 'function' && !appUser?.isDemo;
+  const openWorkspaceSwitcherFromMenu = () => {
+    if (!canSwitchWorkspace) return;
+    onClose?.();
+    window.setTimeout(() => onOpenWorkspaceSwitcher(), 0);
+  };
 
   return (
     <>
       {isOpen && (
         <div className="fixed inset-0 z-[70] flex justify-end">
-          <div className="absolute inset-0 bg-[#05080A]/70 backdrop-blur-md" onClick={onClose}></div>
-          <div className={`w-[94vw] max-w-sm sm:w-96 cockpit-panel border-l ${T.border} h-full shadow-[0_28px_90px_rgba(0,0,0,.52)] flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
-            <div className={`p-4 border-b ${T.border} bg-[#070A0D]/76 space-y-4`}>
-              <div className="flex items-center justify-between gap-3">
-                <CheersLogo clientData={clientData} />
-                <button onClick={onClose} className="no-compact h-10 w-10 flex items-center justify-center bg-[#111821] border border-[#33414B] rounded-xl text-slate-400 hover:text-white hover:border-[#F97316]/60 transition-colors" aria-label="Close navigation menu"><X size={18}/></button>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-               <div className="flex items-center gap-3 min-w-0">
+          <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
+          <div className={`w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+            <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
+               <div className="flex items-center gap-3">
                  <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
-                 <div className="min-w-0">
+                 <div>
                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div>
-                   <div className="text-white font-black text-lg tracking-tight leading-none truncate">{appUser.name}</div>
+                   <div className="text-white font-black text-lg tracking-tight leading-none">{appUser.name}</div>
                    <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
+                   <button
+                     type="button"
+                     onClick={openWorkspaceSwitcherFromMenu}
+                     disabled={!canSwitchWorkspace}
+                     className={`mt-2 max-w-[170px] flex items-center gap-1.5 rounded-lg border ${T.border} bg-[#0B0E11] px-2 py-1 text-left text-[10px] font-black uppercase tracking-wider ${canSwitchWorkspace ? 'text-[#D4A381] hover:border-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
+                     title={canSwitchWorkspace ? 'Change restaurant workspace' : 'Current restaurant workspace'}
+                   >
+                     <Globe size={11} className="flex-shrink-0" />
+                     <span className="truncate">{activeWorkspaceLabel}</span>
+                     {canSwitchWorkspace && <Repeat size={10} className="flex-shrink-0 opacity-80" />}
+                   </button>
                  </div>
                </div>
-               <div className="hidden sm:block text-right min-w-0">
-                 <div className="text-[9px] uppercase tracking-widest font-black text-[#FFB34D]">Workspace</div>
-                 <div className="text-[10px] font-bold text-slate-500 truncate max-w-[8rem]">{appUser.restaurantName || clientData?.name || '86 Chaos'}</div>
-               </div>
-              </div>
+               <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
             </div>
-            <div className="p-3 border-b border-[#33414B] bg-[#0D1318]/65">
+            <div className="p-3 border-b border-[#2A353D]">
               <div className="relative">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#070A0D] border border-[#33414B] rounded-xl pl-9 pr-3 py-2.5 text-xs font-bold text-white outline-none focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/20" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
-               {visibleTabs.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#33414B] rounded-xl">No menu results. Try schedule, punch, recipe, or help.</div>}
-               {menuSections.map(section => (
-                 <div key={section.title} className="space-y-1.5">
-                   <div className="px-2 text-[9px] uppercase tracking-widest font-black text-slate-500">{section.title}</div>
-                   {section.tabs.map(tab => (
-                     <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 border ${activeTab === tab.id ? `${T.grad} text-slate-950 border-[#FFB34D]/40 shadow-[0_12px_30px_rgba(249,115,22,.24)]` : tab.id === 'godmode' ? 'text-slate-300 bg-[#111821]/80 border-[#F97316]/25 hover:bg-[#151D24] hover:text-white hover:border-[#F97316]/60' : 'text-slate-400 bg-transparent border-transparent hover:bg-[#151D24] hover:text-white hover:border-[#33414B]'}`}>
-                       <div className="flex items-center gap-3 min-w-0">
-                         <div className="relative shrink-0">
-                           <span className={activeTab === tab.id ? 'text-slate-950' : T.copper}>{tab.icon}</span>
-                           {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
-                         </div>
-                         <span className="truncate">{tab.label}</span>
-                       </div>
-                     </button>
-                   ))}
-                 </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+               {visibleTabs.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">No menu results. Try “schedule”, “punch”, “recipe”, or “help”.</div>}
+               {visibleTabs.map(tab => (
+                 <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+                   <div className="flex items-center gap-3">
+                     <div className="relative">
+                       <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
+                       {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
+                     </div>
+                     {tab.label}
+                   </div>
+                 </button>
                ))}
-               {visibleActions.length > 0 && <div className="pt-3 mt-2 border-t border-[#33414B]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-1">Suggested actions</div>{visibleActions.map(a => (
-                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full min-h-[40px] text-left px-3 py-2 rounded-xl font-bold text-xs text-slate-300 hover:bg-[#151D24] hover:text-[#FFB34D] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
+               {visibleActions.length > 0 && <div className="pt-3 mt-2 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-1">Suggested actions</div>{visibleActions.map(a => (
+                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full text-left px-3 py-2 rounded-xl font-bold text-xs text-slate-300 hover:bg-[#12161A] hover:text-[#D4A381] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
                ))}</div>}
             </div>
-            <div className={`p-3 border-t ${T.border} bg-[#070A0D]/78 space-y-2`}>
-             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full min-h-[44px] flex items-center justify-center gap-2 py-2.5 text-red-300 text-sm font-bold rounded-xl hover:bg-red-900/20 border border-red-500/20 transition-colors"><LogOut size={16} /> Log Out</button>
+            <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
+             <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> Report Problem</button>
+             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
             </div>
           </div>
         </div>
@@ -205,11 +204,11 @@ const MapClickListener = ({ setLat, setLon }) => {
 };
 
 const SmartEmptyState = ({ icon = <Star size={24}/>, title, desc, actionLabel, onAction }) => (
-  <div className="rounded-2xl border border-dashed border-[#33414B] bg-[#070A0D]/70 p-5 text-center shadow-inner">
-    <div className="mx-auto mb-2 w-10 h-10 rounded-xl bg-[#05080A] border border-[#33414B] text-[#FFB34D] flex items-center justify-center">{icon}</div>
+  <div className="rounded-2xl border border-dashed border-[#2A353D] bg-[#12161A]/60 p-5 text-center">
+    <div className="mx-auto mb-2 w-10 h-10 rounded-xl bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] flex items-center justify-center">{icon}</div>
     <h3 className="text-sm font-black text-white">{title}</h3>
     {desc && <p className="text-xs text-slate-500 font-bold mt-1 leading-snug">{desc}</p>}
-    {actionLabel && onAction && <button onClick={onAction} className="mt-3 px-3 py-2 rounded-lg bg-[#F97316] text-slate-950 text-[10px] font-black uppercase tracking-widest">{actionLabel}</button>}
+    {actionLabel && onAction && <button onClick={onAction} className="mt-3 px-3 py-2 rounded-lg bg-[#D4A381] text-slate-900 text-[10px] font-black uppercase tracking-widest">{actionLabel}</button>}
   </div>
 );
 
@@ -229,7 +228,7 @@ const MiniProblemCard = ({ tone='amber', title, detail, action, onClick }) => {
 
 const getHomeProfile = (user) => {
   const role = (user?.role || '').toLowerCase();
-  if (user?.isSuperAdmin || user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) return 'system';
+  if (user?.isSuperAdmin || (MASTER_ADMIN_EMAIL && user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())) return 'system';
   if (user?.isAdmin || user?.permissions?.ops || user?.permissions?.sales || user?.permissions?.team || user?.permissions?.schedule || user?.permissions?.labor) return 'manager';
   if (role.includes('cook') || role.includes('chef') || role.includes('kitchen') || role.includes('prep') || user?.permissions?.prep) return 'kitchen';
   if (role.includes('bartender') || role.includes('bar')) return 'bar';
@@ -293,7 +292,7 @@ const PunchTable = ({ rows, openEditPunch, forceOut, approvePunch, deletePunch }
     <div className="divide-y divide-[#2A353D]">
       {rows.length === 0 && <div className="p-8 text-center text-sm font-bold text-slate-500">No punches match this filter.</div>}
       {rows.map(({ punch:p, emp, hours, pay, tips, issue }) => <div key={p.id} className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-[#12161A]/50">
-        <div><div className="font-black text-white text-sm">{emp.name || p.employeeName || 'Unknown'} {issue && <span className="ml-2 text-[8px] bg-amber-500 text-slate-900 px-1.5 py-0.5 rounded uppercase tracking-widest">{issue}</span>}</div><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{p.date ? formatDisplayDate(p.date) : 'No date'} • {emp.role || 'No role'}</div></div>
+        <div className="min-w-0"><div className="font-black text-white text-sm">{emp.name || p.employeeName || 'Unknown'} {issue && <span className="ml-2 text-[8px] bg-amber-500 text-slate-900 px-1.5 py-0.5 rounded uppercase tracking-widest">{issue}</span>}</div><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{p.date ? formatDisplayDate(p.date) : 'No date'} • {emp.role || 'No role'}</div>{p.managerNote && <div className="mt-1 text-[10px] font-bold text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-lg px-2 py-1 max-w-xl">⚠ {p.managerNote}</div>}</div>
         <div className="flex flex-wrap md:flex-nowrap items-center gap-3 text-xs font-mono"><span className="text-emerald-400">IN {formatClockTime(p.clockInTime) || '—'}</span><span className="text-red-400">OUT {formatClockTime(p.clockOutTime) || '—'}</span><span className="text-white">{Math.max(0,hours).toFixed(2)}h</span><span className="text-[#D4A381]">${pay.toFixed(2)}</span><span className="text-slate-400">Tips ${tips.toFixed(2)}</span></div>
         <div className="flex gap-2"><button onClick={() => openEditPunch(p)} className="p-2 bg-[#12161A] border border-[#2A353D] rounded-lg text-slate-400 hover:text-[#D4A381]"><Edit size={14}/></button>{['clocked_in','on_break'].includes(p.status) && <button onClick={() => forceOut(p)} className="px-2 bg-red-900/20 border border-red-900/50 rounded-lg text-[10px] font-black text-red-300">Out</button>}{p.isUnscheduled && !p.isApproved && <button onClick={() => approvePunch(p)} className="px-2 bg-amber-900/20 border border-amber-900/50 rounded-lg text-[10px] font-black text-amber-300">Approve</button>}<button onClick={() => deletePunch(p)} className="p-2 bg-[#12161A] border border-[#2A353D] rounded-lg text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>
       </div>)}
@@ -301,7 +300,7 @@ const PunchTable = ({ rows, openEditPunch, forceOut, approvePunch, deletePunch }
   </div>
 );
 
-const StatusTile = ({ label, value }) => <div className="bg-[#070A0D]/75 border border-[#33414B] rounded-xl p-3 shadow-inner"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500">{label}</div><div className="text-xl font-black text-white">{value}</div></div>;
+const StatusTile = ({ label, value }) => <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500">{label}</div><div className="text-xl font-black text-white">{value}</div></div>;
 
 const FriendlyEmpty = ({ title, text }) => <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center"><div className="font-black text-white text-sm">{title}</div><p className="text-xs text-slate-400 font-bold mt-1">{text}</p></div>;
 
@@ -316,10 +315,10 @@ const GlobalSearchModal = ({ isOpen, onClose, queryText, setQueryText, users, ev
     ...maintenanceLogs.filter(m => `${m.equipment} ${m.issue}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Maintenance', title: x.equipment, detail: x.issue, tab: 'maintenance' })),
     ...shifts.filter(s => `${s.role} ${s.date}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Shift', title: `${x.role} ${x.date}`, detail: `${formatShortTime(x.startTime)}-${formatShortTime(x.endTime)}`, tab: 'schedule' }))
   ].slice(0, 18) : [];
-  return <div className="fixed inset-0 z-[100000] bg-[#05080A]/92 backdrop-blur-xl p-4 flex items-start justify-center pt-10">
+  return <div className="fixed inset-0 z-[100000] bg-[#0B0E11]/90 backdrop-blur-md p-4 flex items-start justify-center pt-10">
     <div className="w-full max-w-2xl cockpit-panel rounded-2xl overflow-hidden">
-      <div className="p-3 border-b border-[#33414B] flex items-center gap-2 bg-[#070A0D]/70"><Search size={18} className="text-[#FFB34D]"/><input autoFocus value={queryText} onChange={e=>setQueryText(e.target.value)} placeholder="Search people, recipes, messages, inventory, events..." className="flex-1 bg-transparent outline-none text-white font-bold placeholder:text-slate-600"/><button onClick={onClose} className="no-compact h-10 w-10 flex items-center justify-center rounded-xl hover:bg-[#151D24] border border-transparent hover:border-[#33414B]" aria-label="Close search"><X size={18}/></button></div>
-      <div className="max-h-[70vh] overflow-y-auto custom-scrollbar p-2 space-y-1">{q && results.length === 0 && <SmartEmptyState title="Nothing found" desc="Try a recipe name, employee, inventory item, or event." />}{results.map((r, idx) => <button key={idx} onClick={() => { setActiveTab(r.tab); onClose(); }} className="w-full min-h-[58px] text-left p-3 rounded-xl border border-[#33414B] bg-[#070A0D]/78 hover:bg-[#151D24] hover:border-[#F97316]/50 transition-all"><div className="text-[9px] uppercase tracking-widest font-black text-[#FFB34D]">{r.kind}</div><div className="font-black text-white text-sm mt-1">{r.title}</div><div className="text-xs text-slate-500 font-bold mt-0.5 truncate">{r.detail}</div></button>)}</div>
+      <div className="p-3 border-b border-[#2A353D] flex items-center gap-2"><Search size={18} className="text-[#D4A381]"/><input autoFocus value={queryText} onChange={e=>setQueryText(e.target.value)} placeholder="Search people, recipes, messages, inventory, events..." className="flex-1 bg-transparent outline-none text-white font-bold"/><button onClick={onClose} className="p-2 rounded-lg hover:bg-[#12161A]"><X size={18}/></button></div>
+      <div className="max-h-[70vh] overflow-y-auto custom-scrollbar p-2 space-y-1">{q && results.length === 0 && <SmartEmptyState title="Nothing found" desc="Try a recipe name, employee, inventory item, or event." />}{results.map((r, idx) => <button key={idx} onClick={() => { setActiveTab(r.tab); onClose(); }} className="w-full text-left p-3 rounded-xl border border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/40"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{r.kind}</div><div className="font-black text-white text-sm mt-1">{r.title}</div><div className="text-xs text-slate-500 font-bold mt-0.5 truncate">{r.detail}</div></button>)}</div>
     </div>
   </div>;
 };
@@ -328,19 +327,824 @@ const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }
   const [open, setOpen] = useState(false);
   const profile = getHomeProfile(appUser);
   const actions = [
-    { label: 'Today', tab: 'today', icon: <Star size={14}/> },
-    { label: 'Search', fn: openSearch, icon: <Search size={14}/> },
-    { label: 'Kitchen TV', fn: openTV, icon: <ChefHat size={14}/> },
-    profile === 'kitchen' ? { label: 'Recipes', tab: 'recipes', icon: <BookOpen size={14}/> } : null,
-    profile === 'kitchen' ? { label: 'Prep', tab: 'prep', icon: <ClipboardList size={14}/> } : null,
-    ['manager','system'].includes(profile) ? { label: 'Ops', tab: 'ops', icon: <ChefHat size={14}/> } : null,
-    ['manager','system'].includes(profile) ? { label: 'Schedule', tab: 'schedule', icon: <Calendar size={14}/> } : null,
-    { label: 'Message Board', tab: 'messages', icon: <MessageSquare size={14}/> },
-    { label: 'My Shift', tab: 'published', icon: <Clock size={14}/> }
+    { label: 'Manager Brief', tab: 'today' },
+    { label: 'Search', fn: openSearch },
+    { label: 'Kitchen TV', fn: openTV },
+    profile === 'kitchen' ? { label: 'Recipes', tab: 'recipes' } : null,
+    profile === 'kitchen' ? { label: 'Prep', tab: 'prep' } : null,
+    ['manager','system'].includes(profile) ? { label: 'Kitchen Command', tab: 'ops' } : null,
+    ['manager','system'].includes(profile) ? { label: 'Schedule', tab: 'schedule' } : null,
+    { label: 'Message Board', tab: 'messages' },
+    { label: 'My Shift', tab: 'published' }
   ].filter(Boolean);
   return <div className="fixed bottom-5 right-4 z-50 flex flex-col items-end gap-2">
-    {open && <div className="cockpit-panel rounded-2xl p-2 w-56 space-y-1 shadow-2xl">{actions.map(a => <button key={a.label} onClick={() => { setOpen(false); a.fn ? a.fn() : setActiveTab(a.tab); }} className="w-full min-h-[42px] text-left px-3 py-2 rounded-xl bg-[#070A0D]/84 hover:bg-[#151D24] border border-[#33414B] text-xs font-black uppercase tracking-widest text-slate-300 hover:text-[#FFB34D] flex items-center gap-2 transition-all"><span className="text-[#F97316]">{a.icon}</span>{a.label}</button>)}</div>}
-    <button onClick={() => setOpen(!open)} className="no-compact w-14 h-14 rounded-full bg-gradient-to-br from-[#111821] to-[#05080A] border border-[#F97316]/60 text-[#FFB34D] shadow-[0_18px_50px_rgba(0,0,0,.5)] flex items-center justify-center hover:border-[#FFB34D] transition-all" aria-label="Open quick actions"><Menu size={24}/></button>
+    {open && <div className="cockpit-panel rounded-2xl p-2 w-52 space-y-1 shadow-2xl">{actions.map(a => <button key={a.label} onClick={() => { setOpen(false); a.fn ? a.fn() : setActiveTab(a.tab); }} className="w-full text-left px-3 py-2 rounded-xl bg-[#0B0E11] hover:bg-[#12161A] border border-[#2A353D] text-xs font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381]">{a.label}</button>)}</div>}
+    <button onClick={() => setOpen(!open)} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/50 text-[#D4A381] shadow-2xl flex items-center justify-center"><Menu size={24}/></button>
+  </div>;
+};
+
+
+
+const normalizeVoiceText = (text = '') => String(text || '').toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
+const cleanVoiceItemName = (text = '') => String(text || '')
+  .replace(/^(the|a|an)\s+/i, '')
+  .replace(/\b(all out of|out of|to|in|on|for|please|right now|today)\b/gi, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+const findVoiceMatch = (items = [], spoken = '') => {
+  const q = normalizeVoiceText(spoken);
+  if (!q) return null;
+  const scored = (items || []).map(item => {
+    const name = normalizeVoiceText(item.name || item.title || item.equipment || '');
+    if (!name) return { item, score: 0 };
+    let score = 0;
+    if (name === q) score += 100;
+    if (name.includes(q) || q.includes(name)) score += 50;
+    const qWords = q.split(' ').filter(w => w.length > 2);
+    const nWords = name.split(' ').filter(w => w.length > 2);
+    score += qWords.filter(w => nWords.some(n => n.includes(w) || w.includes(n))).length * 12;
+    return { item, score };
+  }).sort((a,b) => b.score - a.score);
+  return scored[0]?.score > 0 ? scored[0].item : null;
+};
+
+const extractRecipeVoiceQuery = (raw = '') => {
+  const q = normalizeVoiceText(raw);
+  const patterns = [
+    /^(?:open|show|pull up|bring up|display|go to|find|search for|look up)\s+(?:the\s+)?(.+?)\s+(?:recipe|recipes|spec|spec sheet|recipe card)$/,
+    /^(?:open|show|pull up|bring up|display|go to|find|search for|look up)\s+(?:the\s+)?(?:recipe|recipes|recipe book|spec|spec sheet|recipe card)\s+(?:for|called|named)?\s*(.+)$/,
+    /^(?:recipe|recipes|recipe book|spec|spec sheet|recipe card)\s+(?:for|called|named)?\s*(.+)$/,
+    /^(?:how do i make|how to make|show me how to make|what is the recipe for)\s+(.+)$/
+  ];
+  for (const pattern of patterns) {
+    const match = q.match(pattern);
+    if (match?.[1]) {
+      const cleaned = cleanVoiceItemName(match[1]
+        .replace(/\b(recipe|recipes|recipe book|spec|spec sheet|recipe card|please|open|show|pull up|bring up|display)\b/g, ' ')
+      );
+      if (cleaned) return cleaned;
+    }
+  }
+  return '';
+};
+
+const findVoiceRecipeMatch = (recipes = [], spoken = '') => {
+  const q = normalizeVoiceText(spoken);
+  if (!q) return null;
+  const qWords = q.split(' ').filter(w => w.length > 2);
+  const scored = (recipes || []).map(recipe => {
+    const title = normalizeVoiceText(recipe.title || recipe.name || '');
+    const category = normalizeVoiceText(recipe.category || '');
+    const ingredients = normalizeVoiceText(recipe.ingredients || '').slice(0, 800);
+    const haystack = `${title} ${category} ${ingredients}`.trim();
+    if (!title && !haystack) return { recipe, score: 0 };
+    let score = 0;
+    if (title === q) score += 160;
+    if (title.startsWith(q) || q.startsWith(title)) score += 95;
+    if (title.includes(q) || q.includes(title)) score += 75;
+    const titleWords = title.split(' ').filter(w => w.length > 2);
+    const hitCount = qWords.filter(w => titleWords.some(t => t === w || t.includes(w) || w.includes(t))).length;
+    score += hitCount * 24;
+    if (qWords.length && hitCount === qWords.length) score += 35;
+    if (ingredients && qWords.some(w => ingredients.includes(w))) score += 8;
+    if (category && qWords.some(w => category.includes(w))) score += 4;
+    return { recipe, score };
+  }).sort((a,b) => b.score - a.score);
+  return scored[0]?.score > 0 ? scored[0].recipe : null;
+};
+const VOICE_NUMBER_WORDS = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12 };
+const parseVoiceAmount = (text = '') => {
+  const normalized = normalizeVoiceText(text);
+  const numberMatch = normalized.match(/(\d+(?:\.\d+)?)/);
+  if (numberMatch) return parseFloat(numberMatch[1]);
+  for (const [word, value] of Object.entries(VOICE_NUMBER_WORDS)) if (new RegExp(`\\b${word}\\b`).test(normalized)) return value;
+  return 1;
+};
+const parsePrepVoicePayload = (text = '') => {
+  const q = normalizeVoiceText(text);
+  const amount = parseVoiceAmount(q);
+  const unitMatch = q.match(/\b(pan|pans|quart|quarts|gallon|gallons|lb|lbs|pound|pounds|case|cases|batch|batches|tray|trays|bucket|buckets|container|containers|order|orders)\b/);
+  const unit = unitMatch ? unitMatch[1] : '';
+  const numberWords = Object.keys(VOICE_NUMBER_WORDS).join('|');
+  let itemText = q
+    .replace(/\b(we need to|we need|need to|need|add|create|put|make|please|to|the|a|an|prep|prepare|task|list|prep list|of|for)\b/g, ' ')
+    .replace(new RegExp(`\\b(${numberWords})\\b`, 'g'), ' ')
+    .replace(/\b\d+(?:\.\d+)?\b/g, ' ');
+  if (unit) itemText = itemText.replace(new RegExp(`\\b${unit}\\b`, 'gi'), ' ');
+  itemText = cleanVoiceItemName(itemText.replace(/\s+/g, ' ').trim()) || 'Prep task';
+  return { amount, unit: unit || 'item', itemText };
+};
+const VOICE_WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+const getVoiceWeekdayName = (text = '') => {
+  const q = normalizeVoiceText(text);
+  const day = VOICE_WEEKDAYS.find(d => new RegExp(`\\b${d}\\b`).test(q));
+  return day ? day.charAt(0).toUpperCase() + day.slice(1) : '';
+};
+const getCurrentWeekdayName = () => VOICE_WEEKDAYS[new Date().getDay()].charAt(0).toUpperCase() + VOICE_WEEKDAYS[new Date().getDay()].slice(1);
+const getCurrentMonthDay = () => String(new Date().getDate());
+const parseVoiceMonthlyDate = (text = '') => {
+  const q = normalizeVoiceText(text);
+  const match = q.match(/\b([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/);
+  if (match?.[1]) return String(Math.min(31, Math.max(1, parseInt(match[1], 10))));
+  return '';
+};
+const titleCaseVoiceTask = (text = '') => String(text || '').trim().split(' ').filter(Boolean).map(w => w.length <= 2 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+const inferVoiceTaskCategory = (title = '') => /\b(clean|sanitize|sweep|mop|scrub|wash|wipe|dust|degrease|dish|bathroom|restroom|floor|hood|fryer|grill)\b/i.test(title) ? 'Cleaning' : 'General';
+const parseRecurringTaskVoicePayload = (text = '') => {
+  const q = normalizeVoiceText(text);
+  if (!/\b(add|create|make|put|new)\b/.test(q) || !/\b(task|tasks)\b/.test(q)) return null;
+  let frequency = '';
+  if (/\b(daily|day|every day|each day)\b/.test(q)) frequency = 'daily';
+  if (/\b(weekly|week|every week|each week)\b/.test(q)) frequency = 'weekly';
+  if (/\b(monthly|month|every month|each month)\b/.test(q)) frequency = 'monthly';
+  if (!frequency) return null;
+
+  const weekday = getVoiceWeekdayName(q);
+  const monthlyDate = parseVoiceMonthlyDate(q);
+  const numberWords = Object.keys(VOICE_NUMBER_WORDS).join('|');
+  let taskTitle = q
+    .replace(/\b(add|create|make|put|new|please|task|tasks|to|into|onto|list|recurring|repeat|repeating|daily|weekly|monthly|day|week|month|every|each|on|for|the|a|an|called|named)\b/g, ' ')
+    .replace(/\b(cleaning|general)\s+task\b/g, ' ')
+    .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/g, ' ')
+    .replace(new RegExp(`\\b(${numberWords})\\b`, 'g'), ' ')
+    .replace(/\b([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  taskTitle = cleanVoiceItemName(taskTitle) || '';
+  if (!taskTitle) return null;
+
+  const title = titleCaseVoiceTask(taskTitle);
+  return {
+    title,
+    frequency,
+    category: inferVoiceTaskCategory(taskTitle),
+    targetDay: frequency === 'weekly' ? (weekday || getCurrentWeekdayName()) : null,
+    targetDate: frequency === 'monthly' ? (monthlyDate || getCurrentMonthDay()) : null
+  };
+};
+const describeRecurringTaskSchedule = (task = {}) => {
+  if (task.frequency === 'weekly') return `weekly on ${task.targetDay || getCurrentWeekdayName()}`;
+  if (task.frequency === 'monthly') return `monthly on day ${task.targetDate || getCurrentMonthDay()}`;
+  return 'daily';
+};
+const parseNextWeekday = (phrase = '') => {
+  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const q = normalizeVoiceText(phrase);
+  const idx = days.findIndex(d => q.includes(d));
+  if (idx < 0) return null;
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  const delta = (idx - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + delta);
+  return formatDate(d);
+};
+
+const isVoiceSuperAdmin = (user = {}) => Boolean((MASTER_ADMIN_EMAIL && (user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true);
+const isVoiceAdmin = (user = {}) => Boolean(isVoiceSuperAdmin(user) || user?.isAdmin === true);
+const isVoiceManagerOrAdmin = (user = {}) => {
+  const role = normalizeVoiceText(user?.role || '');
+  const perms = user?.permissions || {};
+  return Boolean(
+    isVoiceAdmin(user) ||
+    user?.isOwner === true ||
+    user?.accountOwner === true ||
+    user?.owner === true ||
+    user?.workspaceOwner === true ||
+    perms.team === true ||
+    ['general manager', 'manager', 'kitchen manager', 'bar manager', 'schedule manager', 'operations manager', 'store manager', 'owner', 'shift lead', 'lead', 'supervisor'].includes(role) ||
+    /\b(manager|owner|supervisor|lead|gm)\b/.test(role)
+  );
+};
+const voiceFeatureEnabled = (features = {}, feature) => !feature || features?.[feature] !== false;
+const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today', clientData = {}) => {
+  const perms = user?.permissions || {};
+  const isSuper = isVoiceSuperAdmin(user);
+  const isAdmin = isVoiceAdmin(user);
+  const role = normalizeVoiceText(user?.role || '');
+  const isKitchenRole = role.includes('kitchen') || role.includes('cook') || role.includes('chef');
+  if (tab === 'today' || tab === 'help') return true;
+  if (tab === 'published') return voiceFeatureEnabled(clientFeatures, 'schedule');
+  if (tab === 'schedule') return voiceFeatureEnabled(clientFeatures, 'schedule') && (isAdmin || !!perms.schedule);
+  if (tab === 'events') return voiceFeatureEnabled(clientFeatures, 'events') && (isAdmin || !!perms.events || !!perms.schedule || !!perms.team);
+  if (tab === 'financials' || tab === 'sales' || tab === 'labor') return (voiceFeatureEnabled(clientFeatures, 'labor') || voiceFeatureEnabled(clientFeatures, 'sales')) && (isSuper || isAdmin || !!perms.labor || !!perms.sales || !!perms.schedule);
+  if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops || role.includes('manager'));
+  if (tab === 'messages') return voiceFeatureEnabled(clientFeatures, 'messages');
+  if (tab === 'prep') return voiceFeatureEnabled(clientFeatures, 'prep') && (isAdmin || isKitchenRole || !!perms.prep);
+  if (tab === 'reminders') return true;
+  if (tab === 'menu-intelligence') return canUseMenuIntelligence(user, clientData);
+  if (tab === 'recipes') return voiceFeatureEnabled(clientFeatures, 'recipes') && (isAdmin || isKitchenRole || !!perms.prep || !!perms.team);
+  if (tab === 'inventory') return voiceFeatureEnabled(clientFeatures, 'inventory') && (isAdmin || !!perms.inventory || !!perms.team || role.includes('manager'));
+  if (tab === 'team') return voiceFeatureEnabled(clientFeatures, 'team');
+  if (tab === 'maintenance') return voiceFeatureEnabled(clientFeatures, 'maintenance') && (isAdmin || !!perms.team || !!perms.maintenance || role.includes('manager'));
+  if (tab === 'settings') return !user?.isDemo;
+  if (tab === 'audit') return !user?.isDemo && (isSuper || isAdmin);
+  if (tab === 'godmode') return isSuper;
+  return false;
+};
+const fetchVoicePrepMatchCandidates = async (restaurantId = '', prepDates = [], existingPrepItems = []) => {
+  const byId = new Map();
+  const addCandidate = (item) => {
+    if (!item) return;
+    const key = item.id || `${item.date || ''}:${item.text || item.title || item.name || ''}:${item.station || ''}`;
+    if (key && !byId.has(key)) byId.set(key, item);
+  };
+  (existingPrepItems || []).forEach(addCandidate);
+
+  if (!restaurantId) return Array.from(byId.values());
+  const dates = Array.from(new Set([...(prepDates || []), 'MASTER'].map(v => String(v || '').trim()).filter(Boolean)));
+  for (let i = 0; i < dates.length; i += 10) {
+    const chunk = dates.slice(i, i + 10);
+    if (!chunk.length) continue;
+    try {
+      const snap = await getDocs(query(collection(db, 'prepItems'), where('restaurantId', '==', restaurantId), where('date', 'in', chunk)));
+      snap.forEach((docSnap) => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+    } catch (err) {
+      console.warn('86 Voice prep match refresh failed; using loaded prep snapshot.', err?.message || err);
+    }
+  }
+  return Array.from(byId.values());
+};
+
+
+const fetchVoiceEightySixContext = async (restaurantId = '', loadedInventoryItems = [], loadedMenuDependencies = []) => {
+  const inventoryById = new Map();
+  const depById = new Map();
+  (loadedInventoryItems || []).forEach(item => { if (item?.id) inventoryById.set(item.id, item); });
+  (loadedMenuDependencies || []).forEach(dep => { if (dep?.id) depById.set(dep.id, dep); });
+  if (!restaurantId) {
+    return { inventoryItems: Array.from(inventoryById.values()), menuDependencies: Array.from(depById.values()) };
+  }
+  try {
+    const [inventorySnap, depSnap] = await Promise.all([
+      getDocs(query(collection(db, 'inventoryItems'), where('restaurantId', '==', restaurantId))),
+      getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', restaurantId)))
+    ]);
+    inventorySnap.forEach(docSnap => inventoryById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
+    depSnap.forEach(docSnap => depById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
+  } catch (err) {
+    console.warn('86 Voice 86-context refresh failed; using loaded snapshots.', err?.message || err);
+  }
+  return { inventoryItems: Array.from(inventoryById.values()), menuDependencies: Array.from(depById.values()) };
+};
+
+const makeVoiceNav = ({ label, tab, summary, subTab = null, date = null, helpQuery = '', localSearch = '' }) => ({
+  intent: helpQuery ? 'help_search' : (subTab ? 'navigate_schedule' : 'navigate'),
+  label, tab, subTab, date, helpQuery, localSearch, summary, safe:true
+});
+
+const extractHelpSearchQuery = (raw = '') => {
+  const q = normalizeVoiceText(raw);
+  const patterns = [
+    /^(?:search|find|look up)\s+(?:the\s+)?(?:help center|help|manual|administrator manual)\s*(?:for|about|on)?\s+(.+)$/,
+    /^(?:help center|help|manual|administrator manual)\s+(?:search|find|look up)\s*(?:for|about|on)?\s+(.+)$/,
+    /^(?:show|open|go to|take me to)\s+(?:the\s+)?(?:help center|help|manual)\s+(?:for|about|on)\s+(.+)$/,
+    /^(?:help me with|help with|how do i|how to)\s+(.+)$/
+  ];
+  for (const pattern of patterns) {
+    const match = q.match(pattern);
+    if (match?.[1]) return cleanVoiceItemName(match[1]);
+  }
+  return '';
+};
+const inferVoiceBurnMode = (text = '', item = {}) => {
+  const q = normalizeVoiceText(text);
+  if (/\b(lb|lbs|pound|pounds|oz|ounce|ounces)\b/.test(q)) return 'weight';
+  if (/\b(case|cases|box|boxes|stock unit|stock units)\b/.test(q)) return 'stock';
+  return item?.burnDefaultMode || 'count';
+};
+const getVoiceUnitsPerStockUnit = (item = {}) => Math.max(1, parseFloat(item.unitsPerStockUnit || item.unitsPerCase || item.yieldQty || item.caseQty || 1) || 1);
+const getVoiceWeightPerStockUnit = (item = {}) => {
+  const direct = parseFloat(item.weightPerStockUnit || item.caseWeight || item.packWeight || item.weightLbs || 0) || 0;
+  if (direct > 0) return direct;
+  const pack = String(item.packSize || item.size || '').toLowerCase();
+  const m = pack.match(/(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds)/);
+  return m ? parseFloat(m[1]) : 0;
+};
+
+
+const buildVoiceNavigationAction = (q = '') => {
+  const date = parseNextWeekday(q);
+  if (/\b(manager brief|today brief|today command center|home screen|home|dashboard)\b/.test(q)) return makeVoiceNav({ label:'Open Manager Brief', tab:'today', summary:'Open Manager Brief.' });
+  if (/\b(kitchen command center|ops command center|ops center|kitchen command|command center)\b/.test(q)) return makeVoiceNav({ label:'Open Kitchen Command Center', tab:'ops', summary:'Open Kitchen Command Center.' });
+  if (/\b(schedule builder|schedule maker|builder|copilot|coverage target|coverage targets|smart fill)\b/.test(q)) return makeVoiceNav({ label:'Open Schedule Builder', tab:'schedule', subTab:'schedule-builder', date, summary:'Open Time Clock & Schedule → Schedule Builder.' });
+  if (/\b(month view|monthly view|month schedule|calendar view)\b/.test(q)) return makeVoiceNav({ label:'Open Month View', tab:'published', subTab:'month-view', date, summary:'Open Time Clock & Schedule → Month View.' });
+  if (/\b(my schedule|my shifts|mine|my shift|next shift|time clock|clock in|clock out)\b/.test(q)) return makeVoiceNav({ label:'Open My Schedule', tab:'published', subTab:'my-schedule', date, summary:'Open Time Clock & Schedule → My Schedule.' });
+  if (/\b(trade board|shift swap|swap board)\b/.test(q)) return makeVoiceNav({ label:'Open Trade Board', tab:'published', subTab:'trade-board', date, summary:'Open Time Clock & Schedule → Trade Board.' });
+  if (/\b(time off|request off|vacation request|availability)\b/.test(q)) return makeVoiceNav({ label:'Open Time Off', tab:'published', subTab:'time-off', date, summary:'Open Time Clock & Schedule → Request Off.' });
+  if (/\b(full schedule|schedule days|published schedule|whole schedule|team schedule|all schedule|everyone schedule|schedule)\b/.test(q) && !/\b(my schedule|my shifts|mine|my shift|schedule builder|schedule maker)\b/.test(q)) return makeVoiceNav({ label:'Open Full Schedule', tab:'published', subTab:'full-schedule', date, summary: date ? `Open the full schedule on ${formatDisplayDate(date)}.` : 'Open Time Clock & Schedule → Full Schedule.' });
+  if (/\b(staff list|staff roster|team list|employee list|employees|roster|team)\b/.test(q)) return makeVoiceNav({ label:'Open Staff Roster', tab:'team', summary:'Open Staff Roster.' });
+  if (/\b(inventory|orders|order guide|stock count|stock)\b/.test(q)) return makeVoiceNav({ label:'Open Inventory', tab:'inventory', summary:'Open Inventory & Orders.' });
+  if (/\b(prep list|prep tasks|prep and tasks|prep)\b/.test(q) && !isLikelyPrepCommand(q)) return makeVoiceNav({ label:'Open Prep', tab:'prep', summary:'Open Prep & Tasks.' });
+  if (/\b(reminder|reminders|my reminders)\b/.test(q)) return makeVoiceNav({ label:'Open My Reminders', tab:'reminders', summary:'Open your private reminders.' });
+  if (/\b(menu intelligence|menu scanner|menu scan|scan menu|intelligent menu)\b/.test(q)) return makeVoiceNav({ label:'Open Menu Intelligence', tab:'menu-intelligence', summary:'Open Menu Intelligence.' });
+  if (/\b(recipe book|recipes|recipe|spec sheet)\b/.test(q)) return makeVoiceNav({ label:'Open Recipes', tab:'recipes', summary:'Open Recipe Book.' });
+  if (/\b(message board|messages|message|announcement|announcements)\b/.test(q)) return makeVoiceNav({ label:'Open Messages', tab:'messages', summary:'Open the Message Board.' });
+  if (/\b(maintenance log|maintenance|repair|broken|fix it)\b/.test(q)) return makeVoiceNav({ label:'Open Maintenance', tab:'maintenance', summary:'Open the Maintenance Log.' });
+  if (/\b(labor|timesheet|time sheet|financial|financials|daily ledger|sales)\b/.test(q)) return makeVoiceNav({ label:'Open Financials', tab:'financials', summary:'Open Financials for labor, timesheets, and daily ledger.' });
+  if (/\b(help center|help|manual)\b/.test(q)) return makeVoiceNav({ label:'Open Help Center', tab:'help', summary:'Open Help Center.' });
+  if (/\b(settings|preferences|workspace settings)\b/.test(q)) return makeVoiceNav({ label:'Open Settings', tab:'settings', summary:'Open Settings.' });
+  if (/\b(system administrator|administrator|admin)\b/.test(q)) return makeVoiceNav({ label:'Open System Administrator', tab:'godmode', summary:'Open System Administrator.' });
+  return null;
+};
+
+const isPlainNavigationPhrase = (q = '') => {
+  const cleaned = q.replace(/\b(open|go to|show|take me to|pull up|bring up|display|take me|please)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned.split(' ').length <= 4 && !!buildVoiceNavigationAction(cleaned);
+};
+
+const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
+  const [open, setOpen] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [heardText, setHeardText] = useState('');
+  const [manualText, setManualText] = useState('');
+  const [pending, setPending] = useState(null);
+  const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+  const canUseSpeech = Boolean(SpeechRecognition);
+  const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
+
+  const getVoiceEightySixContext = async () => {
+    const now = Date.now();
+    const cached = eightySixContextRef.current || {};
+    if (cached.restaurantId === appUser?.restaurantId && now - Number(cached.loadedAt || 0) < 90000 && cached.inventoryItems?.length) {
+      return { inventoryItems: cached.inventoryItems || [], menuDependencies: cached.menuDependencies || [] };
+    }
+    const fresh = await fetchVoiceEightySixContext(appUser?.restaurantId, inventoryItems, menuDependencies);
+    eightySixContextRef.current = { restaurantId: appUser?.restaurantId || '', loadedAt: now, ...fresh };
+    return fresh;
+  };
+
+  const openDock = () => {
+    setOpen(true);
+    setPending(null);
+    setHeardText('');
+    setManualText('');
+    setTimeout(() => startListening(), 80);
+  };
+
+  const parseCommand = async (spokenText) => {
+    const raw = String(spokenText || '').trim();
+    const q = normalizeVoiceText(raw);
+    if (!q) return null;
+
+    const parsedReminder = parseReminderCommand(raw);
+    if (parsedReminder) {
+      if (parsedReminder.needsManualTime) {
+        return { intent:'navigate', label:'Open My Reminders', tab:'reminders', summary:'Open My Reminders so you can choose the exact date and time.', safe:true };
+      }
+      return {
+        intent:'create_personal_reminder',
+        label:'Create personal reminder',
+        ...parsedReminder,
+        summary:`Remind you: ${parsedReminder.title} at ${formatClockDateTime(parsedReminder.scheduledAt)}.`,
+        needsConfirmation:false
+      };
+    }
+
+    // Specific recipe commands should open/search the live Recipe Book by title, including future recipes.
+    // Keep this ahead of generic navigation so “open beer cheese recipe” does not stop at the Recipe Book landing page.
+    const recipeQuery = extractRecipeVoiceQuery(raw);
+    if (recipeQuery) {
+      const recipe = findVoiceRecipeMatch(recipes, recipeQuery);
+      const displayName = recipe?.title || recipeQuery;
+      return {
+        intent:'open_recipe',
+        label:`Open recipe: ${displayName}`,
+        tab:'recipes',
+        recipeQuery,
+        recipeTitle: recipe?.title || '',
+        recipeId: recipe?.id || '',
+        summary: recipe?.title
+          ? `Open Recipe Book directly to ${recipe.title}.`
+          : `Open Recipe Book and search for “${recipeQuery}”. If the recipe exists now or is added later, the app will use the recipe list instead of a hardcoded command.`,
+        safe:true,
+        needsConfirmation:false
+      };
+    }
+
+    // Help Center search commands. These must open Help Center and pre-fill only the useful search phrase.
+    const helpSearch = extractHelpSearchQuery(raw);
+    if (helpSearch) {
+      return makeVoiceNav({ label:'Search Help Center', tab:'help', helpQuery: helpSearch, summary:`Search Help Center for “${helpSearch}”.` });
+    }
+
+    // Navigation commands first because they are safe and fast.
+    if (/\b(open|go to|show|take me to|pull up|bring up|display)\b/.test(q) || isPlainNavigationPhrase(q)) {
+      const navAction = buildVoiceNavigationAction(q);
+      if (navAction) return navAction;
+      const recipePhrase = q.replace(/\b(open|go to|show|take me to|pull up|bring up|display|recipe|recipes)\b/g, ' ').trim();
+      const recipe = findVoiceMatch(recipes, recipePhrase);
+      if (recipe) return makeVoiceNav({ label:`Open recipe: ${recipe.title}`, tab:'recipes', summary:`Open Recipe Book and search for ${recipe.title}.`, localSearch: recipe.title });
+    }
+
+    // 86 / out-of-stock commands. These create an 86 alert only. They do NOT edit inventory.
+    let itemPhrase = '';
+    if (/\b(86|eighty six)\b/.test(q)) itemPhrase = q.replace(/\b(86|eighty six|item|the|please|send|post|alert|for)\b/g, ' ');
+    const outPatterns = [
+      /^(?:we are|we're|were)\s+(?:all\s+)?out of\s+(.+)$/,
+      /^(?:we are|we're|were)\s+outta\s+(.+)$/,
+      /^(?:we\s+)?ran out of\s+(.+)$/,
+      /^out of\s+(.+)$/,
+      /^all out of\s+(.+)$/
+    ];
+    if (!itemPhrase) {
+      for (const pattern of outPatterns) {
+        const match = q.match(pattern);
+        if (match?.[1]) { itemPhrase = match[1]; break; }
+      }
+    }
+    if (itemPhrase) {
+      const cleaned = cleanVoiceItemName(itemPhrase);
+      const liveContext = await getVoiceEightySixContext();
+      const voiceInventoryItems = liveContext.inventoryItems || inventoryItems || [];
+      const voiceMenuDependencies = liveContext.menuDependencies || menuDependencies || [];
+      const resolved = resolveEightySixInventoryMatch(cleaned, voiceInventoryItems, voiceMenuDependencies);
+      const item = resolved?.item || findVoiceMatch(voiceInventoryItems, cleaned);
+      const requestedItemName = cleaned || item?.name || 'Item';
+      const itemName = item?.name || requestedItemName;
+      const displayName = requestedItemName || itemName;
+      const impactPreview = item ? buildEightySixAlertDetails({ requestedName: displayName, inventoryItem: item, menuDependencies: voiceMenuDependencies, matchMethod: resolved?.method, matchedMenuItemName: resolved?.matchedMenuItemName }).impactText : '';
+      const matchNote = item?.name && normalizeVoiceText(item.name) !== normalizeVoiceText(displayName)
+        ? ` Matched inventory item: ${item.name}${resolved?.method === 'menuIntelligence' ? ' through Menu Intelligence' : ''}.`
+        : '';
+      return {
+        intent:'eighty_six_alert',
+        label:`Send 86 alert: ${displayName}`,
+        item,
+        itemName,
+        requestedItemName: displayName,
+        menuMatchMethod: resolved?.method || (item ? 'inventory' : 'none'),
+        matchedMenuItemName: resolved?.matchedMenuItemName || '',
+        matchedIngredientName: resolved?.matchedIngredientName || '',
+        resolvedMenuDependencies: voiceMenuDependencies,
+        summary:`Post an important 86 alert for ${displayName}.${matchNote}${impactPreview ? ` ${impactPreview}.` : ''} Inventory stock will not be changed.`,
+        needsConfirmation:false
+      };
+    }
+
+    // Recurring daily/weekly/monthly tasks. Only managers/admins can add these.
+    // Keep this ahead of prep parsing so “add weekly task clean fryer” becomes a recurring task, not a one-off prep item.
+    const parsedRecurringTask = parseRecurringTaskVoicePayload(raw);
+    if (parsedRecurringTask) {
+      return {
+        intent:'create_task',
+        label:`Create ${parsedRecurringTask.frequency} task`,
+        ...parsedRecurringTask,
+        summary:`Add ${describeRecurringTaskSchedule(parsedRecurringTask)} task: ${parsedRecurringTask.title}. Managers/admins only.`,
+        needsConfirmation:false
+      };
+    }
+
+    // Prep tasks. Only the useful item name goes into the prep name field.
+    // Quantities are stored separately so “prep 2 of ranch” becomes qty=2, text=Ranch.
+    if (isLikelyPrepCommand(raw)) {
+      const parsedPrepItems = parsePrepCommandItems(raw);
+      if (parsedPrepItems.length) {
+        const prepDate = parsedPrepItems.find(item => item.prepDate)?.prepDate || getToday();
+        const preview = parsedPrepItems.slice(0, 3).map(item => `${item.itemText} (${formatPrepAmount(item.amount, item.unit)}${item.station ? ` • ${item.station}` : ''})`).join(', ');
+        return {
+          intent:'smart_prep',
+          label:'Update prep list',
+          prepItems: parsedPrepItems,
+          prepDate,
+          summary:`Update prep list for ${formatDisplayDate(prepDate)}: ${preview}${parsedPrepItems.length > 3 ? '...' : ''}.`,
+          needsConfirmation:false
+        };
+      }
+    }
+
+    // Message board posts.
+    if (/\b(post|send|message|announce|announcement)\b/.test(q)) {
+      const msg = raw.replace(/^(post|send|message|announce|announcement)\s*(message|announcement)?\s*:?\s*/i, '').trim() || raw;
+      return { intent:'post_message', label:'Post message', messageText: msg, summary:`Post to Message Board: “${msg}”`, needsConfirmation:true };
+    }
+
+    // Maintenance.
+    if (/\b(report|maintenance|broken|leaking|not working|won't|wont)\b/.test(q)) {
+      const issue = raw.replace(/^(report|maintenance|add maintenance issue)\s*/i, '').trim() || raw;
+      return { intent:'maintenance', label:'Create maintenance issue', issue, summary:`Create maintenance issue: ${issue}`, needsConfirmation:true };
+    }
+
+    // Burn/waste.
+    if (/\b(waste|burn|spill|spilled|throw away|toss)\b/.test(q)) {
+      const amount = parseVoiceAmount(q);
+      const itemPhrase = q.replace(/\b(waste|burn|log|record|spilled|spill|throw away|toss|of|the|please)\b/g, ' ').replace(/\b\d+(?:\.\d+)?\b/g, ' ').trim();
+      const item = findVoiceMatch(inventoryItems, itemPhrase);
+      if (item) {
+        const mode = inferVoiceBurnMode(q, item);
+        const weightPerStockUnit = getVoiceWeightPerStockUnit(item);
+        const unitsPerStockUnit = getVoiceUnitsPerStockUnit(item);
+        const stockDeducted = mode === 'weight'
+          ? (weightPerStockUnit > 0 ? amount / weightPerStockUnit : 0)
+          : mode === 'stock'
+            ? amount
+            : amount / unitsPerStockUnit;
+        const label = mode === 'weight' ? 'lb' : mode === 'stock' ? 'stock unit' : (item.burnUnitLabel || 'unit');
+        const needsSetup = mode === 'weight' && weightPerStockUnit <= 0;
+        return { intent:'burn_log', label:`Log burn: ${item.name}`, item, amount, mode, labelUnit:label, stockDeducted, needsSetup, summary: needsSetup ? `Open Inventory to set weight per stock unit for ${item.name} before logging a weight burn.` : `Log ${amount} ${label} ${item.name} and deduct ${stockDeducted.toFixed(3)} stock units.`, needsConfirmation:!needsSetup, safe:needsSetup };
+      }
+      return { intent:'navigate', label:'Open Burn Log', tab:'inventory', summary:'Open Inventory/Burn Log. I could not confidently match the item.', safe:true };
+    }
+
+    // Optional AI fallback. If the route is not installed, ignore and use help.
+    try {
+      const res = await secureFetch('/api/voice-command', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ text: raw, restaurantId: appUser?.restaurantId })
+      });
+      if (res.ok) {
+        const ai = await res.json();
+        if (ai?.intent && ai.intent !== 'unknown') return { ...ai, summary: ai.summary || `AI understood: ${ai.intent}`, needsConfirmation: true };
+      }
+    } catch(e) {}
+
+    return { intent:'help', label:'Search Help', tab:'help', summary:`I could not safely turn “${raw}” into an action. Opening Help Center/search is safer.`, safe:true };
+  };
+
+  const processText = async (text) => {
+    const action = await parseCommand(text);
+    setHeardText(text);
+    if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
+    setPending(action);
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'create_personal_reminder', 'create_task', 'eighty_six_alert'];
+    if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
+      await executeAction(action, text, true);
+    }
+  };
+
+  const startListening = () => {
+    if (!canUseSpeech) return setOpen(true);
+    try {
+      const rec = new SpeechRecognition();
+      rec.lang = 'en-US';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      setListening(true);
+      setOpen(true);
+      rec.onresult = (event) => {
+        const text = event.results?.[0]?.[0]?.transcript || '';
+        setListening(false);
+        processText(text);
+      };
+      rec.onerror = () => { setListening(false); addToast('Voice Error', 'Microphone recognition failed. You can type the command instead.'); };
+      rec.onend = () => setListening(false);
+      rec.start();
+    } catch (err) {
+      setListening(false);
+      addToast('Voice Unavailable', 'Browser voice recognition is unavailable. Use the text box instead.');
+    }
+  };
+
+  const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true) => {
+    if (!actionToRun || !appUser?.restaurantId) return;
+    try {
+      if (['navigate', 'navigate_schedule', 'help_search', 'open_recipe'].includes(actionToRun.intent)) {
+        const targetTab = actionToRun.tab || 'today';
+        if (!canVoiceOpenTab(appUser, clientFeatures, targetTab, clientData)) {
+          addToast('Access Blocked', 'You do not have permission to open that area.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        if (actionToRun.date && setCurrentDate) setCurrentDate(actionToRun.date);
+        if (actionToRun.subTab && setScheduleSubTabTarget) setScheduleSubTabTarget({ subTab: actionToRun.subTab, id: Date.now() });
+        if (actionToRun.helpQuery && setHelpSearchTarget) setHelpSearchTarget({ query: actionToRun.helpQuery, id: Date.now() });
+        if (actionToRun.intent === 'open_recipe' && setRecipeTarget) {
+          setRecipeTarget({
+            query: actionToRun.recipeQuery || actionToRun.recipeTitle || actionToRun.localSearch || '',
+            recipeId: actionToRun.recipeId || '',
+            recipeTitle: actionToRun.recipeTitle || '',
+            id: Date.now()
+          });
+        }
+        setActiveTab(targetTab);
+        addToast('Voice Navigation', actionToRun.summary || `Opening ${targetTab}.`);
+        if (closeWhenDone) setOpen(false);
+        return;
+      }
+      if (appUser?.isDemo) return addToast('Demo Mode', 'Demo mode is read-only. Nothing was saved.');
+      if (actionToRun.intent === 'eighty_six_alert') {
+        const requestedName = String(actionToRun.requestedItemName || actionToRun.itemName || actionToRun.item?.name || 'Item').trim();
+        const alertTitle = `86 ${requestedName}`;
+        const alertMenuDependencies = actionToRun.resolvedMenuDependencies || menuDependencies;
+        const { inventoryName, impactText, impactedItems, matchText, details } = buildEightySixAlertDetails({
+          requestedName,
+          inventoryItem: actionToRun.item,
+          menuDependencies: alertMenuDependencies,
+          matchMethod: actionToRun.menuMatchMethod,
+          matchedMenuItemName: actionToRun.matchedMenuItemName
+        });
+        await addDoc(collection(db, 'events'), {
+          restaurantId: appUser.restaurantId,
+          type:'note',
+          category:'86 Alert',
+          messageCategory:'86 Alert',
+          title: alertTitle,
+          notes: details,
+          author: appUser.name || appUser.email || 'Voice Command',
+          date:new Date().toISOString(),
+          isImportant:true,
+          replies:[],
+          readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }],
+          voiceCommand: sourceText,
+          createdAt:new Date().toISOString(),
+          source:'86_voice_alert',
+          inventoryNotModified:true,
+          commandCenterAlert:true,
+          managerBriefAlert:true,
+          kitchenCommandCenterAlert:true,
+          menuImpact: impactText,
+          menuImpactItems: impactedItems,
+          menuImpactItemId: actionToRun.item?.id || '',
+          inventoryItemName: inventoryName,
+          requestedItemName: requestedName,
+          menuMatchMethod: actionToRun.menuMatchMethod || ''
+        });
+        await secureFetch('/api/send-push', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({
+            restaurantId: appUser.restaurantId,
+            title: alertTitle,
+            body: `${requestedName} is out.${impactText ? ` ${impactText}.` : ''}${matchText ? ` ${matchText}` : ''}`,
+            type:'message',
+            isCritical:true,
+            textContent: details ? `${alertTitle} - ${details}` : alertTitle
+          })
+        }).catch((err) => console.warn('86 voice push failed:', err?.message || err));
+        await logAudit(appUser, 'VOICE_86_ALERT', requestedName, `${sourceText}${details ? ` | ${details}` : ''}`);
+        addToast('86 Alert Sent', `${requestedName} was added to Manager Brief, Kitchen Command Center, and Message Board.`);
+        setActiveTab('today'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'create_task') {
+        if (!isVoiceManagerOrAdmin(appUser)) {
+          addToast('Access Blocked', 'Only managers or admins can add recurring daily, weekly, or monthly tasks by voice.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        if (!voiceFeatureEnabled(clientFeatures, 'prep')) {
+          addToast('Prep & Tasks Disabled', 'The Prep & Tasks module is disabled for this workspace.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        const title = String(actionToRun.title || 'Task').trim();
+        const frequency = ['daily', 'weekly', 'monthly'].includes(actionToRun.frequency) ? actionToRun.frequency : 'daily';
+        const payload = {
+          restaurantId: appUser.restaurantId,
+          title,
+          category: actionToRun.category || inferVoiceTaskCategory(title),
+          frequency,
+          targetDay: frequency === 'weekly' ? (actionToRun.targetDay || getCurrentWeekdayName()) : null,
+          targetDate: frequency === 'monthly' ? String(actionToRun.targetDate || getCurrentMonthDay()) : null,
+          completions: {},
+          createdAt: new Date().toISOString(),
+          createdBy: appUser.name || appUser.email || 'Voice Command',
+          createdById: appUser.id || '',
+          source: '86_voice_recurring_task',
+          voiceCommand: sourceText
+        };
+        await addDoc(collection(db, 'tasks'), payload);
+        await logAudit(appUser, 'VOICE_RECURRING_TASK', `${frequency}: ${title}`, sourceText);
+        addToast('Task Added', `${title} was added as a ${describeRecurringTaskSchedule(payload)} task.`);
+        setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'create_personal_reminder') {
+        const title = String(actionToRun.title || 'Personal reminder').trim();
+        if (!actionToRun.scheduledAt) {
+          setActiveTab('reminders');
+          addToast('Reminder Needs Time', 'Open My Reminders and choose the date and time.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        await addDoc(collection(db, 'personalReminders'), {
+          restaurantId: appUser.restaurantId,
+          userId: appUser.id || '',
+          userEmail: appUser.email || '',
+          assignedToUserId: appUser.id || '',
+          assignedToName: appUser.name || appUser.email || 'Me',
+          assignedToEmail: appUser.email || '',
+          createdByName: appUser.name || appUser.email || '',
+          createdByEmail: appUser.email || '',
+          shared: false,
+          visibility: 'private_reminder',
+          title,
+          notes: '',
+          scheduledAt: actionToRun.scheduledAt,
+          status: 'scheduled',
+          createdAt: new Date().toISOString(),
+          createdBy: appUser.id || '',
+          source: '86_voice_personal_reminder',
+          voiceCommand: sourceText,
+          dispatchedAt: null,
+          dispatchKey: ''
+        });
+        await logAudit(appUser, 'VOICE_PERSONAL_REMINDER', title, actionToRun.scheduledAt);
+        addToast('Reminder Saved', `${title} at ${formatClockDateTime(actionToRun.scheduledAt)}.`);
+        setActiveTab('reminders'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'smart_prep') {
+        if (!voiceFeatureEnabled(clientFeatures, 'prep')) {
+          addToast('Prep & Tasks Disabled', 'The Prep & Tasks module is disabled for this workspace.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        const targetPrepDate = actionToRun.prepDate || getToday();
+        const requestedPrepItems = actionToRun.prepItems || [];
+        const prepDatesToCheck = Array.from(new Set(requestedPrepItems.map(item => item.prepDate || targetPrepDate).filter(Boolean)));
+        const matchCandidates = await fetchVoicePrepMatchCandidates(appUser?.restaurantId, prepDatesToCheck, prepItems);
+        const results = [];
+        for (const parsed of requestedPrepItems) {
+          const prepDate = parsed.prepDate || targetPrepDate;
+          const match = findPrepMatch(matchCandidates, parsed, prepDate);
+          if (match?.id) {
+            const data = buildPrepQuantityUpdate({
+              existingItem: match,
+              parsedItem: parsed,
+              actorName: appUser.name || appUser.email || 'Voice Command',
+              prepDate,
+              source: '86_voice_smart_prep'
+            });
+            await updateDoc(doc(db, 'prepItems', match.id), data);
+            Object.assign(match, data);
+            results.push({ type: 'updated', name: match.text || parsed.itemText });
+          } else {
+            await addDoc(collection(db, 'prepItems'), buildPrepCreatePayload({
+              parsedItem: parsed,
+              appUser,
+              prepDate,
+              station: parsed.station || 'Voice',
+              isMaster: false,
+              sourceText,
+              source: '86_voice_smart_prep'
+            }));
+            results.push({ type: 'created', name: parsed.itemText });
+          }
+          await logAudit(appUser, 'VOICE_SMART_PREP', parsed.itemText, sourceText);
+        }
+        if (setCurrentDate) setCurrentDate(targetPrepDate);
+        addToast('Prep Updated', `${summarizePrepResults(results)} for ${formatDisplayDate(targetPrepDate)}`);
+        setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'create_prep') {
+        const text = String(actionToRun.itemText || 'Prep task').trim();
+        await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date:getToday(), text, station:'Voice', isCompleted:false, qty: actionToRun.amount || 1, unit: actionToRun.unit || 'item', createdAt:new Date().toISOString(), createdBy: appUser.name || appUser.email || 'Voice Command', voiceCommand: sourceText });
+        await logAudit(appUser, 'VOICE_PREP_TASK', text, sourceText);
+        addToast('Prep Added', text);
+        setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'post_message') {
+        await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'Announcement', title: actionToRun.messageText, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:false, replies:[], voiceCommand: sourceText, createdAt:new Date().toISOString() });
+        await logAudit(appUser, 'VOICE_MESSAGE', 'Message Board', actionToRun.messageText);
+        addToast('Message Posted', actionToRun.messageText);
+        setActiveTab('messages'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'maintenance') {
+        await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment:'Voice Report', issue: actionToRun.issue, status:'Open', priority:'Medium', reportedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), createdAt:new Date().toISOString(), voiceCommand: sourceText });
+        await logAudit(appUser, 'VOICE_MAINTENANCE', 'Maintenance', actionToRun.issue);
+        addToast('Maintenance Added', actionToRun.issue);
+        setActiveTab('maintenance'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'burn_log') {
+        if (actionToRun.needsSetup) { setActiveTab('inventory'); if (closeWhenDone) setOpen(false); return; }
+        const item = actionToRun.item;
+        const stockDeducted = Math.max(0, Number(actionToRun.stockDeducted || 0));
+        const costLost = (parseFloat(item.price || 0) || 0) * stockDeducted;
+        await addDoc(collection(db, 'wasteLogs'), { restaurantId: appUser.restaurantId, itemId:item.id, itemName:item.name, qty:actionToRun.amount, burnAmount:actionToRun.amount, burnUnitLabel:actionToRun.labelUnit, burnMode:actionToRun.mode, stockDeducted, costLost, reason:'Voice command', loggedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), timestamp:new Date().toISOString(), voiceCommand: sourceText });
+        if (stockDeducted > 0) await updateDoc(doc(db, 'inventoryItems', item.id), { currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeducted), updatedAt:new Date().toISOString() });
+        await logAudit(appUser, 'VOICE_BURN_LOG', item.name, sourceText);
+        addToast('Burn Logged', `${actionToRun.amount} ${actionToRun.labelUnit} ${item.name}.`);
+        setActiveTab('inventory'); if (closeWhenDone) setOpen(false); return;
+      }
+      setActiveTab(actionToRun.tab || 'help'); if (closeWhenDone) setOpen(false);
+    } catch(err) {
+      addToast('Voice Command Error', err.message || 'Could not complete the command.');
+    }
+  };
+
+  const executePending = () => executeAction(pending, heardText, true);
+
+  return <div className="fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
+    {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
+      <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
+        <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap once, speak, and safe commands run. Destructive commands still ask first.</div></div>
+        <button onClick={() => setOpen(false)} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
+      </div>
+      <div className="space-y-2">
+        <button type="button" onClick={startListening} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
+          {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
+        </button>
+        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "add weekly task clean fryer Monday", "prep 2 pans tomatoes", "open Friday schedule"' />
+        <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
+        {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
+        {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
+          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Suggested Action</div>
+          <div className="text-sm font-black text-white mt-1">{pending.label || pending.intent}</div>
+          <div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{pending.summary}</div>
+          <div className="flex gap-2 mt-3"><button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button><button onClick={() => setPending(null)} className={T.btnAlt}>Cancel</button></div>
+        </div>}
+        {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
+      </div>
+    </div>}
+    <button onClick={open ? () => setOpen(false) : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice Assistant Preview"><div className="relative"><Mic size={24}/><span className="absolute -right-6 -top-3 bg-blue-600 text-white text-[8px] font-black px-1 rounded-full border border-blue-300">PREVIEW</span></div></button>
   </div>;
 };
 
@@ -352,7 +1156,7 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
   const alerts = events.filter(e => e.type === 'note' && e.isImportant).slice(0, 5);
   const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today);
   const maint = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status)).slice(0, 5);
-  const low = inventoryItems.filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) <= Number(i.parLevel||0)).slice(0, 6);
+  const low = inventoryItems.filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) < Number(i.parLevel||0)).slice(0, 6);
   return <div className="fixed inset-0 z-[100000] bg-[#0B0E11] text-white p-5 sm:p-8 overflow-y-auto">
     <div className="flex justify-between items-start mb-6"><div><div className="text-[#D4A381] text-sm font-black uppercase tracking-widest">86 Chaos Kitchen TV</div><h1 className="text-4xl sm:text-6xl font-black">{formatDisplayFullDate(today)}</h1></div><button onClick={onClose} className="bg-white text-slate-900 rounded-xl px-4 py-2 font-black uppercase text-xs">Exit</button></div>
     <div className="grid md:grid-cols-3 gap-4">
@@ -365,9 +1169,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>16.0.2 is a controlled command-center visual upgrade. The existing app shell, tabs, permissions, Firebase behavior, and route handling stay intact while shared surfaces get darker glass panels, orange/gold accents, stronger spacing, and better mobile touch targets.</p>
+    <p>My Schedule now rolls forward automatically after a scheduled shift ends, so an ended shift does not stay pinned as the next shift.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Design tokens','App shell','Logo lockup','Drawer groups','Menu search','Cards','Buttons','Inputs','Tables','Modals','Mobile spacing','Admin menu'].map(x => <div key={x} className="bg-[#070A0D] border border-[#33414B] rounded-lg p-2 text-[#FFB34D]">{x}</div>)}
+      {['Next shift fixed','Auto refresh','No manual reload','Time clock safer'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>
@@ -381,4 +1185,4 @@ const UndoBar = ({ undoItem, clearUndo }) => {
   </div>;
 };
 
-export { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar };
+export { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, VoiceCommandDock, KitchenTVMode, ChangeLogModal, UndoBar };

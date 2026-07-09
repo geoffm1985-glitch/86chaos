@@ -81,14 +81,8 @@ function safeNameFromEmail(email = '') {
 }
 
 
-function recoveryCodeSecretConfigured() {
-  return String(process.env.RECOVERY_CODE_SECRET || '').trim().length >= 32;
-}
-
 function recoveryCodeSecret() {
-  const secret = String(process.env.RECOVERY_CODE_SECRET || '').trim();
-  if (secret.length < 32) throw new Error('RECOVERY_CODE_SECRET is required and should be at least 32 characters before recovery codes can be generated or used.');
-  return secret;
+  return String(process.env.RECOVERY_CODE_SECRET || process.env.CRON_SECRET || process.env.FIREBASE_PROJECT_ID || '86-chaos-recovery-secret');
 }
 
 function normalizeRecoveryCode(value = '') {
@@ -126,7 +120,6 @@ function recoveryCodeStatus(user = {}) {
     recoveryCodeCount: codes.length,
     unusedRecoveryCodeCount: active,
     usedRecoveryCodeCount: used,
-    recoveryCodeSecretConfigured: recoveryCodeSecretConfigured(),
     recoveryCodesGeneratedAt: user?.accountSecurity?.recoveryCodesGeneratedAt || '',
     recoveryCodesLastUsedAt: user?.accountSecurity?.recoveryCodesLastUsedAt || ''
   };
@@ -330,6 +323,18 @@ module.exports = async function handler(req, res) {
         baseProfile.isAdmin = true;
       }
       await userRef.set(baseProfile, { merge: true });
+      await writeUserSecurityNotice(db, targetAuthUser.uid, {
+        type: 'mfa-reset',
+        severity: 'critical',
+        title: 'Two-step login was reset',
+        body: `A System Administrator reset MFA for this account. Reason: ${reason}. If this was not expected, contact your owner or support before re-enrolling.`,
+        actorUserId: decoded.uid,
+        actorEmail: email,
+        targetEmail,
+        restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || existingUser.activeRestaurantId || existingUser.restaurantId || 'system'
+      });
+      await bestEffortPush(app, targetUser, '86 Chaos Security Alert', 'Your two-step login was reset by a System Administrator. Open Account Security to re-enroll.');
+
       await audit(db, {
         userId: decoded.uid,
         userName: baseProfile.name || email || 'User',
@@ -347,7 +352,6 @@ module.exports = async function handler(req, res) {
     }
 
     if (action === 'generate-recovery-codes') {
-      if (!recoveryCodeSecretConfigured()) return res.status(500).json({ ok: false, error: 'RECOVERY_CODE_SECRET is missing or too short. Add a dedicated 32+ character secret in Vercel, redeploy, then generate recovery codes.' });
       if (!authUser.emailVerified) return res.status(400).json({ ok: false, error: 'Verify your email before generating recovery codes.' });
       const codes = generateRecoveryCodes(10);
       const stampedAt = new Date().toISOString();
@@ -488,17 +492,6 @@ module.exports = async function handler(req, res) {
         restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || existingUser.activeRestaurantId || existingUser.restaurantId || 'system',
         securityLevel: 'account-security'
       });
-      await writeUserSecurityNotice(db, targetAuthUser.uid, {
-        type: 'mfa-reset',
-        severity: 'critical',
-        title: 'Two-step login was reset',
-        body: `A System Administrator reset MFA for this account. Reason: ${reason}. If this was not expected, contact your owner or support before re-enrolling.`,
-        actorUserId: decoded.uid,
-        actorEmail: email,
-        targetEmail,
-        restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || existingUser.activeRestaurantId || existingUser.restaurantId || 'system'
-      });
-      await bestEffortPush(app, targetUser, '86 Chaos Security Alert', 'Your two-step login was reset by a System Administrator. Open Account Security to re-enroll.');
       const refreshedTargetAuthUser = await app.auth().getUser(targetAuthUser.uid);
       const status = await buildStatus({ app, db, decoded, authUser, action });
       return res.status(200).json({

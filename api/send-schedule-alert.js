@@ -138,7 +138,6 @@ function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
   return Boolean(
     decoded.superAdmin === true ||
     caller?.isSuperAdmin === true ||
-    caller?.systemAccess?.superAdmin === true ||
     masterEmails().includes(email) ||
     userHasWorkspace(caller, restaurantId) ||
     member

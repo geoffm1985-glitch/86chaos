@@ -104,7 +104,7 @@ async function verifyCaller(req, body, db, auth) {
   const callerMembership = membershipFromUserMap(caller, requestedRestaurantId) || await loadWorkspaceMember(db, decoded.uid, callerEmail, requestedRestaurantId);
   const callerProfile = resolveRoleProfile(caller, callerMembership, requestedRestaurantId);
 
-  const isSuperAdmin = decoded.superAdmin === true || caller?.isSuperAdmin === true || caller?.systemAccess?.superAdmin === true || masterEmails().includes(callerEmail);
+  const isSuperAdmin = decoded.superAdmin === true || caller?.isSuperAdmin === true || masterEmails().includes(callerEmail);
   const isOwner = Boolean(
     isSuperAdmin ||
     callerProfile.isOwner ||

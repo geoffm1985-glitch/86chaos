@@ -26,11 +26,7 @@ function readJsonBody(req) {
 }
 
 function norm(value = '') { return String(value || '').toLowerCase().trim(); }
-function recoveryCodeSecret() {
-  const secret = String(process.env.RECOVERY_CODE_SECRET || '').trim();
-  if (secret.length < 32) throw new Error('RECOVERY_CODE_SECRET is missing or too short. Ask a System Administrator to set it in Vercel and redeploy before using recovery codes.');
-  return secret;
-}
+function recoveryCodeSecret() { return String(process.env.RECOVERY_CODE_SECRET || process.env.CRON_SECRET || process.env.FIREBASE_PROJECT_ID || '86-chaos-recovery-secret'); }
 function normalizeRecoveryCode(value = '') { return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function hashRecoveryCode(value = '') { return crypto.createHmac('sha256', recoveryCodeSecret()).update(normalizeRecoveryCode(value)).digest('hex'); }
 

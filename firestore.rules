@@ -16,10 +16,9 @@ service cloud.firestore {
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
-        (hasUserDoc() && (
-          userData().isSuperAdmin == true ||
-          userData().systemAccess.superAdmin == true
-        ))
+        request.auth.token.email == 'geoffm1985@gmail.com' ||
+        request.auth.token.email == 'geoffrm1985@gmail.com' ||
+        (hasUserDoc() && userData().isSuperAdmin == true)
       );
     }
 
@@ -349,20 +348,6 @@ service cloud.firestore {
     }
 
     match /system/{docId} { allow read, write: if isSuperAdmin(); }
-
-    match /accountDeletionRequests/{userId} {
-      allow read: if signedIn() && (isSuperAdmin() || request.auth.uid == userId);
-      allow create: if signedIn() &&
-        request.auth.uid == userId &&
-        request.resource.data.uid == request.auth.uid &&
-        request.resource.data.status == 'requested';
-      allow update: if signedIn() && isSuperAdmin();
-      allow delete: if false;
-    }
-
-    match /securityAlerts/{docId} {
-      allow read, write: if signedIn() && isSuperAdmin();
-    }
 
     // ============================================================
     // TASKS
