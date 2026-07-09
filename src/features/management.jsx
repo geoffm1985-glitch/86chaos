@@ -806,6 +806,8 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [isMfaBusy, setIsMfaBusy] = useState(false);
   const [mfaError, setMfaError] = useState('');
   const [isEmailVerifyBusy, setIsEmailVerifyBusy] = useState(false);
+  const [verificationRescueLink, setVerificationRescueLink] = useState('');
+  const [accountRepairResult, setAccountRepairResult] = useState(null);
   const mfaEnrollRecaptchaRef = useRef(null);
 
   // --- Preferences State ---
@@ -892,6 +894,9 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const accountMfaEnabled = Boolean(mfaStatus?.mfaEnabled || appUser?.mfaEnabled || appUser?.multiFactorEnabled || appUser?.accountSecurity?.mfaEnabled);
   const accountMfaEnforced = Boolean(mfaStatus?.mfaEnforcementEnabled || clientData?.systemSettings?.mfaEnforceElevatedRoles === true);
   const accountEmailVerified = Boolean(mfaStatus?.emailVerified || auth.currentUser?.emailVerified || appUser?.emailVerified || appUser?.accountSecurity?.emailVerified);
+  const accountSecurityDebug = mfaStatus?.debug || {};
+  const firestoreProfileMissing = mfaStatus && mfaStatus.firestoreUserDocExists === false;
+  const canAdminVerifyEmail = Boolean(mfaStatus?.canAdminVerifyEmail || mfaStatus?.isMasterAdminEmail || appUser?.isSuperAdmin);
 
   const normalizeMfaPhone = (value) => {
     const raw = String(value || '').trim();
@@ -1280,6 +1285,79 @@ const handleEnableNotifications = async () => {
     }
   };
 
+  const postAccountSecurityAction = async (action, extra = {}) => {
+    const response = await secureFetch('/api/account-security', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...extra })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.ok === false) throw new Error(data?.error || data?.message || 'Account security action failed.');
+    setMfaStatus(data);
+    return data;
+  };
+
+  const handleRepairUserProfile = async () => {
+    setMfaError('');
+    setAccountRepairResult(null);
+    setIsEmailVerifyBusy(true);
+    try {
+      const data = await postAccountSecurityAction('repair-profile', {
+        name: name || appUser?.name || '',
+        phone: phone || appUser?.phone || '',
+        role: appUser?.role || appUser?.accountRole || 'Staff',
+        restaurantId: appUser?.restaurantId || appUser?.activeRestaurantId || appUser?.defaultRestaurantId || 'cheers_chilton_01'
+      });
+      setAccountRepairResult(data);
+      addToast('Profile Repair Complete', data.message || 'Your Auth account and Firestore profile are now linked.');
+    } catch (err) {
+      const msg = err.message || 'Could not repair this account profile.';
+      setMfaError(msg);
+      addToast('Repair Failed', msg);
+    } finally {
+      setIsEmailVerifyBusy(false);
+    }
+  };
+
+  const handleGenerateVerificationRescueLink = async () => {
+    setMfaError('');
+    setVerificationRescueLink('');
+    setIsEmailVerifyBusy(true);
+    try {
+      const data = await postAccountSecurityAction('generate-verification-link');
+      setVerificationRescueLink(data.verificationLink || '');
+      if (data.verificationLink && navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(data.verificationLink).catch(() => null);
+      }
+      addToast('Verification Link Ready', data.verificationLink ? 'Rescue link generated and copied. Open it, then return and refresh email status.' : 'Verification link generated.');
+    } catch (err) {
+      const msg = err.message || 'Could not generate verification link.';
+      setMfaError(msg);
+      addToast('Link Failed', msg);
+    } finally {
+      setIsEmailVerifyBusy(false);
+    }
+  };
+
+  const handleAdminVerifyEmailSelf = async () => {
+    setMfaError('');
+    if (!window.confirm('Use admin rescue to mark this signed-in Firebase Auth email as verified? Only do this for your own verified admin/test account.')) return;
+    setIsEmailVerifyBusy(true);
+    try {
+      const data = await postAccountSecurityAction('admin-verify-email-self');
+      await auth.currentUser?.reload().catch(() => null);
+      await auth.currentUser?.getIdToken(true).catch(() => null);
+      setAccountRepairResult(data);
+      addToast('Email Verified', data.message || 'This Firebase Auth email is now verified.');
+    } catch (err) {
+      const msg = err.message || 'Could not verify this email through admin rescue.';
+      setMfaError(msg);
+      addToast('Admin Rescue Failed', msg);
+    } finally {
+      setIsEmailVerifyBusy(false);
+    }
+  };
+
   const handleSendMfaEnrollmentCode = async () => {
     setMfaError('');
     if (!auth.currentUser) return setMfaError('Please log out and back in before enrolling two-step login.');
@@ -1478,6 +1556,30 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Enforcement</div><div className={accountMfaEnforced ? 'text-red-300 mt-1' : 'text-amber-300 mt-1'}>{accountMfaEnforced ? 'On' : 'Testing / Off'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Factors</div><div className="text-white mt-1">{mfaStatus?.mfaFactorCount ?? appUser?.mfaFactorCount ?? 0}</div></div>
             </div>
+            <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Account Repair + Verification Debug</div>
+                  <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">Shows the actual Firebase Auth account, Vercel Admin project, and Firestore profile link so test/prod wires are easier to spot.</p>
+                </div>
+                <div className={`px-2 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest ${firestoreProfileMissing ? 'bg-red-900/20 border-red-900/50 text-red-300' : 'bg-emerald-900/10 border-emerald-900/40 text-emerald-300'}`}>{firestoreProfileMissing ? 'Profile Missing' : 'Profile Linked / Unknown OK'}</div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2 text-[10px] font-mono text-slate-300">
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Browser Project:</span> {firebaseConfig?.projectId || 'unknown'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">API/Admin Project:</span> {accountSecurityDebug.firebaseProjectId || mfaStatus?.firebaseProjectId || 'refresh status'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Auth UID:</span> {accountSecurityDebug.authUid || auth.currentUser?.uid || 'unknown'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Auth Email:</span> {accountSecurityDebug.authEmail || auth.currentUser?.email || appUser?.email || 'unknown'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Firestore Email:</span> {accountSecurityDebug.firestoreUserEmail || mfaStatus?.firestoreUserEmail || 'missing / not synced'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Firestore Workspace:</span> {accountSecurityDebug.firestoreUserRestaurantId || mfaStatus?.firestoreUserRestaurantId || appUser?.restaurantId || 'missing'}</div>
+              </div>
+              {firebaseConfig?.projectId && (accountSecurityDebug.firebaseProjectId || mfaStatus?.firebaseProjectId) && firebaseConfig.projectId !== (accountSecurityDebug.firebaseProjectId || mfaStatus.firebaseProjectId) && (
+                <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">Project mismatch: the browser is using {firebaseConfig.projectId}, but the Vercel API/Admin route is using {accountSecurityDebug.firebaseProjectId || mfaStatus.firebaseProjectId}. Fix Vercel Firebase Admin env vars before testing MFA.</div>
+              )}
+              {firestoreProfileMissing && (
+                <button type="button" onClick={handleRepairUserProfile} disabled={isEmailVerifyBusy} className={`${T.btn} disabled:opacity-50`}>{isEmailVerifyBusy ? 'Repairing…' : 'Repair My User Profile'}</button>
+              )}
+              {accountRepairResult?.message && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-[10px] font-bold text-emerald-200">{accountRepairResult.message}</div>}
+            </div>
             {!accountMfaEnabled && !accountEmailVerified && (
               <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 space-y-3">
                 <div>
@@ -1487,6 +1589,15 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 <div className="flex flex-col sm:flex-row gap-2">
                   <button type="button" onClick={handleSendEmailVerificationLink} disabled={isEmailVerifyBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isEmailVerifyBusy ? 'Working…' : 'Send Verification Email'}</button>
                   <button type="button" onClick={handleRefreshEmailVerification} disabled={isEmailVerifyBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Email Status</button>
+                </div>
+                <div className="bg-[#0B0E11] border border-amber-500/20 rounded-xl p-3 space-y-2">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-amber-300">Email rescue tools</div>
+                  <p className="text-[10px] text-slate-400 font-bold leading-snug">Use these only if Firebase Console can send mail but the app-triggered verification email does not arrive. The generated link verifies this signed-in Firebase Auth email without waiting on delivery.</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button type="button" onClick={handleGenerateVerificationRescueLink} disabled={isEmailVerifyBusy} className="bg-[#12161A] border border-amber-500/40 text-amber-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Generate Verification Link</button>
+                    {canAdminVerifyEmail && <button type="button" onClick={handleAdminVerifyEmailSelf} disabled={isEmailVerifyBusy} className="bg-red-900/20 border border-red-900/50 text-red-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Admin Verify My Email</button>}
+                  </div>
+                  {verificationRescueLink && <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black mb-1">Verification rescue link</div><a href={verificationRescueLink} target="_blank" rel="noreferrer" className="text-[10px] text-blue-300 font-mono break-all hover:text-white">{verificationRescueLink}</a></div>}
                 </div>
               </div>
             )}
@@ -1523,6 +1634,30 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Enforcement</div><div className={accountMfaEnforced ? 'text-red-300 mt-1' : 'text-amber-300 mt-1'}>{accountMfaEnforced ? 'On' : 'Testing / Off'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Factors</div><div className="text-white mt-1">{mfaStatus?.mfaFactorCount ?? appUser?.mfaFactorCount ?? 0}</div></div>
             </div>
+            <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Account Repair + Verification Debug</div>
+                  <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">Shows the actual Firebase Auth account, Vercel Admin project, and Firestore profile link so test/prod wires are easier to spot.</p>
+                </div>
+                <div className={`px-2 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest ${firestoreProfileMissing ? 'bg-red-900/20 border-red-900/50 text-red-300' : 'bg-emerald-900/10 border-emerald-900/40 text-emerald-300'}`}>{firestoreProfileMissing ? 'Profile Missing' : 'Profile Linked / Unknown OK'}</div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2 text-[10px] font-mono text-slate-300">
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Browser Project:</span> {firebaseConfig?.projectId || 'unknown'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">API/Admin Project:</span> {accountSecurityDebug.firebaseProjectId || mfaStatus?.firebaseProjectId || 'refresh status'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Auth UID:</span> {accountSecurityDebug.authUid || auth.currentUser?.uid || 'unknown'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Auth Email:</span> {accountSecurityDebug.authEmail || auth.currentUser?.email || appUser?.email || 'unknown'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Firestore Email:</span> {accountSecurityDebug.firestoreUserEmail || mfaStatus?.firestoreUserEmail || 'missing / not synced'}</div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 break-all"><span className="text-slate-500 font-black uppercase tracking-widest">Firestore Workspace:</span> {accountSecurityDebug.firestoreUserRestaurantId || mfaStatus?.firestoreUserRestaurantId || appUser?.restaurantId || 'missing'}</div>
+              </div>
+              {firebaseConfig?.projectId && (accountSecurityDebug.firebaseProjectId || mfaStatus?.firebaseProjectId) && firebaseConfig.projectId !== (accountSecurityDebug.firebaseProjectId || mfaStatus.firebaseProjectId) && (
+                <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">Project mismatch: the browser is using {firebaseConfig.projectId}, but the Vercel API/Admin route is using {accountSecurityDebug.firebaseProjectId || mfaStatus.firebaseProjectId}. Fix Vercel Firebase Admin env vars before testing MFA.</div>
+              )}
+              {firestoreProfileMissing && (
+                <button type="button" onClick={handleRepairUserProfile} disabled={isEmailVerifyBusy} className={`${T.btn} disabled:opacity-50`}>{isEmailVerifyBusy ? 'Repairing…' : 'Repair My User Profile'}</button>
+              )}
+              {accountRepairResult?.message && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-[10px] font-bold text-emerald-200">{accountRepairResult.message}</div>}
+            </div>
             {!accountMfaEnabled && !accountEmailVerified && (
               <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 space-y-3">
                 <div>
@@ -1532,6 +1667,15 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 <div className="flex flex-col sm:flex-row gap-2">
                   <button type="button" onClick={handleSendEmailVerificationLink} disabled={isEmailVerifyBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isEmailVerifyBusy ? 'Working…' : 'Send Verification Email'}</button>
                   <button type="button" onClick={handleRefreshEmailVerification} disabled={isEmailVerifyBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Email Status</button>
+                </div>
+                <div className="bg-[#0B0E11] border border-amber-500/20 rounded-xl p-3 space-y-2">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-amber-300">Email rescue tools</div>
+                  <p className="text-[10px] text-slate-400 font-bold leading-snug">Use these only if Firebase Console can send mail but the app-triggered verification email does not arrive. The generated link verifies this signed-in Firebase Auth email without waiting on delivery.</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button type="button" onClick={handleGenerateVerificationRescueLink} disabled={isEmailVerifyBusy} className="bg-[#12161A] border border-amber-500/40 text-amber-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Generate Verification Link</button>
+                    {canAdminVerifyEmail && <button type="button" onClick={handleAdminVerifyEmailSelf} disabled={isEmailVerifyBusy} className="bg-red-900/20 border border-red-900/50 text-red-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Admin Verify My Email</button>}
+                  </div>
+                  {verificationRescueLink && <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black mb-1">Verification rescue link</div><a href={verificationRescueLink} target="_blank" rel="noreferrer" className="text-[10px] text-blue-300 font-mono break-all hover:text-white">{verificationRescueLink}</a></div>}
                 </div>
               </div>
             )}
@@ -4251,7 +4395,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
-    { title: 'Version 15.0.24 Deployment Syntax Fix', group: 'System Administrator', keywords: 'v15 15.0.24 deployment syntax fix account security email verification password reset firebase default link mfa', body: ['15.0.24 fixes a build-blocking syntax issue in the Account Security release wording while keeping the Firebase default verification email flow from 15.0.23.', 'Settings password reset still sends to the active Firebase Auth email first so profile email drift cannot send a reset to the wrong address.'] },
+    { title: 'Version 15.0.25 Account Repair + Verification Debug', group: 'System Administrator', keywords: 'v15 15.0.25 account repair verification debug mfa firebase auth firestore profile rescue link', body: ['15.0.25 adds Account Security diagnostics that show the Firebase Auth UID/email, browser Firebase project, API/Admin Firebase project, and Firestore profile status.', 'If the Auth user exists but the Firestore user profile is missing, Account Security now offers a safe Repair My User Profile action.', 'If Firebase Console emails work but the app verification email does not arrive, Account Security can generate a self-service verification rescue link.'] },
     { title: 'Version 15.0.22 Email Verification for MFA', group: 'System Administrator', keywords: 'v15 15.0.22 account security email verification mfa two step login sms', body: ['15.0.22 adds Send Verification Email and Refresh Email Status actions to Account Security because Firebase requires verified email before SMS MFA enrollment.', 'This update changes /api/account-security so the app can show emailVerified alongside MFA factor status.'] },
     { title: 'Version 15.0.21 Account Security Tab Fix', group: 'System Administrator', keywords: 'v15 15.0.21 account security settings mfa two step login tab visible mobile', body: ['15.0.21 makes Account Security a visible Settings tab and adds an Open Account Security button inside Profile so MFA setup is easy to find on mobile.', 'This is a UI routing fix only. It does not change Firebase rules, Storage rules, API routes, or Vercel environment variables.'] },
     { title: 'Version 15.0.20 MFA & Permissions Enforcement', group: 'System Administrator', keywords: 'v15 15.0.20 mfa two step login account security sms elevated roles permissions preview enforcement', body: ['15.0.20 adds Account Security two-step login enrollment under Settings, MFA-aware login prompts, a server-side account-security sync route, and an elevated-role enforcement switch for protected admin API routes.', 'Keep MFA enforcement off until Firebase SMS MFA is enabled and at least one owner or System Administrator has successfully enrolled and completed a fresh MFA login.'] },
@@ -7093,7 +7237,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-15024', title:'What changed in version 15.0.24', group:'Release Notes', keywords:'new update 15.0.24 deployment syntax fix account security email verification password reset firebase action link mfa', body:['Account Security verification email keeps the Firebase default action link and fixes the release wording that blocked the Vercel build.', 'Settings password reset still targets the active Firebase Auth email first, preventing stale profile email drift from swallowing reset links.', 'No Firebase rules, Storage rules, API routes, or Vercel env vars changed.'] },
+  { id:'new-15025', title:'What changed in version 15.0.25', group:'Release Notes', keywords:'new update 15.0.25 account repair verification debug mfa firebase auth firestore profile rescue link', body:['Account Security now shows Auth UID/email, browser Firebase project, Vercel API/Admin Firebase project, Firestore profile status, and MFA status in one debug panel.', 'If a Firebase Auth user is missing its Firestore users/{uid} profile, Account Security can repair the profile instead of leaving MFA setup in limbo.', 'If Firebase Console email delivery works but the app verification email does not arrive, Account Security can generate a verification rescue link for the signed-in user.'] },
   { id:'new-15022', title:'What changed in version 15.0.22', group:'Release Notes', keywords:'new update 15.0.22 account security email verification mfa two step login sms', body:['Account Security now includes Send Verification Email for accounts blocked by Firebase auth/unverified-email.', 'After clicking the Firebase inbox link, Refresh Email Status reloads the Firebase Auth user and lets SMS MFA setup continue.', '/api/account-security now reports emailVerified, so Vercel redeploy is required.'] },
   { id:'new-15021', title:'What changed in version 15.0.21', group:'Release Notes', keywords:'new update 15.0.21 account security settings mfa two step login tab mobile', body:['Account Security now has its own visible Settings tab instead of being buried below the Profile form.', 'Profile also includes an Open Account Security button so elevated users can get to MFA setup quickly on phone screens.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15019', title:'What changed in version 15.0.19', group:'Release Notes', keywords:'new update 15.0.19 ai tools invoice scanner inventory shortcut invoices', body:['AI Tools now opens the Invoice Scanner directly on Inventory → Invoices instead of dropping users on the default Inventory view.', 'The button now says Open Invoice Scanner so it matches where it goes.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },

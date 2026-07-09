@@ -1,7 +1,7 @@
 {
-  "version": "15.0.24",
-  "name": "86 Chaos 15.0.24 Deployment Syntax Fix",
+  "version": "15.0.25",
+  "name": "86 Chaos 15.0.25 Account Repair + Verification Debug",
   "releasedAt": "2026-07-08",
-  "label": "86 Chaos 15.0.24",
-  "build": "15.0.24"
+  "label": "86 Chaos 15.0.25",
+  "build": "15.0.25"
 }
