@@ -808,6 +808,12 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [isEmailVerifyBusy, setIsEmailVerifyBusy] = useState(false);
   const [verificationRescueLink, setVerificationRescueLink] = useState('');
   const [accountRepairResult, setAccountRepairResult] = useState(null);
+  const [showBackupMfaForm, setShowBackupMfaForm] = useState(false);
+  const [mfaRecoveryTargetId, setMfaRecoveryTargetId] = useState('');
+  const [mfaRecoveryReason, setMfaRecoveryReason] = useState('');
+  const [mfaRecoveryLookup, setMfaRecoveryLookup] = useState(null);
+  const [mfaRecoveryResult, setMfaRecoveryResult] = useState(null);
+  const [isMfaRecoveryBusy, setIsMfaRecoveryBusy] = useState(false);
   const mfaEnrollRecaptchaRef = useRef(null);
 
   // --- Preferences State ---
@@ -897,6 +903,10 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const accountSecurityDebug = mfaStatus?.debug || {};
   const firestoreProfileMissing = mfaStatus && mfaStatus.firestoreUserDocExists === false;
   const canAdminVerifyEmail = Boolean(mfaStatus?.canAdminVerifyEmail || mfaStatus?.isMasterAdminEmail || appUser?.isSuperAdmin);
+  const canRecoverUserMfa = Boolean(mfaStatus?.canMfaRecovery || appUser?.isSuperAdmin || appUser?.systemAccess?.superAdmin || settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase() || settingsEmail === 'geoffrm1985@gmail.com');
+  const mfaRecoveryUsers = [...(users || [])].filter(u => u?.id && (u.email || u.name)).sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
+  const selectedMfaRecoveryUser = mfaRecoveryUsers.find(u => u.id === mfaRecoveryTargetId) || null;
+  const mfaFactorLimitReached = Number(mfaStatus?.mfaFactorCount || 0) >= 5;
 
   const normalizeMfaPhone = (value) => {
     const raw = String(value || '').trim();
@@ -905,6 +915,23 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
     if (digits.length === 10) return `+1${digits}`;
     if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
     return raw;
+  };
+
+  const formatMfaFirebaseError = (err) => {
+    const code = err?.code || '';
+    const raw = err?.message || 'Could not send MFA setup code.';
+    if (code === 'auth/operation-not-allowed') return 'Firebase blocked the SMS setup request (auth/operation-not-allowed). Check SMS regions, authorized domains, Email/Password provider, and that you are using the same Firebase project as this deployment.';
+    if (code === 'auth/captcha-check-failed') return 'Firebase rejected the reCAPTCHA check. Confirm the testing/production Vercel domain is authorized in Firebase Authentication, then refresh and try again.';
+    if (code === 'auth/too-many-requests') return 'Firebase throttled SMS requests for a bit. Wait a few minutes before trying again.';
+    if (code === 'auth/invalid-phone-number') return 'Use full phone format, like +19205551234.';
+    if (code === 'auth/unverified-email') return 'Verify this email first, refresh Account Security, then send the SMS setup code.';
+    return raw;
+  };
+
+  const resetMfaEnrollmentVerifier = async () => {
+    try { await mfaEnrollRecaptchaRef.current?.clear?.(); } catch (_) {}
+    mfaEnrollRecaptchaRef.current = null;
+    setMfaVerificationId('');
   };
 
   const getMfaEnrollmentRecaptcha = () => {
@@ -1377,7 +1404,8 @@ const handleEnableNotifications = async () => {
       setMfaPhone(normalizedPhone);
       addToast('Code Sent', 'Enter the SMS code to finish two-step login enrollment.');
     } catch (err) {
-      const msg = err?.code === 'auth/operation-not-allowed' ? 'Firebase SMS MFA is not enabled yet for this Firebase project.' : (err.message || 'Could not send MFA setup code.');
+      const msg = formatMfaFirebaseError(err);
+      await resetMfaEnrollmentVerifier();
       setMfaError(msg);
       addToast('MFA Setup Error', msg);
     } finally {
@@ -1393,18 +1421,65 @@ const handleEnableNotifications = async () => {
     try {
       const credential = PhoneAuthProvider.credential(mfaVerificationId, mfaCode.trim());
       const assertion = PhoneMultiFactorGenerator.assertion(credential);
-      await multiFactor(auth.currentUser).enroll(assertion, 'SMS two-step login');
+      const enrolledPhone = normalizeMfaPhone(mfaPhone);
+      const displayName = accountMfaEnabled ? `SMS backup phone ••••${enrolledPhone.slice(-4)}` : 'SMS two-step login';
+      await multiFactor(auth.currentUser).enroll(assertion, displayName);
       setMfaVerificationId('');
       setMfaCode('');
       setMfaCurrentPassword('');
+      setShowBackupMfaForm(false);
       await refreshAccountSecurityStatus({ silent: true });
-      addToast('Two-Step Login Enabled', 'This account now requires an SMS code when signing in.');
+      addToast(accountMfaEnabled ? 'Backup Phone Added' : 'Two-Step Login Enabled', accountMfaEnabled ? 'Backup MFA phone is enrolled for this account.' : 'This account now requires an SMS code when signing in.');
     } catch (err) {
       const msg = err.message || 'Could not finish MFA enrollment.';
       setMfaError(msg);
       addToast('MFA Enrollment Failed', msg);
     } finally {
       setIsMfaBusy(false);
+    }
+  };
+
+  const handleLookupMfaRecoveryUser = async () => {
+    setMfaError('');
+    setMfaRecoveryLookup(null);
+    setMfaRecoveryResult(null);
+    if (!mfaRecoveryTargetId) return setMfaError('Choose a user to inspect for MFA recovery.');
+    setIsMfaRecoveryBusy(true);
+    try {
+      const target = selectedMfaRecoveryUser || {};
+      const data = await postAccountSecurityAction('admin-get-user-mfa', { targetUid: mfaRecoveryTargetId, targetEmail: target.email || '' });
+      setMfaRecoveryLookup(data.targetMfa || null);
+      addToast('MFA Recovery', data.message || 'Target MFA status loaded.');
+    } catch (err) {
+      const msg = err.message || 'Could not inspect that user MFA status.';
+      setMfaError(msg);
+      addToast('MFA Recovery Error', msg);
+    } finally {
+      setIsMfaRecoveryBusy(false);
+    }
+  };
+
+  const handleAdminResetUserMfa = async () => {
+    setMfaError('');
+    setMfaRecoveryResult(null);
+    if (!mfaRecoveryTargetId) return setMfaError('Choose a user before resetting MFA.');
+    if (mfaRecoveryReason.trim().length < 8) return setMfaError('Add a recovery reason with at least 8 characters.');
+    const target = selectedMfaRecoveryUser || mfaRecoveryLookup || {};
+    const targetLabel = target.name || target.email || mfaRecoveryTargetId;
+    if (!window.confirm(`Reset MFA for ${targetLabel}? They will need to enroll a new phone before protected elevated tools are enforced again.`)) return;
+    setIsMfaRecoveryBusy(true);
+    try {
+      const data = await postAccountSecurityAction('admin-reset-user-mfa', { targetUid: mfaRecoveryTargetId, targetEmail: target.email || '', reason: mfaRecoveryReason.trim() });
+      setMfaRecoveryResult(data.recoveryReset ? data : null);
+      setMfaRecoveryLookup(data.targetMfa || null);
+      setMfaRecoveryReason('');
+      addToast('MFA Reset Complete', data.message || 'MFA factors were removed for that user.');
+    } catch (err) {
+      const msg = err.message || 'Could not reset that user MFA.';
+      setMfaError(msg);
+      addToast('MFA Reset Failed', msg);
+    } finally {
+      setIsMfaRecoveryBusy(false);
     }
   };
 
@@ -1601,16 +1676,78 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 </div>
               </div>
             )}
-            {!accountMfaEnabled && (
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div><label className={T.label}>Current Password</label><input type="password" value={mfaCurrentPassword} onChange={e => setMfaCurrentPassword(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Required to enroll" /></div>
-                <div><label className={T.label}>Mobile Phone for SMS MFA</label><input type="tel" value={mfaPhone} onChange={e => setMfaPhone(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="+19205551234" /></div>
-                <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy || !accountEmailVerified} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : accountEmailVerified ? 'Send Setup Code' : 'Verify Email First'}</button>
-                <div className="flex gap-2"><input type="text" inputMode="numeric" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="SMS code" /><button type="button" onClick={handleConfirmMfaEnrollment} disabled={isMfaBusy || !mfaVerificationId} className={`${T.btn} whitespace-nowrap disabled:opacity-50`}>Confirm</button></div>
+            {accountMfaEnabled && (
+              <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 space-y-3 text-xs font-bold text-emerald-200">
+                <div>Two-step login is enrolled for this Firebase Auth account. Next login should ask for an SMS code after the password.</div>
+                {(mfaStatus?.factors || []).length > 0 && (
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {(mfaStatus?.factors || []).map((factor, index) => (
+                      <div key={factor.uid || index} className="bg-[#0B0E11] border border-emerald-900/30 rounded-xl p-2 text-[10px] text-emerald-100">
+                        <div className="font-black uppercase tracking-widest text-emerald-300">{factor.displayName || `MFA Factor ${index + 1}`}</div>
+                        <div className="text-emerald-100/80 mt-1">{factor.phoneNumberMasked || factor.factorId || 'SMS factor'} {factor.enrollmentTime ? `• ${factor.enrollmentTime}` : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={() => { setShowBackupMfaForm(v => !v); setMfaVerificationId(''); setMfaCode(''); }} disabled={mfaFactorLimitReached} className="bg-[#12161A] border border-emerald-500/40 text-emerald-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{showBackupMfaForm ? 'Hide Backup Phone Setup' : mfaFactorLimitReached ? 'MFA Factor Limit Reached' : 'Add Backup Phone'}</button>
+                  <div className="text-[10px] text-emerald-100/70 leading-snug flex items-center">Backup phone enrollment helps prevent lockouts if a manager breaks or loses their main phone.</div>
+                </div>
               </div>
             )}
-            {accountMfaEnabled && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">Two-step login is enrolled for this Firebase Auth account. Next login should ask for an SMS code after the password.</div>}
-            <div className="flex flex-col sm:flex-row gap-2"><button type="button" onClick={handleSyncMfaStatus} disabled={isMfaBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Status</button><div className="text-[10px] text-slate-500 font-bold leading-snug flex items-center">Enable SMS MFA in Firebase Console first. Do not turn on enforcement until an elevated account has enrolled and completed a fresh MFA login.</div></div>
+            {(!accountMfaEnabled || showBackupMfaForm) && (
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{accountMfaEnabled ? 'Add Backup MFA Phone' : 'Enroll SMS Two-Step Login'}</div>
+                  <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">Use full phone format like +19205551234. Owners, managers, admins, and System Administrators are required when enforcement is on; regular employees may enroll optionally.</p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div><label className={T.label}>Current Password</label><input type="password" value={mfaCurrentPassword} onChange={e => setMfaCurrentPassword(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Required to enroll" /></div>
+                  <div><label className={T.label}>{accountMfaEnabled ? 'Backup Phone for SMS MFA' : 'Mobile Phone for SMS MFA'}</label><input type="tel" value={mfaPhone} onChange={e => setMfaPhone(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="+19205551234" /></div>
+                  <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy || !accountEmailVerified || mfaFactorLimitReached} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : accountEmailVerified ? (accountMfaEnabled ? 'Send Backup Phone Code' : 'Send Setup Code') : 'Verify Email First'}</button>
+                  <div className="flex gap-2"><input type="text" inputMode="numeric" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="SMS code" /><button type="button" onClick={handleConfirmMfaEnrollment} disabled={isMfaBusy || !mfaVerificationId} className={`${T.btn} whitespace-nowrap disabled:opacity-50`}>Confirm</button></div>
+                </div>
+                <button type="button" onClick={resetMfaEnrollmentVerifier} className="bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Reset MFA Verifier</button>
+              </div>
+            )}
+            {canRecoverUserMfa && (
+              <div className="bg-red-950/10 border border-red-900/40 rounded-xl p-3 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Super Admin MFA Recovery</div>
+                    <p className="text-[10px] text-slate-400 font-bold leading-snug mt-1">Use only after verifying the person in real life. This removes their Firebase MFA factors and records the reason in audit logs.</p>
+                  </div>
+                  <div className="px-2 py-1 rounded-lg border border-red-900/50 bg-red-900/20 text-red-200 text-[8px] font-black uppercase tracking-widest">Audit Logged</div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={T.label}>User</label>
+                    <select value={mfaRecoveryTargetId} onChange={e => { setMfaRecoveryTargetId(e.target.value); setMfaRecoveryLookup(null); setMfaRecoveryResult(null); }} className={`${T.input} py-2 text-sm`}>
+                      <option value="">Choose user…</option>
+                      {mfaRecoveryUsers.map(user => <option key={user.id} value={user.id}>{user.name || user.email || user.id} • {user.role || 'Staff'} • {user.email || 'no email'}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={T.label}>Recovery Reason</label>
+                    <input type="text" value={mfaRecoveryReason} onChange={e => setMfaRecoveryReason(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Lost phone, verified in person" />
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={handleLookupMfaRecoveryUser} disabled={isMfaRecoveryBusy || !mfaRecoveryTargetId} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{isMfaRecoveryBusy ? 'Checking…' : 'Check User MFA'}</button>
+                  <button type="button" onClick={handleAdminResetUserMfa} disabled={isMfaRecoveryBusy || !mfaRecoveryTargetId || mfaRecoveryReason.trim().length < 8} className="bg-red-900/20 border border-red-900/50 text-red-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Reset User MFA</button>
+                </div>
+                {mfaRecoveryLookup && (
+                  <div className="bg-[#0B0E11] border border-red-900/30 rounded-xl p-3 text-[10px] font-bold text-slate-300 space-y-1">
+                    <div><span className="text-slate-500 uppercase tracking-widest font-black">Target:</span> {mfaRecoveryLookup.name || mfaRecoveryLookup.email || mfaRecoveryLookup.uid}</div>
+                    <div><span className="text-slate-500 uppercase tracking-widest font-black">Email:</span> {mfaRecoveryLookup.email || 'missing'} • {mfaRecoveryLookup.emailVerified ? 'verified' : 'not verified'}</div>
+                    <div><span className="text-slate-500 uppercase tracking-widest font-black">Factors:</span> {mfaRecoveryLookup.mfaFactorCount || 0}</div>
+                    {(mfaRecoveryLookup.factors || []).map((factor, index) => <div key={factor.uid || index} className="pl-2 text-slate-400">• {factor.displayName || factor.factorId || 'MFA factor'} {factor.phoneNumberMasked || ''}</div>)}
+                  </div>
+                )}
+                {mfaRecoveryResult?.message && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-[10px] font-bold text-emerald-200">{mfaRecoveryResult.message}</div>}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-2"><button type="button" onClick={handleSyncMfaStatus} disabled={isMfaBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Status</button><div className="text-[10px] text-slate-500 font-bold leading-snug flex items-center">Require MFA only for owners, managers, admins, and System Administrators. Keep enforcement off until recovery reset has been tested.</div></div>
             <div id="mfa-enroll-recaptcha-container" className="hidden"></div>
           </div>
         </div>
@@ -1679,16 +1816,78 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 </div>
               </div>
             )}
-            {!accountMfaEnabled && (
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div><label className={T.label}>Current Password</label><input type="password" value={mfaCurrentPassword} onChange={e => setMfaCurrentPassword(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Required to enroll" /></div>
-                <div><label className={T.label}>Mobile Phone for SMS MFA</label><input type="tel" value={mfaPhone} onChange={e => setMfaPhone(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="+19205551234" /></div>
-                <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy || !accountEmailVerified} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : accountEmailVerified ? 'Send Setup Code' : 'Verify Email First'}</button>
-                <div className="flex gap-2"><input type="text" inputMode="numeric" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="SMS code" /><button type="button" onClick={handleConfirmMfaEnrollment} disabled={isMfaBusy || !mfaVerificationId} className={`${T.btn} whitespace-nowrap disabled:opacity-50`}>Confirm</button></div>
+            {accountMfaEnabled && (
+              <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 space-y-3 text-xs font-bold text-emerald-200">
+                <div>Two-step login is enrolled for this Firebase Auth account. Next login should ask for an SMS code after the password.</div>
+                {(mfaStatus?.factors || []).length > 0 && (
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {(mfaStatus?.factors || []).map((factor, index) => (
+                      <div key={factor.uid || index} className="bg-[#0B0E11] border border-emerald-900/30 rounded-xl p-2 text-[10px] text-emerald-100">
+                        <div className="font-black uppercase tracking-widest text-emerald-300">{factor.displayName || `MFA Factor ${index + 1}`}</div>
+                        <div className="text-emerald-100/80 mt-1">{factor.phoneNumberMasked || factor.factorId || 'SMS factor'} {factor.enrollmentTime ? `• ${factor.enrollmentTime}` : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={() => { setShowBackupMfaForm(v => !v); setMfaVerificationId(''); setMfaCode(''); }} disabled={mfaFactorLimitReached} className="bg-[#12161A] border border-emerald-500/40 text-emerald-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{showBackupMfaForm ? 'Hide Backup Phone Setup' : mfaFactorLimitReached ? 'MFA Factor Limit Reached' : 'Add Backup Phone'}</button>
+                  <div className="text-[10px] text-emerald-100/70 leading-snug flex items-center">Backup phone enrollment helps prevent lockouts if a manager breaks or loses their main phone.</div>
+                </div>
               </div>
             )}
-            {accountMfaEnabled && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">Two-step login is enrolled for this Firebase Auth account. Next login should ask for an SMS code after the password.</div>}
-            <div className="flex flex-col sm:flex-row gap-2"><button type="button" onClick={handleSyncMfaStatus} disabled={isMfaBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Status</button><div className="text-[10px] text-slate-500 font-bold leading-snug flex items-center">Enable SMS MFA in Firebase Console first. Do not turn on enforcement until an elevated account has enrolled and completed a fresh MFA login.</div></div>
+            {(!accountMfaEnabled || showBackupMfaForm) && (
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{accountMfaEnabled ? 'Add Backup MFA Phone' : 'Enroll SMS Two-Step Login'}</div>
+                  <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">Use full phone format like +19205551234. Owners, managers, admins, and System Administrators are required when enforcement is on; regular employees may enroll optionally.</p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div><label className={T.label}>Current Password</label><input type="password" value={mfaCurrentPassword} onChange={e => setMfaCurrentPassword(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Required to enroll" /></div>
+                  <div><label className={T.label}>{accountMfaEnabled ? 'Backup Phone for SMS MFA' : 'Mobile Phone for SMS MFA'}</label><input type="tel" value={mfaPhone} onChange={e => setMfaPhone(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="+19205551234" /></div>
+                  <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy || !accountEmailVerified || mfaFactorLimitReached} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : accountEmailVerified ? (accountMfaEnabled ? 'Send Backup Phone Code' : 'Send Setup Code') : 'Verify Email First'}</button>
+                  <div className="flex gap-2"><input type="text" inputMode="numeric" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="SMS code" /><button type="button" onClick={handleConfirmMfaEnrollment} disabled={isMfaBusy || !mfaVerificationId} className={`${T.btn} whitespace-nowrap disabled:opacity-50`}>Confirm</button></div>
+                </div>
+                <button type="button" onClick={resetMfaEnrollmentVerifier} className="bg-[#12161A] border border-[#2A353D] text-slate-400 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Reset MFA Verifier</button>
+              </div>
+            )}
+            {canRecoverUserMfa && (
+              <div className="bg-red-950/10 border border-red-900/40 rounded-xl p-3 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Super Admin MFA Recovery</div>
+                    <p className="text-[10px] text-slate-400 font-bold leading-snug mt-1">Use only after verifying the person in real life. This removes their Firebase MFA factors and records the reason in audit logs.</p>
+                  </div>
+                  <div className="px-2 py-1 rounded-lg border border-red-900/50 bg-red-900/20 text-red-200 text-[8px] font-black uppercase tracking-widest">Audit Logged</div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={T.label}>User</label>
+                    <select value={mfaRecoveryTargetId} onChange={e => { setMfaRecoveryTargetId(e.target.value); setMfaRecoveryLookup(null); setMfaRecoveryResult(null); }} className={`${T.input} py-2 text-sm`}>
+                      <option value="">Choose user…</option>
+                      {mfaRecoveryUsers.map(user => <option key={user.id} value={user.id}>{user.name || user.email || user.id} • {user.role || 'Staff'} • {user.email || 'no email'}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={T.label}>Recovery Reason</label>
+                    <input type="text" value={mfaRecoveryReason} onChange={e => setMfaRecoveryReason(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Lost phone, verified in person" />
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={handleLookupMfaRecoveryUser} disabled={isMfaRecoveryBusy || !mfaRecoveryTargetId} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{isMfaRecoveryBusy ? 'Checking…' : 'Check User MFA'}</button>
+                  <button type="button" onClick={handleAdminResetUserMfa} disabled={isMfaRecoveryBusy || !mfaRecoveryTargetId || mfaRecoveryReason.trim().length < 8} className="bg-red-900/20 border border-red-900/50 text-red-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Reset User MFA</button>
+                </div>
+                {mfaRecoveryLookup && (
+                  <div className="bg-[#0B0E11] border border-red-900/30 rounded-xl p-3 text-[10px] font-bold text-slate-300 space-y-1">
+                    <div><span className="text-slate-500 uppercase tracking-widest font-black">Target:</span> {mfaRecoveryLookup.name || mfaRecoveryLookup.email || mfaRecoveryLookup.uid}</div>
+                    <div><span className="text-slate-500 uppercase tracking-widest font-black">Email:</span> {mfaRecoveryLookup.email || 'missing'} • {mfaRecoveryLookup.emailVerified ? 'verified' : 'not verified'}</div>
+                    <div><span className="text-slate-500 uppercase tracking-widest font-black">Factors:</span> {mfaRecoveryLookup.mfaFactorCount || 0}</div>
+                    {(mfaRecoveryLookup.factors || []).map((factor, index) => <div key={factor.uid || index} className="pl-2 text-slate-400">• {factor.displayName || factor.factorId || 'MFA factor'} {factor.phoneNumberMasked || ''}</div>)}
+                  </div>
+                )}
+                {mfaRecoveryResult?.message && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-[10px] font-bold text-emerald-200">{mfaRecoveryResult.message}</div>}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-2"><button type="button" onClick={handleSyncMfaStatus} disabled={isMfaBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Status</button><div className="text-[10px] text-slate-500 font-bold leading-snug flex items-center">Require MFA only for owners, managers, admins, and System Administrators. Keep enforcement off until recovery reset has been tested.</div></div>
             <div id="mfa-enroll-recaptcha-container" className="hidden"></div>
           </div>
         </div>
@@ -4395,6 +4594,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.26 MFA Recovery & Safer Enforcement', group: 'System Administrator', keywords: 'v15 15.0.26 mfa recovery reset lost phone backup phone elevated roles enforcement', body: ['15.0.26 adds Super Admin MFA Recovery inside Account Security so a lost or broken phone can be handled without disabling MFA for everyone.', 'Recovery lets a Super Admin inspect a user MFA status, remove enrolled Firebase MFA factors, require a written reason, and write the action to audit logs.', 'Account Security now supports adding a backup SMS phone after the first factor is enrolled. MFA should be required for owners, managers, admins, and System Administrators when enforcement is on. Standard employees can enroll optionally.'] },
     { title: 'Version 15.0.25 Account Repair + Verification Debug', group: 'System Administrator', keywords: 'v15 15.0.25 account repair verification debug mfa firebase auth firestore profile rescue link', body: ['15.0.25 adds Account Security diagnostics that show the Firebase Auth UID/email, browser Firebase project, API/Admin Firebase project, and Firestore profile status.', 'If the Auth user exists but the Firestore user profile is missing, Account Security now offers a safe Repair My User Profile action.', 'If Firebase Console emails work but the app verification email does not arrive, Account Security can generate a self-service verification rescue link.'] },
     { title: 'Version 15.0.22 Email Verification for MFA', group: 'System Administrator', keywords: 'v15 15.0.22 account security email verification mfa two step login sms', body: ['15.0.22 adds Send Verification Email and Refresh Email Status actions to Account Security because Firebase requires verified email before SMS MFA enrollment.', 'This update changes /api/account-security so the app can show emailVerified alongside MFA factor status.'] },
     { title: 'Version 15.0.21 Account Security Tab Fix', group: 'System Administrator', keywords: 'v15 15.0.21 account security settings mfa two step login tab visible mobile', body: ['15.0.21 makes Account Security a visible Settings tab and adds an Open Account Security button inside Profile so MFA setup is easy to find on mobile.', 'This is a UI routing fix only. It does not change Firebase rules, Storage rules, API routes, or Vercel environment variables.'] },
@@ -5965,7 +6165,7 @@ Type RESTORE to continue.`);
 
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-4 text-xs text-slate-400 font-bold leading-relaxed">
             <div className="text-white font-black text-sm mb-2">Security setup notes</div>
-            <p>Firebase App Check also needs to be enabled/enforced inside Firebase Console for Firestore, Storage, and callable services. Set <span className="font-mono text-slate-200">REACT_APP_FIREBASE_APPCHECK_SITE_KEY</span> at build time, then set <span className="font-mono text-slate-200">APP_CHECK_ENFORCE=true</span> when you are ready to make API routes reject missing App Check tokens.</p><p className="mt-2">For MFA, enable SMS multi-factor authentication in Firebase Authentication / Identity Platform first. Keep <span className="font-mono text-slate-200">MFA_ENFORCE_ELEVATED_ROLES=false</span> until owners, managers, and System Administrators have enrolled and completed a fresh two-step login.</p>
+            <p>Firebase App Check also needs to be enabled/enforced inside Firebase Console for Firestore, Storage, and callable services. Set <span className="font-mono text-slate-200">REACT_APP_FIREBASE_APPCHECK_SITE_KEY</span> at build time, then set <span className="font-mono text-slate-200">APP_CHECK_ENFORCE=true</span> when you are ready to make API routes reject missing App Check tokens.</p><p className="mt-2">For MFA, enable SMS multi-factor authentication in Firebase Authentication / Identity Platform first and select the correct SMS region. Keep <span className="font-mono text-slate-200">MFA_ENFORCE_ELEVATED_ROLES=false</span> until owners, managers, admins, and System Administrators have enrolled, completed a fresh two-step login, and the Super Admin recovery reset has been tested.</p>
           </div>
         </div>
       )}
@@ -7237,6 +7437,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15026', title:'What changed in version 15.0.26', group:'Release Notes', keywords:'new update 15.0.26 mfa recovery reset lost phone backup phone elevated roles', body:['Account Security now supports backup SMS MFA phone enrollment after the first factor is enabled.', 'Super Admin MFA Recovery can inspect a user MFA status, reset lost-phone MFA factors, require a written reason, and log the action for audit review.', 'MFA enforcement guidance now clearly targets owners, managers, admins, and System Administrators while keeping regular employee enrollment optional.'] },
   { id:'new-15025', title:'What changed in version 15.0.25', group:'Release Notes', keywords:'new update 15.0.25 account repair verification debug mfa firebase auth firestore profile rescue link', body:['Account Security now shows Auth UID/email, browser Firebase project, Vercel API/Admin Firebase project, Firestore profile status, and MFA status in one debug panel.', 'If a Firebase Auth user is missing its Firestore users/{uid} profile, Account Security can repair the profile instead of leaving MFA setup in limbo.', 'If Firebase Console email delivery works but the app verification email does not arrive, Account Security can generate a verification rescue link for the signed-in user.'] },
   { id:'new-15022', title:'What changed in version 15.0.22', group:'Release Notes', keywords:'new update 15.0.22 account security email verification mfa two step login sms', body:['Account Security now includes Send Verification Email for accounts blocked by Firebase auth/unverified-email.', 'After clicking the Firebase inbox link, Refresh Email Status reloads the Firebase Auth user and lets SMS MFA setup continue.', '/api/account-security now reports emailVerified, so Vercel redeploy is required.'] },
   { id:'new-15021', title:'What changed in version 15.0.21', group:'Release Notes', keywords:'new update 15.0.21 account security settings mfa two step login tab mobile', body:['Account Security now has its own visible Settings tab instead of being buried below the Profile form.', 'Profile also includes an Open Account Security button so elevated users can get to MFA setup quickly on phone screens.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },

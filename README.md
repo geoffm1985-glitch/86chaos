@@ -1,37 +1,42 @@
 # 86 Chaos
 
-Current Version: 15.0.25 - Deployment Syntax Fix
+Current Version: 15.0.26 - MFA Recovery & Safer Enforcement
 
-## 15.0.25 focus
+## 15.0.26 focus
 
-15.0.25 fixes a Vercel build failure caused by a quote/apostrophe syntax issue in the Account Security release wording added in 15.0.23. The Firebase email verification and password reset behavior remains the same as 15.0.23.
+This build keeps Google sign-in out of scope and finishes the practical MFA safety rails needed before elevated-role enforcement is turned on.
 
-## What changed
+## Included in this build
 
-- Fixed build-blocking JSX/JavaScript wording in Account Security release/help text.
-- Kept Account Security verification email on Firebase's default email action link.
-- Kept Settings password reset targeting the active Firebase Auth email first.
+- Backup MFA phone enrollment from Account Security.
+- Super Admin-only MFA Recovery for lost/broken phones.
+- MFA recovery inspection with masked factor display.
+- MFA reset with required recovery reason and audit log entry.
+- Clearer guidance that MFA enforcement is for owners, managers, admins, and System Administrators; regular employees may enroll optionally.
+- Better Firebase MFA error messages for SMS region, authorized domain, provider, reCAPTCHA, throttling, and phone-format issues.
+- Updated `/api/account-security` to support MFA recovery actions.
 
-## Deploy notes
+## Deployment checklist
 
-- Deploy through GitHub/Vercel.
-- No Firestore rules changes.
-- No Storage rules changes.
-- No API route changes.
-- No new Vercel environment variables.
-- Keep MFA enforcement env vars false until one elevated account has verified email, enrolled MFA, and completed a fresh MFA login.
+1. Deploy the app through GitHub/Vercel.
+2. Confirm `/version.json` reports `15.0.26`.
+3. In Firebase Authentication / Identity Platform, confirm SMS MFA is enabled and the correct SMS region is selected.
+4. Keep these Vercel values off while testing:
 
-## Post-deploy QA
+```env
+MFA_ENFORCE_ELEVATED_ROLES=false
+FIREBASE_MFA_ENFORCE_ELEVATED_ROLES=false
+REACT_APP_MFA_ENFORCE_ELEVATED_ROLES=false
+```
 
-1. Confirm `/version.json` reports `15.0.25`.
-2. Confirm the Vercel build completes successfully.
-3. Go to Settings > Account Security.
-4. Click Send Verification Email.
-5. Confirm the Firebase verification email arrives.
-6. Click the email verification link.
-7. Return to Account Security and click Refresh Email Status.
-8. Enroll SMS MFA only after email status is verified.
+5. Enroll one elevated account.
+6. Add a backup phone if available.
+7. Test Super Admin MFA Recovery by checking a user and resetting MFA with a reason.
+8. Only after recovery is proven, consider turning elevated-role MFA enforcement on.
 
+## Separate publishing
 
-## 15.0.25 Account Repair + Verification Debug
-- Adds Account Security diagnostics, profile repair, and verification rescue link tools for MFA setup.
+- Firestore rules: no changes.
+- Storage rules: no changes.
+- API routes: changed `/api/account-security`, so Vercel redeploy is required.
+- Vercel env vars: no new variables.

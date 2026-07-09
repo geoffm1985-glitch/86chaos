@@ -1,7 +1,7 @@
 {
-  "version": "15.0.25",
-  "name": "86 Chaos 15.0.25 Account Repair + Verification Debug",
+  "version": "15.0.26",
+  "name": "86 Chaos 15.0.26 MFA Recovery & Safer Enforcement",
   "releasedAt": "2026-07-08",
-  "label": "86 Chaos 15.0.25",
-  "build": "15.0.25"
+  "label": "86 Chaos 15.0.26",
+  "build": "15.0.26"
 }

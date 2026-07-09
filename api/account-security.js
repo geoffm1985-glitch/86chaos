@@ -97,6 +97,7 @@ async function buildStatus({ app, db, decoded, authUser, action = 'sync', extra 
   const emailNorm = norm(email);
   const isMaster = masterEmails().includes(emailNorm);
   const canAdminVerifyEmail = Boolean(isMaster || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true);
+  const canMfaRecovery = Boolean(isMaster || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true);
   const firebaseProjectId = app.app().options?.projectId || process.env.FIREBASE_PROJECT_ID || '';
   const payload = {
     emailVerified: authUser.emailVerified === true,
@@ -162,6 +163,7 @@ async function buildStatus({ app, db, decoded, authUser, action = 'sync', extra 
     firestoreUserRole: user.role || user.accountRole || '',
     firebaseProjectId,
     canAdminVerifyEmail,
+    canMfaRecovery,
     isMasterAdminEmail: isMaster,
     syncedAt: now,
     debug: {
@@ -179,6 +181,24 @@ async function buildStatus({ app, db, decoded, authUser, action = 'sync', extra 
       mfaEnforcementEnabled: mfaEnforcementEnabled()
     }
   };
+}
+
+
+async function resolveTargetAuthUser(app, { targetUid = '', targetEmail = '' } = {}) {
+  const uid = String(targetUid || '').trim();
+  const email = String(targetEmail || '').trim();
+  if (uid) return app.auth().getUser(uid);
+  if (email) return app.auth().getUserByEmail(email);
+  throw new Error('Choose a user to recover first.');
+}
+
+function canUseMfaRecovery(existingUser = {}, isMaster = false) {
+  return Boolean(isMaster || existingUser.isSuperAdmin === true || existingUser.systemAccess?.superAdmin === true);
+}
+
+function describeFactors(factors = []) {
+  if (!factors.length) return 'no enrolled factors';
+  return factors.map(f => `${f.displayName || f.factorId || 'factor'} ${f.phoneNumberMasked || ''}`.trim()).join(', ');
 }
 
 module.exports = async function handler(req, res) {
@@ -199,6 +219,7 @@ module.exports = async function handler(req, res) {
     const email = decoded.email || authUser.email || '';
     const isMaster = masterEmails().includes(norm(email));
     const canAdminVerifyEmail = Boolean(isMaster || existingUser.isSuperAdmin === true || existingUser.systemAccess?.superAdmin === true);
+    const canMfaRecovery = canUseMfaRecovery(existingUser, isMaster);
     const now = new Date().toISOString();
 
     if (action === 'repair-profile') {
@@ -277,6 +298,81 @@ module.exports = async function handler(req, res) {
       });
       const status = await buildStatus({ app, db, decoded, authUser, action });
       return res.status(200).json({ ...status, message: 'Email marked verified for this Firebase Auth account.' });
+    }
+
+
+    if (action === 'admin-get-user-mfa' || action === 'admin-reset-user-mfa') {
+      if (!canMfaRecovery) return res.status(403).json({ ok: false, error: 'Only the master admin or a System Administrator can use MFA recovery.' });
+      const targetAuthUser = await resolveTargetAuthUser(app, { targetUid: body.targetUid, targetEmail: body.targetEmail });
+      const targetSnap = await db.collection('users').doc(targetAuthUser.uid).get();
+      const targetUser = targetSnap.exists ? (targetSnap.data() || {}) : {};
+      const targetFactors = factorSummary(targetAuthUser);
+      const targetEmail = targetAuthUser.email || targetUser.email || String(body.targetEmail || '').trim();
+      const targetStatus = {
+        uid: targetAuthUser.uid,
+        email: targetEmail,
+        name: targetUser.name || targetAuthUser.displayName || safeNameFromEmail(targetEmail),
+        role: targetUser.role || targetUser.accountRole || '',
+        restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || '',
+        emailVerified: targetAuthUser.emailVerified === true,
+        mfaEnabled: targetFactors.length > 0,
+        mfaFactorCount: targetFactors.length,
+        factors: targetFactors
+      };
+
+      if (action === 'admin-get-user-mfa') {
+        const status = await buildStatus({ app, db, decoded, authUser, action });
+        return res.status(200).json({ ...status, targetMfa: targetStatus, message: targetFactors.length ? 'Target MFA status loaded.' : 'Target has no enrolled MFA factors.' });
+      }
+
+      const reason = String(body.reason || '').trim();
+      if (reason.length < 8) return res.status(400).json({ ok: false, error: 'Add a recovery reason with at least 8 characters before resetting MFA.' });
+      await app.auth().updateUser(targetAuthUser.uid, { multiFactor: { enrolledFactors: [] } });
+      const resetAt = new Date().toISOString();
+      if (targetSnap.exists) {
+        await db.collection('users').doc(targetAuthUser.uid).set({
+          mfaEnabled: false,
+          multiFactorEnabled: false,
+          mfaFactorCount: 0,
+          accountSecurity: {
+            ...(targetUser.accountSecurity || {}),
+            mfaEnabled: false,
+            multiFactorEnabled: false,
+            mfaFactorCount: 0,
+            mfaMethods: [],
+            mfaFactors: [],
+            mfaRecoveryRequired: true,
+            mfaRecoveryLastResetAt: resetAt,
+            mfaRecoveryLastResetBy: decoded.uid,
+            mfaRecoveryLastResetByEmail: email,
+            mfaRecoveryLastReason: reason,
+            lastSyncAt: resetAt
+          },
+          mfaRecoveryRequired: true,
+          mfaRecoveryLastResetAt: resetAt,
+          mfaRecoveryLastResetBy: decoded.uid,
+          updatedAt: resetAt
+        }, { merge: true });
+      }
+      await audit(db, {
+        userId: decoded.uid,
+        userName: existingUser.name || email || 'System Administrator',
+        userEmail: email,
+        action: 'ACCOUNT_SECURITY_ADMIN_RESET_MFA',
+        target: targetAuthUser.uid,
+        details: `MFA recovery reset for ${targetEmail || targetAuthUser.uid}. Removed ${targetFactors.length} factor(s): ${describeFactors(targetFactors)}. Reason: ${reason}`,
+        timestamp: resetAt,
+        restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || existingUser.activeRestaurantId || existingUser.restaurantId || 'system',
+        securityLevel: 'account-security'
+      });
+      const refreshedTargetAuthUser = await app.auth().getUser(targetAuthUser.uid);
+      const status = await buildStatus({ app, db, decoded, authUser, action });
+      return res.status(200).json({
+        ...status,
+        recoveryReset: true,
+        targetMfa: { ...targetStatus, mfaEnabled: false, mfaFactorCount: 0, factors: factorSummary(refreshedTargetAuthUser) },
+        message: `MFA was reset for ${targetEmail || targetAuthUser.uid}. They must enroll a new phone before elevated enforcement is enabled for their account.`
+      });
     }
 
     const status = await buildStatus({ app, db, decoded, authUser, action: 'sync' });

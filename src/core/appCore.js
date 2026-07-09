@@ -156,7 +156,7 @@ export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.25';
+export const CURRENT_VERSION = '15.0.26';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
