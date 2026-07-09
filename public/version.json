@@ -1,7 +1,7 @@
 {
-  "version": "15.0.36",
-  "name": "86 Chaos 15.0.36 Master Admin Repair Verification",
+  "version": "15.0.37",
+  "name": "86 Chaos 15.0.37 Gemini Manual and Backup Watchdog",
   "releasedAt": "2026-07-09",
-  "label": "86 Chaos 15.0.36",
-  "build": "15.0.36"
+  "label": "86 Chaos 15.0.37",
+  "build": "15.0.37"
 }

@@ -3,7 +3,7 @@ const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '15.0.36';
+const APP_VERSION = '15.0.37';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -309,6 +309,14 @@ async function handler(req, res) {
     const auth = await authorize(req, adminApp);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
 
+    const cronInvocation = {
+      scheduleHeader: req.headers['x-vercel-cron-schedule'] || '',
+      userAgent: req.headers['user-agent'] || '',
+      watchdogHeader: req.headers['x-86chaos-watchdog'] || '',
+      host: req.headers['x-forwarded-host'] || req.headers.host || '',
+      vercelEnv: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown'
+    };
+
     const requestedMode = req.query.mode || 'manual';
     if (requestedMode === 'restore') {
       const body = await readJsonBody(req);
@@ -317,7 +325,7 @@ async function handler(req, res) {
     }
 
     const runId = isoSafe(startedAt);
-    const mode = auth.source === 'vercel-cron' ? 'scheduled' : requestedMode;
+    const mode = cronInvocation.watchdogHeader ? 'watchdog' : (auth.source === 'vercel-cron' ? 'scheduled' : requestedMode);
     const statusRef = db.collection('system').doc('backupStatus');
     await statusRef.set({
       status: 'running',
@@ -340,6 +348,8 @@ async function handler(req, res) {
         mode,
         runId,
         actor: auth.actor,
+        source: auth.source,
+        cronInvocation,
         startedAt: startedAt.toISOString()
       },
       collections: {}
@@ -420,6 +430,12 @@ async function handler(req, res) {
       nextScheduledAt: getNextDailyBackupAt(finishedAt),
       nextBackupAt: getNextDailyBackupAt(finishedAt),
       cronSchedule: '0 9 * * *',
+      cronFallbackSchedule: '0 21 * * *',
+      cronScheduleHeader: cronInvocation.scheduleHeader,
+      cronUserAgent: cronInvocation.userAgent,
+      cronHost: cronInvocation.host,
+      cronWatchdogHeader: cronInvocation.watchdogHeader,
+      ...(auth.source === 'vercel-cron' ? { cronSeenAt: startedAt.toISOString(), lastScheduledBackupAt: finishedAt.toISOString() } : {}),
       version: APP_VERSION
     };
 
@@ -465,4 +481,4 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports.config = { maxDuration: 60 };
+module.exports.config = { maxDuration: 300 };

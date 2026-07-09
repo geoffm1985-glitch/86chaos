@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle } from 'lucide-react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
@@ -3127,9 +3127,9 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
     "keywords": "automatic backup did not run 53h ago stale backup cron preview production vercel scheduled",
     "body": [
       "Vercel Cron jobs are invoked from production deployments, not preview/testing deployments. If you are looking at a testing branch URL, the countdown is a plan, but the real scheduled call will not fire there.",
-      "For testing, use Run Backup Now. For production, open Vercel \u2192 Project \u2192 Deployments/Logs or Cron Jobs and confirm /api/firestore-backup ran near 9:00 UTC / 4:00 AM Central.",
-      "If production missed it, check CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, FIREBASE_PROJECT_ID, FIREBASE_STORAGE_BUCKET, and whether the latest production deployment includes vercel.json with the /api/firestore-backup cron.",
-      "If Run Backup Now works but automatic does not, the Firebase wiring is probably fine and the issue is scheduling, production deployment, cron auth, or Vercel cron configuration."
+      "For testing/Preview, use Run Backup Now because Vercel Cron only invokes production deployments. For production, open Vercel \u2192 Project \u2192 Deployments/Logs or Cron Jobs and confirm /api/firestore-backup ran near 9:00 UTC / 4:00 AM Central.",
+      "If production missed it, check CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, FIREBASE_PROJECT_ID, FIREBASE_STORAGE_BUCKET, and whether the latest production deployment includes vercel.json with both backup cron routes.",
+      "If Run Backup Now works but automatic does not, the Firebase wiring is probably fine and the issue is scheduling, production deployment, cron auth, Vercel cron configuration, or the app being viewed on a Preview URL."
     ]
   },
   {
@@ -3139,8 +3139,8 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
     "body": [
       "Step 1: Check Last Backup. Anything older than roughly 30 hours means the daily window was probably missed.",
       "Step 2: Click Run Backup Now. If manual backup fails, read the toast/error and then open Vercel function logs for /api/firestore-backup.",
-      "Step 3: If manual works but automatic is stale, confirm the deployment is production and that Vercel Cron is listed for /api/firestore-backup.",
-      "Step 4: Check Storage for backups/firestore/scheduled. If only manual backups exist, the cron trigger is not firing.",
+      "Step 3: If manual works but automatic is stale, confirm the deployment is production and that Vercel Cron is listed for /api/firestore-backup and /api/firestore-backup-watchdog.",
+      "Step 4: Check Storage for backups/firestore/scheduled and backups/firestore/watchdog. If only manual backups exist, production cron is not firing.",
       "Step 5: After a successful backup, verify document count, collection count, integrity status, Storage path, and restore-drill status before risky releases."
     ]
   },
@@ -3512,6 +3512,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [isAccountDeletionAdminBusy, setIsAccountDeletionAdminBusy] = useState(false);
   const [isMasterAdminRepairing, setIsMasterAdminRepairing] = useState(false);
   const [masterAdminRepairResult, setMasterAdminRepairResult] = useState(null);
+  const [geminiManualQuestion, setGeminiManualQuestion] = useState('');
+  const [geminiManualAnswer, setGeminiManualAnswer] = useState('');
+  const [geminiManualMeta, setGeminiManualMeta] = useState(null);
+  const [geminiManualError, setGeminiManualError] = useState('');
+  const [isGeminiManualLoading, setIsGeminiManualLoading] = useState(false);
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -4890,7 +4895,8 @@ const handleRevokeAccess = async (user) => {
   const nextAutoBackupDate = getNextAutoBackupDate();
   const nextBackupCountdown = backupRunning ? 'running now' : formatCountdown(nextAutoBackupDate.getTime() - backupCountdownTick);
   const nextBackupLocalTime = nextAutoBackupDate.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-  const backupCommandDeckDetail = `${backupDetail} • Next: ${nextBackupCountdown}`;
+  const backupWatchdogDetail = backupStatus?.lastWatchdogResult ? `Watchdog: ${backupStatus.lastWatchdogResult}` : 'Watchdog fallback scheduled for production';
+  const backupCommandDeckDetail = `${backupDetail} • Next: ${nextBackupCountdown} • ${backupWatchdogDetail}`;
   const filteredBackupList = backupList.filter(b => backupListFilter === 'all' || b.mode === backupListFilter);
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
@@ -4904,7 +4910,7 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production.'
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.37 also adds a production watchdog cron fallback.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
@@ -5375,6 +5381,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.37 Gemini Manual and Backup Watchdog', group: 'System Administrator', keywords: 'v15 15.0.37 gemini system administrator manual assistant backup watchdog automatic backup cron vercel production preview', body: ['15.0.37 adds a Gemini-powered System Administrator Manual assistant. It answers from the matched manual articles/playbook through /api/gemini-admin-manual and requires GEMINI_API_KEY on the server.', 'The Gemini assistant is Super Admin only and keeps the API key on Vercel. It should be used for troubleshooting guidance, not for exposing customer records, service account JSON, signed backup URLs, or secrets.', 'Automatic backups still run from Vercel Cron on production. Preview and testing deployments do not receive Vercel Cron calls, so testing must use Run Backup Now.', 'A new /api/firestore-backup-watchdog route is scheduled as a production fallback. If the daily backup is stale, the watchdog triggers a catch-up backup using CRON_SECRET.', 'The backup route now stamps cron schedule headers and watchdog metadata into system/backupStatus so the Command Deck can show whether production cron actually hit the route.'] },
     { title: 'Version 15.0.36 Master Admin Repair Verification', group: 'System Administrator', keywords: 'v15 15.0.36 master admin repair firestore users auth uid verified project mismatch placeholder env whoami', body: ['15.0.36 hardens Master Admin Self-Repair so /api/master-admin-repair writes users/{authUid} and immediately reads the document back to verify it exists.', 'The repair result now shows the Firebase project the API wrote to. If you are checking chaos-test-d1601 but the result shows cheers-34b8d, fix Vercel Firebase admin env vars and run repair again.', 'Invalid placeholder values such as SECOND_ADMIN_EMAIL_HERE are skipped and shown in the result instead of making a successful repair look failed.', 'After the row shows Verified: yes, log out and back in before publishing hardened Firestore rules so Firebase custom claims refresh.'] },
     { title: 'Version 15.0.35 Administrator Layout Polish', group: 'System Administrator', keywords: 'v15 15.0.35 administrator layout left menu info board command deck mobile collapsible navigation', body: ['15.0.35 moves System Administrator section buttons from the top of the tab into a left-side admin menu on desktop.', 'On phones, the admin menu is collapsible. Tap Menu from the current-section bar to open it, then pick a section and the menu closes automatically.', 'The Command Deck / signal information board now sits above the main admin workspace and remains collapsible through Show Info Board / Hide Info Board.', 'This layout keeps troubleshooting signals visible at the top while leaving the actual tools easier to scan from the left rail.'] },
     ...ADMIN_TROUBLESHOOTING_ARTICLES,
@@ -5435,7 +5442,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Version 15.0.0 Kitchen Intelligence Release', group: 'System Administrator', keywords: 'v15 15.0.0 smart prep menu intelligence personal reminders cron firebase rules storage schedule past shifts invoice scanner invalid json gemini model fallback slice dice chop voice tomorrow friday', body: ['Smart prep matching now updates confident existing prep rows from typed or voice commands instead of creating duplicate prep tasks.', '86 Voice now recognizes kitchen prep phrasing such as slice tomato, dice onions, chop lettuce, thaw shrimp, portion ranch, and quantity/unit commands like 3 pans tomatoes.', 'Prep commands are day-aware: phrases like prep tomatoes for Friday, slice three tomato tomorrow, or prep ranch on 7/10 save to that target prep day and open Prep there.', 'Menu Intelligence adds owner-controlled menu scanning, reviewed inventory dependency links, zero-stock menu impact panels, and menu-impact text on 86 alerts.', 'My Reminders adds private user reminders with typed or voice creation and a protected /api/dispatch-reminders cron route.', 'My Schedule and Full Schedule now dim past shifts and completed day sections based on real shift end time, so old shifts no longer look active.', 'Menu Intelligence no longer depends on the retired gemini-1.5-flash default; it tries newer Gemini Flash models and tolerates common JSON formatting problems.', 'Invoice scanning now tolerates common Gemini JSON formatting problems like code fences, leading text, and trailing commas before failing the scan. Publish the included Firestore and Storage rules before production testing.'] },
     { title: '15.0.0 deployment checklist', group: 'System Administrator', keywords: '15.0.0 deploy firebase rules storage rules vercel env cron gemini reminders menu intelligence', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.0.', 'Publish the included firestore.rules in Firebase Firestore Rules and the included storage.rules in Firebase Storage Rules for the same Firebase project that the deployed app uses.', 'Confirm Vercel environment variables include the existing Firebase Admin credentials plus CRON_SECRET and GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.', 'Confirm /api/scan-menu and /api/dispatch-reminders are live from System Administrator Health Dashboard after deploy.', 'Vercel Cron only runs on production deployments. The reminder dispatcher is scheduled every five minutes, which requires a Vercel plan that supports that cadence and the total number of cron jobs in vercel.json.'] },
     { title: 'Menu Intelligence operations', group: 'System Administrator', keywords: 'menu intelligence scan menu upload pdf image permissions owner menuDependencies menuIntelligenceScans storage rules', body: ['Menu Intelligence is visible to Super Admin, the account owner, and users granted Menu Intelligence access. Grant access from Settings → Branding → Settings Access.', 'The menu upload path is restaurant-scoped in Storage under {restaurantId}/menuUploads. If upload says unauthorized, publish storage.rules to the matching Firebase project.', 'The AI scanner returns review data only. Nothing becomes a live dependency until a permitted user reviews and approves the inventory matches.', 'Approved links save to menuDependencies and scan summaries save to menuIntelligenceScans. These records power zero-stock menu impact panels and 86 alert impact text. Recent scans can be edited or deleted by permitted Menu Intelligence users; deleting a scan removes its approved dependency links but leaves the original upload in secure Storage.', 'If scans fail, check GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY in Vercel and confirm /api/scan-menu can read Firebase Storage with the Admin service account.'] },
-    { title: 'Personal Reminders operations', group: 'System Administrator', keywords: 'personal reminders my reminders private cron dispatch reminders CRON_SECRET push tokens scheduled notifications concurrency transaction claim', body: ['My Reminders is private to the signed-in user. Firestore rules allow each user to read and write only their own personalReminders documents.', 'The /api/dispatch-reminders route is protected by CRON_SECRET. Vercel calls it on the production cron schedule; manual tests must send Authorization: Bearer CRON_SECRET.', 'The dispatcher transaction-claims each scheduled reminder before sending so overlapping cron/manual runs should not send the same reminder twice.', 'Reminder sends run with controlled concurrency instead of one slow sequential loop. Optional tuning variables are REMINDER_DISPATCH_QUERY_LIMIT and REMINDER_DISPATCH_CONCURRENCY.', 'Reminder pushes go only to the reminder owner using that user profile push token. If a reminder changes to no_push_token, the user needs to open the app and reconnect notifications on their own device.', 'The dispatcher writes dispatchKey and dispatchedAt so the same scheduled reminder is not sent twice. Delivery problems are recorded on the reminder document for troubleshooting.', 'If reminders do not fire, check Vercel production cron logs, CRON_SECRET, Firebase Admin credentials, whether the target user has a current fcmToken, and the dispatch response counts.'] },
+    { title: 'Personal Reminders operations', group: 'System Administrator', keywords: 'personal reminders my reminders private cron dispatch reminders CRON_SECRET push tokens scheduled notifications concurrency transaction claim', body: ['My Reminders is private to the signed-in user. Firestore rules allow each user to read and write only their own personalReminders documents.', 'The /api/dispatch-reminders route is protected by CRON_SECRET. Vercel calls it on the production cron schedule; preview/testing deployments need manual tests, and protected manual tests must send Authorization: Bearer CRON_SECRET.', 'The dispatcher transaction-claims each scheduled reminder before sending so overlapping cron/manual runs should not send the same reminder twice.', 'Reminder sends run with controlled concurrency instead of one slow sequential loop. Optional tuning variables are REMINDER_DISPATCH_QUERY_LIMIT and REMINDER_DISPATCH_CONCURRENCY.', 'Reminder pushes go only to the reminder owner using that user profile push token. If a reminder changes to no_push_token, the user needs to open the app and reconnect notifications on their own device.', 'The dispatcher writes dispatchKey and dispatchedAt so the same scheduled reminder is not sent twice. Delivery problems are recorded on the reminder document for troubleshooting.', 'If reminders do not fire, check Vercel production cron logs, CRON_SECRET, Firebase Admin credentials, whether the target user has a current fcmToken, and the dispatch response counts.'] },
     { title: 'Smart prep matching operations', group: 'System Administrator', keywords: 'smart prep duplicate prep voice typed matching quantity changed after completion', body: ['Typed prep and 86 Voice prep commands now use the same parser and matcher. Confident matches update quantity/unit on the existing prep row instead of adding a duplicate.', 'Commands like prep 2 pans onions and lettuce can create or update multiple prep rows. Commands with more or extra increment the matched quantity.', 'If a completed prep item gets its quantity changed later, the row keeps completion history and shows a QTY CHANGED badge so the kitchen can review it.', 'If matching is not confident, the app creates a new prep row. This is safer than overwriting the wrong task.', 'Prep writes still go through Safe Write Engine and Firestore tenant rules. Permission errors usually mean the user lacks Prep/Team/Admin access or firestore.rules was not published.'] },
     { title: '15.0.0 Firebase rules notes', group: 'System Administrator', keywords: 'firestore rules storage rules menu uploads reminders menu dependencies permissions firebase deploy production testing', body: ['Publish Firestore rules and Storage rules to every Firebase project that will run this build. If you maintain separate testing and main Firebase projects, each project needs the matching rules before testing that environment.', 'Firestore adds private personalReminders rules, owner-controlled menuIntelligenceScans rules, and tighter menuDependencies write access.', 'Storage adds the restaurant-scoped menuUploads path and multi-workspace-aware tenant matching.', 'Do not paste firebase.json into the Firebase console rules editor. Paste the contents of firestore.rules into Firestore Rules and the contents of storage.rules into Storage Rules.', 'If a rule publish is skipped, Menu Intelligence uploads/scans, private reminders, or approved dependency saves may fail with Missing or insufficient permissions.'] },
     { title: 'Version 14.0.10 Push and Workspace Wiring Audit', group: 'System Administrator', keywords: 'v14 14.0.10 push schedule alert workspace members repair stale token firebase host wiring', body: ['Push alerts and schedule publication alerts now resolve active staff through workspaceMembers as well as legacy user restaurant fields, so multi-restaurant employees receive alerts for the selected workspace.', 'Push Token Repair Center stale-token pruning now scans the same workspace-aware staff set before clearing and queueing reconnect repair.', 'Production Firebase Messaging host detection now covers app.86chaos.com, 86chaos.com, and www.86chaos.com so foreground tokens and the service worker use the same production project.'] },
@@ -5593,6 +5600,47 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     'Relevant articles:',
     ...topManualArticles.slice(0, 5).map(article => `- ${article.title}`)
   ] : [];
+  const handleAskGeminiAdminManual = async () => {
+    const question = (geminiManualQuestion || adminManualQuestion || adminManualSearch || '').trim();
+    if (!question) {
+      addToast('Gemini Manual', 'Type a System Administrator question first.');
+      return;
+    }
+    if (isGeminiManualLoading) return;
+    setGeminiManualQuestion(question);
+    setGeminiManualAnswer('');
+    setGeminiManualError('');
+    setGeminiManualMeta(null);
+    setIsGeminiManualLoading(true);
+    try {
+      const response = await secureFetch('/api/gemini-admin-manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          playbook: primarySupportPlaybook,
+          articles: topManualArticles.slice(0, 8).map(article => ({
+            title: article.title,
+            group: article.group,
+            keywords: article.keywords,
+            body: article.body
+          }))
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Gemini manual failed with status ${response.status}`);
+      setGeminiManualAnswer(result.answer || 'Gemini returned no answer.');
+      setGeminiManualMeta(result);
+      addToast('Gemini Manual Ready', `${result.articleCount || 0} article(s) used • ${result.model || 'Gemini'}`);
+    } catch (err) {
+      const message = err.message || 'Gemini manual assistant failed.';
+      setGeminiManualError(message);
+      addToast('Gemini Manual Error', message);
+    } finally {
+      setIsGeminiManualLoading(false);
+    }
+  };
+
   const copyAdminSupportAnswer = async () => {
     try {
       await navigator.clipboard.writeText(supportAnswerLines.join('\n'));
@@ -5607,7 +5655,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     'Menu scan says invalid JSON',
     'Employee cannot see Schedule tab',
     'App is blank after deploy',
-    'Do I publish Firebase rules to testing and production?'
+    'Do I publish Firebase rules to testing and production?',
+    'Why are automatic backups stale on preview?'
   ];
 
   const handleCopyPlatformSnapshot = async () => {
@@ -7969,7 +8018,7 @@ another@email.com"></textarea>
               </div>
             </div>
             <div className="grid md:grid-cols-4 gap-2">
-              <div className={`bg-[#0B0E11] border ${backupMissedDailyWindow ? 'border-amber-500/40' : 'border-[#2A353D]'} rounded-xl p-3`}><div className="flex items-center justify-between gap-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><AdminInfoButton title="Next Auto Backup" body={backupTroubleshootingSummary} /></div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div>{backupMissedDailyWindow && <div className="text-[9px] text-amber-300 font-black uppercase tracking-widest mt-1">Daily window missed</div>}</div>
+              <div className={`bg-[#0B0E11] border ${backupMissedDailyWindow ? 'border-amber-500/40' : 'border-[#2A353D]'} rounded-xl p-3`}><div className="flex items-center justify-between gap-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><AdminInfoButton title="Next Auto Backup" body={backupTroubleshootingSummary} /></div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div><div className="text-[9px] text-slate-500 font-bold mt-1">{backupWatchdogDetail}</div>{backupStatus?.lastWatchdogCheckAt && <div className="text-[8px] text-slate-600 font-bold mt-1">Last watchdog: {formatBackupTimestamp(backupStatus.lastWatchdogCheckAt)}</div>}{backupMissedDailyWindow && <div className="text-[9px] text-amber-300 font-black uppercase tracking-widest mt-1">Daily window missed</div>}</div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Data Watchlist</div><div className="text-lg font-black text-white">{usersWithoutRestaurant.length + missingOwnerAccounts.length + duplicateEmailGroups.length}</div><div className="text-[9px] text-slate-500 font-bold">routing / owner / duplicates</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Sensitive Actions</div><div className="text-lg font-black text-white">{destructiveAuditLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">delete / nuke / lock / sweep</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Rule Blocks</div><div className={`text-lg font-black ${permissionDeniedLogs.length ? 'text-red-300' : 'text-emerald-400'}`}>{permissionDeniedLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">permission-denied logs</div></div>
@@ -8005,8 +8054,8 @@ another@email.com"></textarea>
                       {isBackupListLoading && <Loader2 size={10} className="animate-spin" />} Refresh
                     </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {['all','scheduled','manual'].map(mode => (
+                  <div className="grid grid-cols-4 gap-1">
+                    {['all','scheduled','watchdog','manual'].map(mode => (
                       <button key={mode} type="button" onClick={() => setBackupListFilter(mode)} className={`text-[9px] font-black uppercase tracking-widest px-2 py-1.5 rounded-lg border transition-colors ${backupListFilter === mode ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-400 border-[#2A353D] hover:text-white'}`}>{mode}</button>
                     ))}
                   </div>
@@ -8223,7 +8272,10 @@ another@email.com"></textarea>
                 <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><HelpCircle size={24} className="text-[#D4A381]"/> System Administrator Support Console</h2>
                 <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Type the customer's question, get the likely cause, first checks, exact fix steps, and the most relevant manual articles without scrolling forever.</p>
               </div>
-              <button type="button" onClick={copyAdminSupportAnswer} className="px-4 py-3 bg-[#D4A381] text-slate-950 rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 flex items-center justify-center gap-2"><ClipboardList size={14}/> Copy Support Answer</button>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={handleAskGeminiAdminManual} disabled={isGeminiManualLoading} className="px-4 py-3 bg-blue-900/30 text-blue-200 border border-blue-500/40 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-50 flex items-center justify-center gap-2">{isGeminiManualLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>} Ask Gemini</button>
+                <button type="button" onClick={copyAdminSupportAnswer} className="px-4 py-3 bg-[#D4A381] text-slate-950 rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 flex items-center justify-center gap-2"><ClipboardList size={14}/> Copy Support Answer</button>
+              </div>
             </div>
             <div className="mt-4 grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3">
               <div>
@@ -8308,6 +8360,24 @@ another@email.com"></textarea>
                   <div className="text-[10px] uppercase tracking-widest font-black text-red-200 mb-2">Do not do this</div>
                   <div className="space-y-1">{(primarySupportPlaybook?.doNot || []).map((line, idx) => <div key={idx} className="text-xs font-bold text-red-100 leading-relaxed">- {line}</div>)}</div>
                 </div>
+              </div>
+
+              <div className={`${T.card} p-5 border border-blue-500/30 bg-blue-950/10`}>
+                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-black text-blue-300"><Sparkles size={14}/> Gemini manual assistant</div>
+                    <h3 className="font-black text-white text-lg mt-2">Ask the manual, not the rumor goblin</h3>
+                    <p className="text-xs text-slate-400 font-bold mt-1 max-w-2xl">Uses the matched System Administrator playbook and articles above. Requires server env <span className="font-mono text-slate-300">GEMINI_API_KEY</span>; the key never goes into the browser.</p>
+                  </div>
+                  <button type="button" onClick={handleAskGeminiAdminManual} disabled={isGeminiManualLoading} className="px-4 py-2 rounded-xl bg-blue-900/30 border border-blue-500/40 text-blue-200 text-[10px] font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-50 flex items-center justify-center gap-2">{isGeminiManualLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>} Ask Gemini</button>
+                </div>
+                <textarea value={geminiManualQuestion || adminManualQuestion} onChange={e => setGeminiManualQuestion(e.target.value)} rows={3} placeholder="Ask Gemini about this admin issue..." className="mt-4 w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl px-4 py-3 text-sm font-bold text-white outline-none focus:border-blue-400 resize-none" />
+                {geminiManualError && <div className="mt-3 bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{geminiManualError}</div>}
+                {geminiManualAnswer && <div className="mt-3 bg-[#0B0E11] border border-blue-500/20 rounded-xl p-4">
+                  <div className="flex flex-wrap items-center gap-2 mb-3 text-[9px] uppercase tracking-widest font-black text-slate-500"><span>{geminiManualMeta?.model || 'Gemini'}</span><span>•</span><span>{geminiManualMeta?.api || 'api'}</span><span>•</span><span>{geminiManualMeta?.durationMs || 0}ms</span></div>
+                  <div className="whitespace-pre-wrap text-sm font-bold text-slate-200 leading-relaxed">{geminiManualAnswer}</div>
+                  <button type="button" onClick={() => { navigator.clipboard?.writeText(geminiManualAnswer); addToast('Copied', 'Gemini manual answer copied.'); }} className="mt-3 px-3 py-2 rounded-lg bg-[#12161A] border border-[#2A353D] text-slate-300 text-[10px] font-black uppercase tracking-widest hover:border-blue-400">Copy Gemini Answer</button>
+                </div>}
               </div>
 
               {selectedAdminArticle && (
@@ -8766,7 +8836,7 @@ const HELP_ARTICLES = [
   { id:'schedule-stability', title:'Schedule stability and restore help', group:'Scheduling', keywords:'schedule restore deleted shifts missing old data stability', body:['Fixed stability issues around schedule restore and month loading.', 'If a schedule looks wrong after a restore, contact a system administrator so the month can be repaired safely.'] },
   { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste gzip json integrity', body:['Open System Administrator → Forensics & Backups → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore. The restore reader accepts the current compressed JSON backup format and readable JSON returned by cloud storage.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
   { id:'new-1311', title:'What changed in version 13.1.1', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics & Backups → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
+  { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the production Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics & Backups → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
   { id:'financials-tab', title:'Using Financials', group:'Financials', keywords:'financials labor timesheets daily ledger sales payroll export costs', body:['Financials combines Labor & Timesheets with Daily Ledger so managers do not jump between separate money screens.', 'Use the Labor & Timesheets subtab for punches, payroll exports, role filters, tips, and punch corrections.', 'Use the Daily Ledger subtab for sales, labor cost, food cost, and context notes.', 'Old links for Labor or Daily Ledger still open Financials and land on the matching subtab.'] },
   { id:'schedule-builder-under-shifts', title:'Finding Schedule Builder', group:'Scheduling', keywords:'schedule builder maker time clock shifts subtab publish template coverage', body:['Schedule Builder now lives inside Time Clock & Schedule as a subtab for users with schedule access.', 'Open Time Clock & Schedule, then choose Schedule Builder from the subtab row.', 'The Schedule Builder is still hidden from staff who do not have schedule permission.', 'Event Calendar remains its own main menu tab.'] },
   { id:'full-backup-restore', title:'Restoring a full database backup', group:'System Administrator', keywords:'restore backup firestore storage path deleted data database recovery gzip json integrity', body:['Full automatic backups are saved to Firebase Storage as compressed JSON files.', 'To restore one, open System Administrator → Forensics & Backups → Backup Center, select a backup, and click Restore.', 'The restore reader now checks the backup bytes first. If cloud storage returns already-readable JSON instead of raw gzip, restore can still read the backup instead of throwing an incorrect-header error.', 'The restore is merge-based: it puts back missing/deleted documents and overwrites damaged documents from the backup, without deleting new documents that are not in the backup. If you use full database restore and a schedule month looks contaminated by old records, run that month’s Emergency Schedule Rescue afterward so the schedule month is hard-replaced cleanly.', 'Always run a fresh backup before restoring so there is a current safety copy.'] },

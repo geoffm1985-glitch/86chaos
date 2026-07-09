@@ -13,7 +13,9 @@ const ROUTE_CHECKS = [
   { route: '/api/delete-users-bulk', file: 'delete-users-bulk.js', method: 'POST', auth: 'super-admin', notes: 'Guarded bulk user cleanup route.' },
   { route: '/api/deploy-tenant', file: 'deploy-tenant.js', method: 'POST', auth: 'super-admin', notes: 'Workspace deployment helper.' },
   { route: '/api/dispatch-reminders', file: 'dispatch-reminders.js', method: 'POST', auth: 'cron-or-admin', notes: 'Reminder dispatcher cron route.' },
-  { route: '/api/firestore-backup', file: 'firestore-backup.js', method: 'POST', auth: 'cron-or-admin', notes: 'Firestore backup route.' },
+  { route: '/api/firestore-backup', file: 'firestore-backup.js', method: 'GET/POST', auth: 'cron-or-admin', notes: 'Firestore backup route.' },
+  { route: '/api/firestore-backup-watchdog', file: 'firestore-backup-watchdog.js', method: 'GET/POST', auth: 'cron-or-admin', notes: 'Daily backup fallback watchdog. Runs a catch-up backup only when last successful backup is stale.' },
+  { route: '/api/gemini-admin-manual', file: 'gemini-admin-manual.js', method: 'POST', auth: 'super-admin', notes: 'Gemini-powered System Administrator manual assistant.' },
   { route: '/api/full-system-diagnostics', file: 'full-system-diagnostics.js', method: 'POST', auth: 'super-admin', notes: 'Full diagnostics bundle route.' },
   { route: '/api/geocode-address', file: 'geocode-address.js', method: 'POST', auth: 'workspace-admin', notes: 'Address/geofence helper.' },
   { route: '/api/import-cheers-july-schedule', file: 'import-cheers-july-schedule.js', method: 'POST', auth: 'super-admin', notes: 'Legacy guarded schedule import helper. Hidden from public workflows.' },
@@ -79,7 +81,7 @@ module.exports = async function handler(req, res) {
       firebaseStorageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
       vercelEnv: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
       cronSecretConfigured: hasEnv('CRON_SECRET'),
-      geminiConfigured: hasEnv('GEMINI_API_KEY') || hasEnv('GOOGLE_GENERATIVE_AI_API_KEY'),
+      geminiConfigured: hasEnv('GEMINI_API_KEY') || hasEnv('GOOGLE_API_KEY') || hasEnv('GOOGLE_GENERATIVE_AI_API_KEY'),
       appCheckEnvConfigured: hasEnv('APP_CHECK_ENFORCE') || hasEnv('FIREBASE_APP_CHECK_ENFORCE'),
       mfaEnforcementConfigured: hasEnv('MFA_ENFORCE_ELEVATED_ROLES') || hasEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || hasEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES')
     };
