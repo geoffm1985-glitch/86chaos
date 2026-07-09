@@ -32,6 +32,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/firestore-backup-watchdog",
+      "schedule": "0 21 * * *"
+    },
+    {
       "path": "/api/weekly-maintenance",
       "schedule": "0 10 * * 1"
     },
@@ -42,24 +46,31 @@
   ],
   "functions": {
     "api/scan-invoice.js": {
-      "maxDuration": 300,
-      "memory": 1024
+      "maxDuration": 300
     },
     "api/scan-menu.js": {
-      "maxDuration": 300,
-      "memory": 1024
+      "maxDuration": 300
     },
     "api/dispatch-reminders.js": {
-      "maxDuration": 300,
-      "memory": 512
+      "maxDuration": 300
     },
     "api/full-system-diagnostics.js": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 60
     },
     "api/presence-snapshot.js": {
-      "maxDuration": 60,
-      "memory": 512
+      "maxDuration": 60
+    },
+    "api/firestore-backup.js": {
+      "maxDuration": 300
+    },
+    "api/firestore-backup-watchdog.js": {
+      "maxDuration": 120
+    },
+    "api/gemini-admin-manual.js": {
+      "maxDuration": 60
+    },
+    "api/health-checks.js": {
+      "maxDuration": 60
     }
   }
 }

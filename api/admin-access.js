@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 
 function initAdmin() {
   if (admin.apps.length) return admin;
@@ -23,10 +24,16 @@ async function verifySuperAdmin(req) {
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
-  if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) {
+  const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
+  const masterEmails = Array.from(new Set([process.env.MASTER_ADMIN_EMAIL, ...(process.env.MASTER_ADMIN_EMAILS || '').split(',')].map(normalizeEmail).filter(Boolean)));
+  const callerEmail = normalizeEmail(decoded.email);
+  const callerSnap = await app.firestore().collection('users').doc(decoded.uid).get();
+  const caller = callerSnap.exists ? (callerSnap.data() || {}) : {};
+  if (decoded.superAdmin !== true && caller.isSuperAdmin !== true && caller.systemAccess?.superAdmin !== true && !masterEmails.includes(callerEmail)) {
     throw new Error('Super admin access required.');
   }
+  const mfa = requireMfaIfEnforced(decoded, caller, true);
+  if (!mfa.ok) throw new Error(mfa.error);
   return decoded;
 }
 

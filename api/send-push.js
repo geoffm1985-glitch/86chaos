@@ -21,10 +21,51 @@ if (!getApps().length) {
 }
 const db = getFirestore();
 
+async function requireAppCheckIfEnforced(req, res) {
+  const enforced = ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
+  if (!enforced) return true;
+  const token = String(req.headers['x-firebase-appcheck'] || req.headers['X-Firebase-AppCheck'] || '').trim();
+  if (!token) {
+    res.status(401).json({ error: 'App Check verification is required. Refresh the app after deployment and try again.' });
+    return false;
+  }
+  try {
+    const { getAppCheck } = await import('firebase-admin/app-check');
+    await getAppCheck().verifyToken(token);
+    return true;
+  } catch (err) {
+    res.status(401).json({ error: `App Check verification failed: ${err.message}` });
+    return false;
+  }
+}
+
+
+
+async function enforceRouteRateLimit(req, res, decoded, routeName, limit = 30, windowMs = 60 * 1000) {
+  const now = Date.now();
+  const windowStart = Math.floor(now / windowMs) * windowMs;
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+  const key = `${routeName}:${decoded?.uid || decoded?.email || ip || 'unknown'}`.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 180);
+  const ref = db.collection('apiRateLimits').doc(`${key}:${windowStart}`);
+  const result = await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    const current = snap.exists ? Number(snap.data().count || 0) : 0;
+    const count = current + 1;
+    tx.set(ref, { key, routeName, count, limit, windowMs, windowStart: new Date(windowStart).toISOString(), updatedAt: new Date(now).toISOString(), expiresAt: new Date(windowStart + windowMs * 3).toISOString() }, { merge: true });
+    return { ok: count <= limit, count, resetAt: new Date(windowStart + windowMs).toISOString() };
+  });
+  if (!result.ok) {
+    res.setHeader('Retry-After', Math.max(1, Math.ceil((new Date(result.resetAt).getTime() - Date.now()) / 1000)));
+    res.status(429).json({ error: 'Too many requests. Wait a minute and try again.', rateLimited: true, resetAt: result.resetAt });
+    return false;
+  }
+  return true;
+}
+
 const norm = (value = '') => String(value || '').toLowerCase().trim();
 const cleanId = (value = '') => String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
 const memberDocId = (uid, restaurantId) => `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
-const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS, 'geoffm1985@gmail.com', 'geoffrm1985@gmail.com']
+const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
   .filter(Boolean)
   .flatMap(v => String(v).split(','))
   .map(norm)
@@ -101,6 +142,7 @@ function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
   return Boolean(
     decoded.superAdmin === true ||
     caller?.isSuperAdmin === true ||
+    caller?.systemAccess?.superAdmin === true ||
     masterEmails().includes(email) ||
     userHasWorkspace(caller, restaurantId) ||
     member
@@ -109,6 +151,7 @@ function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  if (!await requireAppCheckIfEnforced(req, res)) return;
 
   // --- THE BOUNCER: VERIFY FIREBASE AUTH TOKEN ---
   const authHeader = req.headers.authorization;
@@ -127,6 +170,7 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
   }
   // --- END OF BOUNCER ---
+  if (!await enforceRouteRateLimit(req, res, decoded, 'send-push', Number(process.env.PUSH_ROUTE_RATE_LIMIT || 40), 60 * 1000)) return;
 
   try {
     const { restaurantId, targetUserId, targetUserIds, title, body, type, authorName, isCritical, textContent } = req.body;

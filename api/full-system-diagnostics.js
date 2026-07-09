@@ -1,8 +1,9 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '14.0.2';
+const APP_VERSION = '15.0.43';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -31,9 +32,14 @@ async function authorize(req, adminApp) {
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
-    const email = (decoded.email || '').toLowerCase();
-    if (email === masterEmail || decoded.superAdmin === true) return { ok: true, uid: decoded.uid, email: decoded.email || '', actor: decoded.email || decoded.uid };
+    const email = (decoded.email || '').toLowerCase().trim();
+    const userSnap = await adminApp.firestore().collection('users').doc(decoded.uid).get();
+    const user = userSnap.exists ? (userSnap.data() || {}) : {};
+    if (masterEmails().includes(email) || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, user, true);
+      if (!mfa.ok) return mfa;
+      return { ok: true, uid: decoded.uid, email: decoded.email || '', actor: decoded.email || decoded.uid, mfa };
+    }
     return { ok: false, status: 403, error: 'Super admin required.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };

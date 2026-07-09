@@ -7,6 +7,10 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function uploadPurposeIs(expected) {
+      return request.resource != null && request.resource.metadata is map && request.resource.metadata.purpose == expected;
+    }
+
     function userPath() {
       return /databases/(default)/documents/users/$(request.auth.uid);
     }
@@ -31,17 +35,9 @@ service firebase.storage {
       return firestore.get(restaurantPath(restaurantId)).data;
     }
 
-    function isMasterEmail() {
-      return signedIn() && (
-        request.auth.token.email == 'geoffrm1985@gmail.com' ||
-        request.auth.token.email == 'geoffm1985@gmail.com'
-      );
-    }
-
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
-        isMasterEmail() ||
         (hasUserDoc() && (userDoc().isSuperAdmin == true || userDoc().systemAccess.superAdmin == true))
       );
     }
@@ -132,6 +128,7 @@ service firebase.storage {
 
     function isAllowedInvoiceScan() {
       return request.resource != null &&
+        uploadPurposeIs('invoice-scan') &&
         request.resource.size <= 20 * 1024 * 1024 &&
         (
           request.resource.contentType.matches('image/.*') ||
@@ -141,6 +138,7 @@ service firebase.storage {
 
     function isAllowedMenuUpload() {
       return request.resource != null &&
+        uploadPurposeIs('menu-scan') &&
         request.resource.size <= 20 * 1024 * 1024 &&
         (
           request.resource.contentType.matches('image/.*') ||

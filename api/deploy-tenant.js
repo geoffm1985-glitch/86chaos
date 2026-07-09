@@ -41,11 +41,15 @@ export default async function handler(req, res) {
     const decoded = await admin.auth().verifyIdToken(authToken);
     const requesterSnap = await admin.firestore().collection('users').doc(decoded.uid).get();
     const requester = requesterSnap.exists ? requesterSnap.data() : {};
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
     const requesterEmail = (decoded.email || requester.email || '').toLowerCase();
-    if (!requester.isSuperAdmin && requesterEmail !== masterEmail) {
+    const chaosAdmin = await import('./_chaos-admin.js');
+    const masterEmails = chaosAdmin.masterEmails || chaosAdmin.default?.masterEmails || (() => []);
+    if (decoded.superAdmin !== true && requester.isSuperAdmin !== true && requester.systemAccess?.superAdmin !== true && !masterEmails().includes(requesterEmail)) {
       return res.status(403).json({ error: 'Super Admin required to deploy workspaces.' });
     }
+    const requireMfaIfEnforced = chaosAdmin.requireMfaIfEnforced || chaosAdmin.default?.requireMfaIfEnforced;
+    const mfaGate = requireMfaIfEnforced ? requireMfaIfEnforced(decoded, requester, true) : { ok: true };
+    if (!mfaGate.ok) return res.status(mfaGate.status || 403).json({ error: mfaGate.error });
 
     const { rName, oName, oEmail, oPhone, rAddress, tPass } = req.body;
 

@@ -1,4 +1,5 @@
 const { initAdmin } = require('./_chaos-admin');
+const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
 function getCronSecret(req) {
   const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
@@ -45,6 +46,8 @@ module.exports = async function handler(req, res) {
 
   const app = initAdmin();
   const db = app.firestore();
+  const cronRate = await enforceRateLimit({ db, req, routeName: 'dispatch-reminders', limit: Number(process.env.REMINDER_ROUTE_RATE_LIMIT || 12), windowMs: 60 * 1000 });
+  if (!cronRate.ok) return sendRateLimited(res, cronRate);
   const messaging = app.messaging();
   const nowIso = new Date().toISOString();
   const stats = { scanned: 0, claimed: 0, sent: 0, skipped: 0, failed: 0, noToken: 0 };
@@ -80,21 +83,21 @@ module.exports = async function handler(req, res) {
         stats.claimed += 1;
         const reminder = claim.reminder || {};
         const dispatchKey = claim.dispatchKey;
-        const userId = reminder.userId || reminder.createdBy || '';
+        const userId = reminder.assignedToUserId || reminder.userId || reminder.createdBy || '';
         const userSnap = userId ? await db.collection('users').doc(userId).get() : null;
         const user = userSnap?.exists ? userSnap.data() : {};
         const tokens = collectTokens(user);
 
         if (!tokens.length) {
           stats.noToken += 1;
-          await ref.update({ status: 'no_push_token', dispatchKey, dispatchedAt: nowIso, dispatchError: 'No saved push token for reminder owner.' });
+          await ref.update({ status: 'no_push_token', dispatchKey, dispatchedAt: nowIso, dispatchError: 'No saved push token for reminder recipient.' });
           return;
         }
 
         const payload = {
           notification: {
-            title: '86 Chaos Reminder',
-            body: reminder.title || 'Personal reminder'
+            title: reminder.shared ? '86 Chaos Shared Reminder' : '86 Chaos Reminder',
+            body: reminder.shared && reminder.createdByName ? `${reminder.createdByName}: ${reminder.title || 'Reminder'}` : (reminder.title || 'Personal reminder')
           },
           data: {
             type: 'personal_reminder',

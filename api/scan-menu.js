@@ -1,4 +1,5 @@
-const { initAdmin, readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace } = require('./_chaos-admin');
+const { initAdmin, readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace, requireAppCheckIfEnforced } = require('./_chaos-admin');
+const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 
@@ -207,6 +208,8 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   try {
     const app = initAdmin();
+    const appCheck = await requireAppCheckIfEnforced(app, req);
+    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
     const db = app.firestore();
     const body = await readBody(req);
     const restaurantId = String(body.restaurantId || '').trim();
@@ -215,6 +218,8 @@ module.exports = async function handler(req, res) {
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase authorization token.' });
     const decoded = await app.auth().verifyIdToken(token);
+    const rate = await enforceRateLimit({ db, req, decoded, routeName: 'scan-menu', limit: Number(process.env.SCAN_MENU_RATE_LIMIT || 8), windowMs: 60 * 1000 });
+    if (!rate.ok) return sendRateLimited(res, rate);
     const caller = await loadCaller(app, decoded, restaurantId);
     const ctx = { ...caller, decoded, uid: decoded.uid, email: decoded.email || '', user: caller.accountUser, restaurantId };
     if (!(await canScanMenu(app, ctx, restaurantId))) return res.status(403).json({ ok: false, error: 'Menu Intelligence access is required.' });
@@ -229,6 +234,9 @@ module.exports = async function handler(req, res) {
     const menuFile = app.storage().bucket().file(storagePath);
     const [metadata] = await menuFile.getMetadata().catch(() => ([{}]));
     const contentType = body.contentType || metadata?.contentType || 'application/octet-stream';
+    const purpose = metadata?.metadata?.purpose || '';
+    if (purpose && purpose !== 'menu-scan') return res.status(400).json({ ok: false, error: 'This uploaded file is not marked as a menu scan. Upload it again from Menu Intelligence.' });
+    if (!/^image\//i.test(contentType) && contentType !== 'application/pdf') return res.status(415).json({ ok: false, error: 'Menu scans must be an image or PDF.' });
     const maxBytes = parseInt(process.env.MENU_SCAN_MAX_BYTES || String(DEFAULT_MENU_SCAN_MAX_BYTES), 10);
     const reportedBytes = Number(metadata?.size || 0);
     if (reportedBytes && reportedBytes > maxBytes) {

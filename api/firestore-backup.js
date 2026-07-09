@@ -1,8 +1,9 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '14.0.2';
+const APP_VERSION = '15.0.43';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -164,12 +165,15 @@ async function authorize(req, adminApp) {
 
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
-    const email = (decoded.email || '').toLowerCase();
-    if (email === masterEmail || decoded.superAdmin === true) {
-      return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '' };
+    const email = (decoded.email || '').toLowerCase().trim();
+    const userSnap = await adminApp.firestore().collection('users').doc(decoded.uid).get();
+    const user = userSnap.exists ? (userSnap.data() || {}) : {};
+    if (masterEmails().includes(email) || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, user, true);
+      if (!mfa.ok) return mfa;
+      return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '', mfa };
     }
-    return { ok: false, status: 403, error: 'Only the master admin or a super admin can run backups.' };
+    return { ok: false, status: 403, error: 'Only a System Administrator can run backups.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }
@@ -305,6 +309,14 @@ async function handler(req, res) {
     const auth = await authorize(req, adminApp);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
 
+    const cronInvocation = {
+      scheduleHeader: req.headers['x-vercel-cron-schedule'] || '',
+      userAgent: req.headers['user-agent'] || '',
+      watchdogHeader: req.headers['x-86chaos-watchdog'] || '',
+      host: req.headers['x-forwarded-host'] || req.headers.host || '',
+      vercelEnv: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown'
+    };
+
     const requestedMode = req.query.mode || 'manual';
     if (requestedMode === 'restore') {
       const body = await readJsonBody(req);
@@ -313,7 +325,7 @@ async function handler(req, res) {
     }
 
     const runId = isoSafe(startedAt);
-    const mode = auth.source === 'vercel-cron' ? 'scheduled' : requestedMode;
+    const mode = cronInvocation.watchdogHeader ? 'watchdog' : (auth.source === 'vercel-cron' ? 'scheduled' : requestedMode);
     const statusRef = db.collection('system').doc('backupStatus');
     await statusRef.set({
       status: 'running',
@@ -336,6 +348,8 @@ async function handler(req, res) {
         mode,
         runId,
         actor: auth.actor,
+        source: auth.source,
+        cronInvocation,
         startedAt: startedAt.toISOString()
       },
       collections: {}
@@ -416,6 +430,12 @@ async function handler(req, res) {
       nextScheduledAt: getNextDailyBackupAt(finishedAt),
       nextBackupAt: getNextDailyBackupAt(finishedAt),
       cronSchedule: '0 9 * * *',
+      cronFallbackSchedule: '0 21 * * *',
+      cronScheduleHeader: cronInvocation.scheduleHeader,
+      cronUserAgent: cronInvocation.userAgent,
+      cronHost: cronInvocation.host,
+      cronWatchdogHeader: cronInvocation.watchdogHeader,
+      ...(auth.source === 'vercel-cron' ? { cronSeenAt: startedAt.toISOString(), lastScheduledBackupAt: finishedAt.toISOString() } : {}),
       version: APP_VERSION
     };
 
@@ -461,4 +481,4 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports.config = { maxDuration: 60 };
+module.exports.config = { maxDuration: 300 };

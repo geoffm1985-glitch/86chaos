@@ -28,9 +28,31 @@ function profileForWorkspace(user, member, restaurantId) {
     isOwner: source?.isOwner === true || source?.accountOwner === true || source?.workspaceOwner === true || (legacy && (user?.isOwner === true || user?.accountOwner === true || user?.workspaceOwner === true || norm(user?.accountRole) === 'owner'))
   };
 }
+function parseMasterEmailEnv() {
+  const rawValues = [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
+    .filter(Boolean)
+    .flatMap(v => String(v).split(/[\s,;]+/));
+  const skipped = [];
+  const valid = [];
+  const seen = new Set();
+  for (const raw of rawValues) {
+    const email = norm(raw);
+    if (!email) continue;
+    const looksPlaceholder = /^(second_admin_email_here|admin@example\.com|your-email@example\.com|email@example\.com|none|null|undefined|todo|replace_me)$/i.test(email) || email.includes('placeholder') || email.includes('<') || email.includes('>');
+    const looksEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+    if (looksPlaceholder || !looksEmail) {
+      skipped.push({ value: email, reason: looksPlaceholder ? 'placeholder' : 'invalid-email-format' });
+      continue;
+    }
+    if (!seen.has(email)) {
+      seen.add(email);
+      valid.push(email);
+    }
+  }
+  return { valid, skipped, rawCount: rawValues.filter(v => String(v || '').trim()).length };
+}
 function masterEmails() {
-  return [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS, 'geoffm1985@gmail.com', 'geoffrm1985@gmail.com']
-    .filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
+  return parseMasterEmailEnv().valid;
 }
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
@@ -51,6 +73,37 @@ function initAdmin() {
   if (!projectId) throw new Error('Missing Firebase service account project id.');
   const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
   return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
+}
+
+function boolEnv(name) { return ['true', '1', 'yes', 'enforce'].includes(String(process.env[name] || '').toLowerCase().trim()); }
+function mfaEnforcementEnabled() { return boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES'); }
+function decodedHasMfa(decoded = {}) { const fb = decoded.firebase || {}; return Boolean(fb.sign_in_second_factor || fb.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true); }
+function roleNeedsMfa(user = {}, decoded = {}, isSuperAdmin = false) {
+  const role = norm(user.role || user.accountRole || decoded.role || '');
+  return Boolean(isSuperAdmin || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true || user.isAdmin === true || user.isOwner === true || user.accountOwner === true || user.owner === true || user.workspaceOwner === true || ['owner', 'manager', 'admin', 'general manager', 'super admin', 'system administrator'].some(token => role.includes(token)));
+}
+function requireMfaIfEnforced(decoded = {}, user = {}, isSuperAdmin = false) {
+  if (!mfaEnforcementEnabled()) return { ok: true, enforced: false };
+  if (!roleNeedsMfa(user, decoded, isSuperAdmin)) return { ok: true, enforced: true, required: false };
+  if (decodedHasMfa(decoded)) return { ok: true, enforced: true, required: true };
+  return { ok: false, status: 403, error: 'Two-step login is required for this elevated account. Log out, sign in again, and complete MFA before using protected admin tools.' };
+}
+
+function appCheckEnforced() {
+  return ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
+}
+async function requireAppCheckIfEnforced(app, req) {
+  if (!appCheckEnforced()) return { ok: true, enforced: false };
+  const token = String(req.headers['x-firebase-appcheck'] || req.headers['X-Firebase-AppCheck'] || '').trim();
+  if (!token) return { ok: false, status: 401, error: 'App Check verification is required. Refresh the app after deployment and try again.' };
+  try {
+    const verifier = typeof app?.appCheck === 'function' ? app.appCheck() : (typeof admin.appCheck === 'function' ? admin.appCheck(app) : null);
+    if (!verifier || typeof verifier.verifyToken !== 'function') throw new Error('Firebase Admin App Check verifier is not available in this runtime.');
+    await verifier.verifyToken(token);
+    return { ok: true, enforced: true };
+  } catch (err) {
+    return { ok: false, status: 401, error: `App Check verification failed: ${err.message}` };
+  }
 }
 async function readBody(req) {
   if (!req.body) return {};
@@ -78,7 +131,9 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
     const permissions = workspaceUser?.permissions || {};
     const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && (isSuperAdmin || member || userHasWorkspace(user, restaurantId)) && (workspaceUser?.isAdmin === true || workspaceUser?.isOwner === true || workspaceUser?.accountOwner === true || permissions.settings === true || permissions.team === true));
     if (!isSuperAdmin && !tenantAdmin) return { ok: false, status: 403, error: 'System Administrator access is required for this tool.' };
-    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions };
+    const mfa = requireMfaIfEnforced(decoded, workspaceUser || user || {}, isSuperAdmin);
+    if (!mfa.ok) return mfa;
+    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions, mfa };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }
@@ -105,4 +160,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, readBody, authorize, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace };
+module.exports = { admin, initAdmin, readBody, authorize, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };

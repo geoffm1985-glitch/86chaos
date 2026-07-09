@@ -33,9 +33,7 @@ function cleanPerms(perms = {}) {
 function masterEmails() {
   return [
     process.env.MASTER_ADMIN_EMAIL,
-    process.env.MASTER_ADMIN_EMAILS,
-    'geoffm1985@gmail.com',
-    'geoffrm1985@gmail.com'
+    process.env.MASTER_ADMIN_EMAILS
   ].filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
 }
 function memberDocId(uid, restaurantId) {
@@ -106,7 +104,7 @@ async function verifyCaller(req, body, db, auth) {
   const callerMembership = membershipFromUserMap(caller, requestedRestaurantId) || await loadWorkspaceMember(db, decoded.uid, callerEmail, requestedRestaurantId);
   const callerProfile = resolveRoleProfile(caller, callerMembership, requestedRestaurantId);
 
-  const isSuperAdmin = decoded.superAdmin === true || caller?.isSuperAdmin === true || masterEmails().includes(callerEmail);
+  const isSuperAdmin = decoded.superAdmin === true || caller?.isSuperAdmin === true || caller?.systemAccess?.superAdmin === true || masterEmails().includes(callerEmail);
   const isOwner = Boolean(
     isSuperAdmin ||
     callerProfile.isOwner ||

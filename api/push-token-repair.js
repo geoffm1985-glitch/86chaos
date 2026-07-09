@@ -18,12 +18,52 @@ function loadServiceAccount() {
 if (!getApps().length) initializeApp({ credential: cert(loadServiceAccount()) });
 const db = getFirestore();
 
+async function requireAppCheckIfEnforced(req, res) {
+  const enforced = ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
+  if (!enforced) return true;
+  const token = String(req.headers['x-firebase-appcheck'] || req.headers['X-Firebase-AppCheck'] || '').trim();
+  if (!token) {
+    res.status(401).json({ error: 'App Check verification is required. Refresh the app after deployment and try again.' });
+    return false;
+  }
+  try {
+    const { getAppCheck } = await import('firebase-admin/app-check');
+    await getAppCheck().verifyToken(token);
+    return true;
+  } catch (err) {
+    res.status(401).json({ error: `App Check verification failed: ${err.message}` });
+    return false;
+  }
+}
+
+
 const MASTER_EMAILS = new Set([
-  (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase(),
-  'geoffrm1985@gmail.com'
-]);
+  (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase()
+].filter(Boolean));
 if (process.env.MASTER_ADMIN_EMAILS) {
   process.env.MASTER_ADMIN_EMAILS.split(',').map(v => v.toLowerCase().trim()).filter(Boolean).forEach(email => MASTER_EMAILS.add(email));
+}
+
+
+async function enforceRouteRateLimit(req, res, decoded, routeName, limit = 30, windowMs = 60 * 1000) {
+  const now = Date.now();
+  const windowStart = Math.floor(now / windowMs) * windowMs;
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+  const key = `${routeName}:${decoded?.uid || decoded?.email || ip || 'unknown'}`.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 180);
+  const ref = db.collection('apiRateLimits').doc(`${key}:${windowStart}`);
+  const result = await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    const current = snap.exists ? Number(snap.data().count || 0) : 0;
+    const count = current + 1;
+    tx.set(ref, { key, routeName, count, limit, windowMs, windowStart: new Date(windowStart).toISOString(), updatedAt: new Date(now).toISOString(), expiresAt: new Date(windowStart + windowMs * 3).toISOString() }, { merge: true });
+    return { ok: count <= limit, count, resetAt: new Date(windowStart + windowMs).toISOString() };
+  });
+  if (!result.ok) {
+    res.setHeader('Retry-After', Math.max(1, Math.ceil((new Date(result.resetAt).getTime() - Date.now()) / 1000)));
+    res.status(429).json({ error: 'Too many requests. Wait a minute and try again.', rateLimited: true, resetAt: result.resetAt });
+    return false;
+  }
+  return true;
 }
 
 const norm = (value = '') => String(value || '').toLowerCase().trim();
@@ -82,7 +122,7 @@ async function getCaller(decoded) {
 
 async function callerCanRepair(caller, decoded, restaurantId) {
   const email = (decoded.email || caller.email || '').toLowerCase().trim();
-  if (decoded.superAdmin === true || caller.isSuperAdmin === true || MASTER_EMAILS.has(email)) return true;
+  if (decoded.superAdmin === true || caller.isSuperAdmin === true || caller.systemAccess?.superAdmin === true || MASTER_EMAILS.has(email)) return true;
   if (!restaurantId) return false;
   const memberships = caller.memberships || {};
   const member = memberships?.[restaurantId] || await readWorkspaceMember(decoded.uid, email, restaurantId);
@@ -158,12 +198,14 @@ async function writeAudit({ caller, action, target, restaurantId, details }) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  if (!await requireAppCheckIfEnforced(req, res)) return;
   const authHeader = req.headers.authorization || '';
   if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized: Missing Firebase ID token.' });
 
   let decoded;
   try { decoded = await getAuth().verifyIdToken(authHeader.slice('Bearer '.length)); }
   catch (err) { return res.status(403).json({ error: 'Forbidden: Invalid or expired Firebase ID token.' }); }
+  if (!await enforceRouteRateLimit(req, res, decoded, 'push-token-repair', Number(process.env.PUSH_REPAIR_RATE_LIMIT || 25), 60 * 1000)) return;
 
   try {
     const caller = await getCaller(decoded);

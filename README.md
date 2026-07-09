@@ -1,32 +1,29 @@
 # 86 Chaos
 
-Current version: 15.0.12
+Version: 16.0.2
 
-## 15.0.12 focus
+86 Chaos is a restaurant/kitchen management web app built with React, Firebase Auth/Firestore/Storage, and Vercel API routes.
 
-15.0.12 adds a real public Help Center guide for Menu Intelligence so managers can use the intelligent menu without reading scattered release notes.
+## 16.0.2 Update
 
-## What changed
+This build applies the controlled command-center design-system upgrade. It keeps the existing application structure and behavior while moving the live app toward a premium restaurant operations cockpit: dark glass panels, orange/gold action accents, stronger visual hierarchy, improved drawer organization, polished reusable controls, and better mobile touch targets.
 
-- Added a dedicated **Using Menu Intelligence** Help Center article.
-- The article explains how to upload menu photos/PDFs, wait through compression/upload/AI scan progress, review menu items, match ingredients to real inventory rows, approve reviewed menu links, edit scans, and delete scans.
-- The article explains how approved Menu Intelligence links help 86 alerts show affected/unavailable menu items.
-- Added practical examples for kitchen shorthand such as `86 burger` matching real inventory names like `BEEF GR PTY` or beef patties.
-- Added troubleshooting guidance for when an 86 alert does not show menu impact.
-- Administrator Manual includes 15.0.12 support and QA guidance.
+## Preserved
 
-## Deployment notes
+- Existing React/Firebase/Vercel structure.
+- Existing API routes, Firebase rules, Storage rules, and Vercel config.
+- Existing tab IDs, tab labels, route behavior, permission gates, and feature behavior.
+- Existing drawer-based mobile navigation.
+- System Administrator access through the existing `godmode` tab.
 
-1. Deploy the app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.12` after deploy.
-3. Open Help Center and search `Menu Intelligence` or `intelligent menu`.
-4. Confirm the **Using Menu Intelligence** article appears and is public-facing.
-5. Confirm the article explains upload, review, approval, edit/delete, and 86 menu-impact behavior.
-6. Run the 15.0.12 QA checklist before handing it to staff.
+## Deployment
 
-## Separate publishing required
+- Redeploy the app through the existing Vercel workflow.
+- `public/version.json` is set to `16.0.2`.
+- Firestore rules are unchanged from the 15.0.43 harness.
+- Storage rules are unchanged from the 15.0.43 harness.
+- No new environment variables are required.
 
-- Firestore rules: no new changes from 15.0.11.
-- Storage rules: no new changes from 15.0.11.
-- Vercel/API routes: deploy the updated app code.
-- New environment variables: none.
+## Branding Rule
+
+86 Chaos branding is mandatory and must always remain visible. Restaurant/customer logos may appear beside 86 Chaos branding when configured, but they do not replace it.

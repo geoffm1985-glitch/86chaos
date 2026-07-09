@@ -1,3 +1,5 @@
+const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+
 // 86chaos invoice scanner
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
@@ -308,6 +310,22 @@ function initAdmin() {
   const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
   return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
 }
+function appCheckEnforced() {
+  return ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
+}
+async function requireAppCheckIfEnforced(adminApp, req) {
+  if (!appCheckEnforced()) return { ok: true };
+  const token = String(req.headers['x-firebase-appcheck'] || req.headers['X-Firebase-AppCheck'] || '').trim();
+  if (!token) return { ok: false, status: 401, error: 'App Check verification is required. Refresh the app after deployment and try again.' };
+  try {
+    const verifier = typeof adminApp?.appCheck === 'function' ? adminApp.appCheck() : (typeof admin.appCheck === 'function' ? admin.appCheck(adminApp) : null);
+    if (!verifier || typeof verifier.verifyToken !== 'function') throw new Error('Firebase Admin App Check verifier is not available in this runtime.');
+    await verifier.verifyToken(token);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, status: 401, error: `App Check verification failed: ${err.message}` };
+  }
+}
 
 async function verifySignedIn(req, adminApp) {
   const authHeader = req.headers.authorization || '';
@@ -351,7 +369,18 @@ async function readScanSource(reqBody, req, adminApp) {
     const scanFile = bucket.file(storagePath);
     const [metadata] = await scanFile.getMetadata().catch(() => ([{}]));
     const storageMimeType = metadata?.contentType && metadata.contentType !== 'application/octet-stream' ? metadata.contentType : '';
+    const uploadPurpose = metadata?.metadata?.purpose || '';
+    if (uploadPurpose && uploadPurpose !== 'invoice-scan') {
+      const err = new Error('This uploaded file is not marked as an invoice scan. Upload it again from Invoice Scanner.');
+      err.statusCode = 400;
+      throw err;
+    }
     const effectiveMimeType = detectMimeType(fileName, storageMimeType || mimeType);
+    if (!/^image\//i.test(effectiveMimeType) && effectiveMimeType !== 'application/pdf') {
+      const err = new Error('Invoice scans must be an image or PDF.');
+      err.statusCode = 415;
+      throw err;
+    }
     const pdfLike = effectiveMimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
     const maxBytes = pdfLike
       ? parseInt(process.env.INVOICE_SCAN_MAX_PDF_BYTES || String(DEFAULT_INVOICE_SCAN_MAX_BYTES), 10)
@@ -675,6 +704,12 @@ async function handler(req, res) {
     if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY in Vercel.' });
 
     const adminApp = initAdmin();
+    const appCheck = await requireAppCheckIfEnforced(adminApp, req);
+    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ error: appCheck.error });
+    const tokenForRate = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    const decodedForRate = tokenForRate ? await adminApp.auth().verifyIdToken(tokenForRate).catch(() => null) : null;
+    const invoiceRate = await enforceRateLimit({ db: adminApp.firestore(), req, decoded: decodedForRate, routeName: 'scan-invoice', limit: Number(process.env.SCAN_INVOICE_RATE_LIMIT || 10), windowMs: 60 * 1000 });
+    if (!invoiceRate.ok) return sendRateLimited(res, invoiceRate);
     scanSource = await readScanSource(req.body || {}, req, adminApp);
     const { mimeType = 'image/jpeg', fileName = 'invoice' } = scanSource;
     const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';

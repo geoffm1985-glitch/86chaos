@@ -16,9 +16,10 @@ service cloud.firestore {
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
-        request.auth.token.email == 'geoffm1985@gmail.com' ||
-        request.auth.token.email == 'geoffrm1985@gmail.com' ||
-        (hasUserDoc() && userData().isSuperAdmin == true)
+        (hasUserDoc() && (
+          userData().isSuperAdmin == true ||
+          userData().systemAccess.superAdmin == true
+        ))
       );
     }
 
@@ -105,6 +106,27 @@ service cloud.firestore {
 
     function restaurantSettingsWriteIsSafe(restId) {
       return canManageWorkspaceSettings(restId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['systemSettings', 'settingsHistory', 'integrations', 'updatedAt']);
+    }
+
+    function reminderParticipant(data) {
+      return signedIn() && (
+        data.userId == request.auth.uid ||
+        data.assignedToUserId == request.auth.uid ||
+        data.createdBy == request.auth.uid
+      );
+    }
+
+    function reminderTenant(data) {
+      return data.restaurantId is string && isTenantMatch(data.restaurantId);
+    }
+
+    function reminderIdentityStable() {
+      return request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.createdBy == resource.data.createdBy;
+    }
+
+    function reminderRecipientStatusUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt', 'cancelledAt', 'updatedAt']);
     }
 
     function isOwnerOfRestaurantDoc() { return signedIn() && request.auth.token.email == resource.data.ownerEmail; }
@@ -328,6 +350,20 @@ service cloud.firestore {
 
     match /system/{docId} { allow read, write: if isSuperAdmin(); }
 
+    match /accountDeletionRequests/{userId} {
+      allow read: if signedIn() && (isSuperAdmin() || request.auth.uid == userId);
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.status == 'requested';
+      allow update: if signedIn() && isSuperAdmin();
+      allow delete: if false;
+    }
+
+    match /securityAlerts/{docId} {
+      allow read, write: if signedIn() && isSuperAdmin();
+    }
+
     // ============================================================
     // TASKS
     // ============================================================
@@ -339,13 +375,17 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // PRIVATE PERSONAL REMINDERS
+    // PRIVATE + SHARED REMINDERS
+    // Users can read reminders they own, created, or were assigned.
+    // Creators can edit/delete shared reminders; assigned teammates can mark done/cancelled only.
     // ============================================================
     match /personalReminders/{docId} {
-      allow read: if signedIn() && resource.data.userId == request.auth.uid && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.userId == request.auth.uid && isTenantMatch(resource.data.restaurantId);
+      allow read: if signedIn() && reminderTenant(resource.data) && reminderParticipant(resource.data);
+      allow create: if signedIn() && reminderTenant(request.resource.data) && request.resource.data.createdBy == request.auth.uid;
+      allow update: if signedIn() && reminderTenant(resource.data) && reminderParticipant(resource.data) && reminderIdentityStable() && (
+        resource.data.createdBy == request.auth.uid || reminderRecipientStatusUpdate()
+      );
+      allow delete: if signedIn() && reminderTenant(resource.data) && (resource.data.createdBy == request.auth.uid || resource.data.userId == request.auth.uid);
     }
 
     // ============================================================

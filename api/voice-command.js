@@ -1,3 +1,6 @@
+const { initAdmin, requireAppCheckIfEnforced } = require('./_chaos-admin');
+const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+
 // Optional AI parser for 86 Voice. The frontend has a safe local parser first.
 // If GEMINI_API_KEY or GOOGLE_API_KEY is present, this route can help classify vague commands.
 function voiceModelCandidates() {
@@ -13,6 +16,17 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    try {
+      const app = initAdmin();
+      const appCheck = await requireAppCheckIfEnforced(app, req);
+      if (!appCheck.ok) return res.status(appCheck.status || 401).json({ intent: 'unknown', error: appCheck.error });
+      const db = app.firestore();
+      let decoded = null;
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (token) decoded = await app.auth().verifyIdToken(token).catch(() => null);
+      const voiceRate = await enforceRateLimit({ db, req, decoded, routeName: 'voice-command', limit: Number(process.env.VOICE_COMMAND_RATE_LIMIT || 30), windowMs: 60 * 1000 });
+      if (!voiceRate.ok) return sendRateLimited(res, voiceRate);
+    } catch (_) {}
     const { text = '' } = req.body || {};
     if (!apiKey || !String(text).trim()) return res.status(200).json({ intent: 'unknown' });
 

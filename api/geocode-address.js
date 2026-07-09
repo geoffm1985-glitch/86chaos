@@ -3,7 +3,7 @@ const FALLBACK_LOCATIONS = [
     test: (q) => /cheers/i.test(q) || (/chilton/i.test(q) && /(n\s*34|highway\s*57|hwy\s*57|57\b)/i.test(q)),
     lat: 44.024911,
     lon: -88.157794,
-    label: 'Cheers Chilton geofence fallback',
+    label: 'Saved restaurant geofence fallback',
     source: '86chaos-known-location'
   }
 ];
