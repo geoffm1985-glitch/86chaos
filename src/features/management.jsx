@@ -1238,8 +1238,9 @@ const handleEnableNotifications = async () => {
 
   const handlePasswordReset = async () => {
     try {
-      await sendPasswordResetEmail(auth, appUser.email);
-      addToast('Email Sent', 'Check your inbox for the password reset link.');
+      const resetEmail = auth.currentUser?.email || appUser.email;
+      await sendPasswordResetEmail(auth, resetEmail);
+      addToast('Email Sent', `Check ${resetEmail || 'your inbox'} for the password reset link.`);
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -1248,8 +1249,8 @@ const handleEnableNotifications = async () => {
     if (!auth.currentUser) return setMfaError('Please log out and back in before sending a verification email.');
     setIsEmailVerifyBusy(true);
     try {
-      await sendEmailVerification(auth.currentUser, { url: window.location.origin });
-      addToast('Verification Email Sent', 'Open your inbox, click the Firebase verification link, then come back and refresh status.');
+      await sendEmailVerification(auth.currentUser);
+      addToast('Verification Email Sent', `Open ${auth.currentUser.email || 'your inbox'}, click the Firebase verification link, then come back and refresh status.`);
     } catch (err) {
       const msg = err?.code === 'auth/too-many-requests'
         ? 'Firebase throttled verification emails for a bit. Wait a few minutes before trying again.'
@@ -1481,7 +1482,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 space-y-3">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Email verification required</div>
-                  <p className="text-[10px] text-amber-100/80 font-bold leading-snug mt-1">Firebase requires your email address to be verified before SMS two-step login can be enrolled. Send the verification email, click the inbox link, then return here and refresh status.</p>
+                  <p className="text-[10px] text-amber-100/80 font-bold leading-snug mt-1">Firebase requires your email address to be verified before SMS two-step login can be enrolled. This uses Firebase's default verification link, like the console does. Send the verification email, click the inbox link, then return here and refresh status.</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <button type="button" onClick={handleSendEmailVerificationLink} disabled={isEmailVerifyBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isEmailVerifyBusy ? 'Working…' : 'Send Verification Email'}</button>
@@ -1526,7 +1527,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 space-y-3">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Email verification required</div>
-                  <p className="text-[10px] text-amber-100/80 font-bold leading-snug mt-1">Firebase requires your email address to be verified before SMS two-step login can be enrolled. Send the verification email, click the inbox link, then return here and refresh status.</p>
+                  <p className="text-[10px] text-amber-100/80 font-bold leading-snug mt-1">Firebase requires your email address to be verified before SMS two-step login can be enrolled. This uses Firebase's default verification link, like the console does. Send the verification email, click the inbox link, then return here and refresh status.</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <button type="button" onClick={handleSendEmailVerificationLink} disabled={isEmailVerifyBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isEmailVerifyBusy ? 'Working…' : 'Send Verification Email'}</button>
@@ -4250,6 +4251,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.23 Firebase Email Action Fix', group: 'System Administrator', keywords: 'v15 15.0.23 account security email verification password reset firebase default link mfa', body: ['15.0.23 changes Account Security verification email to use Firebase's default action link instead of a deployment continue URL, matching the console flow that sends successfully.', 'Settings password reset now sends to the active Firebase Auth email first so profile email drift cannot send a reset to the wrong address.'] },
     { title: 'Version 15.0.22 Email Verification for MFA', group: 'System Administrator', keywords: 'v15 15.0.22 account security email verification mfa two step login sms', body: ['15.0.22 adds Send Verification Email and Refresh Email Status actions to Account Security because Firebase requires verified email before SMS MFA enrollment.', 'This update changes /api/account-security so the app can show emailVerified alongside MFA factor status.'] },
     { title: 'Version 15.0.21 Account Security Tab Fix', group: 'System Administrator', keywords: 'v15 15.0.21 account security settings mfa two step login tab visible mobile', body: ['15.0.21 makes Account Security a visible Settings tab and adds an Open Account Security button inside Profile so MFA setup is easy to find on mobile.', 'This is a UI routing fix only. It does not change Firebase rules, Storage rules, API routes, or Vercel environment variables.'] },
     { title: 'Version 15.0.20 MFA & Permissions Enforcement', group: 'System Administrator', keywords: 'v15 15.0.20 mfa two step login account security sms elevated roles permissions preview enforcement', body: ['15.0.20 adds Account Security two-step login enrollment under Settings, MFA-aware login prompts, a server-side account-security sync route, and an elevated-role enforcement switch for protected admin API routes.', 'Keep MFA enforcement off until Firebase SMS MFA is enabled and at least one owner or System Administrator has successfully enrolled and completed a fresh MFA login.'] },
@@ -7091,6 +7093,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15023', title:'What changed in version 15.0.23', group:'Release Notes', keywords:'new update 15.0.23 account security email verification password reset firebase action link mfa', body:['Account Security now sends verification email with Firebase's default action link, the same style as console-sent email actions.', 'Settings password reset now targets the active Firebase Auth email first, preventing stale profile email drift from swallowing reset links.', 'No Firebase rules, Storage rules, API routes, or Vercel env vars changed.'] },
   { id:'new-15022', title:'What changed in version 15.0.22', group:'Release Notes', keywords:'new update 15.0.22 account security email verification mfa two step login sms', body:['Account Security now includes Send Verification Email for accounts blocked by Firebase auth/unverified-email.', 'After clicking the Firebase inbox link, Refresh Email Status reloads the Firebase Auth user and lets SMS MFA setup continue.', '/api/account-security now reports emailVerified, so Vercel redeploy is required.'] },
   { id:'new-15021', title:'What changed in version 15.0.21', group:'Release Notes', keywords:'new update 15.0.21 account security settings mfa two step login tab mobile', body:['Account Security now has its own visible Settings tab instead of being buried below the Profile form.', 'Profile also includes an Open Account Security button so elevated users can get to MFA setup quickly on phone screens.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15019', title:'What changed in version 15.0.19', group:'Release Notes', keywords:'new update 15.0.19 ai tools invoice scanner inventory shortcut invoices', body:['AI Tools now opens the Invoice Scanner directly on Inventory → Invoices instead of dropping users on the default Inventory view.', 'The button now says Open Invoice Scanner so it matches where it goes.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
