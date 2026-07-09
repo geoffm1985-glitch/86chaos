@@ -1,5 +1,3 @@
-const path = require('path');
-const fs = require('fs');
 const { initAdmin, authorize, requireAppCheckIfEnforced } = require('./_chaos-admin');
 
 const ROUTE_CHECKS = [
@@ -42,14 +40,54 @@ const ROUTE_CHECKS = [
 ];
 
 const hasEnv = (name) => Boolean(process.env[name] && String(process.env[name]).trim());
+
+const HANDLER_LOADERS = {
+  'account-security.js': () => require('./account-security'),
+  'admin-access.js': () => require('./admin-access'),
+  'master-admin-repair.js': () => require('./master-admin-repair'),
+  'alerts.js': () => require('./alerts'),
+  'backup-preview.js': () => require('./backup-preview'),
+  'brand-logo.js': () => require('./brand-logo'),
+  'delete-user.js': () => require('./delete-user'),
+  'delete-users-bulk.js': () => require('./delete-users-bulk'),
+  'deploy-tenant.js': () => require('./deploy-tenant'),
+  'dispatch-reminders.js': () => require('./dispatch-reminders'),
+  'firestore-backup.js': () => require('./firestore-backup'),
+  'firestore-backup-watchdog.js': () => require('./firestore-backup-watchdog'),
+  'gemini-admin-manual.js': () => require('./gemini-admin-manual'),
+  'full-system-diagnostics.js': () => require('./full-system-diagnostics'),
+  'geocode-address.js': () => require('./geocode-address'),
+  'import-cheers-july-schedule.js': () => require('./import-cheers-july-schedule'),
+  'account-deletion-request.js': () => require('./account-deletion-request'),
+  'restore-drill.js': () => require('./restore-drill'),
+  'list-backups.js': () => require('./list-backups'),
+  'mfa-recovery-code.js': () => require('./mfa-recovery-code'),
+  'presence-heartbeat.js': () => require('./presence-heartbeat'),
+  'presence-snapshot.js': () => require('./presence-snapshot'),
+  'push-token-repair.js': () => require('./push-token-repair'),
+  'safe-write.js': () => require('./safe-write'),
+  'scan.js': () => require('./scan'),
+  'scan-invoice.js': () => require('./scan-invoice'),
+  'scan-menu.js': () => require('./scan-menu'),
+  'schema-doctor.js': () => require('./schema-doctor'),
+  'security-diagnostics.js': () => require('./security-diagnostics'),
+  'send-push.js': () => require('./send-push'),
+  'send-schedule-alert.js': () => require('./send-schedule-alert'),
+  'staff-member.js': () => require('./staff-member'),
+  'storage-doctor.js': () => require('./storage-doctor'),
+  'voice-command.js': () => require('./voice-command'),
+  'weekly-maintenance.js': () => require('./weekly-maintenance'),
+  'whoami.js': () => require('./whoami')
+};
+
 const safeRequire = (file) => {
   try {
-    const full = path.join(__dirname, file);
-    delete require.cache[require.resolve(full)];
-    const loaded = require(full);
-    return { ok: typeof loaded === 'function' || typeof loaded?.default === 'function', error: '' };
+    const loader = HANDLER_LOADERS[file];
+    if (!loader) return { ok: false, exists: false, error: 'Route is listed but no static loader is registered.' };
+    const loaded = loader();
+    return { ok: typeof loaded === 'function' || typeof loaded?.default === 'function', exists: true, error: '' };
   } catch (err) {
-    return { ok: false, error: err.message };
+    return { ok: false, exists: true, error: err.message };
   }
 };
 
@@ -64,14 +102,12 @@ module.exports = async function handler(req, res) {
 
     const startedAt = Date.now();
     const rows = ROUTE_CHECKS.map(check => {
-      const filePath = path.join(__dirname, check.file);
-      const exists = fs.existsSync(filePath);
-      const parse = exists ? safeRequire(check.file) : { ok: false, error: 'File missing from /api.' };
+      const parse = safeRequire(check.file);
       return {
         ...check,
-        exists,
+        exists: parse.exists !== false,
         handlerLoads: parse.ok,
-        status: exists && parse.ok ? 'ready' : 'attention',
+        status: parse.ok ? 'ready' : 'attention',
         error: parse.error || '',
         destructive: /(delete|restore|backup|import)/i.test(check.route)
       };

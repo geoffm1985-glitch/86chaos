@@ -11,13 +11,18 @@ function initAdmin() {
 
 const norm = (value = '') => String(value || '').toLowerCase().trim();
 const hasEnv = (name) => Boolean(process.env[name] && String(process.env[name]).trim());
+const parseDate = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
 const roleNeedsMfa = (user = {}) => {
   const role = norm(user.role || user.accountRole || '');
   return Boolean(user.isSuperAdmin || user.isAdmin || user.isOwner || user.accountOwner || user.owner || user.workspaceOwner || ['owner', 'manager', 'admin', 'general manager', 'super admin'].some(token => role.includes(token)));
 };
 const userHasMfaFlag = (user = {}) => Boolean(user.mfaEnabled || user.multiFactorEnabled || user.security?.mfaEnabled || user.accountSecurity?.mfaEnabled);
 const boolEnv = (name) => /^(1|true|yes|enforce)$/i.test(String(process.env[name] || '').trim());
-const SECURITY_BUILD_VERSION = '15.0.37';
+const SECURITY_BUILD_VERSION = '15.0.38';
 const mfaEnforcementEnabled = () => boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES');
 const decodedHasMfa = (decoded = {}) => Boolean(decoded.firebase?.sign_in_second_factor || decoded.firebase?.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true);
 const authUserHasMfa = async (app, user) => {
@@ -103,6 +108,9 @@ module.exports = async function handler(req, res) {
     if (appCheck.enforcedByApi && appCheck.status !== 'valid') return res.status(401).json({ ok: false, error: 'App Check verification is required for Security Center.', appCheck });
     const rulesVersion = securityStatus.currentRulesVersion || '15.0.13';
     const storageRulesVersion = securityStatus.currentStorageRulesVersion || '15.0.13';
+    const lastBackupDate = parseDate(backupStatus.lastSuccessfulBackupAt || backupStatus.lastBackupAt || backupStatus.lastRunAt || '');
+    const backupAgeHours = lastBackupDate ? Math.round(((Date.now() - lastBackupDate.getTime()) / 36e5) * 10) / 10 : null;
+    const backupStale = !lastBackupDate || backupAgeHours > 30;
     const report = {
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -126,6 +134,14 @@ module.exports = async function handler(req, res) {
         cronSecretConfigured: hasEnv('CRON_SECRET'),
         lastBackupAt: backupStatus.lastSuccessfulBackupAt || backupStatus.lastBackupAt || backupStatus.lastRunAt || '',
         lastBackupStatus: backupStatus.status || backupStatus.lastStatus || 'unknown',
+        lastScheduledBackupAt: backupStatus.lastScheduledBackupAt || '',
+        cronSeenAt: backupStatus.cronSeenAt || '',
+        lastWatchdogCheckAt: backupStatus.lastWatchdogCheckAt || '',
+        lastWatchdogResult: backupStatus.lastWatchdogResult || '',
+        backupAgeHours,
+        backupStale,
+        dailyBackupExpected: true,
+        backupWatchdogExpected: true,
         reminderCronExpected: true,
         weeklyMaintenanceExpected: true
       },

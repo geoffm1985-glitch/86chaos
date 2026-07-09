@@ -62,6 +62,7 @@ async function handler(req, res) {
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
 
     const bucket = adminApp.storage().bucket();
+    const includeSignedUrls = req.query?.includeSignedUrls === '1' || req.query?.includeSignedUrls === 'true';
     const [files] = await bucket.getFiles({ prefix: 'backups/firestore/' });
     const backups = [];
 
@@ -69,16 +70,18 @@ async function handler(req, res) {
       if (!file.name.endsWith('.json.gz')) continue;
       const [metadata] = await file.getMetadata().catch(() => [{}]);
       const custom = metadata?.metadata || {};
-      const modeFromPath = file.name.includes('/manual/') ? 'manual' : file.name.includes('/scheduled/') ? 'scheduled' : 'unknown';
+      const modeFromPath = file.name.includes('/manual/') ? 'manual' : file.name.includes('/scheduled/') ? 'scheduled' : file.name.includes('/watchdog/') ? 'watchdog' : 'unknown';
       const createdAt = metadata.timeCreated || parseDateFromName(file.name) || null;
       const updatedAt = metadata.updated || createdAt;
       const sizeBytes = Number(metadata.size || 0);
       let signedUrl = '';
-      try {
-        const [url] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 15 * 60 * 1000 });
-        signedUrl = url;
-      } catch (_) {}
-      backups.push({
+      if (includeSignedUrls) {
+        try {
+          const [url] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 15 * 60 * 1000 });
+          signedUrl = url;
+        } catch (_) {}
+      }
+      const backupRow = {
         path: file.name,
         name: file.name.split('/').pop(),
         mode: custom.mode || modeFromPath,
@@ -92,9 +95,10 @@ async function handler(req, res) {
         integrityStatus: custom.integrityStatus || 'unknown',
         integrityVerifiedAt: custom.integrityVerifiedAt || '',
         integrityErrors: custom.integrityErrors || '',
-        sha256: custom.sha256 || '',
-        signedUrl
-      });
+        sha256: custom.sha256 || ''
+      };
+      if (includeSignedUrls) backupRow.signedUrl = signedUrl;
+      backups.push(backupRow);
     }
 
     backups.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
@@ -110,7 +114,7 @@ async function handler(req, res) {
       }
       storageUsage = { totalFiles: allFiles.length, totalBytes: allBytes, backupFiles: backups.length, backupBytes: totalBytes };
     }
-    return res.status(200).json({ ok: true, backups: backups.slice(0, 100), count: backups.length, bucket: bucket.name, totalBytes, verifiedCount, storageUsage });
+    return res.status(200).json({ ok: true, backups: backups.slice(0, 100), count: backups.length, bucket: bucket.name, totalBytes, verifiedCount, storageUsage, signedUrlsIncluded: includeSignedUrls });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }

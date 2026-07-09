@@ -1,6 +1,6 @@
 const { admin, initAdmin, requireAppCheckIfEnforced, readBody, parseMasterEmailEnv, norm, clean, memberDocId } = require('./_chaos-admin');
 
-const CURRENT_VERSION = '15.0.37';
+const CURRENT_VERSION = '15.0.38';
 
 function displayNameFromEmail(email) {
   const prefix = String(email || '').split('@')[0] || 'System Administrator';

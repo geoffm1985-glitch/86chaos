@@ -1,29 +1,24 @@
 # 86 Chaos
 
-Current Version: 15.0.37 - Gemini Manual and Backup Watchdog
+Current Version: 15.0.38 - Diagnostics Cleanup and Admin Nav Top Rail
 
-## 15.0.37 focus
-This build adds a Gemini-powered System Administrator Manual assistant and hardens automatic backup visibility/reliability with a production fallback watchdog.
-
-## Included
-- Adds `/api/gemini-admin-manual` for Super Admin-only Gemini manual answers.
-- Adds an Ask Gemini card inside System Administrator → Manual that uses the matched playbook and relevant manual articles.
-- Keeps Gemini keys server-side only. The browser calls the app API route, not Google directly.
-- Adds `/api/firestore-backup-watchdog` as a production cron fallback. It checks the last successful backup and triggers a catch-up backup only when the backup is stale.
-- Adds watchdog route coverage to Health Checks and Vercel route manifest.
-- Increases `/api/firestore-backup` function duration/memory in `vercel.json` and stamps cron/watchdog metadata into `system/backupStatus`.
-- Clarifies that Vercel Cron only auto-invokes production deployments; Preview/testing still needs Run Backup Now.
+## 15.0.38 focus
+- Fixes the System Administrator Health Checks manifest so deployed Vercel API routes are no longer falsely reported as missing.
+- Keeps signed Firebase Storage backup download URLs out of diagnostics exports by default.
+- Keeps the System Administrator left Admin Menu pinned at the top of the desktop layout instead of letting the Command Deck push it down.
+- Adds a Super Admin backup watchdog check button so stale automatic backups can be tested directly from System Administrator.
+- Improves Security Diagnostics cron reporting with backup age, scheduled cron stamps, and watchdog status.
 
 ## Deploy notes
-- Deploy the full ZIP through the normal GitHub/Vercel flow.
-- Confirm `/version.json` reports `15.0.37`.
-- New API routes require a Vercel redeploy.
-- New Vercel cron entry requires production redeploy from `vercel.json`.
-- Add `GEMINI_API_KEY` to Vercel if you want the Gemini manual assistant enabled. Optional: set `GEMINI_MODEL`, default is `gemini-3.5-flash`.
-- Confirm `CRON_SECRET` is configured in Production so Vercel Cron can call backup routes.
-- Optional: set `BACKUP_BASE_URL=https://app.86chaos.com` if the watchdog cannot determine the production host.
-- No Firestore rules changes.
-- No Storage rules changes.
+- Deploy the updated app through Vercel because API routes, `vercel.json`, and frontend code changed.
+- Production automatic backups still depend on Vercel Cron invoking `/api/firestore-backup` and `/api/firestore-backup-watchdog` on the production deployment.
+- Preview/testing deployments should still use **Run Backup Now** or **Check Watchdog Now** because preview deployments do not receive production cron invocations.
+- Firestore rules and Storage rules are unchanged in this version.
 
-## QA
-Use `QA_15_0_37_CHECKLIST.md` for the current test pass.
+## QA quick start
+1. Confirm `/version.json` reports `15.0.38`.
+2. Open System Administrator on desktop and confirm the left Admin Menu starts at the top of the page.
+3. Run System Administrator → Health Checks and confirm the API route manifest no longer reports every route missing.
+4. Run Full System Diagnostics and confirm backup objects do not include signed download URLs.
+5. Open Backup Center, refresh backups, and confirm the Download button still works.
+6. Use **Check Watchdog Now** from the backup card and confirm stale/fresh backup status is reported clearly.

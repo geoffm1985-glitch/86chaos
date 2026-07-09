@@ -76,6 +76,10 @@
     "api/gemini-admin-manual.js": {
       "maxDuration": 60,
       "memory": 512
+    },
+    "api/health-checks.js": {
+      "maxDuration": 60,
+      "memory": 512
     }
   }
 }

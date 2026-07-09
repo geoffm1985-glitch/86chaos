@@ -1,7 +1,7 @@
 {
-  "version": "15.0.37",
-  "name": "86 Chaos 15.0.37 Gemini Manual and Backup Watchdog",
+  "version": "15.0.38",
+  "name": "86 Chaos 15.0.38 Diagnostics Cleanup and Admin Nav Top Rail",
   "releasedAt": "2026-07-09",
-  "label": "86 Chaos 15.0.37",
-  "build": "15.0.37"
+  "label": "86 Chaos 15.0.38",
+  "build": "15.0.38"
 }

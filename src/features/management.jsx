@@ -62,6 +62,30 @@ const sanitizeForFirestore = (value) => {
   return value;
 };
 
+const redactDiagnosticSecrets = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (Array.isArray(value)) return value.map(redactDiagnosticSecrets);
+  if (value && typeof value === 'object') {
+    const cleaned = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const lower = String(key || '').toLowerCase();
+      if (lower.includes('signedurl') || lower === 'signed_url' || lower === 'downloadurl') {
+        cleaned[key] = '[redacted signed URL]';
+      } else if (lower.includes('secret') || lower.includes('privatekey') || lower.includes('token') || lower.includes('apikey')) {
+        cleaned[key] = typeof item === 'boolean' ? item : '[redacted]';
+      } else if (typeof item === 'string' && /X-Goog-Signature=|GoogleAccessId=|Signature=/i.test(item)) {
+        cleaned[key] = '[redacted signed URL]';
+      } else {
+        cleaned[key] = redactDiagnosticSecrets(item);
+      }
+    });
+    return cleaned;
+  }
+  if (typeof value === 'string' && /X-Goog-Signature=|GoogleAccessId=|Signature=/i.test(value)) return '[redacted signed URL]';
+  return value;
+};
+
 const GeofenceMapStabilizer = ({ lat, lon, radius, refreshNonce }) => {
   const map = useMap();
 
@@ -3475,6 +3499,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [adminDataErrors, setAdminDataErrors] = useState({});
   const [backupCountdownTick, setBackupCountdownTick] = useState(Date.now());
   const [isBackupRunning, setIsBackupRunning] = useState(false);
+  const [isBackupWatchdogRunning, setIsBackupWatchdogRunning] = useState(false);
   const [backupRestorePath, setBackupRestorePath] = useState('');
   const [isBackupRestoring, setIsBackupRestoring] = useState(false);
   const [backupList, setBackupList] = useState([]);
@@ -4910,7 +4935,7 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.37 also adds a production watchdog cron fallback.'
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.38 also adds a manual watchdog check and cleaner stale-backup diagnostics.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
@@ -5381,6 +5406,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.38 Diagnostics Cleanup and Admin Nav Top Rail', group: 'System Administrator', keywords: 'v15 15.0.38 diagnostics health checks api manifest signed urls backup watchdog admin menu left nav top rail', body: ['15.0.38 fixes the Health Checks API manifest so Vercel serverless packaging no longer makes every API route look missing.', 'Backup lists now omit signed download URLs by default so Full System Diagnostics exports do not leak temporary Storage links. Backup Center asks for signed URLs only when the download button needs them.', 'System Administrator now keeps the left Admin Menu pinned at the top of the desktop layout, while the Command Deck lives to the right instead of pushing the menu downward.', 'The backup cards now include a manual Check Watchdog Now control so a Super Admin can force the stale-backup watchdog check from the app after deploying.'] },
     { title: 'Version 15.0.37 Gemini Manual and Backup Watchdog', group: 'System Administrator', keywords: 'v15 15.0.37 gemini system administrator manual assistant backup watchdog automatic backup cron vercel production preview', body: ['15.0.37 adds a Gemini-powered System Administrator Manual assistant. It answers from the matched manual articles/playbook through /api/gemini-admin-manual and requires GEMINI_API_KEY on the server.', 'The Gemini assistant is Super Admin only and keeps the API key on Vercel. It should be used for troubleshooting guidance, not for exposing customer records, service account JSON, signed backup URLs, or secrets.', 'Automatic backups still run from Vercel Cron on production. Preview and testing deployments do not receive Vercel Cron calls, so testing must use Run Backup Now.', 'A new /api/firestore-backup-watchdog route is scheduled as a production fallback. If the daily backup is stale, the watchdog triggers a catch-up backup using CRON_SECRET.', 'The backup route now stamps cron schedule headers and watchdog metadata into system/backupStatus so the Command Deck can show whether production cron actually hit the route.'] },
     { title: 'Version 15.0.36 Master Admin Repair Verification', group: 'System Administrator', keywords: 'v15 15.0.36 master admin repair firestore users auth uid verified project mismatch placeholder env whoami', body: ['15.0.36 hardens Master Admin Self-Repair so /api/master-admin-repair writes users/{authUid} and immediately reads the document back to verify it exists.', 'The repair result now shows the Firebase project the API wrote to. If you are checking chaos-test-d1601 but the result shows cheers-34b8d, fix Vercel Firebase admin env vars and run repair again.', 'Invalid placeholder values such as SECOND_ADMIN_EMAIL_HERE are skipped and shown in the result instead of making a successful repair look failed.', 'After the row shows Verified: yes, log out and back in before publishing hardened Firestore rules so Firebase custom claims refresh.'] },
     { title: 'Version 15.0.35 Administrator Layout Polish', group: 'System Administrator', keywords: 'v15 15.0.35 administrator layout left menu info board command deck mobile collapsible navigation', body: ['15.0.35 moves System Administrator section buttons from the top of the tab into a left-side admin menu on desktop.', 'On phones, the admin menu is collapsible. Tap Menu from the current-section bar to open it, then pick a section and the menu closes automatically.', 'The Command Deck / signal information board now sits above the main admin workspace and remains collapsible through Show Info Board / Hide Info Board.', 'This layout keeps troubleshooting signals visible at the top while leaving the actual tools easier to scan from the left rail.'] },
@@ -5877,7 +5903,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     setIsBackupListLoading(true);
     setBackupListError('');
     try {
-      const response = await secureFetch('/api/list-backups', { method: 'GET' });
+      const response = await secureFetch('/api/list-backups?includeSignedUrls=1', { method: 'GET' });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Backup list failed with status ${response.status}`);
       setBackupList(Array.isArray(result.backups) ? result.backups : []);
@@ -5896,7 +5922,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     try {
       const response = await secureFetch(url, options);
       const result = await response.json().catch(() => ({}));
-      return { label, url, ok: response.ok && result.ok !== false, status: response.status, ms: Math.round(performance.now() - started), result };
+      return { label, url, ok: response.ok && result.ok !== false, status: response.status, ms: Math.round(performance.now() - started), result: redactDiagnosticSecrets(result) };
     } catch (err) {
       return { label, url, ok: false, status: 0, ms: Math.round(performance.now() - started), error: err.message || 'Request failed' };
     }
@@ -5982,8 +6008,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
         ]
       };
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`86chaos-full-system-diagnostics-${stamp}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8;');
-      setLastDiagnosticsReport(report);
+      const safeReport = redactDiagnosticSecrets(report);
+      downloadTextFile(`86chaos-full-system-diagnostics-${stamp}.json`, JSON.stringify(safeReport, null, 2), 'application/json;charset=utf-8;');
+      setLastDiagnosticsReport(safeReport);
       setHealthSnapshot(prev => ({ ...(prev || clientHealth || {}), serverDiagnostics: serverReport, generatedAt: new Date().toISOString() }));
       addToast('Diagnostics Complete', 'Full system diagnostics report downloaded.');
     } catch (err) {
@@ -6010,6 +6037,26 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       addToast('Backup Error', err.message || 'Backup route failed. Check Vercel logs.');
     } finally {
       setIsBackupRunning(false);
+    }
+  };
+
+
+  const handleRunBackupWatchdog = async () => {
+    if (isBackupWatchdogRunning) return;
+    setIsBackupWatchdogRunning(true);
+    addToast('Backup Watchdog Started', 'Checking whether a catch-up backup is needed.');
+    try {
+      const response = await secureFetch('/api/firestore-backup-watchdog', { method: 'POST' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Watchdog failed with status ${response.status}`);
+      if (result.ranBackup) addToast('Watchdog Backup Complete', `Catch-up backup ran. Age before run: ${result.backupAgeHours ?? 'unknown'}h.`);
+      else addToast('Watchdog Check Complete', 'Backup is fresh. No catch-up backup needed.');
+      loadBackupList({ silent: true });
+      refreshHealthDashboard({ silent: true });
+    } catch (err) {
+      addToast('Watchdog Error', err.message || 'Backup watchdog route failed. Check Vercel logs.');
+    } finally {
+      setIsBackupWatchdogRunning(false);
     }
   };
 
@@ -6274,7 +6321,7 @@ Type RESTORE to continue.`);
   const loadV14Backups = async () => {
     setV14BusyTool('backups');
     try {
-      const response = await secureFetch('/api/list-backups?includeUsage=0');
+      const response = await secureFetch('/api/list-backups?includeUsage=0&includeSignedUrls=0');
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Could not list backups.');
       const backups = Array.isArray(data.backups) ? data.backups : [];
@@ -6376,9 +6423,9 @@ Type RESTORE to continue.`);
           </button>
         </div>
       </div>
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
         {isCommandDeckOpen && (
-          <aside className="lg:col-span-2 h-max space-y-3 max-lg:max-h-[58vh] max-lg:overflow-y-auto max-lg:pr-1 custom-scrollbar" id="admin-command-deck">
+          <aside className="lg:col-start-2 lg:row-start-1 h-max space-y-3 max-lg:max-h-[58vh] max-lg:overflow-y-auto max-lg:pr-1 custom-scrollbar" id="admin-command-deck">
             <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative">
               <div className="absolute inset-0 cockpit-grid opacity-40 pointer-events-none"></div>
               <div className="relative flex items-center justify-between gap-2 mb-3">
@@ -6444,7 +6491,7 @@ Type RESTORE to continue.`);
           </aside>
         )}
 
-        <aside className={`lg:sticky lg:top-4 h-max ${isAdminNavOpen ? 'block' : 'hidden lg:block'}`} id="admin-left-nav">
+        <aside className={`lg:col-start-1 lg:row-start-1 lg:sticky lg:top-4 h-max ${isAdminNavOpen ? 'block' : 'hidden lg:block'}`} id="admin-left-nav">
           <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative">
             <div className="absolute inset-0 cockpit-grid opacity-30 pointer-events-none"></div>
             <div className="relative flex items-center justify-between gap-2 mb-3">
@@ -6477,7 +6524,7 @@ Type RESTORE to continue.`);
           </div>
         </aside>
 
-        <div className="min-w-0 space-y-6">
+        <div className={`min-w-0 space-y-6 lg:col-start-2 ${isCommandDeckOpen ? 'lg:row-start-2' : 'lg:row-start-1'}`}>
           <div className="lg:hidden bg-[#0B0E11] border border-[#2A353D] rounded-2xl px-3 py-2 flex items-center justify-between gap-3">
             <div className="min-w-0"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Admin Section</div><div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div></div>
             <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="text-[8px] font-black uppercase tracking-widest text-[#D4A381] border border-[#2A353D] rounded-lg px-2 py-1 flex-shrink-0">{isAdminNavOpen ? 'Hide Menu' : 'Menu'}</button>
@@ -8018,7 +8065,7 @@ another@email.com"></textarea>
               </div>
             </div>
             <div className="grid md:grid-cols-4 gap-2">
-              <div className={`bg-[#0B0E11] border ${backupMissedDailyWindow ? 'border-amber-500/40' : 'border-[#2A353D]'} rounded-xl p-3`}><div className="flex items-center justify-between gap-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><AdminInfoButton title="Next Auto Backup" body={backupTroubleshootingSummary} /></div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div><div className="text-[9px] text-slate-500 font-bold mt-1">{backupWatchdogDetail}</div>{backupStatus?.lastWatchdogCheckAt && <div className="text-[8px] text-slate-600 font-bold mt-1">Last watchdog: {formatBackupTimestamp(backupStatus.lastWatchdogCheckAt)}</div>}{backupMissedDailyWindow && <div className="text-[9px] text-amber-300 font-black uppercase tracking-widest mt-1">Daily window missed</div>}</div>
+              <div className={`bg-[#0B0E11] border ${backupMissedDailyWindow ? 'border-amber-500/40' : 'border-[#2A353D]'} rounded-xl p-3`}><div className="flex items-center justify-between gap-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><AdminInfoButton title="Next Auto Backup" body={backupTroubleshootingSummary} /></div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div><div className="text-[9px] text-slate-500 font-bold mt-1">{backupWatchdogDetail}</div>{backupStatus?.lastWatchdogCheckAt && <div className="text-[8px] text-slate-600 font-bold mt-1">Last watchdog: {formatBackupTimestamp(backupStatus.lastWatchdogCheckAt)}</div>}{backupMissedDailyWindow && <div className="text-[9px] text-amber-300 font-black uppercase tracking-widest mt-1">Daily window missed</div>}<button type="button" onClick={handleRunBackupWatchdog} disabled={isBackupWatchdogRunning} className="mt-2 w-full bg-amber-900/20 text-amber-200 border border-amber-900/50 hover:bg-amber-900/40 disabled:opacity-50 text-[8px] font-black uppercase tracking-widest px-2 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">{isBackupWatchdogRunning && <Loader2 size={10} className="animate-spin" />} Check Watchdog Now</button></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Data Watchlist</div><div className="text-lg font-black text-white">{usersWithoutRestaurant.length + missingOwnerAccounts.length + duplicateEmailGroups.length}</div><div className="text-[9px] text-slate-500 font-bold">routing / owner / duplicates</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Sensitive Actions</div><div className="text-lg font-black text-white">{destructiveAuditLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">delete / nuke / lock / sweep</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Rule Blocks</div><div className={`text-lg font-black ${permissionDeniedLogs.length ? 'text-red-300' : 'text-emerald-400'}`}>{permissionDeniedLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">permission-denied logs</div></div>
