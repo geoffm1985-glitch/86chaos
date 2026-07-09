@@ -1313,11 +1313,11 @@ What I clicked / expected:
     );
   }
 
-  const appAccentColor = /^#[0-9A-Fa-f]{6}$/.test(displayClientData?.systemSettings?.accentColor || '') ? displayClientData.systemSettings.accentColor : '#D4A381';
+  const appAccentColor = /^#[0-9A-Fa-f]{6}$/.test(displayClientData?.systemSettings?.accentColor || '') ? displayClientData.systemSettings.accentColor : '#FF7A1A';
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
-    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`ui-v13-polished ui-v12-compact cockpit-shell kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`ui-v13-polished ui-v12-compact cockpit-shell chaos-command-theme ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -1333,7 +1333,7 @@ return (
       )}
       
       <style>{`
-        html, body { overflow-x: hidden !important; max-width: 100vw !important; width: 100% !important; background-color: #0F1318 !important; }
+        html, body { overflow-x: hidden !important; max-width: 100vw !important; width: 100% !important; background: #05090D !important; }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes toastSlide { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-toast { animation: toastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
@@ -1343,13 +1343,79 @@ return (
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .cockpit-shell { --chaos-copper: var(--chaos-accent, #D4A381); --chaos-panel: #1A2126; --chaos-deck: #12161A; --chaos-accent-soft: color-mix(in srgb, var(--chaos-accent, #D4A381) 82%, white); --chaos-accent-strong: color-mix(in srgb, var(--chaos-accent, #D4A381) 78%, black); }
-        .cockpit-shell [class*="text-[#D4A381]"], .cockpit-shell [class*="hover:text-[#D4A381]"]:hover { color: var(--chaos-accent, #D4A381) !important; }
-        .cockpit-shell [class*="border-[#D4A381]"], .cockpit-shell [class*="focus:border-[#D4A381]"]:focus { border-color: var(--chaos-accent, #D4A381) !important; }
+        .cockpit-shell { --chaos-copper: var(--chaos-accent, #FF7A1A); --chaos-panel: #101820; --chaos-deck: #070B10; --chaos-accent-soft: color-mix(in srgb, var(--chaos-accent, #FF7A1A) 78%, white); --chaos-accent-strong: color-mix(in srgb, var(--chaos-accent, #FF7A1A) 72%, black); --chaos-border-glow: color-mix(in srgb, var(--chaos-accent, #FF7A1A) 28%, #263844); }
+        .cockpit-shell [class*="text-[#D4A381]"], .cockpit-shell [class*="hover:text-[#D4A381]"]:hover, .cockpit-shell [class*="text-[#FF7A1A]"], .cockpit-shell [class*="hover:text-[#FF7A1A]"]:hover { color: var(--chaos-accent, #FF7A1A) !important; }
+        .cockpit-shell [class*="border-[#D4A381]"], .cockpit-shell [class*="focus:border-[#D4A381]"]:focus, .cockpit-shell [class*="border-[#FF7A1A]"], .cockpit-shell [class*="focus:border-[#FF7A1A]"]:focus { border-color: var(--chaos-accent, #FF7A1A) !important; }
         .cockpit-shell [class*="bg-[#8F6040]"] { background-color: var(--chaos-accent-strong) !important; }
-        .cockpit-shell [class*="accent-[#8F6040]"] { accent-color: var(--chaos-accent, #D4A381) !important; }
-        .cockpit-shell [class*="from-[#C59373]"][class*="to-[#8F6040]"] { background-image: linear-gradient(to right, var(--chaos-accent-soft), var(--chaos-accent-strong)) !important; }
+        .cockpit-shell [class*="accent-[#8F6040]"] { accent-color: var(--chaos-accent, #FF7A1A) !important; }
+        .cockpit-shell [class*="from-[#C59373]"][class*="to-[#8F6040]"] { background-image: linear-gradient(to right, var(--chaos-accent-soft), var(--chaos-accent), var(--chaos-accent-strong)) !important; }
         .cockpit-shell .brand-logo-stack img { object-fit: contain; }
+        .chaos-command-theme {
+          color: #F8FAFC;
+          background:
+            radial-gradient(circle at 18% 0%, rgba(255,122,26,.16), transparent 34%),
+            radial-gradient(circle at 82% 8%, rgba(14,165,233,.12), transparent 30%),
+            linear-gradient(180deg, #05090D 0%, #071017 46%, #05090D 100%) !important;
+        }
+        .chaos-command-theme::before {
+          content: '';
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+          background-size: 44px 44px;
+          mask-image: linear-gradient(180deg, rgba(0,0,0,.75), transparent 72%);
+          z-index: 0;
+        }
+        .chaos-command-theme > * { position: relative; z-index: 1; }
+        .chaos-command-theme > header {
+          height: 72px;
+          background: linear-gradient(180deg, rgba(5,9,13,.96), rgba(7,16,23,.88)) !important;
+          border-bottom-color: rgba(255,122,26,.26) !important;
+          box-shadow: 0 18px 55px rgba(0,0,0,.38), inset 0 -1px 0 rgba(255,122,26,.08) !important;
+        }
+        .chaos-command-theme main { max-width: 1280px !important; }
+        .chaos-command-theme .cockpit-panel,
+        .chaos-command-theme [class*="bg-[#1A2126]"] {
+          background: linear-gradient(180deg, rgba(16,24,32,.94), rgba(8,14,20,.96)) !important;
+          border-color: rgba(255,122,26,.22) !important;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.045), 0 18px 45px rgba(0,0,0,.24) !important;
+        }
+        .chaos-command-theme [class*="bg-[#12161A]"],
+        .chaos-command-theme [class*="bg-[#0B0E11]"] {
+          background-color: rgba(5,9,13,.86) !important;
+          border-color: rgba(43,65,80,.88) !important;
+        }
+        .chaos-command-theme [class*="border-[#2A353D]"] { border-color: rgba(43,65,80,.88) !important; }
+        .chaos-command-theme .cockpit-panel:hover,
+        .chaos-command-theme [class*="bg-[#1A2126]"]:hover {
+          border-color: rgba(255,122,26,.38) !important;
+        }
+        .chaos-command-theme button:not(:disabled) {
+          transition: transform .18s ease, border-color .18s ease, background-color .18s ease, filter .18s ease, box-shadow .18s ease;
+        }
+        .chaos-command-theme button:not(:disabled):hover { transform: translateY(-1px); }
+        .chaos-command-theme input, .chaos-command-theme textarea, .chaos-command-theme select {
+          background-color: rgba(5,9,13,.88) !important;
+          border-color: rgba(43,65,80,.95) !important;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.03) !important;
+        }
+        .chaos-command-theme input:focus, .chaos-command-theme textarea:focus, .chaos-command-theme select:focus {
+          border-color: var(--chaos-accent, #FF7A1A) !important;
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--chaos-accent, #FF7A1A) 36%, transparent), 0 0 24px color-mix(in srgb, var(--chaos-accent, #FF7A1A) 14%, transparent) !important;
+        }
+        .chaos-command-theme .brand-logo-stack {
+          background: rgba(8,14,20,.56);
+          border: 1px solid rgba(255,122,26,.16);
+          border-radius: 18px;
+          padding: .4rem .6rem;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+        }
+        .chaos-command-theme h1, .chaos-command-theme h2, .chaos-command-theme h3 { letter-spacing: -.025em; }
+        .chaos-command-theme .cockpit-grid {
+          background-image: radial-gradient(circle at 1px 1px, rgba(255,122,26,.105) 1px, transparent 0);
+          background-size: 20px 20px;
+        }
         .ui-v12-compact button { touch-action: manipulation; }
         .ui-v12-compact textarea { line-height: 1.35 !important; }
         .cockpit-light { position: relative; display: inline-flex; width: .55rem; height: .55rem; border-radius: 999px; box-shadow: 0 0 6px currentColor; }
@@ -1592,7 +1658,7 @@ return (
         ))}
       </div>
       
-      <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
+      <div className="w-full flex flex-col items-center justify-center py-5 border-t z-10 mt-auto bg-[#05090D]/95 border-[#FF7A1A]/20">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
         <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version {CURRENT_VERSION}</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
