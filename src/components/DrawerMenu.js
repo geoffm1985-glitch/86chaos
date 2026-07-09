@@ -1,13 +1,13 @@
 import React from 'react';
-import { X, Clock, MessageSquare, Calendar, ClipboardList, BookOpen, Package, Users, TrendingUp, Shield, Settings, Bug, LogOut, Globe, Repeat } from 'lucide-react';
+import { X, Clock, MessageSquare, Calendar, ClipboardList, BookOpen, Package, Users, TrendingUp, Shield, Settings, Bug, LogOut, Globe, Repeat, Sparkles } from 'lucide-react';
 
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {}, T, getAvatar, MASTER_ADMIN_EMAIL, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
-  const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
+  const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin);
 
-  // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups like Cheers)
+  // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups)
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
   const activeWorkspaceLabel = activeWorkspaceName || appUser?.restaurantName || appUser?.workspaceName || appUser?.businessName || 'Current Restaurant';
@@ -27,20 +27,21 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });  
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
+  if (!appUser?.isDemo && (appUser?.isAdmin || perms.inventory || perms.prep || perms.team)) tabs.push({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
   
   // Core UI (Always active)
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
-  if (isGod) tabs.push({ id: 'godmode', label: 'Administrator', icon: <Shield size={18}/> });
+  if (isGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Shield size={18}/> });
   if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   return (
      <div className="fixed inset-0 z-[70] flex justify-end">
-       <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
-       <div className={`w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
-          <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
+       <div className="absolute inset-0 bg-[#05090D]/72 backdrop-blur-md" onClick={onClose}></div>
+       <div className={`chaos-drawer w-80 max-w-[88vw] bg-[#071017] border-l border-[#FF7A1A]/25 h-full shadow-[0_0_60px_rgba(0,0,0,0.55)] flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+          <div className={`p-4 border-b border-[#FF7A1A]/20 bg-[#05090D] flex justify-between items-start`}>
              <div className="flex items-center gap-3">
                <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
                <div>
@@ -60,11 +61,11 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                  </button>
                </div>
              </div>
-             <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
+             <button onClick={onClose} className="p-1.5 bg-[#101820] border border-[#2B4150] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
              {tabs.map(tab => (
-               <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+               <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-950 shadow-[0_14px_30px_rgba(255,122,26,0.20)]` : 'text-slate-400 hover:bg-orange-500/10 hover:text-white hover:border-orange-400/40'}`}>
                  <div className="flex items-center gap-3">
                    <div className="relative">
                      <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
@@ -75,9 +76,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                </button>
              ))}
           </div>
-          <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
+          <div className={`p-3 border-t border-[#FF7A1A]/20 bg-[#05090D] space-y-2`}>
            <button 
-              onClick={() => { window.location.href = "mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A"; }} 
+              onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} 
               className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
             >
               <Bug size={16} /> Report a Bug / Error

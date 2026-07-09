@@ -196,7 +196,7 @@ return (
          {canManageTeam && (
             <label className="flex items-center gap-3 p-4 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer">
               <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)} className="w-5 h-5 accent-red-500 bg-[#1A2126] border-[#2A353D] rounded" />
-              <span className="text-sm font-black text-red-500">Full Admin (God Mode)</span>
+              <span className="text-sm font-black text-red-500">System Administrator</span>
             </label>
           )}
           

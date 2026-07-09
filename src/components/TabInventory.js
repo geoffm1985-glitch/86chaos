@@ -110,8 +110,8 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
       addToast('Exported', 'Order downloaded as Spreadsheet.');
     } else if (method === 'email') {
-      const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
-      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
+      const emailUrl = `mailto:${vendor?.email||''}?subject=Restaurant Order&body=${fullText}`;
+      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Restaurant Order (Paste From Clipboard)`; } 
       else { window.location.href = emailUrl; }
     } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;

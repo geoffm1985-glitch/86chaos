@@ -3,7 +3,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { Edit, Bell, Shield, Plus, Trash2, Package } from 'lucide-react';
 
-const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
+const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '').toLowerCase().trim();
 
 const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth, T, useLiveCollection, getAvatar, logAudit }) => {
   const [subTab, setSubTab] = useState('profile');
@@ -416,7 +416,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
       )}
 
       {/* --- TRANSFER OWNERSHIP ZONE --- */}
-      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) && (
+      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())) && (
         <form onSubmit={async (e) => {
           e.preventDefault();
           if (!newOwnerId) return addToast('Error', 'Select a new owner.');

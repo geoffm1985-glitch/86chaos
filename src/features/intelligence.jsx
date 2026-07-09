@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Share2, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
@@ -57,20 +57,65 @@ const WorkProgressBar = ({ label, detail, percent = 0, elapsedSeconds = 0 }) => 
 
 const TabPersonalReminders = ({ appUser, addToast }) => {
   const initial = getInitialReminderDate();
-  const reminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+  const ownReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
     whereClauses: [['userId', '==', appUser?.id || '']],
     limitCount: 200,
     fallbackLimitCount: 100
   });
+  const createdReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+    whereClauses: [['createdBy', '==', appUser?.id || '']],
+    limitCount: 200,
+    fallbackLimitCount: 100
+  });
+  const assignedReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+    whereClauses: [['assignedToUserId', '==', appUser?.id || '']],
+    limitCount: 200,
+    fallbackLimitCount: 100
+  });
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [teamLoadError, setTeamLoadError] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [dateInput, setDateInput] = useState(initial.date);
   const [timeInput, setTimeInput] = useState(initial.time);
+  const [shareMode, setShareMode] = useState('self');
+  const [assignedToUserId, setAssignedToUserId] = useState(appUser?.id || '');
   const [editing, setEditing] = useState(null);
   const [listening, setListening] = useState(false);
-  const sortedReminders = [...reminders].sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')));
+  const reminderMap = new Map();
+  [...ownReminders, ...createdReminders, ...assignedReminders].forEach(reminder => reminder?.id && reminderMap.set(reminder.id, reminder));
+  const sortedReminders = [...reminderMap.values()].sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')));
   const pendingReminders = sortedReminders.filter(r => r.status !== 'done' && r.status !== 'cancelled');
   const completedReminders = sortedReminders.filter(r => r.status === 'done' || r.status === 'cancelled').slice(0, 20);
+  const currentUserId = appUser?.id || '';
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!appUser?.restaurantId) {
+      setTeamMembers([]);
+      return undefined;
+    }
+    const loadTeam = async () => {
+      try {
+        setTeamLoadError('');
+        const snap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', appUser.restaurantId)));
+        if (cancelled) return;
+        const rows = snap.docs
+          .map(row => ({ id: row.id, ...row.data() }))
+          .filter(row => row.active !== false && row.disabled !== true)
+          .sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
+        const hasSelf = rows.some(row => row.id === appUser.id);
+        setTeamMembers(hasSelf ? rows : [{ id: appUser.id, name: appUser.name, email: appUser.email, role: appUser.role }, ...rows]);
+      } catch (err) {
+        if (!cancelled) {
+          setTeamLoadError(err?.message || 'Team list could not load.');
+          setTeamMembers([{ id: appUser.id, name: appUser.name, email: appUser.email, role: appUser.role }]);
+        }
+      }
+    };
+    loadTeam();
+    return () => { cancelled = true; };
+  }, [appUser?.restaurantId, appUser?.id]);
 
   const applyParsedText = (value) => {
     const parsed = parseReminderCommand(value);
@@ -112,6 +157,8 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     setNotes('');
     setDateInput(next.date);
     setTimeInput(next.time);
+    setShareMode('self');
+    setAssignedToUserId(appUser?.id || '');
     setEditing(null);
   };
 
@@ -120,16 +167,27 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     if (!title.trim()) return addToast('Missing Text', 'Type what you want to be reminded about.');
     const scheduledDate = makeReminderDate(dateInput, timeInput);
     if (!scheduledDate) return addToast('Missing Time', 'Choose a valid reminder date and time.');
+    const targetUserId = shareMode === 'team' ? (assignedToUserId || appUser.id || '') : (appUser.id || '');
+    const targetUser = teamMembers.find(u => u.id === targetUserId) || appUser || {};
+    const isShared = Boolean(targetUserId && targetUserId !== appUser.id);
     const payload = {
       restaurantId: appUser.restaurantId,
-      userId: appUser.id || '',
-      userEmail: appUser.email || '',
+      userId: targetUserId,
+      userEmail: targetUser.email || (isShared ? '' : appUser.email || ''),
+      assignedToUserId: targetUserId,
+      assignedToName: targetUser.name || targetUser.email || (isShared ? 'Team member' : appUser.name || 'Me'),
+      assignedToEmail: targetUser.email || '',
+      createdBy: editing?.createdBy || appUser.id || '',
+      createdByName: editing?.createdByName || appUser.name || appUser.email || '',
+      createdByEmail: editing?.createdByEmail || appUser.email || '',
+      shared: isShared,
+      visibility: isShared ? 'shared_reminder' : 'private_reminder',
       title: title.trim(),
       notes: notes.trim(),
       scheduledAt: scheduledDate.toISOString(),
       status: 'scheduled',
       updatedAt: new Date().toISOString(),
-      source: editing ? 'manual_update' : 'manual_private_reminder'
+      source: editing ? 'manual_update' : (isShared ? 'manual_shared_reminder' : 'manual_private_reminder')
     };
     if (editing?.id) {
       await updateDoc(doc(db, 'personalReminders', editing.id), payload);
@@ -138,7 +196,6 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       await addDoc(collection(db, 'personalReminders'), {
         ...payload,
         createdAt: new Date().toISOString(),
-        createdBy: appUser.id || '',
         dispatchedAt: null,
         dispatchKey: ''
       });
@@ -155,6 +212,9 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     setNotes(reminder.notes || '');
     setDateInput(toDateInputValue(d));
     setTimeInput(toTimeInputValue(d));
+    const targetUserId = reminder.assignedToUserId || reminder.userId || appUser?.id || '';
+    setAssignedToUserId(targetUserId);
+    setShareMode(targetUserId && targetUserId !== appUser?.id ? 'team' : 'self');
   };
 
   const markDone = async (reminder) => {
@@ -163,7 +223,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   };
 
   const removeReminder = async (reminder) => {
-    if (!window.confirm('Delete this private reminder?')) return;
+    if (!window.confirm('Delete this reminder? Shared reminders disappear for the assigned teammate too.')) return;
     await deleteDoc(doc(db, 'personalReminders', reminder.id));
     addToast('Reminder Deleted', reminder.title || 'Reminder');
   };
@@ -173,12 +233,12 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
         <div>
           <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Bell size={24} className={T.copper}/> My Reminders</h2>
-          <p className="text-xs text-slate-400 font-bold mt-1">Private reminders for this signed-in user only.</p>
+          <p className="text-xs text-slate-400 font-bold mt-1">Remind yourself or share a reminder with one teammate.</p>
         </div>
         <button type="button" onClick={startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
       </div>
 
-      <form onSubmit={saveReminder} className={`${T.card} p-4 grid lg:grid-cols-[1.4fr_.7fr_.55fr_auto] gap-3 items-end`}>
+      <form onSubmit={saveReminder} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}>
         <div>
           <label className={T.label}>Reminder</label>
           <input value={title} onChange={e => setTitle(e.target.value)} onBlur={e => /^remind me/i.test(e.target.value) && applyParsedText(e.target.value)} className={T.input} placeholder="Remind me tomorrow at 9 AM to order buns" />
@@ -191,31 +251,45 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
           <label className={T.label}>Time</label>
           <input type="time" value={timeInput} onChange={e => setTimeInput(e.target.value)} className={T.input} />
         </div>
+        <div>
+          <label className={T.label}>Share With</label>
+          <select value={shareMode === 'team' ? assignedToUserId : appUser?.id || ''} onChange={e => { const value = e.target.value; setAssignedToUserId(value); setShareMode(value && value !== appUser?.id ? 'team' : 'self'); }} className={T.input}>
+            <option value={appUser?.id || ''}>Just me</option>
+            {teamMembers.filter(member => member.id !== appUser?.id).map(member => <option key={member.id} value={member.id}>{member.name || member.email || 'Team member'}{member.role ? ` • ${member.role}` : ''}</option>)}
+          </select>
+        </div>
         <button className={`${T.btn} h-11 flex items-center justify-center gap-2`}>{editing ? <Save size={16}/> : <Plus size={16}/>} {editing ? 'Save' : 'Add'}</button>
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-5">
           <label className={T.label}>Notes</label>
           <input value={notes} onChange={e => setNotes(e.target.value)} className={T.input} placeholder="Optional private note" />
           {editing && <button type="button" onClick={resetForm} className="mt-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Cancel edit</button>}
+          {teamLoadError && <div className="mt-2 text-[10px] font-bold text-amber-300">Team dropdown is using fallback data: {teamLoadError}</div>}
         </div>
       </form>
 
       <div className="grid lg:grid-cols-[1fr_.8fr] gap-4">
         <div className={`${T.card} overflow-hidden`}>
           <div className={T.th}>Upcoming</div>
-          {pendingReminders.length === 0 ? <SmartEmptyState title="No reminders yet" desc="Add one by typing or using the mic." /> : pendingReminders.map(reminder => (
+          {pendingReminders.length === 0 ? <SmartEmptyState title="No reminders yet" desc="Add one by typing, sharing, or using the mic." /> : pendingReminders.map(reminder => {
+            const createdByMe = (reminder.createdBy || reminder.userId) === currentUserId;
+            const assignedToMe = (reminder.assignedToUserId || reminder.userId) === currentUserId;
+            const canEditReminder = createdByMe;
+            const canDeleteReminder = createdByMe;
+            const shareLabel = reminder.shared ? (createdByMe ? `For ${reminder.assignedToName || 'team member'}` : `From ${reminder.createdByName || 'team member'}`) : 'Just me';
+            return (
             <div key={reminder.id} className={`${T.row} flex items-center justify-between gap-3`}>
               <div className="min-w-0">
-                <div className="font-black text-white text-sm truncate">{reminder.title}</div>
-                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex items-center gap-1"><Clock size={12}/> {reminder.scheduledAt ? formatClockDateTime(reminder.scheduledAt) : 'No time'}</div>
+                <div className="font-black text-white text-sm truncate flex items-center gap-2">{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div>
+                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex items-center gap-1"><Clock size={12}/> {reminder.scheduledAt ? formatClockDateTime(reminder.scheduledAt) : 'No time'} • {shareLabel}</div>
                 {reminder.notes && <div className="text-xs text-slate-500 font-bold mt-1 truncate">{reminder.notes}</div>}
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => markDone(reminder)} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={16}/></button>
-                <button onClick={() => editReminder(reminder)} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D]"><Calendar size={16}/></button>
-                <button onClick={() => removeReminder(reminder)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><Trash2 size={16}/></button>
+                <button onClick={() => markDone(reminder)} disabled={!assignedToMe && !createdByMe} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button>
+                <button onClick={() => editReminder(reminder)} disabled={!canEditReminder} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Calendar size={16}/></button>
+                <button onClick={() => removeReminder(reminder)} disabled={!canDeleteReminder} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button>
               </div>
             </div>
-          ))}
+          );})}
         </div>
         <div className={`${T.card} overflow-hidden`}>
           <div className={T.th}>Recently Closed</div>
@@ -254,6 +328,34 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const editSavingRef = useRef(false);
   const deleteBusyRef = useRef(false);
   const impacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
+
+  const isIngredientApproved = (ingredient = {}) => ingredient.reviewStatus !== 'rejected' && ingredient.approved !== false;
+  const normalizeReviewResult = (result = {}) => ({
+    ...result,
+    menuItems: (result.menuItems || []).map(item => ({
+      ...item,
+      ingredients: (item.ingredients || []).map(ingredient => ({
+        ...ingredient,
+        reviewStatus: ingredient.reviewStatus || (ingredient.matchedInventoryItemId ? 'approved' : 'needs-match')
+      }))
+    }))
+  });
+  const confidenceLabel = (value) => {
+    if (value === undefined || value === null || value === '') return 'manual';
+    if (typeof value === 'number') return `${Math.round(value * 100)}%`;
+    const text = String(value).trim();
+    if (/^0?\.\d+$/.test(text)) return `${Math.round(Number(text) * 100)}%`;
+    return text.replace(/_/g, ' ');
+  };
+  const confidenceClass = (value) => {
+    const text = String(value || '').toLowerCase();
+    const num = typeof value === 'number' ? value : (/^0?\.\d+$/.test(text) ? Number(text) : null);
+    if (num !== null) return num >= 0.82 ? 'text-emerald-300 border-emerald-900/50 bg-emerald-900/20' : num >= 0.55 ? 'text-amber-300 border-amber-900/50 bg-amber-900/20' : 'text-red-300 border-red-900/50 bg-red-900/20';
+    if (/high|strong|exact|reviewed|manual/.test(text)) return 'text-emerald-300 border-emerald-900/50 bg-emerald-900/20';
+    if (/medium|possible|ai/.test(text)) return 'text-amber-300 border-amber-900/50 bg-amber-900/20';
+    if (/low|weak|unknown/.test(text)) return 'text-red-300 border-red-900/50 bg-red-900/20';
+    return 'text-slate-300 border-[#2A353D] bg-[#0B0E11]';
+  };
 
   useEffect(() => {
     if (!busy && !approving && !editSaving && !deletingScanId) return undefined;
@@ -300,7 +402,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
         name: dep.ingredientName || dep.inventoryItemName || '',
         matchedInventoryItemId: dep.inventoryItemId || '',
         matchedInventoryItemName: dep.inventoryItemName || '',
-        confidence: dep.confidence || 'manual'
+        confidence: dep.confidence || 'manual',
+        reviewStatus: dep.status === 'rejected' ? 'rejected' : 'approved'
       });
     });
     return {
@@ -371,13 +474,13 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const addIngredientToItem = (itemIdx, mode = 'scan') => {
     const source = mode === 'edit' ? editResult : scanResult;
     const item = (source?.menuItems || [])[itemIdx] || {};
-    updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', confidence: 'manual' }] }, mode);
+    updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', confidence: 'manual', reviewStatus: 'needs-match' }] }, mode);
   };
 
   const addMenuItemToEdit = () => {
     setEditResult({
       ...(editResult || {}),
-      menuItems: [...(editResult?.menuItems || []), { name: '', category: '', description: '', ingredients: [{ name: '', matchedInventoryItemId: '', confidence: 'manual' }] }]
+      menuItems: [...(editResult?.menuItems || []), { name: '', category: '', description: '', ingredients: [{ name: '', matchedInventoryItemId: '', confidence: 'manual', reviewStatus: 'needs-match' }] }]
     });
   };
 
@@ -471,7 +574,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       setScanProgress({ label: 'Building review screen', detail: 'Loading the menu matches for approval.', percent: 90, startedAt: scanStartedAt });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Menu scan failed.');
-      setScanResult({ ...result, storagePath: path, downloadUrl, fileName: file.name, uploadedFileName: uploadFile.name, compression: prepared.compression });
+      setScanResult(normalizeReviewResult({ ...result, storagePath: path, downloadUrl, fileName: file.name, uploadedFileName: uploadFile.name, compression: prepared.compression }));
       setReviewOpen(true);
       setScanProgress({ label: 'Menu scan ready', detail: 'Review the AI matches before saving.', percent: 100, done: true, startedAt: scanStartedAt });
       addToast('Menu Scanned', 'Review the AI matches before saving.');
@@ -491,7 +594,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     if (approvingRef.current) return;
     approvingRef.current = true;
     const menuItems = scanResult?.menuItems || [];
-    const totalLinks = menuItems.reduce((sum, item) => sum + (item.ingredients || []).filter(ingredient => ingredient.matchedInventoryItemId).length, 0);
+    const totalLinks = menuItems.reduce((sum, item) => sum + (item.ingredients || []).filter(ingredient => ingredient.matchedInventoryItemId && isIngredientApproved(ingredient)).length, 0);
     let saved = 0;
     setApproving(true);
     const approveStartedAt = Date.now();
@@ -500,7 +603,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     try {
       for (const item of menuItems) {
         for (const ingredient of item.ingredients || []) {
-          if (!ingredient.matchedInventoryItemId) continue;
+          if (!ingredient.matchedInventoryItemId || !isIngredientApproved(ingredient)) continue;
           const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
           await addDoc(collection(db, 'menuDependencies'), {
             restaurantId: appUser.restaurantId,
@@ -566,7 +669,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       let savedLinks = 0;
       for (const item of editResult?.menuItems || []) {
         for (const ingredient of item.ingredients || []) {
-          if (!ingredient.matchedInventoryItemId) continue;
+          if (!ingredient.matchedInventoryItemId || !isIngredientApproved(ingredient)) continue;
           const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
           const payload = {
             restaurantId: appUser.restaurantId,
@@ -703,12 +806,16 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
           <textarea value={item.description || ''} onChange={e => updateMenuItem(itemIdx, { description: e.target.value }, mode)} className={T.input} rows={2} placeholder="Description" />
           <div className="space-y-2">
             {(item.ingredients || []).map((ingredient, ingIdx) => (
-              <div key={`${ingredient.dependencyId || 'new'}-${ingIdx}`} className="grid sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
+              <div key={`${ingredient.dependencyId || 'new'}-${ingIdx}`} className={`grid sm:grid-cols-[1fr_1fr_.85fr_auto] gap-2 items-center ${!isIngredientApproved(ingredient) ? 'opacity-60' : ''}`}>
                 <input value={ingredient.name || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { name: e.target.value }, mode)} className={T.input} placeholder="Ingredient" />
-                <select value={ingredient.matchedInventoryItemId || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { matchedInventoryItemId: e.target.value }, mode)} className={T.input}>
+                <select value={ingredient.matchedInventoryItemId || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { matchedInventoryItemId: e.target.value, reviewStatus: e.target.value ? 'approved' : 'needs-match' }, mode)} className={T.input}>
                   <option value="">No inventory match</option>
                   {inventoryItems.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
                 </select>
+                <div className="flex items-center gap-2">
+                  <span className={`flex-1 text-center px-2 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest ${confidenceClass(ingredient.confidence || item.confidence)}`}>Conf {confidenceLabel(ingredient.confidence || item.confidence)}</span>
+                  <button type="button" onClick={() => updateIngredient(itemIdx, ingIdx, { reviewStatus: isIngredientApproved(ingredient) ? 'rejected' : (ingredient.matchedInventoryItemId ? 'approved' : 'needs-match'), approved: !isIngredientApproved(ingredient) }, mode)} disabled={approving || editSaving} className={`px-3 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest disabled:opacity-50 ${isIngredientApproved(ingredient) ? 'border-emerald-900/50 text-emerald-300 bg-emerald-900/20' : 'border-red-900/50 text-red-300 bg-red-900/20'}`}>{isIngredientApproved(ingredient) ? 'Approve' : 'Skip'}</button>
+                </div>
                 <button type="button" onClick={() => removeIngredient(itemIdx, ingIdx, mode)} disabled={approving || editSaving} className="p-3 rounded-xl border border-red-900/50 text-red-300 bg-red-900/10 disabled:opacity-50"><X size={16}/></button>
               </div>
             ))}
@@ -776,6 +883,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       <Modal isOpen={reviewOpen} onClose={() => { if (!approving) setReviewOpen(false); }} title="Review Menu Intelligence" sizeClass="max-w-5xl">
         <div className="space-y-4">
           {approveProgress && <WorkProgressBar label={approveProgress.label} detail={approveProgress.detail} percent={displayedPercent(approveProgress, approving ? 99 : 100)} elapsedSeconds={progressElapsed(approveProgress)} />}
+          <div className="bg-blue-900/10 border border-blue-900/40 rounded-xl p-3 text-xs font-bold text-blue-100">Each ingredient now has a confidence badge and an Approve/Skip toggle. Skipped rows are not saved into Menu Impact links.</div>
           {renderMenuEditor(scanResult, 'scan')}
           <button onClick={approveMenu} disabled={approving} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}><Check size={18}/> {approving ? 'Approving Reviewed Menu Links' : 'Approve Reviewed Menu Links'}</button>
         </div>
@@ -797,4 +905,73 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   );
 };
 
-export { TabPersonalReminders, TabMenuIntelligence };
+
+const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarget, addToast }) => {
+  const canMenu = canUseMenuIntelligence(appUser, clientData);
+  const cards = [
+    {
+      title: 'Menu Intelligence',
+      tag: canMenu ? 'Ready' : 'Owner-controlled',
+      desc: 'Upload a menu, review AI ingredient matches, and power 86 Menu Impact Alerts.',
+      action: 'Open Menu Intelligence',
+      tab: 'menu-intelligence',
+      enabled: canMenu,
+      note: 'Best for owners/managers after inventory names are cleaned up.'
+    },
+    {
+      title: 'Invoice Scanner',
+      tag: 'Inventory',
+      desc: 'Scan vendor invoices from Inventory, review raw extraction details, and approve stock changes.',
+      action: 'Open Invoice Scanner',
+      tab: 'inventory',
+      subTab: 'invoices',
+      enabled: true,
+      note: 'Always review scanned rows before approving. Blurry invoices still need human eyeballs.'
+    },
+    {
+      title: 'Voice Commands',
+      tag: 'Beta',
+      desc: 'Use the microphone dock to navigate, add prep, search Help Center, and trigger kitchen actions.',
+      action: 'Open Help Article',
+      tab: 'help',
+      enabled: true,
+      note: 'Voice obeys the same permissions as tapping through the app.'
+    },
+    {
+      title: 'Smart Prep Matching',
+      tag: 'Kitchen',
+      desc: 'Prep voice now prefers updating an existing matching prep row instead of creating duplicates.',
+      action: 'Open Prep',
+      tab: 'prep',
+      enabled: true,
+      note: 'Use clear item names and quantities: “prep 2 pans onions.”'
+    }
+  ];
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+      <div className="cockpit-panel cockpit-grid rounded-2xl p-5 border border-[#2A353D]">
+        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Dedicated AI Tools</div>
+        <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><Sparkles size={24}/> AI Tools</h2>
+        <p className="text-sm text-slate-400 font-bold mt-2 max-w-3xl">One landing pad for the app’s AI-powered kitchen tools. Results should still be reviewed by a manager before they change real restaurant data.</p>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {cards.map(card => (
+          <div key={card.title} className={`${T.card} p-4 space-y-3 ${card.enabled ? '' : 'opacity-80'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div><h3 className="font-black text-white text-lg">{card.title}</h3><p className="text-xs font-bold text-slate-400 mt-1 leading-relaxed">{card.desc}</p></div>
+              <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${card.enabled ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-amber-900/20 text-amber-300 border-amber-900/50'}`}>{card.tag}</span>
+            </div>
+            <p className="text-[10px] font-bold text-slate-500 leading-snug">{card.note}</p>
+            <button type="button" onClick={() => { if (!card.enabled) return addToast?.('Access Needed', 'Ask the account owner to enable Menu Intelligence access first.'); if (card.tab === 'inventory' && card.subTab) setInventorySubTabTarget?.(card.subTab); setActiveTab(card.tab); }} className={card.enabled ? T.btn : T.btnAlt}>{card.action}</button>
+          </div>
+        ))}
+      </div>
+      <div className={`${T.card} p-4 border-blue-900/40`}>
+        <h3 className="font-black text-blue-200">AI safety rule</h3>
+        <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">AI can read, suggest, and match. Humans still approve anything that affects stock, prep, menu availability, reminders, or customer-facing paperwork.</p>
+      </div>
+    </div>
+  );
+};
+
+export { TabPersonalReminders, TabMenuIntelligence, TabAITools };

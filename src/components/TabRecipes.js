@@ -139,7 +139,7 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
 
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
 
-  const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+  const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
@@ -160,7 +160,7 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
         <div className="flex flex-wrap gap-2 justify-end w-full">
           
           {/* ONLY GEOFF CAN SEE THIS BUTTON */}
-          {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
+          {(MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) && (
             <button onClick={handleInjectLegacyRecipes} className={`bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-xl hover:text-emerald-400 transition-all px-4 py-2 text-xs flex items-center justify-center gap-2`} title="Inject Card Recipes"><Package size={16} /> Import</button>
           )}
 
