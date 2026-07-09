@@ -1,23 +1,29 @@
 # 86 Chaos
 
-Version: 16.0.0
+Version: 16.0.2
 
 86 Chaos is a restaurant/kitchen management web app built with React, Firebase Auth/Firestore/Storage, and Vercel API routes.
 
-## 16.0.0 update
+## 16.0.2 Update
 
-This build is a full app-shell redesign to match the generated 86 Chaos command-center mockup much more closely. It changes the app from a simple drawer/header layout into a darker product-style console with a desktop left navigation rail, redesigned top command bar, mobile quick navigation strip, live operational summary cards, stronger glass panels, orange command accents, and a more cohesive device-mockup style across cards, inputs, buttons, tables, modals, and mobile surfaces.
+This build applies the controlled command-center design-system upgrade. It keeps the existing application structure and behavior while moving the live app toward a premium restaurant operations cockpit: dark glass panels, orange/gold action accents, stronger visual hierarchy, improved drawer organization, polished reusable controls, and better mobile touch targets.
 
-The existing React/Firebase/Vercel structure is preserved. The app was not rebuilt sideways, and feature behavior remains wired through the existing components.
+## Preserved
+
+- Existing React/Firebase/Vercel structure.
+- Existing API routes, Firebase rules, Storage rules, and Vercel config.
+- Existing tab IDs, tab labels, route behavior, permission gates, and feature behavior.
+- Existing drawer-based mobile navigation.
+- System Administrator access through the existing `godmode` tab.
 
 ## Deployment
 
-- Redeploy the app through Vercel.
-- `vercel.json` still keeps valid `maxDuration` and cron settings.
-- Firestore rules are unchanged.
-- Storage rules are unchanged.
+- Redeploy the app through the existing Vercel workflow.
+- `public/version.json` is set to `16.0.2`.
+- Firestore rules are unchanged from the 15.0.43 harness.
+- Storage rules are unchanged from the 15.0.43 harness.
 - No new environment variables are required.
 
-## Branding rule
+## Branding Rule
 
 86 Chaos branding is mandatory and must always remain visible. Restaurant/customer logos may appear beside 86 Chaos branding when configured, but they do not replace it.

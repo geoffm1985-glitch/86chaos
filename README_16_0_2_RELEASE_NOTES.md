@@ -25,4 +25,4 @@
 
 ## Notes
 
-The uploaded ZIP is a source-only package. It does not include `package.json`, `public/version.json`, `api`, Firebase rules, Vercel config, or installed dependencies. Copy the updated `src` folder into the full app repo and update the deployed `version.json` to `16.0.2`.
+This full package uses the 15.0.43 app harness for `api`, `public`, Firebase rules, Storage rules, Vercel config, package metadata, and app assets. The 16.0.2 source overlay is applied to the active app shell and shared source files, with `package.json` and `public/version.json` updated to `16.0.2`.

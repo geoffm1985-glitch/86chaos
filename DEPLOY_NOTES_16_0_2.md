@@ -1,28 +1,36 @@
 # 86 Chaos 16.0.2 Deploy Notes
 
-## Source Package Scope
+## Package Scope
 
-The uploaded source-of-truth ZIP only contains `src` plus a README. This updated ZIP keeps that scope and does not invent missing app infrastructure.
+This is a full project package using the 15.0.43 full app harness plus the 16.0.2 command-center `src` overlay.
 
-## Apply Steps
+Included:
+- `api`
+- `public`
+- `src`
+- `firebase.json`
+- `firestore.rules`
+- `storage.rules`
+- `vercel.json`
+- `package.json`
+- app icon and public assets
+- 16.0.2 release notes, QA checklist, changed-file list, and deploy notes
 
-1. Copy the updated `src` folder into the full 86 Chaos app repository.
-2. Keep the full app repository's existing `api`, `public`, Firebase rules, Vercel config, environment variables, and package metadata.
-3. Update the full app repository's hosted `public/version.json` to:
+## Version Metadata
 
-```json
-{
-  "version": "16.0.2"
-}
-```
+- `src/core/appCore.js` uses `CURRENT_VERSION = '16.0.2'`.
+- `package.json` uses `"version": "16.0.2"`.
+- `public/version.json` uses `"version": "16.0.2"`.
 
-4. Run install/build/test commands from the full app repository where `package.json` and dependencies exist.
-5. Deploy using the existing Vercel/Firebase workflow for the full app.
+## Deployment
 
-## Deployment Risk Notes
+1. Run the production build from this full project.
+2. Deploy through the existing Vercel workflow.
+3. Keep existing Firebase project configuration, Firestore rules, Storage rules, Vercel routes, cron settings, and environment variables.
 
-- The design upgrade is scoped to shared styling, shell chrome, drawer/menu presentation, and pre-login visuals.
-- Existing route IDs, menu labels, permission gates, data hooks, Firebase config, secure fetch logic, and feature render conditions are preserved.
+## Risk Notes
+
+- The visual upgrade is scoped to shared styling, shell chrome, drawer/menu presentation, reusable controls, and pre-login visuals.
+- Existing route IDs, menu labels, permission gates, data hooks, Firebase config, secure fetch logic, API routes, and feature render conditions are preserved.
 - The drawer visually groups existing tabs but does not add duplicate menus or move System Administrator into a new route.
 - Customer logos are optional and can only appear beside the 86 Chaos logo.
-- Build was not run from this ZIP because this ZIP does not contain the full app build metadata or dependencies.

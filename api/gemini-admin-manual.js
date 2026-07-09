@@ -1,6 +1,6 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 
-const APP_VERSION = '16.0.0';
+const APP_VERSION = '15.0.43';
 const DEFAULT_MODEL = 'gemini-3.5-flash';
 const MAX_QUESTION_CHARS = 1600;
 const MAX_CONTEXT_CHARS = 26000;
