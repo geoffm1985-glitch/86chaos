@@ -1,7 +1,7 @@
 {
-  "version": "15.0.33",
-  "name": "86 Chaos 15.0.33 Deployment Syntax Hotfix",
+  "version": "15.0.35",
+  "name": "86 Chaos 15.0.35 Administrator Layout Polish",
   "releasedAt": "2026-07-09",
-  "label": "86 Chaos 15.0.33",
-  "build": "15.0.33"
+  "label": "86 Chaos 15.0.35",
+  "build": "15.0.35"
 }

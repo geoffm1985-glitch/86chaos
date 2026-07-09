@@ -2981,6 +2981,17 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
 const ADMIN_TROUBLESHOOTING_ARTICLES = [
   {
+    "title": "Master admin exists in Auth but not Firestore users",
+    "group": "System Administrator / Troubleshooting",
+    "keywords": "master admin missing user profile firestore auth users locked out rules super admin repair button MASTER_ADMIN_EMAILS",
+    "body": [
+      "Firebase Authentication and Firestore users are separate systems. An email can log in through Auth while the app still lacks users/{authUid}, which breaks roles, restaurant routing, and hardened Firestore rules.",
+      "Open System Administrator -> Overview -> Master Admin Self-Repair before publishing strict rules. The button repairs only emails configured in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS.",
+      "The repair route creates or updates users/{authUid}, sets isSuperAdmin=true, systemAccess.superAdmin=true, admin permissions, active flags, and a Firebase custom claim superAdmin=true.",
+      "After the repair says created or updated, log out and back in so the browser receives fresh Firebase custom claims. Then run diagnostics again and publish rules only after your admin profile appears in Firestore."
+    ]
+  },
+  {
     "title": "Version 15.0.33 Deployment Syntax Hotfix",
     "group": "System Administrator",
     "keywords": "v15 15.0.33 deployment syntax hotfix JSX manual build failed vercel adjacent jsx elements",
@@ -3448,6 +3459,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(min-width: 1024px)').matches;
   });
+  const [isAdminNavOpen, setIsAdminNavOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(min-width: 1024px)').matches;
+  });
   
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
@@ -3495,6 +3510,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [isRestoreDrillBusy, setIsRestoreDrillBusy] = useState(false);
   const [accountDeletionRequests, setAccountDeletionRequests] = useState([]);
   const [isAccountDeletionAdminBusy, setIsAccountDeletionAdminBusy] = useState(false);
+  const [isMasterAdminRepairing, setIsMasterAdminRepairing] = useState(false);
+  const [masterAdminRepairResult, setMasterAdminRepairResult] = useState(null);
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -3586,7 +3603,10 @@ const [editingRest, setEditingRest] = useState(null);
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const closeDeckOnSmallScreens = () => {
-      if (window.matchMedia('(max-width: 1023px)').matches) setIsCommandDeckOpen(false);
+      if (window.matchMedia('(max-width: 1023px)').matches) {
+        setIsCommandDeckOpen(false);
+        setIsAdminNavOpen(false);
+      }
     };
     closeDeckOnSmallScreens();
     window.addEventListener('orientationchange', closeDeckOnSmallScreens);
@@ -4980,7 +5000,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
+  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
 
   const adminAccessSourceLabel = appUser?.serverAdminCheck?.serverMasterAdminMatched ? 'Server env' :
     appUser?.serverAdminCheck?.customClaimSuperAdmin ? 'Custom claim' :
@@ -4989,6 +5009,11 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const adminAccessDetail = appUser?.serverAdminCheck?.masterAdminEnvConfigured
     ? `${appUser.serverAdminCheck.masterAdminEmailCount || 1} master email(s) configured`
     : 'Check MASTER_ADMIN_EMAIL(S) and REACT_APP_MASTER_ADMIN_EMAIL';
+  const currentAdminEmailKey = String(appUser?.email || '').toLowerCase().trim();
+  const currentAdminProfile = currentAdminEmailKey
+    ? allUsers.find(u => u.id === appUser?.id || String(u.email || '').toLowerCase().trim() === currentAdminEmailKey)
+    : null;
+  const currentAdminProfileMissing = Boolean(currentAdminEmailKey && (appUser?.isSuperAdmin === true || appUser?.serverAdminCheck?.superAdmin === true) && allUsers.length > 0 && !currentAdminProfile);
 
   const currentAdminSessionId = (() => {
     try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; }
@@ -5017,6 +5042,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   ].join('\n');
 
   const adminRiskQueue = [
+    currentAdminProfileMissing ? { tone: 'red', title: 'Master admin profile missing', detail: `${appUser?.email || 'Current admin'} can enter System Administrator, but no Firestore users profile was found. Run Master Admin Repair before publishing hardened rules.`, jump: 'overview' } : null,
     crashes24h > 0 ? { tone: crashes24h > 10 ? 'red' : 'amber', title: 'Fresh crash reports', detail: `${crashes24h} crash/bug log(s) in the last 24 hours.`, jump: 'support' } : null,
     permissionDeniedLogs.length > 0 ? { tone: 'red', title: 'Permission denied errors', detail: `${permissionDeniedLogs.length} log(s) look like Firestore rule blocks.`, jump: 'support' } : null,
     pastDueWorkspaces.length > 0 ? { tone: 'amber', title: 'Maintenance-locked workspaces', detail: `${pastDueWorkspaces.length} workspace(s) are currently locked behind the maintenance screen.`, jump: 'tenants' } : null,
@@ -5349,7 +5375,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.35 Administrator Layout Polish', group: 'System Administrator', keywords: 'v15 15.0.35 administrator layout left menu info board command deck mobile collapsible navigation', body: ['15.0.35 moves System Administrator section buttons from the top of the tab into a left-side admin menu on desktop.', 'On phones, the admin menu is collapsible. Tap Menu from the current-section bar to open it, then pick a section and the menu closes automatically.', 'The Command Deck / signal information board now sits above the main admin workspace and remains collapsible through Show Info Board / Hide Info Board.', 'This layout keeps troubleshooting signals visible at the top while leaving the actual tools easier to scan from the left rail.'] },
     ...ADMIN_TROUBLESHOOTING_ARTICLES,
+    { title: 'Version 15.0.34 Master Admin Self-Repair', group: 'System Administrator', keywords: 'v15 15.0.34 master admin repair firestore users auth uid super admin custom claim rules lockout', body: ['15.0.34 adds a Master Admin Self-Repair button in System Administrator -> Overview.', 'The button calls /api/master-admin-repair and recreates missing Firestore users profiles for emails configured in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS.', 'It also sets Super Admin profile flags and a Firebase custom claim. Log out and back in after running it so the new claim appears in the browser token.', 'Run this before publishing hardened Firestore rules if an admin email exists in Firebase Authentication but not in Firestore users.'] },
     { title: 'Version 15.0.28 Productization Cleanup', group: 'System Administrator', keywords: 'v15 15.0.28 public release productization hardcoded admin account deletion restore drill security center', body: ['15.0.28 removes hardcoded personal master-admin fallbacks from app and API checks. Use MASTER_ADMIN_EMAIL, MASTER_ADMIN_EMAILS, custom claims, or isSuperAdmin profile flags instead.', 'Account Security now includes an in-app account deletion request flow for app-store/privacy readiness. It records a request for admin review instead of silently deleting operational records.', 'Security Center now includes restore-drill readiness so backups are paired with monthly safe test restores into a non-production project.', 'Public wording was cleaned for old internal System Administrator and restaurant-specific labels.'] },
     { title: 'Version 15.0.27 Public-Readiness Security Polish', group: 'System Administrator', keywords: 'v15 15.0.27 recovery codes mfa lost phone security alerts voice preview security center', body: ['15.0.27 adds one-time recovery codes for MFA accounts. Save the codes after generating them because they are shown once.', 'The two-step login screen now has a recovery-code reset path for lost or broken phones. A used code is burned and cannot be reused.', 'When a System Administrator resets a user MFA factors, the app writes a security alert for the affected user and records the action in audit logs.', 'Account Security now shows a simple readiness status so owners know whether it is safe to turn on elevated-role MFA enforcement.', 'The voice control now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
     { title: 'Version 15.0.26 MFA Recovery & Safer Enforcement', group: 'System Administrator', keywords: 'v15 15.0.26 mfa recovery reset lost phone backup phone elevated roles enforcement', body: ['15.0.26 adds Super Admin MFA Recovery inside Account Security so a lost or broken phone can be handled without disabling MFA for everyone.', 'Recovery lets a Super Admin inspect a user MFA status, remove enrolled Firebase MFA factors, require a written reason, and write the action to audit logs.', 'Account Security now supports adding a backup SMS phone after the first factor is enrolled. MFA should be required for owners, managers, admins, and System Administrators when enforcement is on. Standard employees can enroll optionally.'] },
@@ -5742,6 +5770,31 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     addToast('Device Cache Cleared', 'Temporary local cache was cleared on this browser.');
   };
 
+  const handleMasterAdminRepair = async () => {
+    const defaultRestaurantId = appUser?.restaurantId || restaurants[0]?.id || '';
+    const confirmed = window.confirm('Repair Firestore users profiles for every email listed in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS? This writes only configured master-admin accounts, adds Super Admin flags, and refreshes Firebase custom claims.');
+    if (!confirmed) return;
+    setIsMasterAdminRepairing(true);
+    setMasterAdminRepairResult(null);
+    try {
+      const response = await secureFetch('/api/master-admin-repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restaurantId: defaultRestaurantId })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || 'Master admin repair failed.');
+      setMasterAdminRepairResult(result);
+      const repaired = (result.results || []).filter(r => r.status === 'created' || r.status === 'updated').length;
+      addToast('Master Admin Repair Complete', `${repaired}/${(result.results || []).length} configured admin profile(s) repaired. Log out and back in before publishing hardened rules.`);
+    } catch (err) {
+      setMasterAdminRepairResult({ ok: false, error: err.message || String(err), results: [] });
+      addToast('Master Admin Repair Failed', err.message || 'Could not repair master admin profiles.');
+    } finally {
+      setIsMasterAdminRepairing(false);
+    }
+  };
+
 
   const formatBackupBytes = (bytes) => {
     const n = Number(bytes || 0);
@@ -6113,6 +6166,7 @@ Type RESTORE to continue.`);
 
   const jumpToAdminIssue = (target) => {
     setSubTab(target || 'overview');
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) setIsAdminNavOpen(false);
     setTimeout(() => document.getElementById(`admin-${target || 'overview'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
@@ -6243,64 +6297,25 @@ Type RESTORE to continue.`);
             <p className="text-xs text-slate-400 font-bold mt-1">Professional control center for workspaces, people, support, backups, review stamps, and platform operations.</p>
           </div>
           <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">
-            {isCommandDeckOpen ? 'Hide Command Deck' : 'Show Command Deck'}
+            {isCommandDeckOpen ? 'Hide Info Board' : 'Show Info Board'}
           </button>
         </div>
 
-        {/* ORGANIZED ADMIN NAVIGATION */}
-        <div className="relative space-y-3">
-          <div className="lg:hidden bg-[#0B0E11]/80 border border-[#2A353D] rounded-2xl p-3 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">Mobile Admin Layout</div>
-                <div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div>
-                <div className="text-[10px] font-bold text-slate-500 truncate">{activeAdminTab.group} • {activeAdminTab.groupSummary}</div>
-              </div>
-              <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="flex-shrink-0 bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest">
-                {isCommandDeckOpen ? 'Hide Signals' : 'Signals'}
-              </button>
-            </div>
-            <select
-              value={subTab}
-              onChange={(e) => setSubTab(e.target.value)}
-              className={`${T.input} text-sm font-black`}
-              aria-label="Choose administrator section"
-            >
-              {adminTabGroups.map(group => (
-                <optgroup key={group.title} label={group.title}>
-                  {group.tabs.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                </optgroup>
-              ))}
-            </select>
-            <div className="grid grid-cols-4 gap-1.5">
-              {adminTabs.filter(t => mobilePrimaryTabs.includes(t.id)).map(t => (
-                <button key={t.id} type="button" onClick={() => setSubTab(t.id)} className={`px-2 py-2 rounded-xl border text-[8px] font-black uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white border-red-500' : 'bg-[#12161A] text-slate-400 border-[#2A353D]'}`}>
-                  {t.short || t.label}
-                </button>
-              ))}
-            </div>
+        {/* ADMIN NAVIGATION MOVED TO LEFT RAIL */}
+        <div className="relative bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">Current Section</div>
+            <div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div>
+            <div className="text-[10px] font-bold text-slate-500 truncate">{activeAdminTab.group} • Navigation now lives in the left rail.</div>
           </div>
-
-          <div className="hidden lg:grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            {adminTabGroups.map(group => (
-              <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
-                <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-0.5">{group.title}</div>
-                <div className="text-[9px] font-bold text-slate-600 px-1.5 pb-1.5 truncate">{group.summary}</div>
-                <div className="grid grid-cols-1 gap-1.5">
-                  {group.tabs.map((t) => (
-                    <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-3 py-2.5 text-left text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all border ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="lg:hidden bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest">
+            {isAdminNavOpen ? 'Hide Menu' : 'Show Menu'}
+          </button>
         </div>
       </div>
-      <div className={`grid gap-4 ${isCommandDeckOpen ? 'lg:grid-cols-[300px_minmax(0,1fr)]' : 'lg:grid-cols-1'}`}>
+      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
         {isCommandDeckOpen && (
-          <aside className="lg:sticky lg:top-4 h-max space-y-3 max-lg:max-h-[58vh] max-lg:overflow-y-auto max-lg:pr-1 custom-scrollbar" id="admin-command-deck">
+          <aside className="lg:col-span-2 h-max space-y-3 max-lg:max-h-[58vh] max-lg:overflow-y-auto max-lg:pr-1 custom-scrollbar" id="admin-command-deck">
             <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative">
               <div className="absolute inset-0 cockpit-grid opacity-40 pointer-events-none"></div>
               <div className="relative flex items-center justify-between gap-2 mb-3">
@@ -6310,7 +6325,7 @@ Type RESTORE to continue.`);
                 </div>
                 <button type="button" onClick={() => setIsCommandDeckOpen(false)} className="text-slate-500 hover:text-white border border-[#2A353D] rounded-lg px-2 py-1 text-[9px] font-black uppercase">Hide</button>
               </div>
-              <div className="relative space-y-2">
+              <div className="relative grid sm:grid-cols-2 xl:grid-cols-4 gap-2">
                 <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} action item(s)`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} onClick={() => jumpToAdminIssue('overview')} />
                 <CockpitMetric label="Health" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Check'} detail={`Integrity: ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}`} tone={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : healthSnapshot?.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} onClick={() => jumpToAdminIssue('health')} />
                 <CockpitMetric label="Admin Access" value={adminAccessSourceLabel} detail={adminAccessDetail} tone={adminAccessSourceLabel === 'Unknown' ? 'amber' : 'emerald'} help="Explains why this account can open System Administrator. Good sources are MASTER_ADMIN_EMAIL(S) in Vercel server env, REACT_APP_MASTER_ADMIN_EMAIL for frontend menu visibility, Firebase custom claim superAdmin, or Firestore isSuperAdmin/systemAccess.superAdmin. If an account is locked out, check the deployment environment scope first." />
@@ -6366,13 +6381,46 @@ Type RESTORE to continue.`);
           </aside>
         )}
 
+        <aside className={`lg:sticky lg:top-4 h-max ${isAdminNavOpen ? 'block' : 'hidden lg:block'}`} id="admin-left-nav">
+          <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative">
+            <div className="absolute inset-0 cockpit-grid opacity-30 pointer-events-none"></div>
+            <div className="relative flex items-center justify-between gap-2 mb-3">
+              <div className="min-w-0">
+                <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Admin Menu</div>
+                <div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div>
+              </div>
+              <button type="button" onClick={() => setIsAdminNavOpen(false)} className="lg:hidden text-slate-500 hover:text-white border border-[#2A353D] rounded-lg px-2 py-1 text-[9px] font-black uppercase">Hide</button>
+            </div>
+            <div className="relative space-y-3 max-lg:max-h-[56vh] max-lg:overflow-y-auto custom-scrollbar pr-1">
+              {adminTabGroups.map(group => (
+                <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
+                  <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-0.5">{group.title}</div>
+                  <div className="text-[9px] font-bold text-slate-600 px-1.5 pb-1.5 leading-snug">{group.summary}</div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {group.tabs.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => { setSubTab(t.id); if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) setIsAdminNavOpen(false); }}
+                        className={`px-3 py-2.5 text-left text-[10px] font-black rounded-xl uppercase tracking-widest transition-all border ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+
         <div className="min-w-0 space-y-6">
           <div className="lg:hidden bg-[#0B0E11] border border-[#2A353D] rounded-2xl px-3 py-2 flex items-center justify-between gap-3">
             <div className="min-w-0"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Admin Section</div><div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div></div>
-            <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 flex-shrink-0">{activeAdminTab.group}</span>
+            <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="text-[8px] font-black uppercase tracking-widest text-[#D4A381] border border-[#2A353D] rounded-lg px-2 py-1 flex-shrink-0">{isAdminNavOpen ? 'Hide Menu' : 'Menu'}</button>
           </div>
           {!isCommandDeckOpen && (
-            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Open Signal Board</button>
+            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Open Info Board</button>
           )}
 <Modal isOpen={!!editingGlobalUser} onClose={() => { setEditingGlobalUser(null); setSupportUserForm({}); }} title={`Support Edit User: ${editingGlobalUser?.name || editingGlobalUser?.email || ''}`}>
         {editingGlobalUser && (
@@ -6763,6 +6811,39 @@ Type RESTORE to continue.`);
                     <div className="text-xs text-slate-300 font-bold leading-snug">{item.detail}</div>
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+
+          <div className={`${T.card} p-4 border ${currentAdminProfileMissing ? 'border-red-900/60 bg-red-950/10' : 'border-[#2A353D]'}`}>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-black text-white text-sm flex items-center gap-2"><Shield size={18} className={currentAdminProfileMissing ? 'text-red-400' : T.copper}/> Master Admin Self-Repair</h3>
+                <p className="text-[10px] text-slate-400 font-bold leading-snug mt-1">Recreates missing Firestore <span className="font-mono">users/{'{authUid}'}</span> documents for emails listed in Vercel <span className="font-mono">MASTER_ADMIN_EMAIL(S)</span>. Use this before publishing hardened Firestore rules so your admin keys are not sitting outside the database.</p>
+              </div>
+              <button type="button" onClick={handleMasterAdminRepair} disabled={isMasterAdminRepairing} className={`${T.btn} flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50`}>
+                {isMasterAdminRepairing ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
+                {isMasterAdminRepairing ? 'Repairing...' : 'Repair Master Admins'}
+              </button>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-2 mt-3">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Email</div><div className="text-[10px] font-mono text-white break-all">{appUser?.email || 'Unknown'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Firestore Profile</div><div className={`text-xs font-black ${currentAdminProfile ? 'text-emerald-400' : currentAdminProfileMissing ? 'text-red-400' : 'text-slate-400'}`}>{currentAdminProfile ? 'Found' : currentAdminProfileMissing ? 'Missing' : 'Unknown'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Server Env</div><div className={`text-xs font-black ${appUser?.serverAdminCheck?.masterAdminEnvConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>{appUser?.serverAdminCheck?.masterAdminEnvConfigured ? `${appUser.serverAdminCheck.masterAdminEmailCount || 1} email(s)` : 'Not confirmed'}</div></div>
+            </div>
+            {masterAdminRepairResult && (
+              <div className={`mt-3 rounded-xl p-3 border ${masterAdminRepairResult.ok === false ? 'bg-red-900/10 border-red-900/50' : 'bg-emerald-900/10 border-emerald-900/40'}`}>
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Last repair result</div>
+                {masterAdminRepairResult.error && <div className="text-xs font-bold text-red-300 mb-2">{masterAdminRepairResult.error}</div>}
+                <div className="space-y-1">
+                  {(masterAdminRepairResult.results || []).map((row) => (
+                    <div key={row.email} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                      <span className="font-mono break-all">{row.email}</span>
+                      <span className={row.status === 'created' || row.status === 'updated' ? 'text-emerald-400' : 'text-red-300'}>{row.status}{row.uid ? ` • ${row.uid}` : ''}</span>
+                    </div>
+                  ))}
+                </div>
+                {masterAdminRepairResult.reloginRecommended && <p className="text-[10px] text-amber-200 font-bold mt-2 leading-snug">Custom claims were updated. Log out and back in before publishing hardened Firebase rules.</p>}
               </div>
             )}
           </div>
@@ -8545,6 +8626,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15034', title:'What changed in version 15.0.34', group:'Release Notes', keywords:'new update 15.0.34 master admin repair firestore users auth uid admin lockout', body:['Added a System Administrator self-repair tool for configured master-admin accounts whose Firebase Authentication account exists but Firestore users profile is missing.', 'The tool repairs only emails listed in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS and tells admins to log out and back in before publishing hardened Firebase rules.', 'Also added /api/master-admin-repair to the API checklist and updated diagnostics version metadata.'] },
   { id:'new-15033', title:'What changed in version 15.0.33', group:'Release Notes', keywords:'new update 15.0.33 deployment syntax hotfix vercel adjacent jsx elements manual', body:['Fixed the Vercel build failure from 15.0.32 caused by an unclosed JSX wrapper in System Administrator -> Manual.', 'Kept the 15.0.32 AI Support Manual, account deletion review, RECOVERY_CODE_SECRET guard, and production-hardening changes intact.', 'No Firebase rules, Storage rules, API routes, or Vercel environment variables changed in this hotfix.'] },
   { id:'new-15032', title:'What changed in version 15.0.32', group:'Release Notes', keywords:'new update 15.0.32 ai support manual security deletion recovery codes firebase rules', body:['System Administrator Manual now works like a support console: type a customer question and it returns likely causes, first checks, fix steps, warnings, escalation guidance, and relevant articles.', 'Security Center now includes account deletion request review so privacy requests can be marked reviewing, complete, or denied with admin notes and audit history.', 'MFA recovery codes now require a dedicated RECOVERY_CODE_SECRET in Vercel before codes can be generated or used.', 'Firebase rules no longer rely on personal-email fallbacks. Super Admin access for Firestore and Storage rules must come from a custom claim or Firestore profile flag.', 'This build requires a Vercel redeploy and testing-side Firebase rule publish before production rollout.'] },
   { id:'new-15031', title:'What changed in version 15.0.31', group:'Release Notes', keywords:'new update 15.0.31 app load hotfix system administrator locked out version mismatch whoami admin access', body:['The app load crash from 15.0.30 was fixed; /version.json, footer/version labels, API metadata, README, and release files now report 15.0.31.', 'If a user opens System Administrator without access, the app now shows exactly why access was denied instead of a generic unavailable page.', 'The app now calls /api/whoami to see whether the server recognizes the signed-in email through MASTER_ADMIN_EMAIL(S), Firebase custom claims, or Firestore super-admin flags.', 'System Administrator includes an Admin Access signal card explaining the current Super Admin authority source.', 'The 15.0.30 Super Admin diagnostics plus the 15.0.29 question-mark helpers, drawer search reset, and backup troubleshooting manual remain included.'] },

@@ -5,6 +5,7 @@ const { initAdmin, authorize, requireAppCheckIfEnforced } = require('./_chaos-ad
 const ROUTE_CHECKS = [
   { route: '/api/account-security', file: 'account-security.js', method: 'GET/POST', auth: 'signed-in-user', notes: 'MFA enrollment/status/recovery route.' },
   { route: '/api/admin-access', file: 'admin-access.js', method: 'POST', auth: 'super-admin', notes: 'Admin access escalation route.' },
+  { route: '/api/master-admin-repair', file: 'master-admin-repair.js', method: 'GET/POST', auth: 'configured-master-admin', notes: 'Repairs missing Firestore users profiles for emails listed in MASTER_ADMIN_EMAIL(S).' },
   { route: '/api/alerts', file: 'alerts.js', method: 'POST', auth: 'workspace-admin', notes: 'Alert writer route.' },
   { route: '/api/backup-preview', file: 'backup-preview.js', method: 'POST', auth: 'super-admin', notes: 'Reads backup files for preview only.' },
   { route: '/api/brand-logo', file: 'brand-logo.js', method: 'POST', auth: 'workspace-admin', notes: 'Customer logo upload route.' },
