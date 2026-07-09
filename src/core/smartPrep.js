@@ -31,6 +31,16 @@ const PROTECTED_AND_PHRASES = [
   'peanut butter and jelly'
 ];
 
+const PREP_STATION_ALIASES = {
+  Grill: ['grill', 'grill station', 'flat top', 'flattop'],
+  Fry: ['fry', 'fryer', 'fry station'],
+  'Salad/Cold': ['salad', 'cold', 'cold side', 'pantry', 'salad station'],
+  Expo: ['expo', 'window', 'pass'],
+  'Prep Table': ['prep table', 'prep station', 'back prep'],
+  Bar: ['bar'],
+  Dish: ['dish', 'dish pit', 'dish station']
+};
+
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const MONTHS = {
   january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3,
@@ -103,6 +113,27 @@ export const parsePrepTargetDate = (input = '', now = new Date()) => {
   };
 };
 
+
+export const parsePrepStation = (input = '') => {
+  let cleanedText = String(input || '');
+  const q = cleanedText.toLowerCase();
+  for (const [station, aliases] of Object.entries(PREP_STATION_ALIASES)) {
+    for (const alias of aliases) {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const patterns = [
+        new RegExp(`\\b(?:for|on|at|to|station)\\s+(?:the\\s+)?${escaped}\\b`, 'i'),
+        new RegExp(`\\b${escaped}\\s+(?:station|prep)\\b`, 'i')
+      ];
+      const matched = patterns.find(pattern => pattern.test(q));
+      if (matched) {
+        cleanedText = cleanedText.replace(matched, ' ');
+        return { station, cleanedText: cleanedText.replace(/\s+/g, ' ').trim() };
+      }
+    }
+  }
+  return { station: '', cleanedText: cleanedText.replace(/\s+/g, ' ').trim() };
+};
+
 export const normalizePrepText = (value = '') => String(value || '')
   .toLowerCase()
   .replace(/&/g, ' and ')
@@ -173,7 +204,8 @@ export const parsePrepCommandItems = (input = '') => {
   const raw = String(input || '').trim();
   if (!raw) return [];
   const targetDate = parsePrepTargetDate(raw);
-  const lowered = (targetDate.cleanedText || raw).toLowerCase();
+  const stationInfo = parsePrepStation(targetDate.cleanedText || raw);
+  const lowered = (stationInfo.cleanedText || targetDate.cleanedText || raw).toLowerCase();
   const increment = /\b(more|extra|another|additional)\b/.test(lowered);
   let prepared = lowered
     .replace(/[;,\n]+/g, ' | ')
@@ -203,6 +235,7 @@ export const parsePrepCommandItems = (input = '') => {
       unit: unit || 'item',
       increment,
       prepDate: targetDate.date || '',
+      station: stationInfo.station || '',
       sourceSegment: segment
     };
   }).filter(item => item.itemText && normalizePrepText(item.itemText));

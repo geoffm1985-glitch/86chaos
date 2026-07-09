@@ -906,7 +906,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
 };
 
 
-const TabAITools = ({ appUser, clientData, setActiveTab, addToast }) => {
+const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarget, addToast }) => {
   const canMenu = canUseMenuIntelligence(appUser, clientData);
   const cards = [
     {
@@ -922,8 +922,9 @@ const TabAITools = ({ appUser, clientData, setActiveTab, addToast }) => {
       title: 'Invoice Scanner',
       tag: 'Inventory',
       desc: 'Scan vendor invoices from Inventory, review raw extraction details, and approve stock changes.',
-      action: 'Open Inventory Scanner',
+      action: 'Open Invoice Scanner',
       tab: 'inventory',
+      subTab: 'invoices',
       enabled: true,
       note: 'Always review scanned rows before approving. Blurry invoices still need human eyeballs.'
     },
@@ -961,7 +962,7 @@ const TabAITools = ({ appUser, clientData, setActiveTab, addToast }) => {
               <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${card.enabled ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-amber-900/20 text-amber-300 border-amber-900/50'}`}>{card.tag}</span>
             </div>
             <p className="text-[10px] font-bold text-slate-500 leading-snug">{card.note}</p>
-            <button type="button" onClick={() => card.enabled ? setActiveTab(card.tab) : addToast?.('Access Needed', 'Ask the account owner to enable Menu Intelligence access first.')} className={card.enabled ? T.btn : T.btnAlt}>{card.action}</button>
+            <button type="button" onClick={() => { if (!card.enabled) return addToast?.('Access Needed', 'Ask the account owner to enable Menu Intelligence access first.'); if (card.tab === 'inventory' && card.subTab) setInventorySubTabTarget?.(card.subTab); setActiveTab(card.tab); }} className={card.enabled ? T.btn : T.btnAlt}>{card.action}</button>
           </div>
         ))}
       </div>

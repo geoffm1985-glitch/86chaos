@@ -149,3 +149,29 @@ select {
   border-radius: 0;
   box-shadow: none;
 }
+
+
+/* 15.0.18 mobile-first paperwork polish */
+.mobile-card-list { display: grid; gap: .75rem; }
+.responsive-action-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.paperwork-toolbar { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(10px); }
+@media (max-width: 720px) {
+  body { overflow-x: hidden; }
+  .cockpit-panel, .bg-\[\#1A2126\], .bg-\[\#12161A\] { max-width: 100%; }
+  table { min-width: 640px; }
+  .overflow-x-auto, .custom-scrollbar { -webkit-overflow-scrolling: touch; }
+  .grid { min-width: 0; }
+  .rounded-xl, .rounded-2xl { border-radius: 14px; }
+  .text-3xl { line-height: 1.05; }
+  input, select, textarea { min-height: 44px; }
+  .fixed.bottom-5.left-4 { left: .75rem; bottom: 5rem; }
+  .fixed.bottom-5.right-4 { right: .75rem; bottom: 1rem; }
+  .max-h-\[50vh\], .max-h-\[55vh\], .max-h-\[60vh\] { max-height: 62vh; }
+}
+@media print {
+  body { background: white !important; color: #111 !important; }
+  .print-paper, .print-paper * { color: #111 !important; }
+  .no-print, .fixed, button { display: none !important; }
+  table { min-width: 0 !important; page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+}

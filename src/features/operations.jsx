@@ -12,6 +12,29 @@ import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInvent
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
+const PREP_TASK_TEMPLATE_PACKS = {
+  kitchenOpenClose: {
+    label: 'Kitchen Open/Close',
+    items: [
+      { title: 'AM line temp check', category: 'General', frequency: 'daily' },
+      { title: 'PM line flip and label sweep', category: 'General', frequency: 'daily' },
+      { title: 'Clean fryer filter area', category: 'Cleaning', frequency: 'weekly', targetDay: 'Monday' },
+      { title: 'Deep clean grill backsplash', category: 'Cleaning', frequency: 'weekly', targetDay: 'Wednesday' },
+      { title: 'Monthly dry storage wipe-down', category: 'Cleaning', frequency: 'monthly', targetDate: '1' }
+    ]
+  },
+  prepRhythm: {
+    label: 'Prep Rhythm',
+    items: [
+      { title: 'Check sauces and dressings', category: 'General', frequency: 'daily' },
+      { title: 'Portion burger toppings', category: 'General', frequency: 'daily' },
+      { title: 'Build weekend prep list', category: 'General', frequency: 'weekly', targetDay: 'Thursday' },
+      { title: 'Freezer pull audit', category: 'General', frequency: 'weekly', targetDay: 'Sunday' },
+      { title: 'Review par levels', category: 'General', frequency: 'monthly', targetDate: '15' }
+    ]
+  }
+};
+
 const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const prepItems = useLiveCollection('prepItems', appUser?.restaurantId, { limitCount: 250 });
   const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
@@ -60,6 +83,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const [taskTargetDay, setTaskTargetDay] = useState('Monday'); 
   const [taskTargetDate, setTaskTargetDate] = useState('1');
   const [editingTaskId, setEditingTaskId] = useState(null);
+  const [taskTemplatePack, setTaskTemplatePack] = useState('kitchenOpenClose');
 
   // Line Check State
   const lineChecks = useLiveCollection('lineCheckItems', appUser?.restaurantId, { limitCount: 150 });
@@ -201,6 +225,18 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
     } 
   };
 
+
+  const addTaskTemplatePack = async () => {
+    const pack = PREP_TASK_TEMPLATE_PACKS[taskTemplatePack] || PREP_TASK_TEMPLATE_PACKS.kitchenOpenClose;
+    const existingKeys = new Set(tasks.map(t => `${String(t.title || '').toLowerCase()}|${t.frequency || 'daily'}|${t.targetDay || ''}|${t.targetDate || ''}`));
+    const toCreate = (pack.items || []).filter(t => !existingKeys.has(`${String(t.title || '').toLowerCase()}|${t.frequency || 'daily'}|${t.targetDay || ''}|${t.targetDate || ''}`));
+    if (!toCreate.length) return addToast('Templates Already Loaded', `${pack.label} is already present.`);
+    for (const t of toCreate) {
+      await safePrepWrite({ quiet: true, action: 'add', collectionName: 'tasks', label: 'Recurring prep template', data: { ...t, completions: {}, restaurantId: appUser.restaurantId, source: 'prep-template-pack', templatePack: taskTemplatePack, createdAt: new Date().toISOString(), createdBy: appUser?.name || appUser?.email || '86 Chaos' } });
+    }
+    addToast('Prep Templates Added', `${toCreate.length} recurring task template(s) added.`);
+  };
+
   const editTask = (t) => {
     setTaskText(t.title);
     setTaskCat(t.category || 'Cleaning');
@@ -257,6 +293,15 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
               {editingTaskId && <button type="button" onClick={cancelTaskEdit} className={`${T.btnAlt} px-4 py-2 flex items-center justify-center border-red-900/50 text-red-400 hover:text-red-300`}><X size={18}/></button>}
             </div>
           </form>
+        )}
+
+        {canManageLineChecks && (
+          <div className={`${T.card} p-3 bg-[#0B0E11] border-dashed flex flex-col sm:flex-row gap-2 sm:items-center justify-between`}>
+            <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Recurring Prep Templates</div><div className="text-[11px] text-slate-400 font-bold">Load a starter pack of daily, weekly, and monthly kitchen tasks. Existing matching tasks are skipped.</div></div>
+            <div className="flex gap-2 w-full sm:w-auto"><select value={taskTemplatePack} onChange={e => setTaskTemplatePack(e.target.value)} className={`${T.input} text-xs`}>
+              {Object.entries(PREP_TASK_TEMPLATE_PACKS).map(([key, pack]) => <option key={key} value={key}>{pack.label}</option>)}
+            </select><button type="button" onClick={addTaskTemplatePack} className={T.btnAlt}>Load</button></div>
+          </div>
         )}
 
         {['Cleaning', 'General'].map(cat => {
@@ -472,12 +517,12 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   );
 };
 
-const TabInventory = ({ addToast, appUser }) => {
+const TabInventory = ({ addToast, appUser, initialSubTab, onInitialSubTabConsumed }) => {
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
   const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
   const vendors = useLiveCollection('vendors', appUser?.restaurantId, { limitCount: 150 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
-  const [invTab, setInvTab] = useState('count');
+  const [invTab, setInvTab] = useState(initialSubTab || 'count');
   const [focusBelowPar, setFocusBelowPar] = useState(() => sessionStorage.getItem('inventoryFocus') === 'belowPar');
 const [searchTerm, setSearchTerm] = useState(''); 
   const [groupBy, setGroupBy] = useState('Category');
@@ -486,6 +531,16 @@ const [searchTerm, setSearchTerm] = useState('');
   // Fetch invoices securely directly inside this tab
   const invoices = useLiveCollection('invoices', appUser?.restaurantId, { limitCount: 120 });
   const [viewInvoice, setViewInvoice] = useState(null);
+
+  useEffect(() => {
+    if (!initialSubTab) return;
+    setInvTab(initialSubTab);
+    if (initialSubTab === 'invoices') {
+      setTimeout(() => document.getElementById('invoice-scanner-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+    }
+    onInitialSubTabConsumed?.();
+  }, [initialSubTab]);
+
 
   useEffect(() => {
     if (sessionStorage.getItem('inventoryFocus') === 'belowPar') {
@@ -521,6 +576,9 @@ const [searchTerm, setSearchTerm] = useState('');
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
   const [invoiceScanProgress, setInvoiceScanProgress] = useState({ percent: 0, label: 'Ready', phase: 'idle' });
   const [scannedInvoice, setScannedInvoice] = useState(null);
+  const [invoiceReviewTab, setInvoiceReviewTab] = useState('matched');
+  const [csvImportReview, setCsvImportReview] = useState(null);
+  const [isSavingCsvImport, setIsSavingCsvImport] = useState(false);
 
   // Master Permission Check for Inventory Tabs
   const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
@@ -899,54 +957,99 @@ const executeOrder = async (method) => {
     addToast('Order Canceled', 'Pending quantities cleared.');
   };
 
-  // --- CSV INVENTORY UPLOAD ---
+  // --- CSV INVENTORY UPLOAD + CLEANUP REVIEW ---
+  const parseCsvColumns = (line = '') => line.split(/(?!\B"[^"]*),(?![^"]*"\B)/).map(c => c.trim().replace(/^"|"$/g, ''));
+  const normalizeImportKey = (value = '') => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const buildCsvImportReview = (text = '', fileName = 'inventory.csv') => {
+    const rows = text.split(/\r?\n/).filter(row => row.trim());
+    const seen = new Set();
+    const parsedRows = [];
+    const issues = [];
+    for (let i = 1; i < rows.length; i++) {
+      const cols = parseCsvColumns(rows[i]);
+      const name = (cols[0] || '').trim();
+      if (!name) { issues.push(`Row ${i + 1}: missing item name`); continue; }
+      const productCode = (cols[2] || '').trim();
+      const nameKey = normalizeImportKey(name);
+      const codeKey = normalizeImportKey(productCode);
+      const duplicateInFile = seen.has(codeKey || nameKey);
+      seen.add(codeKey || nameKey);
+      const existing = inventoryItems.find(item => (codeKey && normalizeImportKey(item.pfgCode || item.productCode || item.sku) === codeKey) || normalizeImportKey(item.name) === nameKey);
+      const vendorName = (cols[6] || 'Unassigned Vendor').trim();
+      parsedRows.push({
+        rowNumber: i + 1,
+        name,
+        category: cols[1] || 'Other',
+        pfgCode: productCode,
+        packSize: cols[3] || '1 CS',
+        yieldQty: parseFloat(cols[4]) || 1,
+        price: parseFloat(cols[5]) || 0,
+        vendorName,
+        existingId: existing?.id || '',
+        existingName: existing?.name || '',
+        duplicateInFile,
+        action: duplicateInFile ? 'skip' : (existing ? 'update' : 'create')
+      });
+    }
+    const createCount = parsedRows.filter(r => r.action === 'create').length;
+    const updateCount = parsedRows.filter(r => r.action === 'update').length;
+    const skipCount = parsedRows.filter(r => r.action === 'skip').length;
+    return { fileName, rows: parsedRows, issues, createCount, updateCount, skipCount, createdAt: new Date().toISOString() };
+  };
+  const updateCsvReviewRow = (idx, patch) => setCsvImportReview(review => review ? { ...review, rows: review.rows.map((row, rowIdx) => rowIdx === idx ? { ...row, ...patch } : row) } : review);
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!window.confirm(`Upload ${file.name} to your inventory?`)) return;
-
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       try {
-        const text = event.target.result;
-        const rows = text.split('\n').filter(row => row.trim());
-        let addedCount = 0;
-        for (let i = 1; i < rows.length; i++) {
-          const cols = rows[i].split(/(?!\B"[^"]*),(?![^"]*"\B)/).map(c => c.trim().replace(/^"|"$/g, ''));
-          if (cols.length < 2) continue; 
-          
-          const name = cols[0];
-          const category = cols[1] || 'Other';
-          const code = cols[2] || '';
-          const packSize = cols[3] || '1 CS';
-          const yieldQty = parseFloat(cols[4]) || 1;
-          const price = parseFloat(cols[5]) || 0;
-          const vendorName = cols[6] || 'Unassigned Vendor';
-
-          let vId = '';
-          let existingVendor = vendors.find(v => v.name.toLowerCase() === vendorName.toLowerCase());
-          
-          if (existingVendor) {
-            vId = existingVendor.id;
-          } else {
-            const newVRef = await safeInventoryWrite({ quiet: true, action: "add", collectionName: "vendors", label: "CSV vendor", data: { name: vendorName, rep: "", email: "", phone: "", restaurantId: appUser.restaurantId } });
-            vId = newVRef.id;
-            vendors.push({id: vId, name: vendorName}); 
-          }
-
-          await safeInventoryWrite({ quiet: true, action: "add", collectionName: "inventoryItems", label: "CSV inventory item", data: {
-            name, category, pfgCode: code, packSize, yieldQty, price, parLevel: 0,
-            lastOrderedQty: 0, lastOrderedDate: null, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, restaurantId: appUser.restaurantId
-          } });
-          addedCount++;
-        }
-        addToast("Upload Complete", `Saved ${addedCount} imported item${addedCount === 1 ? '' : 's'}.`);
+        const review = buildCsvImportReview(event.target.result || '', file.name);
+        if (!review.rows.length) return addToast('Import Review Empty', 'No usable inventory rows were found in that CSV.');
+        setCsvImportReview(review);
+        addToast('Import Review Ready', `${review.rows.length} row(s) ready for cleanup review before saving.`);
       } catch (err) {
-        addToast("Error", "Failed to parse CSV file. Ensure it matches the exact template format.");
+        addToast('Import Review Failed', err.message || 'Failed to parse CSV file.');
       }
     };
     reader.readAsText(file);
-    e.target.value = ''; 
+    e.target.value = '';
+  };
+  const approveCsvImport = async () => {
+    if (!csvImportReview?.rows?.length) return;
+    setIsSavingCsvImport(true);
+    try {
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      const vendorCache = new Map(vendors.map(v => [String(v.name || '').toLowerCase(), v.id]));
+      for (const row of csvImportReview.rows) {
+        if (row.action === 'skip') { skipped++; continue; }
+        const vendorKey = String(row.vendorName || 'Unassigned Vendor').toLowerCase();
+        let vId = vendorCache.get(vendorKey) || '';
+        if (!vId) {
+          const newVRef = await safeInventoryWrite({ quiet: true, action: 'add', collectionName: 'vendors', label: 'CSV vendor', data: { name: row.vendorName || 'Unassigned Vendor', rep: '', email: '', phone: '', restaurantId: appUser.restaurantId, source: 'csv-import-review' } });
+          vId = newVRef?.id || '';
+          vendorCache.set(vendorKey, vId);
+        }
+        const payload = { name: row.name, category: row.category || 'Other', pfgCode: row.pfgCode || '', packSize: row.packSize || '1 CS', yieldQty: parseFloat(row.yieldQty) || 1, price: parseFloat(row.price) || 0, supplierId: vId, importReviewedAt: new Date().toISOString(), importSourceFile: csvImportReview.fileName };
+        if (row.action === 'update' && row.existingId) {
+          const before = inventoryItems.find(item => item.id === row.existingId) || null;
+          await safeInventoryWrite({ quiet: true, action: 'update', collectionName: 'inventoryItems', docId: row.existingId, label: 'CSV inventory cleanup update', before, data: payload });
+          updated++;
+        } else if (row.action === 'create') {
+          await safeInventoryWrite({ quiet: true, action: 'add', collectionName: 'inventoryItems', label: 'CSV inventory cleanup item', data: { ...payload, parLevel: 0, lastOrderedQty: 0, lastOrderedDate: null, currentStock: 0, pendingQty: 0, isStarred: false, restaurantId: appUser.restaurantId } });
+          created++;
+        } else {
+          skipped++;
+        }
+      }
+      setCsvImportReview(null);
+      addToast('Import Saved', `${created} created, ${updated} updated, ${skipped} skipped.`);
+    } catch (err) {
+      addToast('Import Save Failed', err.message || 'Could not save reviewed CSV import.');
+    } finally {
+      setIsSavingCsvImport(false);
+    }
   };
 
 // --- INVOICE SCANNER (PDF + HIGH-DETAIL IMAGE SCAN) ---
@@ -1178,6 +1281,7 @@ const executeOrder = async (method) => {
       const normalizedLineItems = normalizedCandidates.filter(isPurchasedInvoiceLine).map(i => ({ ...i, isInventoryLine: true }));
       const skippedRows = (fullRows.length ? fullRows : normalizedCandidates).filter(row => !isPurchasedInvoiceLine(row));
       updateInvoiceProgress(100, 'Review ready.', 'done');
+      setInvoiceReviewTab('matched');
       setScannedInvoice({ ...data, lineItems: normalizedLineItems, skippedRows, allExtractedRows: fullRows.length ? fullRows : normalizedCandidates, sourceFile: file.name, scanCompression: payload.compression || null, scanUploadedFileName: payload.uploadedFileName || '' });
       addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased product rows. ${skippedRows.length ? `${skippedRows.length} non-product rows were kept in the audit only.` : 'No non-product rows were sent to Stock Matcher.'}`);
     } catch (err) {
@@ -1309,9 +1413,51 @@ const groupedItems = inventoryItems
   }, {});
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
 
+  const printInvoiceHistory = () => {
+    const rows = [['Vendor', 'Invoice Date', 'Total', 'Processed By'], ...invoices.slice().sort((a,b) => new Date(b.processedAt || 0) - new Date(a.processedAt || 0)).map(inv => [inv.vendorName || 'Unknown', inv.invoiceDate || '', `$${Number(inv.invoiceTotal || 0).toFixed(2)}`, inv.processedBy || ''])];
+    openPrintableReport({ title: '86 Chaos Invoice History', subtitle: appUser?.restaurantName || 'Workspace', rows, filename: `86chaos-invoice-history-${getToday()}` });
+  };
+  const printCurrentInvoice = (invoice) => {
+    if (!invoice) return;
+    const rows = [['Item', 'Qty', 'Pack', 'Unit', 'Total'], ...(invoice.lineItems || []).map(item => [item.itemName || item.name || '', item.quantity || item.shippedQty || '', item.packSize || item.uom || '', `$${Number(item.unitPrice || item.casePrice || 0).toFixed(2)}`, `$${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}`])];
+    openPrintableReport({ title: `Invoice ${invoice.invoiceNumber || ''}`.trim() || 'Invoice Detail', subtitle: `${invoice.vendorName || 'Unknown vendor'} • ${invoice.invoiceDate || ''}`, rows, filename: `86chaos-invoice-${invoice.invoiceNumber || getToday()}` });
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
       
+      {/* CSV IMPORT CLEANUP REVIEW MODAL */}
+      <Modal isOpen={!!csvImportReview} onClose={() => isSavingCsvImport ? null : setCsvImportReview(null)} title="Inventory Import Cleanup Review">
+        {csvImportReview && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Rows</div><div className="text-lg font-black text-white">{csvImportReview.rows.length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Creates</div><div className="text-lg font-black text-emerald-400">{csvImportReview.rows.filter(r => r.action === 'create').length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Updates</div><div className="text-lg font-black text-[#D4A381]">{csvImportReview.rows.filter(r => r.action === 'update').length}</div></div>
+            </div>
+            {csvImportReview.issues?.length > 0 && <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 text-[11px] text-amber-200 font-bold">{csvImportReview.issues.slice(0, 5).join(' • ')}</div>}
+            <div className="max-h-[55vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {csvImportReview.rows.map((row, idx) => (
+                <div key={`${row.rowNumber}-${idx}`} className="p-3 bg-[#1A2126] grid md:grid-cols-[1fr_120px] gap-3">
+                  <div>
+                    <div className="text-sm font-black text-white">{row.name}</div>
+                    <div className="text-[10px] text-slate-400 font-bold mt-1">Row {row.rowNumber} • {row.category} • {row.pfgCode || 'No SKU'} • {row.packSize} • ${Number(row.price || 0).toFixed(2)} • {row.vendorName}</div>
+                    {row.existingName && <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-1">Existing match: {row.existingName}</div>}
+                    {row.duplicateInFile && <div className="text-[9px] text-red-300 font-black uppercase tracking-widest mt-1">Duplicate in CSV, skipped by default</div>}
+                  </div>
+                  <select value={row.action} onChange={e => updateCsvReviewRow(idx, { action: e.target.value })} className={`${T.input} text-xs font-black`}>
+                    <option value="create">Create New</option>
+                    <option value="update" disabled={!row.existingId}>Update Match</option>
+                    <option value="skip">Skip</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2"><button disabled={isSavingCsvImport} onClick={() => setCsvImportReview(null)} className={T.btnAlt}>Cancel</button><button disabled={isSavingCsvImport} onClick={approveCsvImport} className={T.btn}>{isSavingCsvImport ? 'Saving...' : 'Approve Import'}</button></div>
+          </div>
+        )}
+      </Modal>
+
       {/* INVOICE RECONCILIATION MODAL */}
       <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Reconcile & Approve Invoice">
         {scannedInvoice && (
@@ -1347,7 +1493,11 @@ const groupedItems = inventoryItems
               </div>
             )}
             
-            <div className="flex justify-between items-center mt-2 mb-1">
+            <div className="flex flex-wrap gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-1">
+              {[['matched','Stock Matcher'], ['raw','Raw Rows'], ['skipped','Skipped Rows']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
+            </div>
+
+            {invoiceReviewTab === 'matched' && <div className="flex justify-between items-center mt-2 mb-1">
               <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest pl-1">Stock Matcher</p>
               <div className="flex gap-2">
                 <button type="button" onClick={() => { const newItems = scannedInvoice.lineItems.map(i => ({...i, matchedItemId: ''})); setScannedInvoice({...scannedInvoice, lineItems: newItems}); }} className="text-[9px] bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white px-2 py-1 rounded font-black uppercase tracking-widest transition-colors shadow-sm">
@@ -1357,9 +1507,9 @@ const groupedItems = inventoryItems
                   Mark Unmatched as New
                 </button>
               </div>
-            </div>
+            </div>}
 
-            <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+            {invoiceReviewTab === 'matched' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
               {(scannedInvoice.lineItems || []).map((item, idx) => (
                 <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
                   <div className="flex justify-between items-start">
@@ -1396,7 +1546,11 @@ const groupedItems = inventoryItems
                   </select>
                 </div>
               ))}
-            </div>
+            </div>}
+
+            {invoiceReviewTab === 'raw' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">{(scannedInvoice.allExtractedRows || []).length ? scannedInvoice.allExtractedRows.map((row, idx) => <div key={idx} className="p-3 bg-[#1A2126]"><div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest">Raw row {idx + 1}</div><pre className="mt-1 whitespace-pre-wrap text-[10px] text-slate-300">{typeof row === 'string' ? row : JSON.stringify(row, null, 2)}</pre></div>) : <div className="p-6 text-center text-slate-500 font-bold">No raw rows returned by scanner.</div>}</div>}
+
+            {invoiceReviewTab === 'skipped' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">{(scannedInvoice.skippedRows || []).length ? scannedInvoice.skippedRows.map((row, idx) => <div key={idx} className="p-3 bg-[#1A2126]"><div className="text-sm text-white font-black">{row.itemName || row.description || row.rawText || `Skipped row ${idx + 1}`}</div><div className="text-[10px] text-slate-400 font-bold mt-1">{row.rowType || row.reason || 'Kept on invoice audit only'}</div></div>) : <div className="p-6 text-center text-slate-500 font-bold">No skipped rows.</div>}</div>}
 
             <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Update Stock</button>
           </div>
@@ -1430,7 +1584,7 @@ const groupedItems = inventoryItems
                 </div>
               ))}
             </div>
-            <button onClick={() => setViewInvoice(null)} className={`w-full ${T.btnAlt} py-3`}>Close</button>
+            <div className="grid grid-cols-2 gap-2"><button onClick={() => printCurrentInvoice(viewInvoice)} className={`w-full ${T.btn} py-3`}>Print / PDF</button><button onClick={() => setViewInvoice(null)} className={`w-full ${T.btnAlt} py-3`}>Close</button></div>
           </div>
         )}
       </Modal>
@@ -1666,7 +1820,7 @@ const groupedItems = inventoryItems
           <div className="flex flex-col gap-3 mb-6">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
-            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-60 pointer-events-none' : ''}`}>
+            <div id="invoice-scanner-panel" className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-60 pointer-events-none' : ''}`}>
                <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
                   {isScanningInvoice ? <span className="text-[11px] font-black tabular-nums">{invoiceScanProgress.percent}%</span> : <Camera size={24} />}
                   <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
@@ -1747,7 +1901,7 @@ const groupedItems = inventoryItems
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className="font-black text-sm text-white flex items-center gap-2">Invoice History</h3>
-              <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{invoices.length} Total</span>
+              <div className="flex items-center gap-2"><button onClick={printInvoiceHistory} className="bg-[#1A2126] text-[#D4A381] px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">Print</button><span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{invoices.length} Total</span></div>
             </div>
             <div className={`divide-y ${T.border} max-h-[60vh] overflow-y-auto custom-scrollbar`}>
               {invoices.length === 0 ? (

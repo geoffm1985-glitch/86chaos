@@ -1,44 +1,35 @@
 # 86 Chaos
 
-Current Version: 15.0.18 - Mobile & Paperwork Polish
+Current Version: 15.0.20 - MFA & Permissions Enforcement
 
-# 86 Chaos
+## 15.0.20 focus
 
-Current version: **15.0.14**
-
-## 15.0.14 focus
-
-15.0.14 is a reliability and review-control update. It adds a dedicated AI Tools area, stronger problem reporting with device diagnostics, offline queue visibility, a full Vercel API route health manifest, and per-ingredient confidence/review controls in Menu Intelligence.
+15.0.20 adds Account Security / Two-Step Login enrollment, MFA-aware elevated-role protection, and a clearer Permissions Preview for System Administrator. This build keeps App Check parked while MFA gets tested cleanly.
 
 ## What changed
 
-- **AI Tools area:** Added a dedicated AI Tools screen with shortcuts to Menu Intelligence, Invoice Scanner, voice commands, and Smart Prep Matching.
-- **Problem reporting:** Added an app-shell Report Problem flow. Error-style toasts now offer a Report Problem action, and reports include device diagnostics.
-- **Device diagnostics:** Problem reports capture app version, Firebase project, host, online status, service worker support, notification permission, camera/mic support, local storage status, screen size, and offline queue count.
-- **Offline queue visibility:** The app shell now shows when offline writes are queued and can attempt a replay from the support/report flow.
-- **API route health checks:** Added `/api/health-checks` and wired System Administrator → Health Dashboard to show a full Vercel API route manifest.
-- **Menu Intelligence review polish:** Review rows now show confidence badges and an Approve/Skip toggle for each ingredient. Skipped rows are not saved as menu-impact links.
-- **Help Center/Admin Manual:** Release notes and administrator instructions were updated for this release.
+- **MFA login flow:** Firebase SMS multi-factor sign-in challenges are handled on the login screen.
+- **Account Security:** Settings → Profile now includes a Two-Step Login enrollment/status panel for owners, managers, admins, and super-admins.
+- **Server sync:** Added `/api/account-security` to verify the signed-in user and sync actual Firebase Auth MFA enrollment status into the app profile.
+- **Elevated-role enforcement hooks:** Protected admin API routes can require a second-factor sign-in when `MFA_ENFORCE_ELEVATED_ROLES=true`.
+- **Frontend safety gate:** If elevated-role MFA enforcement is turned on before enrollment, elevated users are routed to Account Security instead of admin tools.
+- **Security Center:** Reports MFA enforcement configuration and elevated accounts missing MFA where possible.
+- **Permissions Preview:** System Administrator → Permission & Role Manager now shows allowed screens, blocked screens, and sensitive permission flags.
+- **Health manifest:** `/api/account-security` is included in the API route health manifest.
 
 ## Deploy steps
 
 1. Deploy this app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.14`.
-3. Open System Administrator → Health Dashboard and press **Refresh Health**.
-4. Confirm `/api/health-checks` returns the API route manifest and route rows show as ready.
-5. Open **AI Tools** from the drawer and confirm shortcuts route correctly.
-6. Use the header bug button or an error toast to confirm problem reports include diagnostics.
-7. In testing, scan a menu and confirm each ingredient shows confidence plus Approve/Skip before saving.
+2. Confirm `/version.json` reports `15.0.20`.
+3. In Firebase Authentication / Identity Platform, enable SMS Multi-factor Authentication for the same Firebase project.
+4. Keep `MFA_ENFORCE_ELEVATED_ROLES=false` while enrolling and testing elevated users.
+5. Enroll at least one owner or super-admin through Settings → Profile → Account Security.
+6. Log out and sign back in to confirm the two-step login challenge works.
+7. Only after testing, set `MFA_ENFORCE_ELEVATED_ROLES=true` in Vercel and redeploy.
 
 ## Separate publishing required
 
 - **Firestore rules:** no changes in this release.
 - **Storage rules:** no changes in this release.
-- **Vercel/API routes:** yes. Deploy required for the new `/api/health-checks` route and updated frontend.
-- **Vercel env vars:** no new required env vars.
-
-## Still not completed
-
-This release does **not** complete full MFA enrollment/enforcement, automated Firebase rules tests, full E2E tests, full setup wizard, owner dashboard, recurring prep templates, professional demo mode, or full mobile cleanup across every screen.
-
-Latest Build: 15.0.18 - Mobile & Paperwork Polish
+- **API routes:** yes, deploy through Vercel because `/api/account-security` and protected route MFA guards changed.
+- **Vercel environment variables:** add or confirm `MFA_ENFORCE_ELEVATED_ROLES=false` for testing. Optional aliases supported: `FIREBASE_MFA_ENFORCE_ELEVATED_ROLES` and `REACT_APP_MFA_ENFORCE_ELEVATED_ROLES`.

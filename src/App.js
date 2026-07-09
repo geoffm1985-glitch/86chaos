@@ -87,6 +87,7 @@ export default function App() {
   const [voiceScheduleSubTabTarget, setVoiceScheduleSubTabTarget] = useState(null);
   const [voiceHelpSearchTarget, setVoiceHelpSearchTarget] = useState(null);
   const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
+  const [inventorySubTabTarget, setInventorySubTabTarget] = useState(null);
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   const [workspaceMembershipRefreshKey] = useState(0);
   const [isPushRepairing, setIsPushRepairing] = useState(false);
@@ -443,6 +444,26 @@ if (liveAppUser && clientData) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
   const displayClientData = isDemoMode && clientData ? { ...clientData, ownerEmail: 'Hidden for demo', ownerPhone: 'Hidden for demo', address: 'Hidden for demo', businessAddress: 'Hidden for demo', systemSettings: { tips: true, ...(clientData.systemSettings || {}), address: 'Hidden for demo', geofenceAddress: 'Hidden for demo' } } : clientData;
+  const mfaEnvValue = String(process.env.REACT_APP_MFA_ENFORCE_ELEVATED_ROLES || '').toLowerCase().trim();
+  const mfaFrontendEnforced = ['true', '1', 'yes', 'enforce'].includes(mfaEnvValue) || displayClientData?.systemSettings?.mfaEnforceElevatedRoles === true || displayClientData?.securityCenter?.mfaEnforceElevatedRoles === true;
+  const elevatedRoleText = `${liveAppUser?.role || ''} ${liveAppUser?.accountRole || ''} ${liveAppUser?.title || ''}`.toLowerCase();
+  const userNeedsMfa = Boolean(
+    liveAppUser?.isSuperAdmin === true ||
+    liveAppUser?.isAdmin === true ||
+    liveAppUser?.isOwner === true ||
+    liveAppUser?.accountOwner === true ||
+    liveAppUser?.workspaceOwner === true ||
+    liveAppUser?.permissions?.team === true ||
+    liveAppUser?.permissions?.settings === true ||
+    /owner|manager|admin|administrator|supervisor|lead|gm|general manager/.test(elevatedRoleText)
+  );
+  const userHasMfaEnrollment = Boolean(
+    liveAppUser?.mfaEnabled === true ||
+    liveAppUser?.multiFactorEnabled === true ||
+    liveAppUser?.accountSecurity?.mfaEnabled === true ||
+    Number(liveAppUser?.mfaFactorCount || liveAppUser?.accountSecurity?.factorCount || 0) > 0
+  );
+  const mfaFrontendLockActive = Boolean(!ghostTenant && !isDemoMode && mfaFrontendEnforced && userNeedsMfa && !userHasMfaEnrollment);
   const demoWritableText = /save|add|create|delete|remove|publish|apply|copy previous|smart fill|clock|send|post|approve|restore|backup|upload|scan|reset|deactivate|terminate|deploy|update|edit|fix|out/i;
   const blockDemoMutation = (e) => {
     if (!isDemoMode) return;
@@ -660,6 +681,10 @@ if (liveAppUser && clientData) {
   }, [appUser]);
 
   const setActiveTab = (tab) => {
+    if (mfaFrontendLockActive && !['settings', 'help'].includes(tab)) {
+      addToast('Two-Step Login Required', 'Open Account Security in Settings to finish MFA setup before using elevated tools.');
+      tab = 'settings';
+    }
     if (isDemoMode) {
       const allowedDemoTabs = ['today', 'help'];
       if (displayClientFeatures.schedule !== false) allowedDemoTabs.push('published');
@@ -1128,6 +1153,23 @@ What I clicked / expected:
 
 
   const renderMainContent = () => {
+    if (mfaFrontendLockActive && !['settings', 'help'].includes(activeTabState)) {
+      return (
+        <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-amber-500/40`}>
+          <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-3xl">🔐</div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Elevated Account Protection</p>
+            <h2 className="text-2xl font-black text-white mt-2">Two-Step Login Required</h2>
+            <p className="text-sm font-bold text-slate-400 mt-3">This owner/manager/admin account needs MFA enrollment before elevated tools unlock. Open Account Security in Settings, finish setup, then log out and sign back in with the second factor.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <button onClick={() => setActiveTab('settings')} className={T.btn}>Open Account Security</button>
+            <button onClick={() => { localStorage.removeItem('86chaosUser'); sessionStorage.removeItem('86chaosUser'); setAppUser(null); }} className={T.btnAlt}>Log Out</button>
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Keep enforcement off until every elevated account has tested enrollment and a fresh MFA login.</p>
+        </div>
+      );
+    }
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
     if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
@@ -1137,8 +1179,8 @@ What I clicked / expected:
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
-    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
-    if (activeTabState === 'ai-tools' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
+    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
+    if (activeTabState === 'ai-tools' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
