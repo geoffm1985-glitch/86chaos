@@ -2981,6 +2981,16 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
 const ADMIN_TROUBLESHOOTING_ARTICLES = [
   {
+    "title": "Version 15.0.33 Deployment Syntax Hotfix",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.33 deployment syntax hotfix JSX manual build failed vercel adjacent jsx elements",
+    "body": [
+      "15.0.33 fixes the Vercel build failure from 15.0.32. The System Administrator Manual support console was missing one closing wrapper around the manual tab JSX, which caused the build compiler to report adjacent JSX elements near the end of src/features/management.jsx.",
+      "No Firebase rule changes, Storage rule changes, API route changes, or new environment variables are included in this hotfix.",
+      "After deploy, confirm /version.json reports 15.0.33, then open System Administrator -> Manual and type a support question to verify the console renders."
+    ]
+  },
+  {
     "title": "Version 15.0.32 AI Support Manual and Production Hardening",
     "group": "System Administrator",
     "keywords": "v15 15.0.32 ai support manual troubleshooting security hardening account deletion recovery codes firebase rules storage rules production",
@@ -8208,6 +8218,7 @@ another@email.com"></textarea>
             </div>
           </div>
         </div>
+      </div>
       )}
         </div>
       </div>
@@ -8534,6 +8545,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15033', title:'What changed in version 15.0.33', group:'Release Notes', keywords:'new update 15.0.33 deployment syntax hotfix vercel adjacent jsx elements manual', body:['Fixed the Vercel build failure from 15.0.32 caused by an unclosed JSX wrapper in System Administrator -> Manual.', 'Kept the 15.0.32 AI Support Manual, account deletion review, RECOVERY_CODE_SECRET guard, and production-hardening changes intact.', 'No Firebase rules, Storage rules, API routes, or Vercel environment variables changed in this hotfix.'] },
   { id:'new-15032', title:'What changed in version 15.0.32', group:'Release Notes', keywords:'new update 15.0.32 ai support manual security deletion recovery codes firebase rules', body:['System Administrator Manual now works like a support console: type a customer question and it returns likely causes, first checks, fix steps, warnings, escalation guidance, and relevant articles.', 'Security Center now includes account deletion request review so privacy requests can be marked reviewing, complete, or denied with admin notes and audit history.', 'MFA recovery codes now require a dedicated RECOVERY_CODE_SECRET in Vercel before codes can be generated or used.', 'Firebase rules no longer rely on personal-email fallbacks. Super Admin access for Firestore and Storage rules must come from a custom claim or Firestore profile flag.', 'This build requires a Vercel redeploy and testing-side Firebase rule publish before production rollout.'] },
   { id:'new-15031', title:'What changed in version 15.0.31', group:'Release Notes', keywords:'new update 15.0.31 app load hotfix system administrator locked out version mismatch whoami admin access', body:['The app load crash from 15.0.30 was fixed; /version.json, footer/version labels, API metadata, README, and release files now report 15.0.31.', 'If a user opens System Administrator without access, the app now shows exactly why access was denied instead of a generic unavailable page.', 'The app now calls /api/whoami to see whether the server recognizes the signed-in email through MASTER_ADMIN_EMAIL(S), Firebase custom claims, or Firestore super-admin flags.', 'System Administrator includes an Admin Access signal card explaining the current Super Admin authority source.', 'The 15.0.30 Super Admin diagnostics plus the 15.0.29 question-mark helpers, drawer search reset, and backup troubleshooting manual remain included.'] },
   { id:'new-15028', title:'What changed in version 15.0.28', group:'Release Notes', keywords:'new update 15.0.28 productization account deletion restore drill security center hardcoded admin', body:['Account Security now has an Account Deletion Request flow that records a reviewable request instead of silently deleting operational records.', 'Security Center now includes Restore Drill status so backups can be proven with a safe test restore.', 'System Administrator access no longer relies on hardcoded personal email fallbacks. Use configured env vars, custom claims, or Super Admin profile flags.', 'Several internal/testing labels were cleaned up for public-readiness polish.'] },

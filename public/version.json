@@ -1,7 +1,7 @@
 {
-  "version": "15.0.32",
-  "name": "86 Chaos 15.0.32 AI Support Manual and Production Hardening",
+  "version": "15.0.33",
+  "name": "86 Chaos 15.0.33 Deployment Syntax Hotfix",
   "releasedAt": "2026-07-09",
-  "label": "86 Chaos 15.0.32",
-  "build": "15.0.32"
+  "label": "86 Chaos 15.0.33",
+  "build": "15.0.33"
 }

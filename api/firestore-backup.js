@@ -3,7 +3,7 @@ const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '15.0.32';
+const APP_VERSION = '15.0.33';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
