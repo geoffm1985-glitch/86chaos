@@ -1,5 +1,5 @@
 const admin = require('firebase-admin');
-const { requireMfaIfEnforced } = require('./_chaos-admin');
+const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 
 function initAdmin() {
   if (admin.apps.length) return admin;
@@ -14,9 +14,17 @@ async function verifySuperAdmin(req) {
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
-  if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) throw new Error('Super admin access required.');
-  const mfa = requireMfaIfEnforced(decoded, {}, true);
+  const db = app.firestore();
+  const email = String(decoded.email || '').toLowerCase().trim();
+  let profileSnap = await db.collection('users').doc(decoded.uid).get();
+  let profile = profileSnap.exists ? (profileSnap.data() || {}) : {};
+  if (!profileSnap.exists && email) {
+    const byEmail = await db.collection('users').where('email', '==', email).limit(1).get();
+    if (!byEmail.empty) profile = byEmail.docs[0].data() || {};
+  }
+  const isSuperAdmin = decoded.superAdmin === true || profile.isSuperAdmin === true || profile.systemAccess?.superAdmin === true || masterEmails().includes(email);
+  if (!isSuperAdmin) throw new Error('Super admin access required.');
+  const mfa = requireMfaIfEnforced(decoded, profile, true);
   if (!mfa.ok) throw new Error(mfa.error);
   return decoded;
 }
@@ -33,7 +41,7 @@ function normalizeIds(raw) {
 
 function isProtectedUser(profile, caller, protectedEmails) {
   const email = String(profile?.email || '').toLowerCase().trim();
-  return protectedEmails.has(email) || profile?.id === caller.uid;
+  return protectedEmails.has(email) || profile?.id === caller.uid || profile?.isSuperAdmin === true || profile?.systemAccess?.superAdmin === true;
 }
 
 module.exports = async function handler(req, res) {
@@ -44,8 +52,7 @@ module.exports = async function handler(req, res) {
     const db = app.firestore();
     const emails = normalizeEmails(req.body?.emails || req.body?.emailText);
     const userIds = normalizeIds(req.body?.userIds || req.body?.uids || req.body?.profileIds);
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
-    const protectedEmails = new Set([masterEmail, (caller.email || '').toLowerCase()]);
+    const protectedEmails = new Set([...masterEmails(), (caller.email || '').toLowerCase()].filter(Boolean));
 
     let authDeleted = 0;
     let profileDeleted = 0;
@@ -73,7 +80,7 @@ module.exports = async function handler(req, res) {
         try {
           try {
             const authUser = await app.auth().getUser(profile.id);
-            if ((authUser.email || '').toLowerCase() === masterEmail || authUser.uid === caller.uid) throw new Error('Protected admin account.');
+            if (protectedEmails.has((authUser.email || '').toLowerCase()) || authUser.uid === caller.uid || authUser.customClaims?.superAdmin === true) throw new Error('Protected admin account.');
             await app.auth().deleteUser(authUser.uid);
             authDeleted++;
           } catch (err) {
@@ -108,7 +115,7 @@ module.exports = async function handler(req, res) {
       try {
         const user = await app.auth().getUserByEmail(email);
         uidFromAuth = user.uid;
-        if ((user.email || '').toLowerCase() === masterEmail || user.uid === caller.uid) throw new Error('Protected admin account.');
+        if (protectedEmails.has((user.email || '').toLowerCase()) || user.uid === caller.uid || user.customClaims?.superAdmin === true) throw new Error('Protected admin account.');
         await app.auth().deleteUser(user.uid);
         authDeleted++;
       } catch (err) {

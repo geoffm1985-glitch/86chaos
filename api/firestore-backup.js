@@ -1,9 +1,9 @@
 const admin = require('firebase-admin');
-const { requireMfaIfEnforced } = require('./_chaos-admin');
+const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '15.0.31';
+const APP_VERSION = '15.0.32';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -165,14 +165,15 @@ async function authorize(req, adminApp) {
 
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
-    const email = (decoded.email || '').toLowerCase();
-    if ((masterEmail && email === masterEmail) || decoded.superAdmin === true) {
-      const mfa = requireMfaIfEnforced(decoded, {}, true);
+    const email = (decoded.email || '').toLowerCase().trim();
+    const userSnap = await adminApp.firestore().collection('users').doc(decoded.uid).get();
+    const user = userSnap.exists ? (userSnap.data() || {}) : {};
+    if (masterEmails().includes(email) || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, user, true);
       if (!mfa.ok) return mfa;
       return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '', mfa };
     }
-    return { ok: false, status: 403, error: 'Only the master admin or a super admin can run backups.' };
+    return { ok: false, status: 403, error: 'Only a System Administrator can run backups.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }

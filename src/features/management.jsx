@@ -2981,6 +2981,102 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
 const ADMIN_TROUBLESHOOTING_ARTICLES = [
   {
+    "title": "Version 15.0.32 AI Support Manual and Production Hardening",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.32 ai support manual troubleshooting security hardening account deletion recovery codes firebase rules storage rules production",
+    "body": [
+      "15.0.32 turns the System Administrator Manual into a question-driven support console. Type the customer's problem, read the first checks, follow the fix steps, then open the most relevant articles.",
+      "Security Center now shows account deletion requests so privacy requests can be reviewed, marked complete, or denied with an audit trail.",
+      "Recovery codes now require RECOVERY_CODE_SECRET in Vercel before they can be generated or used. The secret must be at least 32 characters and must be set in both Preview and Production if both environments are used.",
+      "Firebase rules no longer depend on a baked-in personal email. Super Admin access must come from a Firebase custom claim, Firestore users/{uid}.isSuperAdmin, users/{uid}.systemAccess.superAdmin, or the server env master email list for API routes.",
+      "Use the included README and QA checklist before production. Test on the testing Firebase/Vercel side first, then repeat on the main side only after login, manual search, MFA recovery, backups, push, menu scan, invoice scan, and deletion review all pass."
+    ]
+  },
+  {
+    "title": "Customer says the app is blank or stuck loading",
+    "group": "Troubleshooting",
+    "keywords": "blank screen stuck loading app load white screen chrome cache version deployment firebase config service worker",
+    "body": [
+      "First ask for the URL, device, browser, and screenshot. Confirm they are on the correct testing or production link.",
+      "Open /version.json on that same link and confirm it matches the deployed release. If the version is old, the browser or deployment cache is probably stale.",
+      "Have the customer hard refresh, close all tabs, reopen the app, or clear site data. On mobile Chrome, use the browser menu, History, Clear browsing data, then reopen.",
+      "If only one workspace is blank, check the user's restaurantId and the workspace document. If everyone is blank, check Vercel deployment status and Firebase project settings.",
+      "If the browser console shows permission-denied, publish the matching Firestore rules and Storage rules for that Firebase project, then log out and back in."
+    ]
+  },
+  {
+    "title": "Customer cannot log in or is locked out",
+    "group": "Access / Troubleshooting",
+    "keywords": "cannot login locked out password reset email verification mfa recovery code lost phone force password disabled account",
+    "body": [
+      "Confirm the exact email they are typing. Search the email in System Administrator People and Firebase Authentication.",
+      "If the password is wrong, send a Firebase password reset. If the account is disabled, confirm why before enabling it.",
+      "If MFA blocks them because they lost a phone, use Account Security MFA recovery as a System Administrator, write a reason, and have them enroll again.",
+      "If recovery codes are missing, set RECOVERY_CODE_SECRET in Vercel, redeploy, then generate recovery codes from Account Security.",
+      "If they can log in but see the wrong restaurant, fix restaurantId, activeRestaurantId, membership, or workspace routing before changing permissions."
+    ]
+  },
+  {
+    "title": "Push notifications only go to one person or do not arrive",
+    "group": "Push Notifications",
+    "keywords": "push notifications only geoff one person not receiving fcm token repair notification permission token stale send-push schedule alert",
+    "body": [
+      "Check whether the user has allowed notifications in the browser or phone settings. Blocked browser permission means the app cannot send pushes to that device.",
+      "Open System Administrator Push tools and check token counts, stale tokens, and per-user test push results.",
+      "Have the user open the app on the device they want notifications on. The app needs to save a fresh token from that device.",
+      "Run push token repair if tokens look stale or attached to the wrong profile. Then send a per-user test push before sending a broadcast.",
+      "If only Super Admin receives pushes, confirm Firestore rules allow each signed-in user to write their own token and confirm the send route is not filtering to the admin account."
+    ]
+  },
+  {
+    "title": "Menu or invoice AI scan fails",
+    "group": "AI Scans",
+    "keywords": "menu intelligence invoice scan gemini invalid json model not found api key v1beta flash pdf photo storage upload",
+    "body": [
+      "First read the exact error toast. Model-not-found means the Gemini model name or API version is wrong for the key. Invalid JSON means the AI replied in a shape the parser rejected.",
+      "Check Vercel environment variables for the Gemini/API key on the same deployment environment the customer is using.",
+      "Confirm the upload is a supported image or PDF and under the allowed size. Storage rules must allow the scan folder and required metadata.",
+      "Try a clearer photo or smaller PDF. Blurry, sideways, cropped, or handwritten invoices are much more likely to fail.",
+      "If the scan reaches 100 percent then fails, the upload worked and the failure is in the AI route or parser. Check Vercel function logs for scan-menu or scan-invoice."
+    ]
+  },
+  {
+    "title": "Firebase rules after security hardening",
+    "group": "Firebase / Rules",
+    "keywords": "firebase rules firestore storage publish testing production super admin claim isSuperAdmin systemAccess lockout",
+    "body": [
+      "Publish Firestore rules and Storage rules to the testing Firebase project first. Test login, System Administrator, account security, push, scan uploads, schedule, inventory, and manual support search.",
+      "Before publishing hardened rules, make sure your Super Admin account has a real admin source: Firebase custom claim superAdmin=true, users/{uid}.isSuperAdmin=true, or users/{uid}.systemAccess.superAdmin=true.",
+      "Server env master emails can authorize API routes, but Firebase rules cannot read Vercel env vars. Do not rely on MASTER_ADMIN_EMAIL for Firestore or Storage rules.",
+      "After publishing rules, log out and back in so Firebase auth claims refresh.",
+      "Repeat the same process on production only after the testing side works."
+    ]
+  },
+  {
+    "title": "Account deletion request workflow",
+    "group": "Privacy / App Store Readiness",
+    "keywords": "account deletion request privacy app store google play delete account export anonymize retention review complete deny",
+    "body": [
+      "Customers can request account deletion from Account Security. This creates an accountDeletionRequests record and a Security Center alert.",
+      "Open System Administrator Security Center and review the request. Mark Reviewing when you start working it.",
+      "Before marking Complete, confirm identity, check legal/operational retention needs, export anything required, then delete or anonymize the account data using the protected admin tools.",
+      "Use Deny only when the request is invalid, duplicate, canceled through another channel, or cannot be completed for a documented reason.",
+      "Every review action writes admin notes and an audit log so store/privacy reviews have a paper trail."
+    ]
+  },
+  {
+    "title": "Recovery codes and MFA safety",
+    "group": "MFA / Account Security",
+    "keywords": "recovery codes mfa lost phone RECOVERY_CODE_SECRET two step login sms admin reset backup code",
+    "body": [
+      "RECOVERY_CODE_SECRET must be set in Vercel before recovery codes can be generated or used. Use a random 32+ character value and never reuse a public API key.",
+      "Generate recovery codes only after the user has MFA enrolled. Codes are shown once and should be saved somewhere private.",
+      "If a user loses a phone, try a recovery code first. If that fails, a System Administrator can reset MFA factors from Account Security with a written reason.",
+      "Keep MFA enforcement off until at least one owner and one System Administrator have enrolled, logged out, logged back in with MFA, and tested recovery.",
+      "Never disable MFA for every user just to fix one lost phone."
+    ]
+  },
+  {
     "title": "Version 15.0.31 App Load Hotfix",
     "group": "System Administrator",
     "keywords": "v15 15.0.31 app load hotfix version mismatch system administrator locked out master admin env whoami",
@@ -3373,6 +3469,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const defaultDemoFeatures = { published:true, schedule:true, events:true, ops:true, messages:true, prep:true, recipes:true, inventory:true, financials:true, team:true, maintenance:true, help:true };
   const [demoFeatures, setDemoFeatures] = useState(defaultDemoFeatures);
   const [adminManualSearch, setAdminManualSearch] = useState('');
+  const [adminManualQuestion, setAdminManualQuestion] = useState('');
+  const [adminManualCategory, setAdminManualCategory] = useState('All');
+  const [selectedAdminArticleId, setSelectedAdminArticleId] = useState('');
   const [adminHelpModal, setAdminHelpModal] = useState(null);
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0);
@@ -3384,6 +3483,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [securityError, setSecurityError] = useState(''); 
   const [restoreDrillStatus, setRestoreDrillStatus] = useState(null);
   const [isRestoreDrillBusy, setIsRestoreDrillBusy] = useState(false);
+  const [accountDeletionRequests, setAccountDeletionRequests] = useState([]);
+  const [isAccountDeletionAdminBusy, setIsAccountDeletionAdminBusy] = useState(false);
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -3558,6 +3659,36 @@ const [editingRest, setEditingRest] = useState(null);
     }
   };
 
+  const handleAccountDeletionAdminAction = async (request, action) => {
+    const label = action === 'review' ? 'mark this request as reviewing' : action === 'complete' ? 'mark this request complete' : 'deny this request';
+    const defaultNote = action === 'complete'
+      ? 'Verified identity, checked retention needs, completed export/anonymize/delete steps as required.'
+      : action === 'review'
+        ? 'Request accepted for administrator review.'
+        : '';
+    const notes = window.prompt(`Account deletion request for ${request.email || request.uid || request.id}.\n\nAdd an admin note to ${label}.`, defaultNote);
+    if (notes === null) return;
+    if (['complete', 'deny'].includes(action) && notes.trim().length < 8) {
+      addToast('More Detail Needed', 'Add a short note so the privacy audit trail is useful.');
+      return;
+    }
+    setIsAccountDeletionAdminBusy(true);
+    try {
+      const response = await secureFetch('/api/account-deletion-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: `admin-${action}`, targetUid: request.uid || request.id, adminNotes: notes })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || `Could not ${label}.`);
+      addToast('Account Deletion Updated', data.message || `Request marked ${data.status || action}.`);
+    } catch (err) {
+      addToast('Deletion Request Error', err.message || 'Could not update the account deletion request.');
+    } finally {
+      setIsAccountDeletionAdminBusy(false);
+    }
+  };
+
   const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
   const printWorkspaceLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
@@ -3714,11 +3845,15 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('restoreDrillStatus');
        setRestoreDrillStatus(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setRestoreDrillStatus(null); noteLoadError('restoreDrillStatus', err); });
+    const unsubDeletionRequests = onSnapshot(collection(db, 'accountDeletionRequests'), snap => {
+       clearLoadError('accountDeletionRequests');
+       setAccountDeletionRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.updatedAt || b.requestedAt || 0) - new Date(a.updatedAt || a.requestedAt || 0)).slice(0, 100));
+    }, err => { setAccountDeletionRequests([]); noteLoadError('accountDeletionRequests', err); });
     const unsubOpsReview = onSnapshot(doc(db, 'system', 'operationsReview'), docSnap => {
        clearLoadError('operationsReview');
        setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubRestoreDrill(); unsubOpsReview(); };
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubRestoreDrill(); unsubDeletionRequests(); unsubOpsReview(); };
   }, []);
 
 
@@ -4702,6 +4837,8 @@ const handleRevokeAccess = async (user) => {
   const restoreDrillAgeDays = restoreDrillDate ? Math.floor((Date.now() - restoreDrillDate.getTime()) / 86400000) : null;
   const restoreDrillStale = !restoreDrillDate || restoreDrillAgeDays > 35 || ['failed', 'needs_followup'].includes(String(restoreDrillStatus?.status || '').toLowerCase());
   const restoreDrillLabel = restoreDrillDate ? `${restoreDrillAgeDays}d ago` : 'Not recorded';
+  const activeAccountDeletionRequests = accountDeletionRequests.filter(req => ['requested', 'reviewing'].includes(String(req.status || '').toLowerCase()));
+  const completedAccountDeletionRequests = accountDeletionRequests.filter(req => ['completed', 'denied', 'canceled'].includes(String(req.status || '').toLowerCase())).slice(0, 8);
   const getNextAutoBackupDate = () => {
     const explicit = parseAnyDate(backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || backupStatus?.nextRunAt);
     if (explicit && explicit.getTime() > backupCountdownTick) return explicit;
@@ -5295,8 +5432,144 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Manager Brief after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
     ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
   ];
-  const adminManualQuery = adminManualSearch.trim().toLowerCase();
-  const filteredAdminManualArticles = adminManualArticles.filter(a => !adminManualQuery || `${a.title} ${a.group} ${a.keywords || ''} ${(a.body || []).join(' ')}`.toLowerCase().includes(adminManualQuery)).slice(0, 80);
+  const adminSupportPlaybooks = [
+    {
+      title: 'Login or Account Access',
+      triggers: 'login password locked out email verification disabled account mfa lost phone recovery code two step',
+      likelyCause: 'The account is either using the wrong email, blocked by password/MFA/email verification, disabled, or routed to the wrong workspace.',
+      firstChecks: ['Confirm the exact email and Firebase Auth UID.', 'Search the user in System Administrator People.', 'Check disabled status, emailVerified, forcePasswordChange, MFA status, and restaurantId.', 'Ask whether the issue started after a phone change, new browser, password reset, or new deployment.'],
+      fixSteps: ['Send password reset if the password is the issue.', 'Repair the Firestore profile if Auth exists but the user document is missing.', 'Use MFA recovery or recovery codes for lost-phone cases.', 'Fix restaurantId/membership if login works but the wrong workspace opens.', 'Have the user log out and back in after claim or profile changes.'],
+      doNot: ['Do not delete the account to fix login.', 'Do not disable MFA globally for one user.', 'Do not publish rules until your own Super Admin access is confirmed.'],
+      escalation: 'Escalate if Firebase Auth cannot find the user, /api/whoami disagrees with Firestore, or multiple users cannot log in after a deployment.'
+    },
+    {
+      title: 'Missing Tab, Missing Data, or Wrong Restaurant',
+      triggers: 'missing tab cannot see schedule inventory financials team messages settings wrong restaurant data blank permissions module feature',
+      likelyCause: 'The user is signed in but their workspace routing, module toggle, role, or permission set does not allow the screen.',
+      firstChecks: ['Open the user profile and confirm restaurantId, activeRestaurantId, and memberships.', 'Open the workspace and confirm the feature/module is enabled.', 'Check role and permissions in Staff Roster or System Administrator support edit.', 'Possess only after checking the saved routing fields.'],
+      fixSteps: ['Correct restaurantId or membership first.', 'Enable the workspace feature if the whole restaurant is missing it.', 'Grant the smallest needed permission instead of making everyone admin.', 'Ask the user to refresh or log out/in after the change.'],
+      doNot: ['Do not grant System Administrator access to fix a restaurant-level permission.', 'Do not edit production data while in Ghost Mode unless you are intentionally supporting that exact customer.'],
+      escalation: 'Escalate if rules block reads after the user has correct workspace and permissions.'
+    },
+    {
+      title: 'Time Clock, GPS, Punches, or Schedule',
+      triggers: 'clock in clock out punch unscheduled gps location geofence schedule shift swap gray passed day shift labor timesheet',
+      likelyCause: 'Most clock and schedule issues come from missing shift data, device location permission, geofence setup, or a punch that needs manager correction.',
+      firstChecks: ['Confirm the date, employee, scheduled shift, and workspace.', 'Check browser/location permission on the device.', 'Check restaurant geofence address, radius, latitude, and longitude.', 'Review punch status and any unscheduled punch alert.'],
+      fixSteps: ['Fix the schedule or shift first when the employee is expected to work.', 'Have the employee allow location and reopen the app.', 'Use Labor/Timesheets for corrections with a reason note.', 'If a past day still looks active, confirm the current date/timezone and app version.'],
+      doNot: ['Do not manually change wages while fixing a punch unless payroll specifically requires it.', 'Do not ignore unscheduled punch alerts; they are evidence for manager review.'],
+      escalation: 'Escalate if all users in one restaurant lose GPS or if maps/geocoding fail after deployment.'
+    },
+    {
+      title: 'Push Notifications',
+      triggers: 'push notification alert not receiving only one person token fcm schedule alert message alert browser permission',
+      likelyCause: 'The device has no current push token, browser notifications are blocked, or the token is stale/written to the wrong profile.',
+      firstChecks: ['Check the user notification permission and fcmToken in People/Push tools.', 'Ask which device should receive the alert and confirm they opened the app on that device.', 'Send a per-user test push before sending a broadcast.', 'Check Vercel/Firebase Admin env vars if every push fails.'],
+      fixSteps: ['Have the user allow notifications and reopen the app.', 'Run push token repair if tokens are stale or mismatched.', 'Send one test push to the user.', 'If broadcasts fail but direct push works, inspect the audience/filter logic.'],
+      doNot: ['Do not assume one working admin token means everyone is configured.', 'Do not ask users to reinstall before checking browser notification permission.'],
+      escalation: 'Escalate if the send-push API route returns credential errors or no non-admin users can save tokens.'
+    },
+    {
+      title: 'AI Menu or Invoice Scans',
+      triggers: 'menu intelligence invoice scan gemini ai invalid json model not found pdf photo upload parse scanner ingredients vendor',
+      likelyCause: 'The file uploaded but Gemini/model configuration, file type, storage rules, or parser output caused the scan to stop.',
+      firstChecks: ['Read the exact error toast and Vercel function log.', 'Confirm Gemini/API key exists in the same Vercel environment.', 'Confirm the file is a supported image/PDF and under the allowed size.', 'Check Storage rules and purpose metadata for scan uploads.'],
+      fixSteps: ['Try a clearer/smaller image or PDF.', 'Fix model/API version errors in the scan route env/config.', 'If invalid JSON repeats, capture the raw response in logs and tighten parser handling.', 'Approve only reviewed scan rows; do not bulk-save questionable AI output.'],
+      doNot: ['Do not paste invoices or menus into public tickets with secrets/customer data.', 'Do not turn scanner storage rules wide open to fix one upload.'],
+      escalation: 'Escalate when multiple good files fail at 100 percent or model-not-found appears.'
+    },
+    {
+      title: 'Blank Screen, App Load, or Version Mismatch',
+      triggers: 'blank screen stuck loading app load white screen version cache service worker deployment vercel firebase config',
+      likelyCause: 'The browser is using an old build/cache, the wrong deployment URL, or a runtime startup error is blocking React.',
+      firstChecks: ['Open /version.json on the exact URL.', 'Check Vercel deployment status and browser console errors.', 'Ask whether it happens on one device or everyone.', 'Check Firebase project IDs in the app and API diagnostics.'],
+      fixSteps: ['Hard refresh, close tabs, and clear site data.', 'Redeploy the latest build if /version.json is old.', 'Run Health Dashboard and full diagnostics.', 'If permission-denied appears, publish the matching rules and refresh claims.'],
+      doNot: ['Do not change Firebase rules until you know whether this is cache, deploy, or permissions.', 'Do not test production fixes only on a preview URL.'],
+      escalation: 'Escalate if the current build crashes before login or the app/API Firebase project IDs differ.'
+    },
+    {
+      title: 'Firebase Rules or Admin Lockout',
+      triggers: 'firebase rules firestore storage permission denied super admin locked out master admin claim isSuperAdmin systemAccess publish testing production',
+      likelyCause: 'Rules cannot see Vercel env vars, so Super Admin access must exist as Firebase custom claims or Firestore profile flags before hardened rules are published.',
+      firstChecks: ['Confirm your own user document has isSuperAdmin=true or systemAccess.superAdmin=true, or your Auth token has custom claim superAdmin=true.', 'Check /api/whoami for server recognition.', 'Publish rules to testing first.', 'Log out and back in after claim changes.'],
+      fixSteps: ['Use Access Control from an existing Super Admin to grant access.', 'Publish firestore.rules and storage.rules to the matching Firebase project.', 'Retest System Administrator, Storage uploads, push token writes, scans, and account security.', 'Repeat on production only after testing passes.'],
+      doNot: ['Do not rely on MASTER_ADMIN_EMAIL for Firestore or Storage rules.', 'Do not paste firebase.json into the rules editor; paste the actual rules file content.'],
+      escalation: 'Escalate immediately if no account can access System Administrator after publishing rules.'
+    },
+    {
+      title: 'Privacy or Account Deletion',
+      triggers: 'delete account deletion privacy app store google play export anonymize retain data request complete deny',
+      likelyCause: 'The customer has asked for account deletion, which requires identity review, retention review, and a documented completion trail.',
+      firstChecks: ['Find the request in Security Center.', 'Confirm who requested it and which workspace/account it affects.', 'Check whether legal/payroll/audit retention applies.', 'Decide whether export, anonymize, delete, or denial is appropriate.'],
+      fixSteps: ['Mark Reviewing when you start.', 'Use protected admin deletion/anonymization tools only after review.', 'Write a clear completion note.', 'Mark Complete or Deny in Security Center so the audit trail is closed.'],
+      doNot: ['Do not silently delete operational records without review.', 'Do not mark Complete until the real work is done.', 'Do not promise deletion of legally retained payroll/audit records without checking retention policy.'],
+      escalation: 'Escalate if the request involves a restaurant owner, payroll/legal records, or a disputed identity.'
+    }
+  ];
+  const tokenizeManualText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(word => word.length > 2);
+  const supportQuestion = (adminManualQuestion || adminManualSearch || '').trim();
+  const supportTokens = tokenizeManualText(supportQuestion);
+  const scoreBlob = (blob, weight = 1) => {
+    const lower = String(blob || '').toLowerCase();
+    if (!supportTokens.length) return 0;
+    return supportTokens.reduce((score, token) => score + (lower.includes(token) ? weight : 0), 0);
+  };
+  const scoreArticle = (article) => {
+    const title = scoreBlob(article.title, 5);
+    const group = scoreBlob(article.group, 3);
+    const keywords = scoreBlob(article.keywords, 4);
+    const body = scoreBlob((article.body || []).join(' '), 1);
+    const phraseBoost = supportQuestion && `${article.title} ${article.keywords || ''} ${(article.body || []).join(' ')}`.toLowerCase().includes(supportQuestion.toLowerCase()) ? 8 : 0;
+    return title + group + keywords + body + phraseBoost;
+  };
+  const adminManualCategories = ['All', ...Array.from(new Set(adminManualArticles.map(a => a.group || 'General'))).slice(0, 32)];
+  const scoredAdminManualArticles = adminManualArticles
+    .map((article, idx) => ({ ...article, manualId: `${idx}-${String(article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)}`, score: scoreArticle(article) }))
+    .filter(article => adminManualCategory === 'All' || article.group === adminManualCategory)
+    .sort((a, b) => (b.score - a.score) || String(a.title).localeCompare(String(b.title)));
+  const filteredAdminManualArticles = (supportTokens.length ? scoredAdminManualArticles.filter(a => a.score > 0) : scoredAdminManualArticles).slice(0, 30);
+  const scoredPlaybooks = adminSupportPlaybooks
+    .map(playbook => ({ ...playbook, score: scoreBlob(`${playbook.title} ${playbook.triggers} ${playbook.likelyCause} ${playbook.firstChecks.join(' ')} ${playbook.fixSteps.join(' ')}`, 1) + scoreBlob(playbook.title, 5) + scoreBlob(playbook.triggers, 4) }))
+    .sort((a, b) => b.score - a.score);
+  const primarySupportPlaybook = scoredPlaybooks.find(p => p.score > 0) || adminSupportPlaybooks[0];
+  const relatedSupportPlaybooks = scoredPlaybooks.filter(p => p.score > 0 && p.title !== primarySupportPlaybook.title).slice(0, 3);
+  const topManualArticles = filteredAdminManualArticles.slice(0, 8);
+  const selectedAdminArticle = scoredAdminManualArticles.find(a => a.manualId === selectedAdminArticleId) || topManualArticles[0] || scoredAdminManualArticles[0];
+  const supportAnswerLines = primarySupportPlaybook ? [
+    `Customer question: ${supportQuestion || 'No question entered yet.'}`,
+    `Likely area: ${primarySupportPlaybook.title}`,
+    `Likely cause: ${primarySupportPlaybook.likelyCause}`,
+    '',
+    'First checks:',
+    ...primarySupportPlaybook.firstChecks.map((line, idx) => `${idx + 1}. ${line}`),
+    '',
+    'Fix steps:',
+    ...primarySupportPlaybook.fixSteps.map((line, idx) => `${idx + 1}. ${line}`),
+    '',
+    'Do not:',
+    ...primarySupportPlaybook.doNot.map(line => `- ${line}`),
+    '',
+    `Escalate when: ${primarySupportPlaybook.escalation}`,
+    '',
+    'Relevant articles:',
+    ...topManualArticles.slice(0, 5).map(article => `- ${article.title}`)
+  ] : [];
+  const copyAdminSupportAnswer = async () => {
+    try {
+      await navigator.clipboard.writeText(supportAnswerLines.join('\n'));
+      addToast('Copied', 'Support answer copied.');
+    } catch (err) {
+      addToast('Copy Failed', 'Highlight the support answer and copy it manually.');
+    }
+  };
+  const sampleAdminQuestions = [
+    'Customer cannot log in after changing phones',
+    'Only I receive push notifications',
+    'Menu scan says invalid JSON',
+    'Employee cannot see Schedule tab',
+    'App is blank after deploy',
+    'Do I publish Firebase rules to testing and production?'
+  ];
 
   const handleCopyPlatformSnapshot = async () => {
     try {
@@ -6804,7 +7077,7 @@ Type RESTORE to continue.`);
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-9 gap-4">
             <StatusTile label="Firestore Rules" value={securityReport?.security?.firestoreRules?.status || 'Not checked'} />
             <StatusTile label="Storage Rules" value={securityReport?.security?.storageRules?.status || 'Not checked'} />
             <StatusTile label="App Check" value={securityReport?.security?.appCheck?.status || 'Not checked'} />
@@ -6812,6 +7085,7 @@ Type RESTORE to continue.`);
             <StatusTile label="Risky Users" value={securityReport?.riskyUsers?.length ?? '—'} />
             <StatusTile label="Last Backup" value={securityReport?.cron?.lastBackupAt ? formatClockDateTime(securityReport.cron.lastBackupAt) : 'Not checked'} />
             <StatusTile label="Restore Drill" value={restoreDrillStatus?.lastDrillAt ? formatBackupTimestamp(restoreDrillStatus.lastDrillAt) : 'Not recorded'} />
+            <StatusTile label="Deletion Requests" value={activeAccountDeletionRequests.length} />
             <StatusTile label="Version" value={securityReport?.app?.version || CURRENT_VERSION || 'Unknown'} />
           </div>
 
@@ -6843,6 +7117,45 @@ Type RESTORE to continue.`);
                 <div key={event.id} className={`${T.row}`}><div className="font-black text-white text-sm">{event.action || 'Event'}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{event.userName || 'Unknown'} • {event.restaurantId || 'platform'} • {event.timestamp ? formatClockDateTime(event.timestamp) : 'no time'}</div><div className="text-[10px] text-slate-400 font-mono mt-1 truncate">{event.target || ''}</div></div>
               ))}
             </div>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`${T.th} flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2`}>
+              <span>Account Deletion Requests</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{activeAccountDeletionRequests.length} active / {accountDeletionRequests.length} total</span>
+            </div>
+            {adminDataErrors.accountDeletionRequests && <div className={`${T.row} bg-red-900/10 text-red-100 text-xs font-bold`}>Deletion request queue is blocked by rules or auth: {adminDataErrors.accountDeletionRequests}</div>}
+            {activeAccountDeletionRequests.length === 0 ? (
+              <SmartEmptyState title="No active deletion requests" desc="When a customer requests account deletion from Account Security, review it here before taking destructive action." />
+            ) : activeAccountDeletionRequests.map(req => (
+              <div key={req.id || req.uid} className={`${T.row} flex flex-col xl:flex-row xl:items-center justify-between gap-3`}>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-black text-white text-sm truncate">{req.email || req.displayName || req.uid || req.id}</div>
+                    <SignalPip tone={String(req.status || '').toLowerCase() === 'reviewing' ? 'amber' : 'red'} label={req.status || 'requested'} />
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-bold mt-1">{req.restaurantId || 'system'} - requested {req.requestedAt ? formatClockDateTime(req.requestedAt) : 'unknown'} - updated {req.updatedAt ? formatClockDateTime(req.updatedAt) : 'not yet'}</div>
+                  {req.reason && <div className="text-xs text-slate-300 font-bold mt-2 leading-relaxed line-clamp-2">{req.reason}</div>}
+                  {req.adminNotes && <div className="text-[10px] text-amber-200 font-bold mt-2 leading-relaxed">Admin note: {req.adminNotes}</div>}
+                </div>
+                <div className="flex flex-wrap gap-2 xl:justify-end">
+                  {String(req.status || '').toLowerCase() !== 'reviewing' && <button type="button" onClick={() => handleAccountDeletionAdminAction(req, 'review')} disabled={isAccountDeletionAdminBusy} className="px-3 py-2 bg-amber-900/20 border border-amber-500/40 text-amber-200 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Reviewing</button>}
+                  <button type="button" onClick={() => handleAccountDeletionAdminAction(req, 'complete')} disabled={isAccountDeletionAdminBusy} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/40 text-emerald-200 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Mark Complete</button>
+                  <button type="button" onClick={() => handleAccountDeletionAdminAction(req, 'deny')} disabled={isAccountDeletionAdminBusy} className="px-3 py-2 bg-red-900/20 border border-red-500/40 text-red-200 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Deny</button>
+                </div>
+              </div>
+            ))}
+            {completedAccountDeletionRequests.length > 0 && (
+              <div className="border-t border-[#2A353D] bg-[#0B0E11]/50">
+                <div className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Recent closed requests</div>
+                {completedAccountDeletionRequests.map(req => (
+                  <div key={`closed-${req.id || req.uid}`} className="px-4 py-2 border-t border-[#2A353D] text-[10px] font-bold text-slate-400 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                    <span className="truncate">{req.email || req.displayName || req.uid || req.id}</span>
+                    <span>{req.status || 'closed'} - {req.updatedAt ? formatClockDateTime(req.updatedAt) : 'no date'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className={`${T.card} p-4 border ${restoreDrillStale ? 'border-amber-900/50' : 'border-emerald-900/40'}`}>
@@ -7775,40 +8088,122 @@ another@email.com"></textarea>
       {subTab === 'manual' && (
         <div id="admin-manual" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-5 cockpit-grid`}>
-            <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Internal support manual</div>
-            <h2 className="text-2xl font-black text-white">Administrator Manual + Troubleshooting Database</h2>
-            <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search this before touching a client. It covers administrator workflows and the entire app help library so future support hires can debug from keywords users actually say.</p>
-            <div className="relative mt-4 max-w-3xl">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input value={adminManualSearch} onChange={e => setAdminManualSearch(e.target.value)} placeholder="Search admin manual: permission denied, missing tab, punch, backup, ghost, GPS, schedule..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-10 pr-3 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381]" />
+            <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">AI support interface</div>
+                <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><HelpCircle size={24} className="text-[#D4A381]"/> System Administrator Support Console</h2>
+                <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Type the customer's question, get the likely cause, first checks, exact fix steps, and the most relevant manual articles without scrolling forever.</p>
+              </div>
+              <button type="button" onClick={copyAdminSupportAnswer} className="px-4 py-3 bg-[#D4A381] text-slate-950 rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 flex items-center justify-center gap-2"><ClipboardList size={14}/> Copy Support Answer</button>
+            </div>
+            <div className="mt-4 grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Customer question or symptom</label>
+                <textarea value={adminManualQuestion} onChange={e => setAdminManualQuestion(e.target.value)} rows={4} placeholder="Example: customer says the menu scan failed with invalid JSON, or employee cannot see the schedule tab..." className="mt-2 w-full bg-[#12161A] border border-[#2A353D] rounded-xl px-4 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381] resize-none" />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {sampleAdminQuestions.map(sample => <button key={sample} type="button" onClick={() => setAdminManualQuestion(sample)} className="px-3 py-1.5 bg-[#0B0E11] border border-[#2A353D] rounded-full text-[10px] font-black uppercase tracking-widest text-slate-300 hover:border-[#D4A381]">{sample}</button>)}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Article filter</label>
+                <div className="relative mt-2">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input value={adminManualSearch} onChange={e => setAdminManualSearch(e.target.value)} placeholder="Optional keyword filter..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-10 pr-3 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381]" />
+                </div>
+                <select value={adminManualCategory} onChange={e => setAdminManualCategory(e.target.value)} className="mt-2 w-full bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-3 text-xs font-black uppercase tracking-widest text-slate-300 outline-none focus:border-[#D4A381]">
+                  {adminManualCategories.map(group => <option key={group} value={group}>{group}</option>)}
+                </select>
+              </div>
             </div>
           </div>
 
-          <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-4">
+          <div className="grid xl:grid-cols-[320px_minmax(0,1fr)] gap-4">
+            <div className="space-y-4">
             <div className={`${T.card} p-4 h-max`}>
               <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-3">Fast support routine</div>
               {[
-                'Search the client or user first.',
-                'Confirm restaurantId before editing.',
-                'Check Command Deck action queue.',
+                'Get the exact email, workspace, URL, device, and screenshot.',
+                'Search the user and workspace before editing.',
+                'Confirm restaurantId, permissions, and current version.',
                 'Copy diagnostics before risky changes.',
-                'Use Grant Access only for platform admin.',
-                'Possess, verify, fix, then exit Ghost Mode.'
+                'Fix the smallest thing that explains the symptom.',
+                'Verify as the user, then exit Ghost Mode.'
               ].map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 mb-2"><span className="w-5 h-5 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}
             </div>
 
-            <div className="space-y-3">
+              <div className={`${T.card} overflow-hidden max-h-[44vh] overflow-y-auto custom-scrollbar`}>
+                <div className={T.th}>Related Playbooks</div>
+                {[primarySupportPlaybook, ...relatedSupportPlaybooks].filter(Boolean).map((playbook, idx) => (
+                  <div key={playbook.title} className={`${T.row} ${idx === 0 ? 'bg-[#D4A381]/10' : ''}`}>
+                    <div className="flex items-center gap-2">
+                      <SignalPip tone={idx === 0 ? 'amber' : 'blue'} label={idx === 0 ? 'best match' : 'related'} />
+                      <div className="font-black text-white text-sm">{playbook.title}</div>
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-bold mt-1">Score {playbook.score || 0}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4 min-w-0">
+              <div className={`${T.card} p-5 border border-[#D4A381]/40`}>
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Suggested answer</div>
+                    <h3 className="text-xl font-black text-white mt-1">{primarySupportPlaybook?.title || 'Start with support triage'}</h3>
+                  </div>
+                  <SignalPip tone={supportQuestion ? 'emerald' : 'amber'} label={supportQuestion ? 'question ready' : 'type a question'} />
+                </div>
+                {!supportQuestion && <div className="mt-4 bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 text-xs font-bold text-amber-100">Type the customer problem above or pick a sample question. The console will match it against support playbooks and the full manual.</div>}
+                <div className="mt-4 grid lg:grid-cols-2 gap-3">
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                    <div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2">Likely cause</div>
+                    <p className="text-sm font-bold text-slate-200 leading-relaxed">{primarySupportPlaybook?.likelyCause}</p>
+                  </div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                    <div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2">Escalate when</div>
+                    <p className="text-sm font-bold text-slate-200 leading-relaxed">{primarySupportPlaybook?.escalation}</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid lg:grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-2">First checks</div>
+                    <div className="space-y-2">{(primarySupportPlaybook?.firstChecks || []).map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-[#12161A] border border-[#2A353D] text-[#D4A381] flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-widest font-black text-emerald-300 mb-2">Fix it in this order</div>
+                    <div className="space-y-2">{(primarySupportPlaybook?.fixSteps || []).map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-emerald-900/30 border border-emerald-500/30 text-emerald-200 flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}</div>
+                  </div>
+                </div>
+                <div className="mt-4 bg-red-900/10 border border-red-500/30 rounded-xl p-3">
+                  <div className="text-[10px] uppercase tracking-widest font-black text-red-200 mb-2">Do not do this</div>
+                  <div className="space-y-1">{(primarySupportPlaybook?.doNot || []).map((line, idx) => <div key={idx} className="text-xs font-bold text-red-100 leading-relaxed">- {line}</div>)}</div>
+                </div>
+              </div>
+
+              {selectedAdminArticle && (
+                <div className={`${T.card} p-5`}>
+                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-black text-[#D4A381]"><BookOpen size={14}/> Manual article</div>
+                  <h3 className="font-black text-white text-lg mt-2">{selectedAdminArticle.title}</h3>
+                  <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{selectedAdminArticle.group}</div>
+                  <div className="mt-4 space-y-2 max-h-[42vh] overflow-y-auto custom-scrollbar pr-1">
+                    {(selectedAdminArticle.body || []).map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-[#12161A] border border-[#2A353D] text-[#D4A381] flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}
+                  </div>
+                  <div className="mt-4 text-[9px] font-mono text-slate-600 break-words">Search terms: {selectedAdminArticle.keywords || 'manual support'}</div>
+                </div>
+              )}
+
+              <div className={`${T.card} overflow-hidden`}>
+                <div className={`${T.th} flex justify-between gap-2`}><span>Relevant Articles</span><span>{topManualArticles.length}</span></div>
               <div className="text-[10px] uppercase tracking-widest font-black text-slate-500">{filteredAdminManualArticles.length} searchable result(s)</div>
               {filteredAdminManualArticles.length === 0 && <div className={`${T.card} p-6 text-center text-xs font-bold text-slate-500`}>No manual results. Try a simpler word like “tab”, “punch”, “backup”, “delete”, “GPS”, or “permission”.</div>}
-              {filteredAdminManualArticles.map((article, idx) => (
-                <div key={`${article.title}-${idx}`} className={`${T.card} p-4`}>
+              {topManualArticles.map((article, idx) => (
+                <button type="button" onClick={() => setSelectedAdminArticleId(article.manualId)} key={article.manualId || `${article.title}-${idx}`} className={`w-full text-left ${T.row} hover:bg-[#12161A] transition-colors ${selectedAdminArticle?.manualId === article.manualId ? 'bg-[#D4A381]/10' : ''}`}>
                   <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{article.group}</div>
                   <h3 className="font-black text-white text-base mb-3">{article.title}</h3>
-                  <div className="space-y-2">
-                    {(article.body || []).map((line, i) => <div key={i} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-[#12161A] border border-[#2A353D] text-[#D4A381] flex items-center justify-center text-[10px] font-black flex-shrink-0">{i+1}</span><span>{line}</span></div>)}
-                  </div>
-                  <div className="mt-3 text-[9px] font-mono text-slate-600 break-words">Search terms: {article.keywords || 'manual support'}</div>
-                </div>
+                  <div className="text-xs text-slate-400 font-bold leading-relaxed line-clamp-2">{(article.body || [])[0] || 'Open this article for details.'}</div>
+                  <div className="mt-3 text-[9px] font-mono text-slate-600 break-words">Match score: {article.score || 0}</div>
+                </button>
               ))}
             </div>
           </div>
@@ -8139,6 +8534,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15032', title:'What changed in version 15.0.32', group:'Release Notes', keywords:'new update 15.0.32 ai support manual security deletion recovery codes firebase rules', body:['System Administrator Manual now works like a support console: type a customer question and it returns likely causes, first checks, fix steps, warnings, escalation guidance, and relevant articles.', 'Security Center now includes account deletion request review so privacy requests can be marked reviewing, complete, or denied with admin notes and audit history.', 'MFA recovery codes now require a dedicated RECOVERY_CODE_SECRET in Vercel before codes can be generated or used.', 'Firebase rules no longer rely on personal-email fallbacks. Super Admin access for Firestore and Storage rules must come from a custom claim or Firestore profile flag.', 'This build requires a Vercel redeploy and testing-side Firebase rule publish before production rollout.'] },
   { id:'new-15031', title:'What changed in version 15.0.31', group:'Release Notes', keywords:'new update 15.0.31 app load hotfix system administrator locked out version mismatch whoami admin access', body:['The app load crash from 15.0.30 was fixed; /version.json, footer/version labels, API metadata, README, and release files now report 15.0.31.', 'If a user opens System Administrator without access, the app now shows exactly why access was denied instead of a generic unavailable page.', 'The app now calls /api/whoami to see whether the server recognizes the signed-in email through MASTER_ADMIN_EMAIL(S), Firebase custom claims, or Firestore super-admin flags.', 'System Administrator includes an Admin Access signal card explaining the current Super Admin authority source.', 'The 15.0.30 Super Admin diagnostics plus the 15.0.29 question-mark helpers, drawer search reset, and backup troubleshooting manual remain included.'] },
   { id:'new-15028', title:'What changed in version 15.0.28', group:'Release Notes', keywords:'new update 15.0.28 productization account deletion restore drill security center hardcoded admin', body:['Account Security now has an Account Deletion Request flow that records a reviewable request instead of silently deleting operational records.', 'Security Center now includes Restore Drill status so backups can be proven with a safe test restore.', 'System Administrator access no longer relies on hardcoded personal email fallbacks. Use configured env vars, custom claims, or Super Admin profile flags.', 'Several internal/testing labels were cleaned up for public-readiness polish.'] },
   { id:'new-15027', title:'What changed in version 15.0.27', group:'Release Notes', keywords:'new update 15.0.27 recovery codes mfa lost phone security alerts voice preview', body:['Account Security now supports one-time recovery codes for lost-phone MFA recovery.', 'The two-step login screen can use a saved recovery code to reset MFA and let the user sign in again.', 'System Administrator MFA reset now writes a security alert for the affected user and keeps the audit trail clear.', 'Account Security has a simple readiness status so owners know whether enforcement is safe.', 'The floating voice button now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
