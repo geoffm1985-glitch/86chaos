@@ -1,0 +1,22 @@
+# Files Changed for 16.0.2
+
+- `README_REFACTOR_12_5.txt`
+  - Updated legacy source-package README text for the 16.0.2 controlled design-system upgrade.
+- `README_16_0_2_RELEASE_NOTES.md`
+  - Added release notes for 16.0.2 only.
+- `QA_16_0_2_CHECKLIST.md`
+  - Added local QA results, build status, and manual QA checklist.
+- `FILES_CHANGED_16_0_2.md`
+  - Added this file list.
+- `DEPLOY_NOTES_16_0_2.md`
+  - Added deployment notes for applying this source-only package.
+- `src/core/appCore.js`
+  - Updated shared theme tokens and `CURRENT_VERSION`.
+- `src/App.js`
+  - Added scoped 16.0.2 shell CSS variables and visual overrides.
+  - Refined header, date strip, drawer prop pass-through, footer, mobile touch sizing, and version label.
+- `src/components/common.jsx`
+  - Updated logo lockup with optional customer logo beside 86 Chaos.
+  - Improved modal, drawer, menu grouping, global search, quick actions, empty states, status tiles, and changelog modal.
+- `src/features/auth.jsx`
+  - Updated login and privacy modal styling to match the command-center system before the main shell is mounted.

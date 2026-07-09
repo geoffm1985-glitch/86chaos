@@ -4,38 +4,12 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
-import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
-import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
-import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
-const PREP_TASK_TEMPLATE_PACKS = {
-  kitchenOpenClose: {
-    label: 'Kitchen Open/Close',
-    items: [
-      { title: 'AM line temp check', category: 'General', frequency: 'daily' },
-      { title: 'PM line flip and label sweep', category: 'General', frequency: 'daily' },
-      { title: 'Clean fryer filter area', category: 'Cleaning', frequency: 'weekly', targetDay: 'Monday' },
-      { title: 'Deep clean grill backsplash', category: 'Cleaning', frequency: 'weekly', targetDay: 'Wednesday' },
-      { title: 'Monthly dry storage wipe-down', category: 'Cleaning', frequency: 'monthly', targetDate: '1' }
-    ]
-  },
-  prepRhythm: {
-    label: 'Prep Rhythm',
-    items: [
-      { title: 'Check sauces and dressings', category: 'General', frequency: 'daily' },
-      { title: 'Portion burger toppings', category: 'General', frequency: 'daily' },
-      { title: 'Build weekend prep list', category: 'General', frequency: 'weekly', targetDay: 'Thursday' },
-      { title: 'Freezer pull audit', category: 'General', frequency: 'weekly', targetDay: 'Sunday' },
-      { title: 'Review par levels', category: 'General', frequency: 'monthly', targetDate: '15' }
-    ]
-  }
-};
-
-const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
+const TabPrep = ({ currentDate, appUser, setLabelsToPrint }) => {
   const prepItems = useLiveCollection('prepItems', appUser?.restaurantId, { limitCount: 250 });
   const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
   const [subTab, setSubTab] = useState('prep');
@@ -64,7 +38,6 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
 
   // Permissions
   const canManageLineChecks = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep;
-  const safePrepWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   // Local selection state (Fixes checkboxes staying checked across days)
   const [selectedPreps, setSelectedPreps] = useState([]);
@@ -83,7 +56,6 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const [taskTargetDay, setTaskTargetDay] = useState('Monday'); 
   const [taskTargetDate, setTaskTargetDate] = useState('1');
   const [editingTaskId, setEditingTaskId] = useState(null);
-  const [taskTemplatePack, setTaskTemplatePack] = useState('kitchenOpenClose');
 
   // Line Check State
   const lineChecks = useLiveCollection('lineCheckItems', appUser?.restaurantId, { limitCount: 150 });
@@ -93,7 +65,6 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const [lcName, setLcName] = useState('');
   const [lcCat, setLcCat] = useState('Cold Holding (≤ 41°F)');
   const [temps, setTemps] = useState({});
-  const [correctiveActions, setCorrectiveActions] = useState({});
   const [editLineCheckItem, setEditLineCheckItem] = useState(null);
 
   // --- PREP LOGIC ---
@@ -102,35 +73,16 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const handleAddPrep = async (e) => { 
     e.preventDefault(); 
     if(text.trim()) { 
-      const parsedItems = parsePrepCommandItems(text);
-      const results = [];
-      const firstTargetDate = parsedItems.find(item => item.prepDate)?.prepDate || '';
-      for (const parsed of parsedItems.length ? parsedItems : [{ itemText: text.trim(), amount: 1, unit: 'item', increment: false }]) {
-        const targetPrepDate = parsed.prepDate || prepDate;
-        const activePrepForDate = prepItems.filter(p => p.date === targetPrepDate || p.isMaster);
-        const match = findPrepMatch(activePrepForDate, parsed, targetPrepDate);
-        if (match?.id) {
-          await safePrepWrite({
-            action: 'update',
-            collectionName: "prepItems",
-            docId: match.id,
-            label: "Prep quantity",
-            before: match,
-            data: buildPrepQuantityUpdate({ existingItem: match, parsedItem: parsed, actorName: appUser.name, prepDate: targetPrepDate, source: 'manual_smart_prep' })
-          });
-          results.push({ type: 'updated', name: match.text || parsed.itemText });
-        } else {
-          await safePrepWrite({
-            action: 'add',
-            collectionName: "prepItems",
-            label: "Prep item",
-            data: buildPrepCreatePayload({ parsedItem: parsed, appUser, prepDate: targetPrepDate, station, isMaster: parsed.prepDate ? false : isMaster, sourceText: text, source: 'manual_smart_prep' })
-          });
-          results.push({ type: 'created', name: parsed.itemText });
-        }
-      }
-      if (firstTargetDate) setPrepDate(firstTargetDate);
-      if (addToast) addToast('Prep Updated', summarizePrepResults(results));
+      await addDoc(collection(db, "prepItems"), { 
+        date: isMaster ? 'MASTER' : prepDate, 
+        text: text.trim(), 
+        station, 
+        isCompleted: false, 
+        completedDates: {}, 
+        isMaster, 
+        qty: 1,
+        restaurantId: appUser.restaurantId
+      }); 
       setText(''); 
     } 
   };
@@ -147,9 +99,9 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       } else {
         dts[prepDate] = appUser.name;
       }
-      await safePrepWrite({ action: 'update', collectionName: "prepItems", docId: item.id, label: "Prep completion", before: item, data: { completedDates: dts } }); 
+      await updateDoc(doc(db, "prepItems", item.id), { completedDates: dts }); 
     } else { 
-      await safePrepWrite({ action: 'update', collectionName: "prepItems", docId: item.id, label: "Prep completion", before: item, data: { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null } }); 
+      await updateDoc(doc(db, "prepItems", item.id), { isCompleted: !item.isCompleted, completedBy: !item.isCompleted ? appUser.name : null }); 
     } 
   };
   
@@ -159,21 +111,21 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const handleAddLineCheck = async (e) => {
     e.preventDefault();
     if(lcName.trim()) {
-      await safePrepWrite({ action: 'add', collectionName: "lineCheckItems", label: "Line check item", data: {
+      await addDoc(collection(db, "lineCheckItems"), {
         name: lcName.trim(),
         category: lcCat,
         restaurantId: appUser.restaurantId
-      } });
+      });
       setLcName('');
     }
   };
 
   const handleSaveLineCheckEdit = async (e) => {
     e.preventDefault();
-    await safePrepWrite({ action: 'update', collectionName: "lineCheckItems", docId: editLineCheckItem.id, label: "Line check item", before: editLineCheckItem, data: {
+    await updateDoc(doc(db, "lineCheckItems", editLineCheckItem.id), {
       name: editLineCheckItem.name.trim(),
       category: editLineCheckItem.category
-    } });
+    });
     setEditLineCheckItem(null);
   };
 
@@ -182,29 +134,20 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
     if (!val) return;
     
     const status = evaluateTemp(val, item.category);
-    const correctiveAction = String(correctiveActions[item.id] || '').trim();
-    if (status === 'Danger' && !correctiveAction) {
-      alert('Corrective action is required for an out-of-range temperature. Example: moved to walk-in, discarded, reheated to safe temp, called manager.');
-      return;
-    }
     
-    await safePrepWrite({ action: 'add', collectionName: "tempLogs", label: "Temperature log", data: {
+    await addDoc(collection(db, "tempLogs"), {
       itemId: item.id,
       itemName: item.name,
       category: item.category,
       temp: parseFloat(val),
       status: status,
-      correctiveAction,
-      managerReviewRequired: status === 'Danger',
-      reviewedByManager: false,
       loggedBy: appUser.name,
       date: getToday(),
       timestamp: new Date().toISOString(),
       restaurantId: appUser.restaurantId
-    } });
+    });
     
     setTemps({...temps, [item.id]: ''});
-    setCorrectiveActions({...correctiveActions, [item.id]: ''});
   };
 
   const filteredLineChecks = lineChecks
@@ -216,25 +159,13 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
     e.preventDefault(); 
     if(taskText.trim()) { 
       if (editingTaskId) {
-        await safePrepWrite({ action: 'update', collectionName: "tasks", docId: editingTaskId, label: "Task", data: { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null } });
+        await updateDoc(doc(db, "tasks", editingTaskId), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null });
         setEditingTaskId(null);
       } else {
-        await safePrepWrite({ action: 'add', collectionName: "tasks", label: "Task", data: { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {}, restaurantId: appUser.restaurantId } }); 
+        await addDoc(collection(db, "tasks"), { title: taskText.trim(), category: taskCat, frequency: taskFreq, targetDay: taskFreq === 'weekly' ? taskTargetDay : null, targetDate: taskFreq === 'monthly' ? taskTargetDate : null, completions: {}, restaurantId: appUser.restaurantId }); 
       }
       setTaskText(''); 
     } 
-  };
-
-
-  const addTaskTemplatePack = async () => {
-    const pack = PREP_TASK_TEMPLATE_PACKS[taskTemplatePack] || PREP_TASK_TEMPLATE_PACKS.kitchenOpenClose;
-    const existingKeys = new Set(tasks.map(t => `${String(t.title || '').toLowerCase()}|${t.frequency || 'daily'}|${t.targetDay || ''}|${t.targetDate || ''}`));
-    const toCreate = (pack.items || []).filter(t => !existingKeys.has(`${String(t.title || '').toLowerCase()}|${t.frequency || 'daily'}|${t.targetDay || ''}|${t.targetDate || ''}`));
-    if (!toCreate.length) return addToast('Templates Already Loaded', `${pack.label} is already present.`);
-    for (const t of toCreate) {
-      await safePrepWrite({ quiet: true, action: 'add', collectionName: 'tasks', label: 'Recurring prep template', data: { ...t, completions: {}, restaurantId: appUser.restaurantId, source: 'prep-template-pack', templatePack: taskTemplatePack, createdAt: new Date().toISOString(), createdBy: appUser?.name || appUser?.email || '86 Chaos' } });
-    }
-    addToast('Prep Templates Added', `${toCreate.length} recurring task template(s) added.`);
   };
 
   const editTask = (t) => {
@@ -271,7 +202,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
     } else { 
       updatedCompletions[periodKey] = { by: appUser.name, at: formatClockTime(new Date()) }; 
     }
-    await safePrepWrite({ action: 'update', collectionName: "tasks", docId: task.id, label: "Task completion", before: task, data: { completions: updatedCompletions } });
+    await updateDoc(doc(db, "tasks", task.id), { completions: updatedCompletions });
   };
 
   const renderTasks = (freqFilter) => {
@@ -293,15 +224,6 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
               {editingTaskId && <button type="button" onClick={cancelTaskEdit} className={`${T.btnAlt} px-4 py-2 flex items-center justify-center border-red-900/50 text-red-400 hover:text-red-300`}><X size={18}/></button>}
             </div>
           </form>
-        )}
-
-        {canManageLineChecks && (
-          <div className={`${T.card} p-3 bg-[#0B0E11] border-dashed flex flex-col sm:flex-row gap-2 sm:items-center justify-between`}>
-            <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Recurring Prep Templates</div><div className="text-[11px] text-slate-400 font-bold">Load a starter pack of daily, weekly, and monthly kitchen tasks. Existing matching tasks are skipped.</div></div>
-            <div className="flex gap-2 w-full sm:w-auto"><select value={taskTemplatePack} onChange={e => setTaskTemplatePack(e.target.value)} className={`${T.input} text-xs`}>
-              {Object.entries(PREP_TASK_TEMPLATE_PACKS).map(([key, pack]) => <option key={key} value={key}>{pack.label}</option>)}
-            </select><button type="button" onClick={addTaskTemplatePack} className={T.btnAlt}>Load</button></div>
-          </div>
         )}
 
         {['Cleaning', 'General'].map(cat => {
@@ -326,7 +248,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                       <div className="flex items-center gap-2">
                         <button onClick={()=>toggleTaskStatus(t)} className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${isDone ? 'bg-[#12161A] text-emerald-500 border border-emerald-900/50' : `${T.grad} text-slate-900`}`}>{isDone ? <Check size={20}/> : <div className="w-4 h-4 border-2 border-slate-900 rounded-sm"></div>}</button>
                         {canManageLineChecks && <button onClick={()=>editTask(t)} className="text-slate-500 hover:text-[#D4A381] p-2"><Edit size={16}/></button>}
-                        {canManageLineChecks && <button onClick={()=>safePrepWrite({ action: "delete", collectionName: "tasks", docId: t.id, label: "Task", before: t })} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
+                        {canManageLineChecks && <button onClick={()=>deleteDoc(doc(db,"tasks",t.id))} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16}/></button>}
                       </div>
                     </div>
                   )
@@ -421,15 +343,12 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                       <div className="flex items-center gap-1 bg-[#12161A] p-1 rounded-lg border border-[#2A353D]">
                         <input type="number" step="0.1" value={temps[item.id] || ''} onChange={e=>setTemps({...temps, [item.id]: e.target.value})} placeholder="°F" className="w-16 bg-transparent text-white font-black text-center text-sm outline-none" />
                         <button onClick={() => handleLogTemp(item)} disabled={!temps[item.id]} className="bg-slate-800 text-white disabled:opacity-50 px-3 py-1.5 rounded text-xs font-black uppercase hover:bg-slate-700 transition-colors">Log</button>
-                        {temps[item.id] && evaluateTemp(temps[item.id], item.category) === 'Danger' && (
-                          <input type="text" value={correctiveActions[item.id] || ''} onChange={e=>setCorrectiveActions({...correctiveActions, [item.id]: e.target.value})} placeholder="Corrective action required" className="w-full sm:w-48 bg-red-950/30 border border-red-900/50 text-red-100 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
-                        )}
                       </div>
                       
                       {canManageLineChecks && (
                         <div className="flex gap-1 border-l border-[#2A353D] pl-3">
                           <button onClick={() => setEditLineCheckItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button>
-                          <button onClick={() => { if(window.confirm(`Delete ${item.name}?`)) safePrepWrite({ action: "delete", collectionName: "lineCheckItems", docId: item.id, label: "Line check item", before: item }); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
+                          <button onClick={() => { if(window.confirm(`Delete ${item.name}?`)) deleteDoc(doc(db,"lineCheckItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
                         </div>
                       )}
                     </div>
@@ -471,11 +390,10 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                     <div key={i.id} className={`${T.row} ${isSelected ? 'bg-[#12161A]' : ''} flex items-center gap-2`}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(i.id)} className="w-5 h-5 rounded accent-[#8F6040] bg-[#12161A] border-[#2A353D] flex-shrink-0 cursor-pointer" />
                       <div className="flex-1 min-w-0"><span className={`text-sm font-bold ${isDone?'line-through text-slate-500':'text-white'}`}>{i.text}</span> {doneBy && <span className={`text-[9px] font-black text-emerald-500 bg-emerald-900/20 border border-emerald-900/50 px-1.5 py-0.5 rounded ml-2`}>✓ {doneBy}</span>} {i.isMaster&&<span className="block text-[9px] font-black text-slate-500 uppercase mt-0.5">Master Task</span>}</div>
-                      {i.quantityChangedAfterCompletion && <span className="text-[9px] font-black text-amber-300 bg-amber-900/20 border border-amber-900/50 px-1.5 py-0.5 rounded">QTY CHANGED</span>}
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: Math.max(0, qty - 1), unit: i.unit || 'item', lastQuantityChangeAt: new Date().toISOString(), lastQuantityChangeBy: appUser.name, quantityChangedAfterCompletion: isDone } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="min-w-10 px-1 text-center text-xs font-bold text-[#D4A381]">{formatPrepAmount(qty, i.unit)}</span><button onClick={async ()=> await safePrepWrite({ action: "update", collectionName: "prepItems", docId: i.id, label: "Prep quantity", before: i, data: { qty: qty + 1, unit: i.unit || 'item', lastQuantityChangeAt: new Date().toISOString(), lastQuantityChangeBy: appUser.name, quantityChangedAfterCompletion: isDone } })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
+                        <div className={`flex items-center bg-[#12161A] rounded-lg border ${T.border} h-8`}><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: Math.max(0, qty - 1) })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">-</button><span className="w-5 text-center text-xs font-bold text-[#D4A381]">{qty}</span><button onClick={async ()=> await updateDoc(doc(db, "prepItems", i.id), { qty: qty + 1 })} className="w-6 h-full font-bold text-white hover:bg-[#1A2126]">+</button></div>
                         <button onClick={()=>togglePrepStatus(i)} className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold shadow-sm ${isDone?'bg-[#12161A] text-slate-500 border border-[#2A353D]':`${T.grad} text-slate-900`}`}>{isDone ? <Repeat size={14}/> : <Check size={16}/>}</button>
-                        <button onClick={()=>{ safePrepWrite({ action: "delete", collectionName: "prepItems", docId: i.id, label: "Prep item", before: i }); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
+                        <button onClick={()=>{ deleteDoc(doc(db,"prepItems",i.id)); }} className="text-slate-500 hover:text-red-500 p-1.5"><Trash2 size={16}/></button>
                       </div>
                     </div>
                   )})}
@@ -499,9 +417,9 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                       if(item.isMaster){ 
                           const dts={...(item.completedDates||{})}; 
                           dts[prepDate]=appUser.name; 
-                          await safePrepWrite({ action: "update", collectionName: "prepItems", docId: item.id, label: "Prep bulk completion", before: item, data: { completedDates:dts } }); 
+                          await updateDoc(doc(db,"prepItems",item.id),{completedDates:dts}); 
                       } else {
-                          await safePrepWrite({ action: "update", collectionName: "prepItems", docId: item.id, label: "Prep bulk completion", before: item, data: { isCompleted:true, completedBy:appUser.name } }); 
+                          await updateDoc(doc(db,"prepItems",item.id),{isCompleted:true, completedBy:appUser.name}); 
                       }
                   } 
                   setSelectedPreps([]);
@@ -517,13 +435,11 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   );
 };
 
-const TabInventory = ({ addToast, appUser, initialSubTab, onInitialSubTabConsumed }) => {
+const TabInventory = ({ addToast, appUser }) => {
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
   const vendors = useLiveCollection('vendors', appUser?.restaurantId, { limitCount: 150 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
-  const [invTab, setInvTab] = useState(initialSubTab || 'count');
-  const [focusBelowPar, setFocusBelowPar] = useState(() => sessionStorage.getItem('inventoryFocus') === 'belowPar');
+  const [invTab, setInvTab] = useState('count');
 const [searchTerm, setSearchTerm] = useState(''); 
   const [groupBy, setGroupBy] = useState('Category');
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -531,25 +447,6 @@ const [searchTerm, setSearchTerm] = useState('');
   // Fetch invoices securely directly inside this tab
   const invoices = useLiveCollection('invoices', appUser?.restaurantId, { limitCount: 120 });
   const [viewInvoice, setViewInvoice] = useState(null);
-
-  useEffect(() => {
-    if (!initialSubTab) return;
-    setInvTab(initialSubTab);
-    if (initialSubTab === 'invoices') {
-      setTimeout(() => document.getElementById('invoice-scanner-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
-    }
-    onInitialSubTabConsumed?.();
-  }, [initialSubTab]);
-
-
-  useEffect(() => {
-    if (sessionStorage.getItem('inventoryFocus') === 'belowPar') {
-      setFocusBelowPar(true);
-      setInvTab('count');
-      sessionStorage.removeItem('inventoryFocus');
-      setTimeout(() => document.getElementById('below-par-focus-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    }
-  }, []);
 
   // Inventory Form
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
@@ -565,205 +462,26 @@ const [searchTerm, setSearchTerm] = useState('');
   const [wItemId, setWItemId] = useState(''); 
   const [wQty, setWQty] = useState(''); 
   const [wReason, setWReason] = useState('Dropped / Spilled');
-  const [wMode, setWMode] = useState('count');
-  const [wWeightPerStockUnit, setWWeightPerStockUnit] = useState('');
-  const [wUnitLabel, setWUnitLabel] = useState('unit');
   const [editWaste, setEditWaste] = useState(null);
   const [wSearchTerm, setWSearchTerm] = useState(''); // Search filter for selecting items to burn
   const [wasteSearch, setWasteSearch] = useState(''); // Search filter for looking up past burn logs
 
   // AI Invoice Scanner State
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
-  const [invoiceScanProgress, setInvoiceScanProgress] = useState({ percent: 0, label: 'Ready', phase: 'idle' });
   const [scannedInvoice, setScannedInvoice] = useState(null);
-  const [invoiceReviewTab, setInvoiceReviewTab] = useState('matched');
-  const [csvImportReview, setCsvImportReview] = useState(null);
-  const [isSavingCsvImport, setIsSavingCsvImport] = useState(false);
 
   // Master Permission Check for Inventory Tabs
   const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
-  const safeInventoryWrite = ({ quiet = false, ...args } = {}) => safeWriteWithQueue({ user: appUser, addToast: quiet ? null : addToast, ...args });
 
   // --- LOGIC ---
-  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await safeInventoryWrite({ action: 'add', collectionName: "inventoryItems", label: "Inventory item", data: { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId } }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
-  const handleSaveEdit = async (e) => { 
-    e.preventDefault(); 
-    await safeInventoryWrite({ action: 'update', collectionName: "inventoryItems", docId: editItem.id, label: "Inventory item", before: editItem, data: { 
-      name: editItem.name.trim(), 
-      category: editItem.category || 'Other', 
-      pfgCode: (editItem.pfgCode || '').trim(), 
-      supplierId: editItem.supplierId, 
-      packSize: editItem.packSize || '', 
-      yieldQty: parseFloat(editItem.yieldQty) || 1, 
-      weightPerStockUnit: parseFloat(editItem.weightPerStockUnit) || 0,
-      burnDefaultMode: editItem.burnDefaultMode || 'count',
-      burnUnitLabel: editItem.burnUnitLabel || 'unit',
-      price: parseFloat(editItem.price) || 0 
-    } }); 
-    setEditItem(null); 
-    addToast('Item Updated', 'Master file overwritten.'); 
-  };
-  const updateStock = async (id, newStock) => {
-    const item = inventoryItems.find(i => i.id === id);
-    const nextStock = Math.max(0, parseFloat(newStock) || 0);
-    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory stock", before: item, data: { currentStock: nextStock } });
-    const lastImpactMs = item?.menuImpactAlertedAt ? new Date(item.menuImpactAlertedAt).getTime() : 0;
-    const crossedToZero = item && Number(item.currentStock || 0) > 0 && nextStock <= 0 && (!lastImpactMs || Date.now() - lastImpactMs > 12 * 60 * 60 * 1000);
-    if (crossedToZero) {
-      const impactRows = getZeroStockMenuImpacts([{ ...item, currentStock: 0 }], menuDependencies);
-      const impacts = impactRows[0]?.impacts || [];
-      if (impacts.length) {
-        const impactText = `No longer available from the menu: ${impacts.slice(0, 6).map(i => i.name).join(', ')}${impacts.length > 6 ? ` and ${impacts.length - 6} more` : ''}`;
-        await addDoc(collection(db, 'events'), {
-          restaurantId: appUser.restaurantId,
-          type: 'note',
-          category: 'Menu Impact',
-          messageCategory: '86 Alert',
-          title: `86 ${item.name}`,
-          notes: impactText,
-          author: appUser.name || appUser.email || 'Inventory',
-          date: new Date().toISOString(),
-          isImportant: true,
-          replies: [],
-          source: 'inventory_zero_stock_menu_impact',
-          commandCenterAlert: true,
-          managerBriefAlert: true,
-          kitchenCommandCenterAlert: true,
-          menuImpact: impactText,
-          menuImpactItems: impacts.map(i => i.name).filter(Boolean),
-          menuImpactItemId: item.id,
-          inventoryItemName: item.name || '',
-          requestedItemName: item.name || '',
-          createdAt: new Date().toISOString()
-        });
-        secureFetch('/api/send-push', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            restaurantId: appUser.restaurantId,
-            title: `86 ${item.name}`,
-            body: `${item.name} hit 0 stock. ${impactText}.`,
-            type: 'message',
-            isCritical: true,
-            textContent: `86 ${item.name} - ${impactText}`
-          })
-        }).catch((err) => console.warn('Menu impact push failed:', err?.message || err));
-        updateDoc(doc(db, 'inventoryItems', id), { menuImpactAlertedAt: new Date().toISOString() }).catch(() => {});
-      }
-    }
-  };
-  const updatePar = async (id, newPar) => await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory par", data: { parLevel: Math.max(0, parseFloat(newPar) || 0) } });
+  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await addDoc(collection(db, "inventoryItems"), { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
+  const handleSaveEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "inventoryItems", editItem.id), { name: editItem.name.trim(), category: editItem.category || 'Other', pfgCode: (editItem.pfgCode || '').trim(), supplierId: editItem.supplierId, packSize: editItem.packSize, yieldQty: parseInt(editItem.yieldQty) || 1, price: parseFloat(editItem.price) || 0 }); setEditItem(null); addToast('Item Updated', 'Master file overwritten.'); };
+  const updateStock = async (id, newStock) => await updateDoc(doc(db, "inventoryItems", id), { currentStock: Math.max(0, parseFloat(newStock) || 0) });
+  const updatePar = async (id, newPar) => await updateDoc(doc(db, "inventoryItems", id), { parLevel: Math.max(0, parseFloat(newPar) || 0) });
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
   
-  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await safeInventoryWrite({ action: 'add', collectionName: "vendors", label: "Vendor", data: { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId } }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
-const handleSaveVendorEdit = async (e) => { e.preventDefault(); await safeInventoryWrite({ action: 'update', collectionName: "vendors", docId: editVendor.id, label: "Vendor", before: editVendor, data: { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' } }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
-
-const cleanNumber = (value) => {
-    const n = parseFloat(String(value ?? '').replace(/[^0-9.\-]/g, ''));
-    return Number.isFinite(n) ? n : 0;
-  };
-
-const parsePackProfile = (packValue = '') => {
-    const pack = String(packValue || '').toLowerCase().replace(/#/g, ' lb ').replace(/\s+/g, ' ').trim();
-    const result = { count: 0, weightLbs: 0, notes: [] };
-    if (!pack) return result;
-
-    // Count patterns: 24 ct, 24 each, 12/1 ct, 2 x 5 lb, 2/5 lb, 4-10 lb, etc.
-    const countMatch = pack.match(/(\d+(?:\.\d+)?)\s*(ct|count|ea|each|pc|pcs|piece|pieces|portion|portions|patty|patties|bottle|bottles|can|cans|bag|bags|pack|pk)\b/i);
-    if (countMatch) {
-      result.count = Math.max(0, parseFloat(countMatch[1]) || 0);
-      result.notes.push(`Count detected: ${result.count}`);
-    }
-
-    // Catch-weight style: 2/5 lb, 2 x 5 lb, 4-10 lb, 6 10 oz.
-    const comboWeight = pack.match(/(\d+(?:\.\d+)?)\s*(?:\/|x|×|-|by)\s*(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds|oz|ounce|ounces)\b/i);
-    if (comboWeight) {
-      const a = parseFloat(comboWeight[1]) || 0;
-      const b = parseFloat(comboWeight[2]) || 0;
-      const unit = comboWeight[3] || 'lb';
-      const lbs = unit.startsWith('oz') || unit.startsWith('ounce') ? (a * b) / 16 : a * b;
-      result.weightLbs = Math.max(result.weightLbs, lbs);
-      result.notes.push(`Weight detected: ${lbs.toFixed(2)} lb per stock unit`);
-    }
-
-    const singleWeight = pack.match(/(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds|oz|ounce|ounces)\b/i);
-    if (!result.weightLbs && singleWeight) {
-      const n = parseFloat(singleWeight[1]) || 0;
-      const unit = singleWeight[2] || 'lb';
-      const lbs = unit.startsWith('oz') || unit.startsWith('ounce') ? n / 16 : n;
-      result.weightLbs = Math.max(0, lbs);
-      result.notes.push(`Weight detected: ${lbs.toFixed(2)} lb per stock unit`);
-    }
-
-    // Pattern like 12 ct / 8 oz each = 6 lbs total
-    const countWeightEach = pack.match(/(\d+(?:\.\d+)?)\s*(ct|count|ea|each).*?(\d+(?:\.\d+)?)\s*(oz|ounce|ounces|lb|lbs)\b/i);
-    if (countWeightEach) {
-      const c = parseFloat(countWeightEach[1]) || 0;
-      const w = parseFloat(countWeightEach[3]) || 0;
-      const u = countWeightEach[4] || 'oz';
-      const lbs = u.startsWith('oz') || u.startsWith('ounce') ? (c * w) / 16 : c * w;
-      if (lbs > result.weightLbs) result.weightLbs = lbs;
-      if (!result.count) result.count = c;
-      result.notes.push(`Each weight detected: ${c} x ${w} ${u}`);
-    }
-
-    return result;
-  };
-
-const getBurnUnitsPerStockUnit = (item) => {
-    const explicitYield = parseFloat(item?.yieldQty);
-    if (Number.isFinite(explicitYield) && explicitYield > 0) return explicitYield;
-    const packProfile = parsePackProfile(item?.packSize);
-    if (packProfile.count > 0) return packProfile.count;
-    return 1;
-  };
-
-const getBurnWeightPerStockUnit = (item) => {
-    const explicitWeight = parseFloat(item?.weightPerStockUnit);
-    if (Number.isFinite(explicitWeight) && explicitWeight > 0) return explicitWeight;
-    const packProfile = parsePackProfile(item?.packSize);
-    if (packProfile.weightLbs > 0) return packProfile.weightLbs;
-    return 0;
-  };
-
-const inferBurnModeForItem = (item) => {
-    if (!item) return { mode: 'count', unitLabel: 'unit', weightPerStockUnit: '', unitsPerStockUnit: 1, notes: [] };
-    const profile = parsePackProfile(item.packSize);
-    const explicitMode = item.burnDefaultMode;
-    const weight = getBurnWeightPerStockUnit(item);
-    const units = getBurnUnitsPerStockUnit(item);
-    let mode = explicitMode || 'count';
-    if (!explicitMode && weight > 0 && units <= 1) mode = 'weight';
-    return {
-      mode,
-      unitLabel: item.burnUnitLabel || (mode === 'weight' ? 'lb' : 'unit'),
-      weightPerStockUnit: weight || '',
-      unitsPerStockUnit: units,
-      notes: profile.notes || []
-    };
-  };
-
-const getBurnStockDeduction = (qty, item, options = {}) => {
-    const amount = Math.max(0, parseFloat(qty) || 0);
-    const mode = options.mode || item?.burnDefaultMode || 'count';
-    if (mode === 'recordOnly') return 0;
-    if (mode === 'stock') return amount;
-    if (mode === 'weight') {
-      const weightPerStockUnit = Math.max(0, parseFloat(options.weightPerStockUnit) || getBurnWeightPerStockUnit(item));
-      return weightPerStockUnit > 0 ? amount / weightPerStockUnit : amount;
-    }
-    const unitsPerStockUnit = Math.max(1, parseFloat(options.unitsPerStockUnit) || getBurnUnitsPerStockUnit(item));
-    return amount / unitsPerStockUnit;
-  };
-
-const handleWasteItemSelect = (itemId) => {
-    setWItemId(itemId);
-    const item = inventoryItems.find(i => i.id === itemId);
-    const inferred = inferBurnModeForItem(item);
-    setWMode(inferred.mode || 'count');
-    setWWeightPerStockUnit(inferred.weightPerStockUnit ? String(inferred.weightPerStockUnit) : '');
-    setWUnitLabel(inferred.unitLabel || 'unit');
-  };
+  const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await addDoc(collection(db, "vendors"), { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
+const handleSaveVendorEdit = async (e) => { e.preventDefault(); await updateDoc(doc(db, "vendors", editVendor.id), { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
 
 const handleLogWaste = async (e) => {
     e.preventDefault(); 
@@ -772,59 +490,48 @@ const handleLogWaste = async (e) => {
     const item = inventoryItems.find(i => i.id === wItemId); 
     if(!item) return;
 
-    const burnAmount = Math.max(0, parseFloat(wQty) || 0); 
-    if (burnAmount <= 0) return addToast('Missing Qty', 'Enter how much was wasted.');
+    // 1. Get the raw inputs
+    const unitsWasted = parseFloat(wQty); 
+    const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1; 
+    const pricePerCase = parseFloat(item.price) || 0;
 
-    const mode = wMode || 'count';
-    const unitsPerStockUnit = getBurnUnitsPerStockUnit(item);
-    const weightPerStockUnit = mode === 'weight' ? Math.max(0, parseFloat(wWeightPerStockUnit) || getBurnWeightPerStockUnit(item)) : getBurnWeightPerStockUnit(item);
-    if (mode === 'weight' && weightPerStockUnit <= 0) return addToast('Weight Needed', 'Enter how many pounds are in one stock unit/case before logging a weight burn.');
+    // 2. Calculate individual unit metrics
+    const pricePerUnit = pricePerCase / yieldPerCase;
+    const totalCostLost = pricePerUnit * unitsWasted;
+    
+    // 3. Calculate how much of a case to deduct from the main stock
+    const stockDeduction = unitsWasted / yieldPerCase; 
 
-    const stockDeduction = getBurnStockDeduction(burnAmount, item, { mode, unitsPerStockUnit, weightPerStockUnit }); 
-    const pricePerStockUnit = parseFloat(item.price) || 0;
-    const totalCostLost = pricePerStockUnit * stockDeduction;
-    const unitLabel = mode === 'weight' ? 'lb' : mode === 'stock' ? 'stock unit' : (wUnitLabel || item.burnUnitLabel || 'unit');
-
-    await safeInventoryWrite({ action: 'add', collectionName: "wasteLogs", label: "Waste log", data: { 
+    // 4. Save to Database
+    await addDoc(collection(db, "wasteLogs"), { 
       itemId: item.id, 
       itemName: item.name, 
-      qty: burnAmount, 
-      burnAmount,
-      burnUnitLabel: unitLabel,
-      burnMode: mode,
-      costLost: totalCostLost,
-      stockDeducted: stockDeduction,
-      unitsPerStockUnit,
-      weightPerStockUnit,
-      burnQtyMode: mode === 'count' ? 'individual_units' : mode, 
+      qty: unitsWasted, 
+      costLost: totalCostLost, 
       reason: wReason, 
       loggedBy: appUser.name, 
       date: getToday(), 
       timestamp: new Date().toISOString(), 
       restaurantId: appUser.restaurantId 
-    } });
+    });
 
-    if (stockDeduction > 0) {
-      await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste stock deduction", before: item, data: { 
-        currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeduction),
-        ...(mode === 'weight' && weightPerStockUnit > 0 ? { weightPerStockUnit } : {}),
-        ...(mode ? { burnDefaultMode: mode } : {})
-      } });
-    }
+    await updateDoc(doc(db, "inventoryItems", item.id), { 
+      currentStock: Math.max(0, (item.currentStock || 0) - stockDeduction) 
+    });
 
-    setWItemId(''); setWQty(''); setWSearchTerm(''); setWMode('count'); setWWeightPerStockUnit(''); setWUnitLabel('unit');
-    const deductedText = stockDeduction > 0 ? `${stockDeduction.toFixed(3).replace(/0+$/,'').replace(/\.$/,'')} stock unit${stockDeduction === 1 ? '' : 's'}` : 'no stock';
-    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} logged. ${burnAmount} ${unitLabel}${burnAmount === 1 ? '' : 's'} deducted as ${deductedText}.`);
+    setWItemId(''); setWQty(''); setWSearchTerm(''); 
+    addToast('Burn Logged', `$${totalCostLost.toFixed(2)} (${unitsWasted} units) deducted from stock.`);
   };
 
   const handleDeleteWaste = async (log) => {
     if (!window.confirm(`Delete burn log for ${log.itemName} and restore stock?`)) return;
     const item = inventoryItems.find(i => i.id === log.itemId);
     if (item) {
-       const stockRestoration = parseFloat(log.stockDeducted) || getBurnStockDeduction(log.qty, item, { mode: log.burnMode, weightPerStockUnit: log.weightPerStockUnit, unitsPerStockUnit: log.unitsPerStockUnit });
-       if (stockRestoration > 0) await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste stock restore", before: item, data: { currentStock: Math.max(0, (parseFloat(item.currentStock)||0) + stockRestoration) } });
+       const yieldDivider = parseFloat(item.yieldQty) || 1;
+       const stockRestoration = (parseFloat(log.qty) || 0) / yieldDivider;
+       await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: Math.max(0, (item.currentStock||0) + stockRestoration) });
     }
-    await safeInventoryWrite({ action: "delete", collectionName: "wasteLogs", docId: log.id, label: "Waste log", before: log });
+    await deleteDoc(doc(db, "wasteLogs", log.id));
     addToast('Log Deleted', 'Stock restored successfully.');
   };
 
@@ -837,31 +544,24 @@ const handleLogWaste = async (e) => {
        const originalLog = wasteLogs.find(w => w.id === log.id);
        const oldQty = parseFloat(originalLog.qty) || 0;
        const newQty = parseFloat(log.qty) || 0;
-       const mode = originalLog?.burnMode || log.burnMode || 'count';
-       const unitsPerStockUnit = parseFloat(originalLog?.unitsPerStockUnit) || getBurnUnitsPerStockUnit(item);
-       const weightPerStockUnit = parseFloat(originalLog?.weightPerStockUnit) || getBurnWeightPerStockUnit(item);
+       
+       const yieldPerCase = parseFloat(item.yieldQty) > 0 ? parseFloat(item.yieldQty) : 1;
+       const pricePerCase = parseFloat(item.price) || 0;
+       const pricePerUnit = pricePerCase / yieldPerCase;
 
-       const oldDeduction = parseFloat(originalLog?.stockDeducted) || getBurnStockDeduction(oldQty, item, { mode, unitsPerStockUnit, weightPerStockUnit });
-       const newDeduction = getBurnStockDeduction(newQty, item, { mode, unitsPerStockUnit, weightPerStockUnit });
-       const stockDifference = newDeduction - oldDeduction; 
-       const newCostLost = (parseFloat(item.price) || 0) * newDeduction;
+       const stockDifference = (newQty - oldQty) / yieldPerCase; 
+       const newCostLost = pricePerUnit * newQty;
 
-       if (stockDifference !== 0) await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste edit stock adjustment", before: item, data: { 
-         currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDifference) 
-       } });
-       await safeInventoryWrite({ action: "update", collectionName: "wasteLogs", docId: log.id, label: "Waste log edit", before: log, data: { 
+       await updateDoc(doc(db, "inventoryItems", item.id), { 
+         currentStock: Math.max(0, (item.currentStock || 0) - stockDifference) 
+       });
+       await updateDoc(doc(db, "wasteLogs", log.id), { 
          qty: newQty, 
-         burnAmount: newQty,
          reason: log.reason, 
-         costLost: newCostLost,
-         stockDeducted: newDeduction,
-         unitsPerStockUnit,
-         weightPerStockUnit,
-         burnMode: mode,
-         burnQtyMode: mode === 'count' ? 'individual_units' : mode 
-       } });
+         costLost: newCostLost 
+       });
     } else {
-       await safeInventoryWrite({ action: "update", collectionName: "wasteLogs", docId: log.id, label: "Waste log edit", before: log, data: { qty: log.qty, reason: log.reason } });
+       await updateDoc(doc(db, "wasteLogs", log.id), { qty: log.qty, reason: log.reason });
     }
     
     setEditWaste(null);
@@ -888,14 +588,13 @@ const executeOrder = async (method) => {
     try { await navigator.clipboard.writeText(decodeURIComponent(fullText)); } catch (e) { console.log(e); }
 
     if (method === 'csv') {
-      const rows = [['Qty','Code','Name','Pack Size'], ...items.map(i => [i.orderQty, i.pfgCode || '', i.name, i.packSize || ''])];
-      const filename = `${getRestaurantExportPrefix(appUser)}-Order-${safeFilenamePart(vendor?.name || 'Vendor')}-${getToday()}.csv`;
-      downloadCsvRows(filename, rows);
-      addToast('Exported', 'Order downloaded with the restaurant name in the filename.');
+      let csvContent = "data:text/csv;charset=utf-8,Qty,Code,Name,Pack Size\n" + items.map(i => `${i.orderQty},"${i.pfgCode||''}","${i.name}","${i.packSize||''}"`).join("\n");
+      const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", `Order_${(vendor?.name||'Vendor').replace(/\s+/g,'_')}_${getToday()}.csv`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      addToast('Exported', 'Order downloaded as Spreadsheet.');
     } else if (method === 'email') {
-      const subject = `${appUser?.restaurantName || 'Restaurant'} Order`;
-      const emailUrl = `mailto:${vendor?.email||''}?subject=${encodeURIComponent(subject)}&body=${fullText}`;
-      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=${encodeURIComponent(subject + ' (Paste From Clipboard)')}`; } 
+      const emailUrl = `mailto:${vendor?.email||''}?subject=Cheers Order&body=${fullText}`;
+      if (emailUrl.length > 2000) { addToast('📋 Order Copied!', 'List is huge! We opened email, just tap and PASTE.'); window.location.href = `mailto:${vendor?.email||''}?subject=Cheers Order (Paste From Clipboard)`; } 
       else { window.location.href = emailUrl; }
     } else if (method === 'sms') {
       const smsUrl = `sms:${vendor?.phone||''}?body=${fullText}`;
@@ -932,381 +631,153 @@ const executeOrder = async (method) => {
     }
     
     // Update Pending Stock
-    for (const item of items) { await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Pending order", before: item, data: { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() } }); }
+    for (const item of items) { await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: item.orderQty, lastOrderedQty: item.orderQty, lastOrderedDate: getToday() }); }
     setOrderOverrides({}); setConfirmModal({ isOpen: false, vendorId: null, items: [] });
   };
 
   const handleReceiveDelivery = async (vendorId) => {
     const itemsToReceive = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
     for (const item of itemsToReceive) {
-      await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Delivery received", before: item, data: { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 } });
+      await updateDoc(doc(db, "inventoryItems", item.id), { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 });
     }
     addToast('Delivery Accepted', `Stock automatically updated for ${itemsToReceive.length} items.`);
   };
 
   const handleUpdatePendingQty = async (itemId, newQty) => {
-    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: itemId, label: "Pending quantity", data: { pendingQty: Math.max(0, parseInt(newQty) || 0) } });
+    await updateDoc(doc(db, "inventoryItems", itemId), { pendingQty: Math.max(0, parseInt(newQty) || 0) });
   };
 
   const handleCancelDelivery = async (vendorId) => {
     if (!window.confirm("Cancel this dispatched order? This will clear all pending incoming stock for this vendor.")) return;
     const itemsToCancel = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
     for (const item of itemsToCancel) {
-      await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Cancel pending delivery", before: item, data: { pendingQty: 0 } });
+      await updateDoc(doc(db, "inventoryItems", item.id), { pendingQty: 0 });
     }
     addToast('Order Canceled', 'Pending quantities cleared.');
   };
 
-  // --- CSV INVENTORY UPLOAD + CLEANUP REVIEW ---
-  const parseCsvColumns = (line = '') => line.split(/(?!\B"[^"]*),(?![^"]*"\B)/).map(c => c.trim().replace(/^"|"$/g, ''));
-  const normalizeImportKey = (value = '') => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const buildCsvImportReview = (text = '', fileName = 'inventory.csv') => {
-    const rows = text.split(/\r?\n/).filter(row => row.trim());
-    const seen = new Set();
-    const parsedRows = [];
-    const issues = [];
-    for (let i = 1; i < rows.length; i++) {
-      const cols = parseCsvColumns(rows[i]);
-      const name = (cols[0] || '').trim();
-      if (!name) { issues.push(`Row ${i + 1}: missing item name`); continue; }
-      const productCode = (cols[2] || '').trim();
-      const nameKey = normalizeImportKey(name);
-      const codeKey = normalizeImportKey(productCode);
-      const duplicateInFile = seen.has(codeKey || nameKey);
-      seen.add(codeKey || nameKey);
-      const existing = inventoryItems.find(item => (codeKey && normalizeImportKey(item.pfgCode || item.productCode || item.sku) === codeKey) || normalizeImportKey(item.name) === nameKey);
-      const vendorName = (cols[6] || 'Unassigned Vendor').trim();
-      parsedRows.push({
-        rowNumber: i + 1,
-        name,
-        category: cols[1] || 'Other',
-        pfgCode: productCode,
-        packSize: cols[3] || '1 CS',
-        yieldQty: parseFloat(cols[4]) || 1,
-        price: parseFloat(cols[5]) || 0,
-        vendorName,
-        existingId: existing?.id || '',
-        existingName: existing?.name || '',
-        duplicateInFile,
-        action: duplicateInFile ? 'skip' : (existing ? 'update' : 'create')
-      });
-    }
-    const createCount = parsedRows.filter(r => r.action === 'create').length;
-    const updateCount = parsedRows.filter(r => r.action === 'update').length;
-    const skipCount = parsedRows.filter(r => r.action === 'skip').length;
-    return { fileName, rows: parsedRows, issues, createCount, updateCount, skipCount, createdAt: new Date().toISOString() };
-  };
-  const updateCsvReviewRow = (idx, patch) => setCsvImportReview(review => review ? { ...review, rows: review.rows.map((row, rowIdx) => rowIdx === idx ? { ...row, ...patch } : row) } : review);
+  // --- CSV INVENTORY UPLOAD ---
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!window.confirm(`Upload ${file.name} to your inventory?`)) return;
+
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
-        const review = buildCsvImportReview(event.target.result || '', file.name);
-        if (!review.rows.length) return addToast('Import Review Empty', 'No usable inventory rows were found in that CSV.');
-        setCsvImportReview(review);
-        addToast('Import Review Ready', `${review.rows.length} row(s) ready for cleanup review before saving.`);
+        const text = event.target.result;
+        const rows = text.split('\n').filter(row => row.trim());
+        let addedCount = 0;
+        for (let i = 1; i < rows.length; i++) {
+          const cols = rows[i].split(/(?!\B"[^"]*),(?![^"]*"\B)/).map(c => c.trim().replace(/^"|"$/g, ''));
+          if (cols.length < 2) continue; 
+          
+          const name = cols[0];
+          const category = cols[1] || 'Other';
+          const code = cols[2] || '';
+          const packSize = cols[3] || '1 CS';
+          const yieldQty = parseFloat(cols[4]) || 1;
+          const price = parseFloat(cols[5]) || 0;
+          const vendorName = cols[6] || 'Unassigned Vendor';
+
+          let vId = '';
+          let existingVendor = vendors.find(v => v.name.toLowerCase() === vendorName.toLowerCase());
+          
+          if (existingVendor) {
+            vId = existingVendor.id;
+          } else {
+            const newVRef = await addDoc(collection(db, "vendors"), { name: vendorName, rep: "", email: "", phone: "", restaurantId: appUser.restaurantId });
+            vId = newVRef.id;
+            vendors.push({id: vId, name: vendorName}); 
+          }
+
+          await addDoc(collection(db, "inventoryItems"), {
+            name, category, pfgCode: code, packSize, yieldQty, price, parLevel: 0,
+            lastOrderedQty: 0, lastOrderedDate: null, supplierId: vId, currentStock: 0, pendingQty: 0, isStarred: false, restaurantId: appUser.restaurantId
+          });
+          addedCount++;
+        }
+        addToast("Upload Complete", `Successfully imported ${addedCount} items.`);
       } catch (err) {
-        addToast('Import Review Failed', err.message || 'Failed to parse CSV file.');
+        addToast("Error", "Failed to parse CSV file. Ensure it matches the exact template format.");
       }
     };
     reader.readAsText(file);
-    e.target.value = '';
-  };
-  const approveCsvImport = async () => {
-    if (!csvImportReview?.rows?.length) return;
-    setIsSavingCsvImport(true);
-    try {
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      const vendorCache = new Map(vendors.map(v => [String(v.name || '').toLowerCase(), v.id]));
-      for (const row of csvImportReview.rows) {
-        if (row.action === 'skip') { skipped++; continue; }
-        const vendorKey = String(row.vendorName || 'Unassigned Vendor').toLowerCase();
-        let vId = vendorCache.get(vendorKey) || '';
-        if (!vId) {
-          const newVRef = await safeInventoryWrite({ quiet: true, action: 'add', collectionName: 'vendors', label: 'CSV vendor', data: { name: row.vendorName || 'Unassigned Vendor', rep: '', email: '', phone: '', restaurantId: appUser.restaurantId, source: 'csv-import-review' } });
-          vId = newVRef?.id || '';
-          vendorCache.set(vendorKey, vId);
-        }
-        const payload = { name: row.name, category: row.category || 'Other', pfgCode: row.pfgCode || '', packSize: row.packSize || '1 CS', yieldQty: parseFloat(row.yieldQty) || 1, price: parseFloat(row.price) || 0, supplierId: vId, importReviewedAt: new Date().toISOString(), importSourceFile: csvImportReview.fileName };
-        if (row.action === 'update' && row.existingId) {
-          const before = inventoryItems.find(item => item.id === row.existingId) || null;
-          await safeInventoryWrite({ quiet: true, action: 'update', collectionName: 'inventoryItems', docId: row.existingId, label: 'CSV inventory cleanup update', before, data: payload });
-          updated++;
-        } else if (row.action === 'create') {
-          await safeInventoryWrite({ quiet: true, action: 'add', collectionName: 'inventoryItems', label: 'CSV inventory cleanup item', data: { ...payload, parLevel: 0, lastOrderedQty: 0, lastOrderedDate: null, currentStock: 0, pendingQty: 0, isStarred: false, restaurantId: appUser.restaurantId } });
-          created++;
-        } else {
-          skipped++;
-        }
-      }
-      setCsvImportReview(null);
-      addToast('Import Saved', `${created} created, ${updated} updated, ${skipped} skipped.`);
-    } catch (err) {
-      addToast('Import Save Failed', err.message || 'Could not save reviewed CSV import.');
-    } finally {
-      setIsSavingCsvImport(false);
-    }
+    e.target.value = ''; 
   };
 
-// --- INVOICE SCANNER (PDF + HIGH-DETAIL IMAGE SCAN) ---
-  const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-  const compressImageForScan = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let maxWidth = 2400;
-        let quality = 0.92;
-        const draw = () => {
-          const scaleSize = img.width > maxWidth ? maxWidth / img.width : 1;
-          canvas.width = Math.round(img.width * scaleSize);
-          canvas.height = Math.round(img.height * scaleSize);
-          const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#fff';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          return canvas.toDataURL('image/jpeg', quality).split(',')[1];
-        };
-        let base64 = draw();
-        // Stay under Vercel's practical JSON body limit while keeping enough detail for line-item OCR.
-        while (base64.length > 3_700_000 && (quality > 0.62 || maxWidth > 1500)) {
-          if (quality > 0.62) quality -= 0.08;
-          else maxWidth -= 250;
-          base64 = draw();
-        }
-        resolve({ base64, mimeType: 'image/jpeg', scanDetail: { maxWidth, quality: Number(quality.toFixed(2)) } });
-      };
-      img.onerror = () => reject(new Error('Could not read image. Try a clearer photo or PDF.'));
-      img.src = event.target.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-  const normalizeSku = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normalizeName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
-  const parseInvoiceAmount = (value) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const cleaned = String(value).replace(/[$,]/g, '').replace(/[()]/g, '-').trim();
-    const num = Number.parseFloat(cleaned);
-    return Number.isFinite(num) ? num : 0;
-  };
-
-  const hasInvoiceValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
-
-  const isPurchasedInvoiceLine = (item = {}) => {
-    const rowType = String(item.rowType || item.lineType || item.type || '').toLowerCase();
-    const itemName = String(item.itemName || item.description || item.name || item.rawText || '').trim();
-    const rawText = String(item.rawText || '').trim();
-    const combined = `${rowType} ${itemName} ${rawText}`.toLowerCase();
-    if (!itemName || itemName.length < 2) return false;
-    if (/(header|footer|note|memo|terms|customer|bill\s*to|ship\s*to|sold\s*to|remit|address|phone|email|metadata|page|route|invoice\s*(number|date)?|statement|subtotal|grand\s*total|total\s*due|balance|tax|freight|delivery|fuel|service\s*charge|fee|charge|deposit|discount|credit|payment|amount\s*due|change\s*due|signature)/i.test(combined)) return false;
-    if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return false;
-    if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return false;
-    if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasInvoiceValue(item.quantity)) return false;
-
-    const qty = parseInvoiceAmount(item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? item.orderedQty);
-    const unitPrice = parseInvoiceAmount(item.unitPrice ?? item.priceEach ?? item.casePrice);
-    const totalPrice = parseInvoiceAmount(item.totalPrice ?? item.extendedPrice ?? item.lineTotal);
-    const hasQuantity = qty > 0;
-    const hasPrice = unitPrice > 0 || totalPrice > 0;
-    const hasSku = hasInvoiceValue(item.productCode || item.sku || item.itemNumber || item.itemCode || item.code || item.pfgCode);
-    const hasPack = hasInvoiceValue(item.packSize || item.pack || item.size || item.uom || item.unitOfMeasure || item.weight || item.catchWeight);
-
-    return hasQuantity && (hasPrice || hasSku || hasPack);
-  };
-
-
-  const updateInvoiceProgress = (percent, label, phase = 'working') => {
-    const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-    setInvoiceScanProgress({ percent: safePercent, label, phase });
-  };
-
-  const scanFileViaStorage = async (file, onProgress = () => {}, originalFile = file, compression = {}) => {
-    const ext = (file.name.split('.').pop() || 'upload').toLowerCase().replace(/[^a-z0-9]/g, '') || 'upload';
-    const safeName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const restaurantId = appUser?.restaurantId || 'unknown-restaurant';
-    const storagePath = `${restaurantId}/invoices/scans/${safeName}`;
-    const fileRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(fileRef, file, {
-      contentType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
-      customMetadata: {
-        originalName: originalFile?.name || file.name,
-        uploadedName: file.name,
-        originalBytes: String(originalFile?.size || file.size || 0),
-        uploadedBytes: String(file.size || 0),
-        compressionMethod: compression?.method || 'none',
-        compressed: compression?.wasCompressed ? 'true' : 'false',
-        restaurantId,
-        uploadedBy: appUser?.id || '',
-        uploadedByName: appUser?.name || '',
-        purpose: 'invoice-scan'
-      }
-    });
-
-    await new Promise((resolve, reject) => {
-      uploadTask.on('state_changed',
-        (snapshot) => {
-          const uploadPercent = snapshot.totalBytes ? (snapshot.bytesTransferred / snapshot.totalBytes) * 100 : 0;
-          onProgress({ uploadPercent, bytesTransferred: snapshot.bytesTransferred, totalBytes: snapshot.totalBytes });
-        },
-        reject,
-        resolve
-      );
-    });
-
-    return {
-      storagePath,
-      mimeType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
-      fileName: originalFile?.name || file.name,
-      uploadedFileName: file.name,
-      restaurantId,
-      originalSize: originalFile?.size || file.size,
-      uploadedSize: file.size,
-      compression
-    };
-  };
-
+// --- INVOICE SCANNER (NOW WITH COMPRESSION) ---
   const handleScanInvoice = async (e) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files[0];
     if (!file) return;
 
-    const maxBytes = 20 * 1024 * 1024;
     setIsScanningInvoice(true);
-    setScannedInvoice(null);
-    updateInvoiceProgress(2, 'Preparing invoice file...', 'prepare');
+    addToast('Scanning Invoice', 'Compressing image and extracting data...');
 
-    let timeoutId = null;
-    let aiPulseId = null;
-    const controller = new AbortController();
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = async () => {
+        // Force compression so Vercel doesn't crash on payloads > 4.5MB
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        let scaleSize = 1;
+        if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
+        canvas.width = img.width * scaleSize;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-    try {
-      const prepared = await prepareScannerUploadFile(file, {
-        label: 'Invoice file',
-        maxBytes,
-        imageCompressAboveBytes: 6 * 1024 * 1024,
-        targetImageBytes: 9 * 1024 * 1024,
-        maxImageDimension: 2800,
-        onProgress: info => updateInvoiceProgress(Math.max(2, Math.min(42, info.percent || 8)), info.detail || info.label || 'Preparing invoice file...', 'compress')
-      });
-      const uploadFile = prepared.file;
-      const isPdf = isPdfFile(uploadFile);
-      if (prepared.wasCompressed) addToast('Invoice Compressed', `${prepared.displaySizeBefore} → ${prepared.displaySizeAfter}. Scanning the smaller copy.`);
-      addToast('Scanning Invoice', isPdf ? 'Uploading PDF, then sending it to the invoice scanner...' : 'Uploading photo, then sending it to the invoice scanner...');
+        const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
+        const base64Data = base64Compressed.split(',')[1];
 
-      // Upload the prepared file directly to Firebase Storage first. Photos may be an automatically
-      // compressed copy, and PDFs get a best-effort compaction pass before upload.
-      // The progress bar is actual Firebase upload progress for this stage.
-      const payload = await scanFileViaStorage(uploadFile, ({ uploadPercent, bytesTransferred, totalBytes }) => {
-        const uiPercent = 42 + Math.round((uploadPercent / 100) * 20);
-        const mbDone = (bytesTransferred / (1024 * 1024)).toFixed(1);
-        const mbTotal = (totalBytes / (1024 * 1024)).toFixed(1);
-        updateInvoiceProgress(uiPercent, `Uploading invoice: ${Math.round(uploadPercent)}% (${mbDone}/${mbTotal} MB)`, 'upload');
-      }, file, prepared.compression);
+        try {
+          const response = await secureFetch('/api/scan-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileBase64: base64Data, mimeType: 'image/jpeg' })
+          });
 
-      updateInvoiceProgress(63, 'Upload complete. Handing large document to AI file processor...', 'ai');
-      const startedAt = Date.now();
-      aiPulseId = window.setInterval(() => {
-        const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
-        const waitPercent = Math.min(90, 66 + Math.floor(elapsedSeconds / 4));
-        updateInvoiceProgress(waitPercent, `AI scanner is reading the full invoice document... ${elapsedSeconds}s`, 'ai');
-      }, 2000);
+          // Prevent the "Unexpected token A" HTML crash
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+             throw new Error("Vercel Server Error: Payload too large or backend crashed.");
+          }
 
-      timeoutId = window.setTimeout(() => controller.abort(), 320000);
-      const response = await secureFetch('/api/scan-invoice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to scan invoice.');
+          
+          const reconciledItems = (data.lineItems || []).map(item => {
+             const match = inventoryItems.find(inv => 
+                inv.name.toLowerCase() === item.itemName.toLowerCase() || 
+                (inv.pfgCode && item.itemName.includes(inv.pfgCode))
+             );
+             return { ...item, matchedItemId: match ? match.id : "" };
+          });
 
-      if (aiPulseId) window.clearInterval(aiPulseId);
-      if (timeoutId) window.clearTimeout(timeoutId);
-      updateInvoiceProgress(92, 'Scanner finished. Building review screen...', 'reconcile');
-
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-         throw new Error("Invoice scanner returned a non-JSON response. Try a smaller invoice or check the Vercel function logs.");
-      }
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || data.details || 'Failed to scan invoice.');
-      }
-
-      const fullRows = Array.isArray(data.allExtractedRows) ? data.allExtractedRows : (Array.isArray(data.invoiceRows) ? data.invoiceRows : []);
-      const candidateRows = Array.isArray(data.lineItems) && data.lineItems.length ? data.lineItems : fullRows;
-      const normalizedCandidates = candidateRows.map((item, rowIndex) => {
-         const itemName = item.itemName || item.description || item.name || item.rawText || `Invoice Row ${rowIndex + 1}`;
-         const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
-         const skuKey = normalizeSku(incomingCode);
-         const nameKey = normalizeName(itemName);
-         const rowType = String(item.rowType || item.lineType || item.type || 'item').toLowerCase();
-         const draftRow = {
-           ...item,
-           itemName,
-           productCode: incomingCode,
-           quantity: item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? '',
-           packSize: item.packSize || item.pack || item.size || item.uom || '',
-           unitPrice: item.unitPrice ?? item.priceEach ?? item.casePrice ?? '',
-           totalPrice: item.totalPrice ?? item.extendedPrice ?? item.lineTotal ?? '',
-           rowType,
-           rawText: item.rawText || ''
-         };
-         const isInventoryLine = isPurchasedInvoiceLine(draftRow);
-         const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
-         const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
-         const match = matchByCode || matchByName;
-         return { 
-           ...draftRow,
-           isInventoryLine,
-           matchedItemId: isInventoryLine && match ? match.id : '',
-           matchId: isInventoryLine && match ? match.id : '',
-           matchName: isInventoryLine && match ? match.name : '',
-           action: isInventoryLine ? (match ? 'update' : 'create') : 'record'
-         };
-      });
-      const normalizedLineItems = normalizedCandidates.filter(isPurchasedInvoiceLine).map(i => ({ ...i, isInventoryLine: true }));
-      const skippedRows = (fullRows.length ? fullRows : normalizedCandidates).filter(row => !isPurchasedInvoiceLine(row));
-      updateInvoiceProgress(100, 'Review ready.', 'done');
-      setInvoiceReviewTab('matched');
-      setScannedInvoice({ ...data, lineItems: normalizedLineItems, skippedRows, allExtractedRows: fullRows.length ? fullRows : normalizedCandidates, sourceFile: file.name, scanCompression: payload.compression || null, scanUploadedFileName: payload.uploadedFileName || '' });
-      addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased product rows. ${skippedRows.length ? `${skippedRows.length} non-product rows were kept in the audit only.` : 'No non-product rows were sent to Stock Matcher.'}`);
-    } catch (err) {
-      if (aiPulseId) window.clearInterval(aiPulseId);
-      if (timeoutId) window.clearTimeout(timeoutId);
-      console.error(err);
-      const message = err?.name === 'AbortError'
-        ? 'The invoice scanner needed more time. Try this same document one more time; if it keeps happening, split only the biggest PDF pages.'
-        : (err.message || 'Could not scan invoice.');
-      updateInvoiceProgress(100, message, 'error');
-      addToast(/over|compress|split|large/i.test(message) ? 'Invoice Too Large' : 'Scan Error', message);
-    } finally {
-      setIsScanningInvoice(false);
-      e.target.value = '';
-    }
+          setScannedInvoice({ ...data, lineItems: reconciledItems });
+          addToast('Success', 'Invoice extracted! Please verify matched items.');
+        } catch (err) {
+          addToast('Error', err.message);
+        } finally {
+          setIsScanningInvoice(false);
+        }
+      };
+    };
+    e.target.value = '';
   };
+
   const handleApproveInvoice = async () => {
      try {
        // 1. Log the invoice record for history
-       await safeInventoryWrite({ quiet: true, action: "add", collectionName: "invoices", label: "Invoice scan", data: {
+       await addDoc(collection(db, "invoices"), {
          ...scannedInvoice,
          restaurantId: appUser.restaurantId,
          processedAt: new Date().toISOString(),
          processedBy: appUser.name
-       } });
+       });
 
        // 2. Resolve Vendor (Auto-Create if Missing)
        let vId = '';
@@ -1315,11 +786,11 @@ const executeOrder = async (method) => {
        if (existingVendor) {
           vId = existingVendor.id;
        } else if (scannedInvoice.vendorName) {
-          const newVRef = await safeInventoryWrite({ quiet: true, action: "add", collectionName: "vendors", label: "Invoice vendor", data: { 
+          const newVRef = await addDoc(collection(db, "vendors"), { 
             name: scannedInvoice.vendorName, 
             rep: "", email: "", phone: "", 
             restaurantId: appUser.restaurantId 
-          } });
+          });
           vId = newVRef.id;
        }
 
@@ -1330,7 +801,6 @@ const executeOrder = async (method) => {
 for (const item of scannedInvoice.lineItems) {
           // Catch every possible key name the AI might use for the SKU/Product Code
           const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
-          if (!item.isInventoryLine || !isPurchasedInvoiceLine(item)) continue;
 
 if (item.matchedItemId === 'CREATE_NEW') {
              // Smart Auto-Categorizer
@@ -1345,31 +815,26 @@ if (item.matchedItemId === 'CREATE_NEW') {
              else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
              else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
 
-             const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
-             await safeInventoryWrite({ quiet: true, action: "add", collectionName: "inventoryItems", label: "Invoice inventory item", data: {
+             await addDoc(collection(db, "inventoryItems"), {
                 name: item.itemName,
                 category: autoCat, 
                 pfgCode: incomingCode, 
                 supplierId: vId,
-                packSize: item.packSize || item.uom || item.size || '1 CS',
-                yieldQty: parseFloat(item.unitsPerCase || item.casePackCount || item.caseCount || packProfile.count) || 1, 
-                weightPerStockUnit: parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0,
-                burnDefaultMode: (parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0) > 0 ? 'weight' : 'count',
-                burnUnitLabel: (parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0) > 0 ? 'lb' : 'unit',
-                price: parseFloat(item.unitPrice || item.casePrice) || 0,
+                packSize: item.packSize || '1 CS',
+                yieldQty: 1, 
+                price: parseFloat(item.unitPrice) || 0,
                 parLevel: 0,
-                currentStock: parseFloat(item.quantity || item.shippedQty || item.receivedQty) || 0,
+                currentStock: parseFloat(item.quantity) || 0,
                 pendingQty: 0,
                 isStarred: false,
                 lastOrderedDate: null,
-                lastInvoiceRaw: item,
                 restaurantId: appUser.restaurantId
-             } });
+             });
              newCount++;
           } else if (item.matchedItemId) {
              const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
              if (invItem) {
-                const addedStock = parseFloat(item.quantity || item.shippedQty || item.receivedQty) || 0;
+                const addedStock = parseFloat(item.quantity) || 0;
                 const updates = { 
                    currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
                 };
@@ -1378,126 +843,42 @@ if (item.matchedItemId === 'CREATE_NEW') {
                 if (!invItem.pfgCode && incomingCode) {
                    updates.pfgCode = incomingCode;
                 }
-                const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
-                if (!invItem.weightPerStockUnit && packProfile.weightLbs > 0) updates.weightPerStockUnit = packProfile.weightLbs;
-                if ((!invItem.yieldQty || Number(invItem.yieldQty) <= 1) && packProfile.count > 1) updates.yieldQty = packProfile.count;
-                updates.lastInvoiceRaw = item;
 
-                await safeInventoryWrite({ quiet: true, action: "update", collectionName: "inventoryItems", docId: invItem.id, label: "Invoice stock update", before: invItem, data: updates });
+                await updateDoc(doc(db, "inventoryItems", invItem.id), updates);
                 updateCount++;
              }
           }
        }
 
-       addToast('Invoice Processed', `Saved ${updateCount + newCount} item${updateCount + newCount === 1 ? '' : 's'}: updated ${updateCount}, added ${newCount}.`);
+       addToast('Invoice Processed', `Updated ${updateCount} items and added ${newCount} new items.`);
        setScannedInvoice(null);
      } catch(e) {
        addToast('Error', 'Failed to process invoice updates.');
      }
   };
 
-const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
-const belowParItems = inventoryItems.filter(isBelowPar);
-const zeroStockMenuImpacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
-const selectedWasteItem = inventoryItems.find(i => i.id === wItemId) || null;
-const selectedWasteUnitsPerStock = selectedWasteItem ? getBurnUnitsPerStockUnit(selectedWasteItem) : 1;
-const selectedWasteWeightPerStock = selectedWasteItem ? (parseFloat(wWeightPerStockUnit) || getBurnWeightPerStockUnit(selectedWasteItem)) : 0;
-const selectedWasteDeductionPreview = selectedWasteItem && wQty ? getBurnStockDeduction(wQty, selectedWasteItem, { mode: wMode, weightPerStockUnit: selectedWasteWeightPerStock, unitsPerStockUnit: selectedWasteUnitsPerStock }) : 0;
-const selectedWastePackProfile = selectedWasteItem ? parsePackProfile(selectedWasteItem.packSize) : { notes: [] };
-const groupedItems = inventoryItems
-  .filter(i => !focusBelowPar || isBelowPar(i))
-  .filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)))
-  .reduce((acc, item) => { 
+const groupedItems = inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).reduce((acc, item) => { 
     const key = groupBy === 'Vendor' ? (vendors.find(v=>v.id===item.supplierId)?.name || 'Unassigned Vendor') : (item.category || 'Uncategorized');
     if (!acc[key]) acc[key] = []; acc[key].push(item); return acc; 
   }, {});
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
 
-  const printInvoiceHistory = () => {
-    const rows = [['Vendor', 'Invoice Date', 'Total', 'Processed By'], ...invoices.slice().sort((a,b) => new Date(b.processedAt || 0) - new Date(a.processedAt || 0)).map(inv => [inv.vendorName || 'Unknown', inv.invoiceDate || '', `$${Number(inv.invoiceTotal || 0).toFixed(2)}`, inv.processedBy || ''])];
-    openPrintableReport({ title: '86 Chaos Invoice History', subtitle: appUser?.restaurantName || 'Workspace', rows, filename: `86chaos-invoice-history-${getToday()}` });
-  };
-  const printCurrentInvoice = (invoice) => {
-    if (!invoice) return;
-    const rows = [['Item', 'Qty', 'Pack', 'Unit', 'Total'], ...(invoice.lineItems || []).map(item => [item.itemName || item.name || '', item.quantity || item.shippedQty || '', item.packSize || item.uom || '', `$${Number(item.unitPrice || item.casePrice || 0).toFixed(2)}`, `$${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}`])];
-    openPrintableReport({ title: `Invoice ${invoice.invoiceNumber || ''}`.trim() || 'Invoice Detail', subtitle: `${invoice.vendorName || 'Unknown vendor'} • ${invoice.invoiceDate || ''}`, rows, filename: `86chaos-invoice-${invoice.invoiceNumber || getToday()}` });
-  };
-
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
       
-      {/* CSV IMPORT CLEANUP REVIEW MODAL */}
-      <Modal isOpen={!!csvImportReview} onClose={() => isSavingCsvImport ? null : setCsvImportReview(null)} title="Inventory Import Cleanup Review">
-        {csvImportReview && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Rows</div><div className="text-lg font-black text-white">{csvImportReview.rows.length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Creates</div><div className="text-lg font-black text-emerald-400">{csvImportReview.rows.filter(r => r.action === 'create').length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Updates</div><div className="text-lg font-black text-[#D4A381]">{csvImportReview.rows.filter(r => r.action === 'update').length}</div></div>
-            </div>
-            {csvImportReview.issues?.length > 0 && <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 text-[11px] text-amber-200 font-bold">{csvImportReview.issues.slice(0, 5).join(' • ')}</div>}
-            <div className="max-h-[55vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
-              {csvImportReview.rows.map((row, idx) => (
-                <div key={`${row.rowNumber}-${idx}`} className="p-3 bg-[#1A2126] grid md:grid-cols-[1fr_120px] gap-3">
-                  <div>
-                    <div className="text-sm font-black text-white">{row.name}</div>
-                    <div className="text-[10px] text-slate-400 font-bold mt-1">Row {row.rowNumber} • {row.category} • {row.pfgCode || 'No SKU'} • {row.packSize} • ${Number(row.price || 0).toFixed(2)} • {row.vendorName}</div>
-                    {row.existingName && <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-1">Existing match: {row.existingName}</div>}
-                    {row.duplicateInFile && <div className="text-[9px] text-red-300 font-black uppercase tracking-widest mt-1">Duplicate in CSV, skipped by default</div>}
-                  </div>
-                  <select value={row.action} onChange={e => updateCsvReviewRow(idx, { action: e.target.value })} className={`${T.input} text-xs font-black`}>
-                    <option value="create">Create New</option>
-                    <option value="update" disabled={!row.existingId}>Update Match</option>
-                    <option value="skip">Skip</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-2"><button disabled={isSavingCsvImport} onClick={() => setCsvImportReview(null)} className={T.btnAlt}>Cancel</button><button disabled={isSavingCsvImport} onClick={approveCsvImport} className={T.btn}>{isSavingCsvImport ? 'Saving...' : 'Approve Import'}</button></div>
-          </div>
-        )}
-      </Modal>
-
       {/* INVOICE RECONCILIATION MODAL */}
       <Modal isOpen={!!scannedInvoice} onClose={() => setScannedInvoice(null)} title="Reconcile & Approve Invoice">
         {scannedInvoice && (
           <div className="space-y-4">
             <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
               <div>
-                <div className="font-black text-white text-lg">{scannedInvoice.vendorName || 'Unknown Vendor'}</div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate || 'No date found'} {scannedInvoice.invoiceNumber ? ` • Inv #${scannedInvoice.invoiceNumber}` : ''}</div>
-                {scannedInvoice.scanFileName && <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">File: {scannedInvoice.scanFileName}</div>}
+                <div className="font-black text-white text-lg">{scannedInvoice.vendorName}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate}</div>
               </div>
-<div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || scannedInvoice.grandTotal || 0).toFixed(2)}</div>
+<div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || 0).toFixed(2)}</div>
             </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Product Rows</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Skipped Non-Stock</div><div className="text-lg font-black text-white">{(scannedInvoice.skippedRows || []).length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Confidence</div><div className="text-lg font-black text-[#D4A381]">{scannedInvoice.confidence || 'Review'}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Terms</div><div className="text-xs font-black text-white truncate">{scannedInvoice.paymentTerms || scannedInvoice.terms || '—'}</div></div>
-            </div>
-
-            {(scannedInvoice.extractionWarnings || scannedInvoice.extractionNotes || scannedInvoice.rawTranscription) && (
-              <details className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
-                <summary className="cursor-pointer text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Full Extraction Audit / Raw Text</summary>
-                {scannedInvoice.extractionWarnings && <div className="mt-2 text-[10px] text-orange-300 font-bold">Warnings: {Array.isArray(scannedInvoice.extractionWarnings) ? scannedInvoice.extractionWarnings.join(' • ') : scannedInvoice.extractionWarnings}</div>}
-                {scannedInvoice.extractionNotes && <div className="mt-2 text-[10px] text-slate-300 font-bold">Notes: {Array.isArray(scannedInvoice.extractionNotes) ? scannedInvoice.extractionNotes.join(' • ') : scannedInvoice.extractionNotes}</div>}
-                {scannedInvoice.rawTranscription && <pre className="mt-2 max-h-36 overflow-auto text-[10px] whitespace-pre-wrap text-slate-400 bg-black/20 p-2 rounded-lg border border-[#2A353D]">{scannedInvoice.rawTranscription}</pre>}
-              </details>
-            )}
             
-            {(scannedInvoice.skippedRows || []).length > 0 && (
-              <div className="bg-blue-900/10 border border-blue-500/30 rounded-xl p-2 text-[10px] text-blue-200 font-bold leading-snug">
-                Non-product rows like email headers, addresses, taxes, totals, fees, and notes were kept in the Full Extraction Audit only. They will not be added to inventory.
-              </div>
-            )}
-            
-            <div className="flex flex-wrap gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-1">
-              {[['matched','Stock Matcher'], ['raw','Raw Rows'], ['skipped','Skipped Rows']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
-            </div>
-
-            {invoiceReviewTab === 'matched' && <div className="flex justify-between items-center mt-2 mb-1">
+            <div className="flex justify-between items-center mt-2 mb-1">
               <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest pl-1">Stock Matcher</p>
               <div className="flex gap-2">
                 <button type="button" onClick={() => { const newItems = scannedInvoice.lineItems.map(i => ({...i, matchedItemId: ''})); setScannedInvoice({...scannedInvoice, lineItems: newItems}); }} className="text-[9px] bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white px-2 py-1 rounded font-black uppercase tracking-widest transition-colors shadow-sm">
@@ -1507,9 +888,9 @@ const groupedItems = inventoryItems
                   Mark Unmatched as New
                 </button>
               </div>
-            </div>}
+            </div>
 
-            {invoiceReviewTab === 'matched' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+            <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
               {(scannedInvoice.lineItems || []).map((item, idx) => (
                 <div key={idx} className="p-3 bg-[#1A2126] flex flex-col gap-3">
                   <div className="flex justify-between items-start">
@@ -1517,15 +898,11 @@ const groupedItems = inventoryItems
 <div className="font-bold text-white text-sm flex items-center gap-1.5">
   {item.productCode && <span className="text-[#D4A381] font-black">[{item.productCode}]</span>}
   {item.itemName}
-  {!item.isInventoryLine && <span className="text-[8px] bg-slate-800 text-slate-400 border border-[#2A353D] px-1.5 py-0.5 rounded uppercase">{item.rowType || 'non-stock'}</span>}
 </div>                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
-                        Qty: {item.quantity || item.shippedQty || '—'} {item.packSize || item.uom || ''} • Unit: ${Number(item.unitPrice || item.casePrice || 0).toFixed(2)} • Total: ${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}
+                        {item.quantity} {item.packSize} @ ${Number(item.unitPrice || 0).toFixed(2)}/ea
                       </div>
-                      {(item.orderedQty || item.shippedQty || item.weight || item.tax || item.discount || item.rawText) && <div className="text-[9px] text-slate-500 font-bold mt-1 leading-snug">
-                        {item.orderedQty ? `Ordered: ${item.orderedQty} ` : ''}{item.shippedQty ? `Shipped: ${item.shippedQty} ` : ''}{item.weight ? `Weight: ${item.weight} ` : ''}{item.tax ? `Tax: ${item.tax} ` : ''}{item.discount ? `Discount: ${item.discount} ` : ''}{item.rawText ? `Raw: ${item.rawText}` : ''}
-                      </div>}
                     </div>
-                    <div className="font-black text-slate-300 text-right">${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}</div>
+                    <div className="font-black text-slate-300">${Number(item.totalPrice || 0).toFixed(2)}</div>
                   </div>
                   
                   {/* RECONCILIATION DROPDOWN */}
@@ -1538,19 +915,15 @@ const groupedItems = inventoryItems
                     }}
                     className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
                   >
-                    <option value="">{item.isInventoryLine ? '-- Do Not Import / Skip --' : '-- Non-inventory row saved to invoice only --'}</option>
-                    {item.isInventoryLine && <option value="CREATE_NEW">➕ Add as New Item</option>}
+                    <option value="">-- Do Not Import / Skip --</option>
+                    <option value="CREATE_NEW">➕ Add as New Item</option>
                     {inventoryItems.map(inv => (
                       <option key={inv.id} value={inv.id}>{inv.name}</option>
                     ))}
                   </select>
                 </div>
               ))}
-            </div>}
-
-            {invoiceReviewTab === 'raw' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">{(scannedInvoice.allExtractedRows || []).length ? scannedInvoice.allExtractedRows.map((row, idx) => <div key={idx} className="p-3 bg-[#1A2126]"><div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest">Raw row {idx + 1}</div><pre className="mt-1 whitespace-pre-wrap text-[10px] text-slate-300">{typeof row === 'string' ? row : JSON.stringify(row, null, 2)}</pre></div>) : <div className="p-6 text-center text-slate-500 font-bold">No raw rows returned by scanner.</div>}</div>}
-
-            {invoiceReviewTab === 'skipped' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">{(scannedInvoice.skippedRows || []).length ? scannedInvoice.skippedRows.map((row, idx) => <div key={idx} className="p-3 bg-[#1A2126]"><div className="text-sm text-white font-black">{row.itemName || row.description || row.rawText || `Skipped row ${idx + 1}`}</div><div className="text-[10px] text-slate-400 font-bold mt-1">{row.rowType || row.reason || 'Kept on invoice audit only'}</div></div>) : <div className="p-6 text-center text-slate-500 font-bold">No skipped rows.</div>}</div>}
+            </div>
 
             <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Update Stock</button>
           </div>
@@ -1584,7 +957,7 @@ const groupedItems = inventoryItems
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-2"><button onClick={() => printCurrentInvoice(viewInvoice)} className={`w-full ${T.btn} py-3`}>Print / PDF</button><button onClick={() => setViewInvoice(null)} className={`w-full ${T.btnAlt} py-3`}>Close</button></div>
+            <button onClick={() => setViewInvoice(null)} className={`w-full ${T.btnAlt} py-3`}>Close</button>
           </div>
         )}
       </Modal>
@@ -1642,41 +1015,18 @@ const groupedItems = inventoryItems
 
 {invTab === 'count' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div id="below-par-focus-panel" className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <input type="text" placeholder="Search product or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className={`${T.input} flex-1`} />
             <select value={groupBy} onChange={e => setGroupBy(e.target.value)} className={`${T.input} sm:w-48 font-bold`}>
               <option value="Category">Group by Category</option>
               <option value="Vendor">Group by Vendor</option>
             </select>
-            <button type="button" onClick={() => setFocusBelowPar(v => !v)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${focusBelowPar ? 'bg-red-900/30 border-red-500/50 text-red-300' : 'bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-white'}`}>
-              {focusBelowPar ? `Showing ${belowParItems.length} Below Par` : `Below-Par Focus (${belowParItems.length})`}
-            </button>
           </div>
-          {focusBelowPar && belowParItems.length === 0 && <div className="bg-emerald-900/10 border border-emerald-500/30 text-emerald-300 rounded-xl p-4 text-sm font-bold">No inventory items are currently below par. Items equal to par are not counted as low.</div>}
-          {zeroStockMenuImpacts.length > 0 && (
-            <div className="bg-red-950/20 border border-red-500/40 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-black text-red-200 text-sm uppercase tracking-widest">Menu Impact Alerts</h3>
-                  <p className="text-[10px] text-red-100/70 font-bold mt-1">These inventory items are at 0 stock and are linked to menu items.</p>
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-red-300">{zeroStockMenuImpacts.length} item(s)</span>
-              </div>
-              <div className="grid md:grid-cols-2 gap-2">
-                {zeroStockMenuImpacts.slice(0, 8).map(row => (
-                  <div key={row.item.id} className="bg-[#12161A] border border-red-900/50 rounded-xl p-3">
-                    <div className="text-sm font-black text-white">{row.item.name}</div>
-                    <div className="text-[10px] text-red-200 font-bold mt-1 leading-snug">Impacts: {row.impacts.map(i => i.name).join(', ')}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           {Object.entries(groupedItems).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
             <div key={category} className="space-y-2">
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
-                  <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2 ${isBelowPar(item) ? 'border-red-500/70 shadow-[0_0_18px_rgba(239,68,68,0.15)] bg-red-950/10' : ''}`}>
+                  <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2`}>
                     <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
@@ -1786,30 +1136,8 @@ const groupedItems = inventoryItems
                      <input type="number" step="0.01" value={editItem.price || ''} onChange={e => setEditItem({...editItem, price: e.target.value})} className={T.input} />
                    </div>
                    <div>
-                     <label className={T.label}>Units per Case / Yield</label>
-                     <input type="number" min="0" step="any" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required />
-                   </div>
-                 </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
-                   <div>
-                     <label className={T.label}>Default Burn Mode</label>
-                     <select value={editItem.burnDefaultMode || 'count'} onChange={e => setEditItem({...editItem, burnDefaultMode: e.target.value})} className={T.input}>
-                       <option value="count">Count / each</option>
-                       <option value="weight">Weight / lbs</option>
-                       <option value="stock">Whole case/stock unit</option>
-                       <option value="recordOnly">Record only</option>
-                     </select>
-                   </div>
-                   <div>
-                     <label className={T.label}>Weight per Stock Unit (lbs)</label>
-                     <input type="number" min="0" step="any" value={editItem.weightPerStockUnit || ''} onChange={e => setEditItem({...editItem, weightPerStockUnit: e.target.value})} className={T.input} placeholder="Ex: 5" />
-                   </div>
-                   <div>
-                     <label className={T.label}>Burn Unit Label</label>
-                     <input type="text" value={editItem.burnUnitLabel || ''} onChange={e => setEditItem({...editItem, burnUnitLabel: e.target.value})} className={T.input} placeholder="breast, patty, lb..." />
-                   </div>
-                   <div className="sm:col-span-3 text-[10px] text-slate-400 font-bold leading-snug">
-                     Burn setup controls how waste deducts stock. For 2/5 lb chicken, set Weight per Stock Unit to 5 and use Weight mode when logging pounds. For 24-count cases, set yield to 24 and use Count mode.
+                     <label className={T.label}>Units per Case (Yield)</label>
+                     <input type="number" min="1" value={editItem.yieldQty || 1} onChange={e => setEditItem({...editItem, yieldQty: e.target.value})} className={T.input} required />
                    </div>
                  </div>
                  <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
@@ -1820,33 +1148,16 @@ const groupedItems = inventoryItems
           <div className="flex flex-col gap-3 mb-6">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
-            <div id="invoice-scanner-panel" className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-60 pointer-events-none' : ''}`}>
+            <div className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-50 pointer-events-none' : ''}`}>
                <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
-                  {isScanningInvoice ? <span className="text-[11px] font-black tabular-nums">{invoiceScanProgress.percent}%</span> : <Camera size={24} />}
+                  {isScanningInvoice ? <Loader2 className="animate-spin" size={24} /> : <Camera size={24} />}
                   <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
                </label>
                <label className="flex-1 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381] font-black uppercase tracking-widest text-[11px] sm:text-xs" title="Upload Photo or PDF">
-                  <span>{isScanningInvoice ? 'Scanning Invoice...' : '📄 Scan Invoice (PDF/Photo)'}</span>
+                  <span>📄 Scan Invoice (PDF/Photo)</span>
                   <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
                </label>
             </div>
-            {(isScanningInvoice || invoiceScanProgress.phase === 'error') && (
-              <div className={`bg-[#12161A] border rounded-xl p-3 shadow-sm ${invoiceScanProgress.phase === 'error' ? 'border-red-500/40' : 'border-[#2A353D]'}`}>
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className={`text-[10px] font-black uppercase tracking-widest ${invoiceScanProgress.phase === 'error' ? 'text-red-300' : 'text-[#D4A381]'}`}>
-                    {invoiceScanProgress.phase === 'error' ? 'Invoice scan stopped' : 'Invoice scan progress'}
-                  </div>
-                  <div className="text-[10px] font-black text-slate-400 tabular-nums">{invoiceScanProgress.percent}%</div>
-                </div>
-                <div className="h-3 bg-[#0B0E11] rounded-full overflow-hidden border border-[#2A353D]">
-                  <div className={`h-full transition-all duration-300 ${invoiceScanProgress.phase === 'error' ? 'bg-red-500' : 'bg-[#D4A381]'}`} style={{ width: `${invoiceScanProgress.percent}%` }} />
-                </div>
-                <div className="mt-2 text-[11px] text-slate-400 font-bold leading-snug">
-                  {invoiceScanProgress.label}
-                </div>
-                {isScanningInvoice && <div className="mt-1 text-[10px] text-slate-500 font-bold">Keep this page open. Upload percentage is exact; large-document AI scanning shows the current stage and elapsed time.</div>}
-              </div>
-            )}
 
             {/* CSV IMPORT */}
             <label className={`flex items-center justify-center gap-2 bg-[#12161A] text-slate-300 border border-[#2A353D] hover:bg-[#1A2126] font-black uppercase tracking-widest h-16 rounded-xl shadow-lg transition-all cursor-pointer`}>
@@ -1877,7 +1188,7 @@ const groupedItems = inventoryItems
             <input type="text" placeholder="Search master list by name or product number..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className={`${T.input} pl-12`}/>
           </div>
 
-          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={() => { if(window.confirm(`Are you sure you want to delete ${item.name}?`)) safeInventoryWrite({ action: "delete", collectionName: "inventoryItems", docId: item.id, label: "Inventory item", before: item }); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
+          <div className={`${T.card} divide-y ${T.border}`}>{inventoryItems.filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm))).map(item => (<div key={item.id} className={`${T.row} flex justify-between items-center`}><div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name} <span className="text-[10px] text-slate-500 font-normal">{item.pfgCode ? `[${item.pfgCode}]` : ''}</span></div><div className="text-[10px] text-[#D4A381] font-black uppercase mt-0.5 tracking-widest">Case: ${Number(item.price||0).toFixed(2)}   Yield: {item.yieldQty||1}</div></div><div className="flex gap-2"><button onClick={()=>setEditItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button><button onClick={() => { if(window.confirm(`Are you sure you want to delete ${item.name}?`)) deleteDoc(doc(db,"inventoryItems",item.id)); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button></div></div>))}</div>
         </div>
       )}
 
@@ -1892,7 +1203,7 @@ const groupedItems = inventoryItems
             </div>
             <button type="submit" className={`w-full ${T.btn} py-2`}>Save Vendor</button>
           </form>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><div className="flex justify-between items-start"><h4 className="font-black text-white text-lg">{v.name}</h4><button onClick={()=>setEditVendor(v)} className="text-slate-400 hover:text-white"><Edit size={14}/></button></div><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p><p className="text-[#D4A381] mt-2">Cut-Off: {v.cutOffDays?.length > 0 ? v.cutOffDays.join(', ') : 'None'} {v.cutOffTime ? `@ ${v.cutOffTime}` : ''}</p></div><button onClick={()=>safeInventoryWrite({ action: "delete", collectionName: "vendors", docId: v.id, label: "Vendor", before: v })} className="mt-4 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{vendors.map(v => (<div key={v.id} className={`${T.card} p-4`}><div className="flex justify-between items-start"><h4 className="font-black text-white text-lg">{v.name}</h4><button onClick={()=>setEditVendor(v)} className="text-slate-400 hover:text-white"><Edit size={14}/></button></div><div className={`text-xs font-bold ${T.muted} mt-1 space-y-1`}><p>Rep: {v.rep || 'N/A'}</p><p>Phone: {v.phone || 'N/A'}</p><p>Email: {v.email || 'N/A'}</p><p className="text-[#D4A381] mt-2">Cut-Off: {v.cutOffDays?.length > 0 ? v.cutOffDays.join(', ') : 'None'} {v.cutOffTime ? `@ ${v.cutOffTime}` : ''}</p></div><button onClick={()=>deleteDoc(doc(db,"vendors",v.id))} className="mt-4 text-[10px] uppercase font-black tracking-widest text-red-500 hover:text-red-400">Remove Vendor</button></div>))}</div>
         </div>
       )}
 
@@ -1901,7 +1212,7 @@ const groupedItems = inventoryItems
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className="font-black text-sm text-white flex items-center gap-2">Invoice History</h3>
-              <div className="flex items-center gap-2"><button onClick={printInvoiceHistory} className="bg-[#1A2126] text-[#D4A381] px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">Print</button><span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{invoices.length} Total</span></div>
+              <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{invoices.length} Total</span>
             </div>
             <div className={`divide-y ${T.border} max-h-[60vh] overflow-y-auto custom-scrollbar`}>
               {invoices.length === 0 ? (
@@ -1951,7 +1262,7 @@ const groupedItems = inventoryItems
               {/* THE FILTERABLE DROPDOWN */}
               <div className="space-y-2">
                 <input type="text" placeholder="Type to filter inventory..." value={wSearchTerm} onChange={e=>setWSearchTerm(e.target.value)} className={`${T.input} py-2 text-xs border-red-900/30 focus:border-red-500`} />
-                <select value={wItemId} onChange={e=>handleWasteItemSelect(e.target.value)} className={T.input} required>
+                <select value={wItemId} onChange={e=>setWItemId(e.target.value)} className={T.input} required>
                   <option value="">Select Item to Burn...</option>
                   {inventoryItems
                     .filter(i => (i.name||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()) || (i.pfgCode||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()))
@@ -1959,38 +1270,17 @@ const groupedItems = inventoryItems
                 </select>
               </div>
 
-              <div className="space-y-2">
-                <select value={wMode} onChange={e=>setWMode(e.target.value)} className={`${T.input} text-xs`}>
-                  <option value="count">Count / each / portion</option>
-                  <option value="weight">Weight in pounds</option>
-                  <option value="stock">Whole stock units / cases</option>
-                  <option value="recordOnly">Record only, do not deduct stock</option>
-                </select>
-                <input type="number" min="0" step="any" placeholder={wMode === 'weight' ? 'Pounds wasted...' : wMode === 'stock' ? 'Cases/stock units wasted...' : 'Items/portions wasted...'} value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
-                {wMode === 'weight' && <input type="number" min="0" step="any" placeholder="Lbs in one stock unit/case..." value={wWeightPerStockUnit} onChange={e=>setWWeightPerStockUnit(e.target.value)} className={`${T.input} text-xs border-red-900/40`} required/>}
-                {wMode === 'count' && <input type="text" placeholder="Unit label, ex: breast, patty, bottle..." value={wUnitLabel} onChange={e=>setWUnitLabel(e.target.value)} className={`${T.input} text-xs border-red-900/40`}/>} 
-                {selectedWasteItem && <div className="mt-2 rounded-lg border border-red-900/40 bg-red-950/10 p-2 text-[10px] font-bold text-red-100 leading-snug space-y-1">
-                  <div>{selectedWasteItem.name}</div>
-                  {wMode === 'count' && <div>{selectedWasteUnitsPerStock > 1 ? `1 stock unit = ${selectedWasteUnitsPerStock} ${wUnitLabel || 'units'}` : '1 stock unit = 1 unit unless you set a yield on the item.'}</div>}
-                  {wMode === 'weight' && <div>1 stock unit = {selectedWasteWeightPerStock || '___'} lb. Example: 2 lb burned from a 5 lb pack deducts 0.4 stock units.</div>}
-                  {selectedWastePackProfile.notes?.length > 0 && <div className="text-slate-400">Auto-read: {selectedWastePackProfile.notes.join(' • ')}</div>}
-                  {wQty && <div className="text-red-300">This burn will deduct {selectedWasteDeductionPreview.toFixed(3).replace(/0+$/,'').replace(/\.$/,'')} from stock.</div>}
-                </div>}
+              <div>
+                <input type="number" min="0" step="any" placeholder="Qty Wasted (Individual Units)..." value={wQty} onChange={e=>setWQty(e.target.value)} className={T.input} required/>
+                <span className="text-[9px] text-slate-500 font-bold block mt-1 uppercase tracking-widest">Input individual units, not cases</span>
               </div>
               
-              <div className="space-y-2">
-                <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}>
-                  <option>Dropped / Spilled</option>
-                  <option>Expired / Bad Quality</option>
-                  <option>Cooked Incorrectly</option>
-                  <option>Comped</option>
-                  <option>Trim Loss / Waste</option>
-                  <option>No Quantity / Note Only</option>
-                </select>
-                <div className="text-[10px] text-slate-500 font-bold leading-snug border border-[#2A353D] rounded-lg p-2 bg-[#12161A]">
-                  Use <b>Count</b> for bottles, burgers, portions, breasts when the item has a yield. Use <b>Weight</b> for catch-weight items like chicken, beef, cheese, and produce. Use <b>Record only</b> when it should not affect inventory.
-                </div>
-              </div>
+              <select value={wReason} onChange={e=>setWReason(e.target.value)} className={T.input}>
+                <option>Dropped / Spilled</option>
+                <option>Expired / Bad Quality</option>
+                <option>Cooked Incorrectly</option>
+                <option>Comped</option>
+              </select>
             </div>
             <button type="submit" className={`w-full bg-red-900/50 hover:bg-red-900 border border-red-500/50 text-white font-black tracking-widest uppercase text-sm py-2 rounded-xl transition-colors mt-2`}>
               Log Waste & Deduct Stock
@@ -2008,8 +1298,8 @@ const groupedItems = inventoryItems
             {wasteLogs.filter(w => wasteSearch ? (w.itemName+w.reason+w.loggedBy+w.date).toLowerCase().includes(wasteSearch.toLowerCase()) : w.date === getToday()).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).map(w => (
               <div key={w.id} className={`${T.row} flex justify-between items-center`}>
                 <div className="flex-1"> 
-                  <span className="font-bold text-white text-sm block">{w.qty} {w.burnUnitLabel || (w.burnMode === 'weight' ? 'lb' : 'x')} {w.itemName}</span>
-                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.date} • {w.reason} • Stock -{Number(w.stockDeducted || 0).toFixed(3).replace(/0+$/,'').replace(/\.$/,'')}   By {w.loggedBy}</span>
+                  <span className="font-bold text-white text-sm block">{w.qty}x {w.itemName}</span>
+                  <span className={`text-[9px] font-bold ${T.muted} uppercase`}>{w.date} • {w.reason}   By {w.loggedBy}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="font-black text-red-400 text-sm">-${w.costLost?.toFixed(2)}</div>
@@ -2028,7 +1318,7 @@ const groupedItems = inventoryItems
   );
 };
 
-const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
+const TabRecipes = ({ appUser, addToast }) => {
   const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCat, setFilterCat] = useState('All'); 
@@ -2037,7 +1327,6 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
   const [yieldMult, setYieldMult] = useState(1);
   const [editingRecipeId, setEditingRecipeId] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
-  const safeRecipeWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   // --- SCREEN WAKE LOCK ENGINE ---
   const [isAwake, setIsAwake] = useState(false);
@@ -2163,14 +1452,14 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
     if (!title.trim() || !ingredients.trim() || !instructions.trim()) return addToast('Error', 'Missing fields.'); 
     try { 
       if (editingRecipeId) {
-        await safeRecipeWrite({ action: "update", collectionName: "recipes", docId: editingRecipeId, label: "Recipe", before: recipes.find(r => r.id === editingRecipeId), data: { 
+        await updateDoc(doc(db, "recipes", editingRecipeId), { 
           title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), lastUpdated: new Date().toISOString() 
-        } }); 
+        }); 
         addToast('Recipe Updated', `${title} updated successfully.`); 
       } else {
-        await safeRecipeWrite({ action: "add", collectionName: "recipes", label: "Recipe", data: { 
+        await addDoc(collection(db, "recipes"), { 
           title: title.trim(), category, prepTime: prepTime.trim() || '--', yieldAmt: yieldAmt.trim() || '--', ingredients: ingredients.trim(), instructions: instructions.trim(), authorName: appUser.name, authorId: appUser.id, lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId 
-        } }); 
+        }); 
         addToast('Recipe Saved', `${title} added to the book.`); 
       }
       setIsFormOpen(false); 
@@ -2178,7 +1467,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
     } catch (err) { addToast('Error', 'Could not save.'); } 
   };
   
-  const handleDelete = async (id) => { if (!window.confirm("Delete recipe?")) return; await safeRecipeWrite({ action: "delete", collectionName: "recipes", docId: id, label: "Recipe", before: recipes.find(r => r.id === id) }); setActiveRecipe(null); addToast('Deleted', 'Recipe removed.'); };
+  const handleDelete = async (id) => { if (!window.confirm("Delete recipe?")) return; await deleteDoc(doc(db, "recipes", id)); setActiveRecipe(null); addToast('Deleted', 'Recipe removed.'); };
   
   const handleInjectLegacyRecipes = async () => {
     const legacyData = [
@@ -2212,56 +1501,17 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
     let count = 0;
     for (const recipe of legacyData) {
       if (!recipes.find(r => r.title === recipe.title)) {
-        await safeRecipeWrite({ action: "add", collectionName: "recipes", label: "Legacy recipe", data: { ...recipe, authorName: "System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId } });
+        await addDoc(collection(db, "recipes"), { ...recipe, authorName: "System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId });
         count++;
       }
     }
     addToast('Import Complete', `Injected ${count} legacy recipes.`);
   };
 
-  const normalizeRecipeVoiceText = (value = '') => String(value || '').toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
-  const findBestRecipeForVoice = (queryText = '') => {
-    const q = normalizeRecipeVoiceText(queryText);
-    if (!q) return null;
-    const qWords = q.split(' ').filter(w => w.length > 2);
-    const scored = (recipes || []).map(recipe => {
-      const titleText = normalizeRecipeVoiceText(recipe.title || '');
-      const ingredientText = normalizeRecipeVoiceText(recipe.ingredients || '').slice(0, 1000);
-      let score = 0;
-      if (recipe.id && voiceRecipeTarget?.recipeId && recipe.id === voiceRecipeTarget.recipeId) score += 220;
-      if (titleText === q) score += 170;
-      if (titleText.startsWith(q) || q.startsWith(titleText)) score += 95;
-      if (titleText.includes(q) || q.includes(titleText)) score += 70;
-      const titleWords = titleText.split(' ').filter(w => w.length > 2);
-      const hits = qWords.filter(w => titleWords.some(t => t === w || t.includes(w) || w.includes(t))).length;
-      score += hits * 26;
-      if (qWords.length && hits === qWords.length) score += 40;
-      if (ingredientText && qWords.some(w => ingredientText.includes(w))) score += 8;
-      return { recipe, score };
-    }).sort((a,b) => b.score - a.score);
-    return scored[0]?.score > 0 ? scored[0].recipe : null;
-  };
-
-  useEffect(() => {
-    if (!voiceRecipeTarget?.id) return;
-    const queryText = voiceRecipeTarget.recipeTitle || voiceRecipeTarget.query || '';
-    if (!queryText) return;
-    setFilterCat('All');
-    setSearchTerm(queryText);
-    const match = findBestRecipeForVoice(queryText);
-    if (match) {
-      setActiveRecipe(match);
-      setYieldMult(1);
-      addToast('Recipe Opened', match.title || queryText);
-    } else {
-      addToast('Recipe Search', `Searching Recipe Book for “${queryText}”.`);
-    }
-  }, [voiceRecipeTarget?.id, recipes.length]);
-
   const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
 
   // Determine if the current user has permission to edit/delete the viewed recipe
-  const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
+  const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
 
   return (
@@ -2308,7 +1558,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
               <span className="sm:hidden">Awake</span>
             </button>
 
-            {(MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) && (
+            {appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() && (
               <button onClick={handleInjectLegacyRecipes} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest bg-[#12161A] text-slate-400 border border-[#2A353D] hover:text-emerald-400 transition-all">
                 <Package size={16} /> <span className="hidden sm:inline">Import</span>
               </button>
@@ -2453,7 +1703,6 @@ const TabMaintenance = ({ appUser, addToast }) => {
   const [pmEquipment, setPmEquipment] = useState('');
   const [pmDays, setPmDays] = useState('30');
   const [editingPmId, setEditingPmId] = useState(null);
-  const safeMaintenanceWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   const resetForm = () => {
     setEquipment(''); setIssue(''); setUrgency('Standard'); 
@@ -2491,12 +1740,12 @@ const TabMaintenance = ({ appUser, addToast }) => {
         if (status === 'Resolved' && logs.find(l => l.id === editingLogId)?.status !== 'Resolved') {
             payload.resolvedAt = new Date().toISOString();
         }
-        await safeMaintenanceWrite({ action: "update", collectionName: "maintenanceLogs", docId: editingLogId, label: "Maintenance log", before: logs.find(l => l.id === editingLogId), data: payload });
+        await updateDoc(doc(db, "maintenanceLogs", editingLogId), payload);
         addToast('Updated', 'Maintenance log updated successfully.');
       } else {
         payload.reportedAt = new Date().toISOString();
         payload.reportedBy = appUser.name;
-        await safeMaintenanceWrite({ action: "add", collectionName: "maintenanceLogs", label: "Maintenance log", data: payload });
+        await addDoc(collection(db, "maintenanceLogs"), payload);
         addToast('Logged', 'New equipment issue reported.');
       }
       setIsModalOpen(false); resetForm();
@@ -2516,11 +1765,11 @@ const TabMaintenance = ({ appUser, addToast }) => {
     };
     try {
       if (editingPmId) {
-        await safeMaintenanceWrite({ action: "update", collectionName: "pmSchedules", docId: editingPmId, label: "PM schedule", before: pmSchedules.find(p => p.id === editingPmId), data: payload });
+        await updateDoc(doc(db, "pmSchedules", editingPmId), payload);
         addToast('Updated', 'PM Schedule updated.');
       } else {
         payload.lastCompleted = getToday(); // Default to today on creation
-        await safeMaintenanceWrite({ action: "add", collectionName: "pmSchedules", label: "PM schedule", data: payload });
+        await addDoc(collection(db, "pmSchedules"), payload);
         addToast('Created', 'New PM Schedule active.');
       }
       setIsPmModalOpen(false); resetPmForm();
@@ -2531,10 +1780,10 @@ const TabMaintenance = ({ appUser, addToast }) => {
     if(!window.confirm(`Mark ${pm.title} as completed for today?`)) return;
     try {
       // 1. Update the PM tracker
-      await safeMaintenanceWrite({ action: "update", collectionName: "pmSchedules", docId: pm.id, label: "PM completion", before: pm, data: { lastCompleted: getToday() } });
+      await updateDoc(doc(db, "pmSchedules", pm.id), { lastCompleted: getToday() });
       
       // 2. Auto-generate a historical paper trail in the main logs
-      await safeMaintenanceWrite({ action: "add", collectionName: "maintenanceLogs", label: "PM completion log", data: {
+      await addDoc(collection(db, "maintenanceLogs"), {
         equipment: pm.equipment,
         issue: `[PM COMPLETED] ${pm.title}`,
         urgency: 'Standard',
@@ -2547,7 +1796,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
         resolvedAt: new Date().toISOString(),
         updatedBy: appUser.name,
         lastUpdated: new Date().toISOString()
-      } });
+      });
       
       addToast('PM Completed', 'Schedule reset and historical log created.');
     } catch (e) { addToast('Error', e.message); }
@@ -2649,7 +1898,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
                   </div>
                   <div className="flex items-center gap-1 md:self-end">
                     <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
-                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) safeMaintenanceWrite({ action: "delete", collectionName: "maintenanceLogs", docId: log.id, label: "Maintenance log", before: log }); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
+                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) deleteDoc(doc(db,"maintenanceLogs",log.id)); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
                   </div>
                 </div>
               ))}
@@ -2702,7 +1951,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
                       </button>
                       <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
                         <button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(pm.frequencyDays.toString()); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><Edit size={14}/></button>
-                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) safeMaintenanceWrite({ action: "delete", collectionName: "pmSchedules", docId: pm.id, label: "PM schedule", before: pm }); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) deleteDoc(doc(db,"pmSchedules",pm.id)); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                       </div>
                     </div>
                   </div>
@@ -2716,18 +1965,13 @@ const TabMaintenance = ({ appUser, addToast }) => {
   );
 };
 
-const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab }) => {
+const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast }) => {
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
   const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { limitCount: 200 });
   const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId, { limitCount: 150 });
   const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
   const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
-  const [depRecipeId, setDepRecipeId] = useState('');
-  const [depInventoryItemId, setDepInventoryItemId] = useState('');
-  const [depNotes, setDepNotes] = useState('');
-  const safeOpsWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
 
   const today = currentDate || getToday();
   const todayDate = new Date(today + 'T12:00:00');
@@ -2752,33 +1996,6 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const yesterdaySales = sales.find(s => s.date === yesterday);
   const todaySales = sales.find(s => s.date === today);
   const monthSales = sales.filter(s => (s.date || '').startsWith(monthStr));
-
-  const handleAddMenuDependency = async (e) => {
-    e.preventDefault();
-    const recipe = recipes.find(r => r.id === depRecipeId);
-    const item = inventoryItems.find(i => i.id === depInventoryItemId);
-    if (!recipe || !item) return addToast('Dependency Needed', 'Choose both a menu item/recipe and an inventory item.');
-    const alreadyExists = menuDependencies.some(dep => dep.recipeId === recipe.id && dep.inventoryItemId === item.id);
-    if (alreadyExists) return addToast('Already Mapped', 'That dependency is already in the menu graph.');
-    await safeOpsWrite({ action: 'add', collectionName: 'menuDependencies', label: 'Menu dependency', data: {
-      recipeId: recipe.id,
-      recipeName: recipe.name || recipe.title || 'Recipe',
-      inventoryItemId: item.id,
-      inventoryItemName: item.name || 'Inventory item',
-      dependencyType: 'ingredient',
-      notes: depNotes.trim(),
-      createdAt: new Date().toISOString(),
-      createdBy: appUser?.name || appUser?.email || 'Kitchen Command Center',
-      restaurantId: appUser.restaurantId
-    } });
-    setDepNotes('');
-    addToast('Dependency Mapped', `${recipe.name || recipe.title || 'Recipe'} now watches ${item.name}.`);
-  };
-
-  const handleDeleteMenuDependency = async (dep) => {
-    if (!window.confirm(`Remove dependency: ${dep.recipeName || 'Recipe'} → ${dep.inventoryItemName || 'item'}?`)) return;
-    await safeOpsWrite({ action: 'delete', collectionName: 'menuDependencies', docId: dep.id, label: 'Menu dependency', before: dep });
-  };
 
   const parseShiftHours = (start, end) => {
     if (!start || !end) return 0;
@@ -2875,20 +2092,16 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     return null;
   }).filter(Boolean).slice(0, 5);
 
-  const stockNeed = (item) => Math.max(0, Math.ceil(Number(item.parLevel || 0) - Number(item.currentStock || 0)));
-  const urgent86Items = lowStockItems.filter(i => Number(i.currentStock || 0) <= 0 || (Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) / Math.max(1, Number(i.parLevel || 1)) <= 0.25));
-  const dependencyReport = buildMenuDependencyReport({ recipes, inventoryItems, prepItems: tasks, menuDependencies, events });
-  const affectedMenuItems = dependencyReport.affectedRecipes.slice(0, 12);
-  const menuGraphCoverage = recipes.length ? Math.round((new Set(menuDependencies.map(dep => dep.recipeId)).size / recipes.length) * 100) : 0;
-
   const recommendations = [
-    affectedMenuItems.length > 0 ? `Menu dependency: ${affectedMenuItems[0].recipe.name || affectedMenuItems[0].recipe.title || 'A recipe'} is affected by ${affectedMenuItems[0].lowStockMatches.map(i => i.name).join(', ')}.` : (lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.'),
+    lowStockItems.length > 0 ? `Order check: ${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} ${lowStockItems.length > 3 ? `and ${lowStockItems.length - 3} more` : ''}.` : 'Inventory pars look clean right now.',
     criticalMaintenance.length > 0 ? `Maintenance first: ${criticalMaintenance[0].equipment} needs attention.` : 'No high priority equipment fires showing.',
-    openTasks.length > 0 ? `Opening focus: ${openTasks.slice(0, 3).map(t => t.title).join(', ')}.` : "Today's task list is buttoned up.",
+    openTasks.length > 0 ? `Opening focus: ${openTasks.slice(0, 3).map(t => t.title).join(', ')}.` : 'Today\'s task list is buttoned up.',
     overduePm.length > 0 ? `Preventative maintenance overdue: ${overduePm.slice(0, 2).map(pm => pm.title).join(', ')}.` : 'Preventative maintenance countdowns are quiet.',
     scheduleWarnings.length > 0 ? scheduleWarnings[0] : 'No immediate schedule warnings detected.'
   ];
 
+  const stockNeed = (item) => Math.max(0, Math.ceil(Number(item.parLevel || 0) - Number(item.currentStock || 0)));
+  const urgent86Items = lowStockItems.filter(i => Number(i.currentStock || 0) <= 0 || (Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) / Math.max(1, Number(i.parLevel || 1)) <= 0.25));
   const suggestedPrepTasks = [
     ...lowStockItems.slice(0, 4).map(i => `Prep/order recovery: ${i.name} is below par by ${stockNeed(i)}.`),
     forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High forecast: add backup proteins, fries, sauces, and expo garnish before rush.' : null,
@@ -2902,12 +2115,12 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     if (items.length === 0) return addToast('Smart Order', 'No below-par items found.');
     if (!window.confirm(`Build pending order quantities for ${items.length} below-par items?`)) return;
     try {
-      await Promise.all(items.map(i => safeOpsWrite({ action: 'update', collectionName: 'inventoryItems', docId: i.id, label: 'Smart order', before: i, data: {
+      await Promise.all(items.map(i => updateDoc(doc(db, 'inventoryItems', i.id), {
         pendingQty: Math.max(Number(i.pendingQty || 0), stockNeed(i)),
         lastSmartOrderDate: getToday(),
-        lastSmartOrderBy: appUser?.name || 'Kitchen Command Center'
-      } })));
-      await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Kitchen Command Center.`);
+        lastSmartOrderBy: appUser?.name || 'Ops Command Center'
+      })));
+      await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Ops Command Center.`);
       addToast('Smart Order Built', `${items.length} item(s) queued for ordering.`);
     } catch (err) { addToast('Error', err.message); }
   };
@@ -2919,7 +2132,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       const existingToday = new Set(tasks.filter(t => t.source === 'ops-smart-prep' && t.generatedForDate === today).map(t => t.title));
       const adds = suggestedPrepTasks
         .filter(title => !existingToday.has(title))
-        .map(title => safeOpsWrite({ action: 'add', collectionName: 'tasks', label: 'Smart prep task', data: {
+        .map(title => addDoc(collection(db, 'tasks'), {
           title,
           category: 'Smart Prep',
           frequency: 'daily',
@@ -2928,7 +2141,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           source: 'ops-smart-prep',
           completions: {},
           restaurantId: appUser.restaurantId
-        } }));
+        }));
       await Promise.all(adds);
       await logAudit(appUser, 'SMART_PREP_CREATED', 'tasks', `Created ${adds.length} smart prep tasks for ${today}.`);
       addToast('Smart Prep Created', `${adds.length} task(s) added to Prep & Tasks.`);
@@ -2937,41 +2150,20 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const handlePost86Alert = async () => {
     if (urgent86Items.length === 0) return addToast('86 Radar', 'No urgent 86/low-stock items found.');
-    const watched = urgent86Items.slice(0, 10);
-    const alertLines = watched.map(i => {
-      const impactText = buildMenuImpactText(i, menuDependencies);
-      return `• ${i.name}: ${Number(i.currentStock || 0)} on hand / par ${Number(i.parLevel || 0)}${impactText ? `\n  ${impactText}` : ''}`;
-    });
-    const menuImpactItems = watched
-      .flatMap(i => getMenuImpactForInventoryItem(i, menuDependencies).map(row => row.name))
-      .filter(Boolean);
-    const dedupedImpacts = Array.from(new Set(menuImpactItems));
+    const alertLines = urgent86Items.slice(0, 10).map(i => `• ${i.name}: ${Number(i.currentStock || 0)} on hand / par ${Number(i.parLevel || 0)}`);
     const text = `86 / Low Stock Watch:\n${alertLines.join('\n')}`;
     try {
-      await safeOpsWrite({ action: 'add', collectionName: 'events', label: '86 alert', data: {
-        date: new Date().toISOString(),
-        title: text,
-        type: 'note',
-        messageCategory: '86 Alert',
-        author: appUser?.name || 'Kitchen Command Center',
-        isImportant: true,
-        restaurantId: appUser.restaurantId,
-        replies: [],
-        commandCenterAlert: true,
-        managerBriefAlert: true,
-        kitchenCommandCenterAlert: true,
-        menuImpact: dedupedImpacts.length ? `No longer available from the menu: ${dedupedImpacts.slice(0, 8).join(', ')}` : '',
-        menuImpactItems: dedupedImpacts,
-        source: 'kitchen_command_center_86_watch'
-      } });
-      addToast('86 Alert Posted', dedupedImpacts.length ? 'Posted with Menu Intelligence impact.' : 'Important low-stock alert posted to Message Board.');
+      await addDoc(collection(db, 'events'), {
+        date: new Date().toISOString(), title: text, type: 'note', author: appUser?.name || 'Ops Command Center', isImportant: true, restaurantId: appUser.restaurantId, replies: []
+      });
+      addToast('86 Alert Posted', 'Important low-stock alert posted to Message Board.');
     } catch (err) { addToast('Error', err.message); }
   };
 
   const handleMarkOpsReviewed = async () => {
     try {
-      await logAudit(appUser, 'OPS_REVIEWED', 'ops', `Reviewed Kitchen Command Center for ${today}. Health score ${healthScore}/100.`);
-      addToast('Kitchen Command Reviewed', 'Review logged to audit trail.');
+      await logAudit(appUser, 'OPS_REVIEWED', 'ops', `Reviewed Ops Command Center for ${today}. Health score ${healthScore}/100.`);
+      addToast('Ops Reviewed', 'Review logged to audit trail.');
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -2984,7 +2176,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     })),
     ...todayWaste.map(w => ({ at: w.timestamp || today, type: 'Waste', title: `${w.itemName || 'Item'} wasted`, detail: `${w.qty || ''} ${w.reason || ''}` })),
     ...maintenanceLogs.filter(l => (l.reportedAt || '').startsWith(today) || (l.lastUpdated || '').startsWith(today)).map(l => ({ at: l.lastUpdated || l.reportedAt, type: 'Maintenance', title: l.equipment, detail: l.issue })),
-    ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.messageCategory || e.type || 'Event', title: e.title || 'Event', detail: e.notes || e.menuImpact || e.author || '' })),
+    ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.type || 'Event', title: e.title || 'Event', detail: e.author || '' })),
     ...todayShifts.slice(0, 12).map(s => ({ at: `${today}T${s.startTime || '00:00'}:00`, type: 'Scheduled', title: `${users.find(u => u.id === s.employeeId)?.name || 'Staff'} ${s.role || ''}`, detail: `${formatShortTime(s.startTime)} - ${formatShortTime(s.endTime)}` }))
   ].filter(x => x.at).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0, 18);
 
@@ -3003,15 +2195,15 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const handlePostBrief = async () => {
     try {
-      await safeOpsWrite({ action: 'add', collectionName: 'events', label: 'Morning brief', data: {
+      await addDoc(collection(db, 'events'), {
         date: new Date().toISOString(),
         title: briefText(),
         type: 'note',
-        author: appUser?.name || 'Kitchen Command Center',
+        author: appUser?.name || 'Ops Command Center',
         isImportant: false,
         restaurantId: appUser.restaurantId,
         replies: []
-      } });
+      });
       addToast('Morning Brief Posted', 'Saved to the Message Board for the team.');
     } catch (err) {
       addToast('Error', err.message);
@@ -3042,26 +2234,23 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       const existingPmTitles = new Set(pmSchedules.map(p => (p.title || '').toLowerCase()));
       const taskAdds = defaultTasks
         .filter(t => !existingTaskTitles.has(t.title.toLowerCase()))
-        .map(t => safeOpsWrite({ action: 'add', collectionName: 'tasks', label: 'Seed kitchen task', data: { ...t, completions: {}, restaurantId: appUser.restaurantId } }));
+        .map(t => addDoc(collection(db, 'tasks'), { ...t, completions: {}, restaurantId: appUser.restaurantId }));
       const pmAdds = defaultPm
         .filter(p => !existingPmTitles.has(p.title.toLowerCase()))
-        .map(p => safeOpsWrite({ action: 'add', collectionName: 'pmSchedules', label: 'Seed PM schedule', data: { ...p, lastCompleted: getToday(), lastUpdatedBy: appUser.name, restaurantId: appUser.restaurantId } }));
+        .map(p => addDoc(collection(db, 'pmSchedules'), { ...p, lastCompleted: getToday(), lastUpdatedBy: appUser.name, restaurantId: appUser.restaurantId }));
       await Promise.all([...taskAdds, ...pmAdds]);
-      addToast('Kitchen Standards Seeded', `Added ${taskAdds.length + pmAdds.length} operating standards.`);
+      addToast('Kitchen Ops Seeded', `Added ${taskAdds.length + pmAdds.length} operating standards.`);
     } catch (err) {
       addToast('Error', err.message);
     }
   };
 
-  const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab?.('inventory'); };
-
   const kpiCards = [
-    { label: 'Shift Health', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Looking good' : healthScore >= 70 ? 'Check weak spots' : 'Needs manager attention' },
+    { label: 'Health Score', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Strong shift posture' : healthScore >= 70 ? 'Watch the weak spots' : 'Needs manager attention' },
     { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
     { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
-    { label: 'Menu Impact', value: `${affectedMenuItems.length}`, detail: affectedMenuItems.length ? 'Menu items affected' : 'Menu looks clear' },
     { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
-    { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} clocked in` : 'Nobody clocked in' },
+    { label: 'Labor Now', value: laborPct === null ? `$${todayLaborCost.toFixed(0)}` : `${laborPct}%`, detail: activePunches.length ? `${activePunches.length} on clock` : 'Nobody clocked in' },
     { label: 'Waste Today', value: `${todayWaste.length}`, detail: wasteCost ? `$${wasteCost.toFixed(2)} logged` : 'No cost logged' }
   ];
 
@@ -3071,9 +2260,9 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4A381] mb-2">Shift Snapshot</div>
+            <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#D4A381] mb-2">Morning Brief</div>
             <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">Kitchen Command Center</h1>
-            <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A short list of what needs attention right now.</p>
+            <p className="text-sm text-slate-400 font-medium mt-2 max-w-2xl">A live cockpit for prep, people, inventory, maintenance, labor, waste, and the little gremlins that usually wait until dinner rush.</p>
           </div>
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             <button onClick={handlePostBrief} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Post Brief</button>
@@ -3088,18 +2277,18 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
         {kpiCards.map(card => (
-          <button key={card.label} type="button" onClick={card.label === 'Low Stock' ? openInventoryFocus : undefined} className={`${T.card} p-3 text-center ${card.label === 'Low Stock' ? 'hover:border-red-500/60 transition-colors cursor-pointer' : 'cursor-default'}`}>
+          <div key={card.label} className={`${T.card} p-3 text-center`}>
             <div className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>{card.label}</div>
             <div className="text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
             <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
-          </button>
+          </div>
         ))}
       </div>
 
       <div className={`${T.card} p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
         <div className="lg:col-span-2">
-          <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Do These First</h2>
-          <p className="text-xs text-slate-400 font-bold mt-1">The few actions managers need during service.</p>
+          <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Smart Action Dock</h2>
+          <p className="text-xs text-slate-400 font-bold mt-1">These buttons turn the dashboard into actual work: pending orders, prep tasks, 86 alerts, and audit trail checkpoints.</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Suggested Prep</div><div className="text-xl font-black text-white">{suggestedPrepTasks.length}</div></div>
@@ -3110,7 +2299,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className={`${T.card} p-4 lg:col-span-2`}>
           <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
-            <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Today’s Priorities</h2>
+            <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Manager Readout</h2>
             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3124,7 +2313,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         </div>
 
         <div className={`${T.card} p-4`}>
-          <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Prep Forecast</h2>
+          <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Smart Prep Forecast</h2>
           <div className="space-y-2">
             {prepForecast.map(row => (
               <div key={row.label} className="flex justify-between gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
@@ -3141,7 +2330,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={`${T.card} overflow-hidden`}>
-          <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Stock to Check</div>
+          <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Inventory Radar</div>
           <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
             {lowStockItems.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No par problems detected.</div>}
             {lowStockItems.slice(0, 12).map(item => {
@@ -3149,7 +2338,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
               const stock = Number(item.currentStock || 0);
               const needed = Math.max(0, par - stock);
               return (
-                <button key={item.id} type="button" onClick={openInventoryFocus} className={`${T.row} w-full text-left flex justify-between items-center gap-3 hover:border-red-500/40`}>
+                <div key={item.id} className={`${T.row} flex justify-between items-center gap-3`}>
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-white truncate">{item.name}</div>
                     <div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Stock {stock} / Par {par}</div>
@@ -3158,14 +2347,14 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
                     <div className="text-xs font-black text-orange-400">Order {needed}</div>
                     <div className="text-[9px] text-slate-500 font-bold">${Number(item.price || 0).toFixed(2)}</div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
         </div>
 
         <div className={`${T.card} overflow-hidden`}>
-          <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Fixes to Check</div>
+          <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Equipment Radar</div>
           <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
             {openMaintenance.length === 0 && overduePm.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No equipment warnings right now.</div>}
             {criticalMaintenance.concat(openMaintenance.filter(l => !criticalMaintenance.includes(l))).slice(0, 8).map(log => (
@@ -3238,55 +2427,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
           <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
             <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-1">86 Watch</div>
-            <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>{importantEvents[0]?.notes && <div className="text-[11px] text-slate-400 font-bold mt-1 whitespace-pre-wrap line-clamp-3">{importantEvents[0].notes}</div>}
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-3">
-          <form onSubmit={handleAddMenuDependency} className="xl:col-span-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="font-black text-white text-sm">Dependency Graph Editor</div>
-                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Manual recipe → inventory links make 86 alerts smarter than text guessing.</div>
-              </div>
-              <span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{menuGraphCoverage}% mapped</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <select value={depRecipeId} onChange={e => setDepRecipeId(e.target.value)} className={T.input}>
-                <option value="">Choose recipe/menu item</option>
-                {recipes.slice().sort((a,b)=>String(a.title || a.name || '').localeCompare(String(b.title || b.name || ''))).map(r => <option key={r.id} value={r.id}>{r.title || r.name || 'Recipe'}</option>)}
-              </select>
-              <select value={depInventoryItemId} onChange={e => setDepInventoryItemId(e.target.value)} className={T.input}>
-                <option value="">Choose inventory item</option>
-                {inventoryItems.slice().sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''))).map(i => <option key={i.id} value={i.id}>{i.name || 'Inventory item'}</option>)}
-              </select>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2">
-              <input value={depNotes} onChange={e => setDepNotes(e.target.value)} className={T.input} placeholder="Optional note, station, substitute, or recovery hint" />
-              <button className={T.btn}>Map Dependency</button>
-            </div>
-          </form>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
-            <div className="font-black text-white text-sm">Graph Status</div>
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Links</div><div className="text-xl font-black text-white">{menuDependencies.length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Collisions</div><div className="text-xl font-black text-orange-300">{affectedMenuItems.length}</div></div>
-            </div>
-            <div className="mt-3 max-h-28 overflow-y-auto custom-scrollbar space-y-1">
-              {menuDependencies.length === 0 && <div className="text-xs text-slate-500 font-bold">No manual links yet. Start with your best sellers and 86-prone ingredients.</div>}
-              {menuDependencies.slice(0, 8).map(dep => <div key={dep.id} className="flex items-center justify-between gap-2 bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-300"><span className="truncate">{dep.recipeName} → {dep.inventoryItemName}</span><button type="button" onClick={() => handleDeleteMenuDependency(dep)} className="text-red-400 hover:text-red-300 flex-shrink-0">Remove</button></div>)}
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 bg-[#0B0E11] border border-[#2A353D] rounded-xl overflow-hidden">
-          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Dependency Radar</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">v14.0.2 graph</span></div>
-          <div className="divide-y divide-[#2A353D] max-h-[260px] overflow-y-auto custom-scrollbar">
-            {affectedMenuItems.length === 0 && <div className="p-4 text-xs font-bold text-slate-500">No dependency collisions detected. Map recipes to ingredients above, or add ingredient names to recipes to sharpen the radar.</div>}
-            {affectedMenuItems.map(({ recipe, lowStockMatches, prepMatches, explicitDependencies, eightySixAlerts }) => (
-              <div key={recipe.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="min-w-0"><div className="font-black text-white text-sm truncate">{recipe.name || recipe.title || 'Recipe'}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lowStockMatches.length ? `Affected by ${lowStockMatches.map(i => i.name).join(', ')}` : 'Affected by 86/prep signal'}</div><div className="text-[10px] text-slate-600 font-bold mt-1">{explicitDependencies?.length ? 'Manual graph link • ' : 'Text match • '}{prepMatches?.length ? `${prepMatches.length} prep signal(s) • ` : ''}{eightySixAlerts?.length ? `${eightySixAlerts.length} active 86 alert(s)` : ''}</div></div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-orange-300">{lowStockMatches.some(i => Number(i.pendingQty || 0) > 0) ? 'Recovery pending' : 'Needs action'}</div>
-              </div>
-            ))}
+            <div className="text-sm font-bold text-white">{importantEvents.length ? importantEvents[0].title : 'No critical 86 notes posted today.'}</div>
           </div>
         </div>
       </div>
@@ -3294,17 +2435,16 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   );
 };
 
-const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], clientData, setActiveTab, addToast, registerUndo }) => {
+const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, clientData, setActiveTab, addToast, registerUndo }) => {
   const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
   const today = getToday();
   const profile = getHomeProfile(appUser);
-  const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
   const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
   const myShift = todaysShifts.find(s => s.employeeId === appUser.id);
   const activePunches = timePunches.filter(p => ['clocked_in','on_break'].includes(p.status));
   const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
   const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
-  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
+  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) <= Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
   const urgentMaintenance = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5);
   const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
   const pendingRequests = timeOffRequests.filter(r => r.status === 'pending').slice(0, 5);
@@ -3320,9 +2460,8 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance' }
   ];
   const setupDone = setupItems.filter(i => i.done).length;
-  const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
   const problems = [
-    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
+    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory' } : null,
     urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
     pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
     openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
@@ -3331,47 +2470,32 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
 
   const quickCreate = async (kind) => {
     try {
-      let undoMeta = null;
+      let refDoc = null;
       if (kind === '86') {
         const item = prompt('What item is 86\'d or low?');
         if (!item) return;
-        const resolved = resolveEightySixInventoryMatch(item, inventoryItems, menuDependencies);
-        const inventoryItem = resolved?.item || null;
-        const impactText = inventoryItem ? buildMenuImpactText(inventoryItem, menuDependencies) : '';
-        const impactItems = inventoryItem ? getMenuImpactForInventoryItem(inventoryItem, menuDependencies).map(i => i.name).filter(Boolean) : [];
-        const matchText = inventoryItem && String(inventoryItem.name || '').toLowerCase() !== String(item || '').toLowerCase()
-          ? `Inventory match: ${inventoryItem.name}${resolved?.method === 'menuIntelligence' ? ' (matched through Menu Intelligence)' : ''}.`
-          : '';
-        const notes = [matchText, impactText, resolved?.matchedMenuItemName ? `Menu phrase matched: ${resolved.matchedMenuItemName}.` : ''].filter(Boolean).join('\n');
-        const result = await safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Manager Brief quick 86 alert', data: {
-          restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }],
-          notes, menuImpact: impactText, menuImpactItems: impactItems, inventoryItemId: inventoryItem?.id || '', inventoryItemName: inventoryItem?.name || '', requestedItemName: item, commandCenterAlert: true, managerBriefAlert: true, kitchenCommandCenterAlert: true, source: 'manager_brief_quick_86'
-        } });
-        undoMeta = { collectionName: 'events', id: result.id, before: result.payload };
-        addToast('86 Alert Posted', impactText ? `${item} posted with menu impact.` : item);
+        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }] });
+        addToast('86 Alert Posted', item);
       }
       if (kind === 'prep') {
         const item = prompt('Prep task to add for today?');
         if (!item) return;
-        const result = await safeTodayWrite({ action: 'add', collectionName: 'prepItems', label: 'Today quick prep', data: { restaurantId: appUser.restaurantId, date: today, text: item, station: 'General', isCompleted: false, qty: 1, createdAt: new Date().toISOString(), createdBy: appUser.name } });
-        undoMeta = { collectionName: 'prepItems', id: result.id, before: result.payload };
+        refDoc = await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: item, station: 'General', isCompleted: false, qty: 1, createdAt: new Date().toISOString(), createdBy: appUser.name });
         addToast('Prep Added', item);
       }
       if (kind === 'maintenance') {
         const issue = prompt('Maintenance issue?');
         if (!issue) return;
-        const result = await safeTodayWrite({ action: 'add', collectionName: 'maintenanceLogs', label: 'Today quick maintenance', data: { restaurantId: appUser.restaurantId, equipment: 'General', issue, urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: appUser.name } });
-        undoMeta = { collectionName: 'maintenanceLogs', id: result.id, before: result.payload };
+        refDoc = await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'General', issue, urgency: 'High', status: 'Reported', reportedAt: new Date().toISOString(), reportedBy: appUser.name });
         addToast('Maintenance Added', issue);
       }
       if (kind === 'message') {
         const msg = prompt('Message to post?');
         if (!msg) return;
-        const result = await safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Today quick message', data: { restaurantId: appUser.restaurantId, type: 'note', title: msg, messageCategory: 'Shift Note', author: appUser.name, isImportant: false, date: new Date().toISOString(), replies: [] } });
-        undoMeta = { collectionName: 'events', id: result.id, before: result.payload };
+        refDoc = await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: msg, messageCategory: 'Shift Note', author: appUser.name, isImportant: false, date: new Date().toISOString(), replies: [] });
         addToast('Message Posted', msg.slice(0, 60));
       }
-      if (undoMeta?.id) registerUndo?.({ label: `Undo ${kind}`, action: async () => { await safeTodayWrite({ action: 'delete', collectionName: undoMeta.collectionName, docId: undoMeta.id, label: `Undo ${kind}`, before: undoMeta.before }); addToast('Undone', 'The last quick action was removed.'); } });
+      if (refDoc) registerUndo?.({ label: `Undo ${kind}`, action: async () => { await deleteDoc(refDoc); addToast('Undone', 'The last quick action was removed.'); } });
     } catch (err) { addToast('Could not save', err.message || 'Permission or connection issue.'); }
   };
 
@@ -3380,14 +2504,14 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     if (!window.confirm('Add a complete demo set to this workspace? This adds sample recipes, prep, inventory, messages, events, and maintenance.')) return;
     const stamp = new Date().toISOString();
     await Promise.all([
-      safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Seed demo announcement', data: { restaurantId: appUser.restaurantId, type: 'note', title: 'DEMO: Tonight has live music and heavy dinner volume expected.', messageCategory: 'Announcement', author: '86 Demo', isImportant: true, date: stamp, replies: [], readBy: [] } }),
-      safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Seed demo event', data: { restaurantId: appUser.restaurantId, type: 'special_event', title: 'DEMO: Patio Rush / Live Music', date: today, time: '19:00', notes: 'Expect extra bar and fryer volume.', addedBy: '86 Demo' } }),
-      safeTodayWrite({ action: 'add', collectionName: 'prepItems', label: 'Seed demo prep', data: { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Portion burger patties', station: 'Grill', qty: 24, isCompleted: false } }),
-      safeTodayWrite({ action: 'add', collectionName: 'prepItems', label: 'Seed demo prep', data: { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Backup ranch and blue cheese', station: 'Cold', qty: 2, isCompleted: false } }),
-      safeTodayWrite({ action: 'add', collectionName: 'inventoryItems', label: 'Seed demo inventory', data: { restaurantId: appUser.restaurantId, name: 'DEMO Chicken Breast', category: 'Protein', parLevel: 3, currentStock: 1, pendingQty: 0, price: 84, packSize: '40 lb case', yieldQty: 1, isStarred: true } }),
-      safeTodayWrite({ action: 'add', collectionName: 'inventoryItems', label: 'Seed demo inventory', data: { restaurantId: appUser.restaurantId, name: 'DEMO Fries', category: 'Frozen', parLevel: 5, currentStock: 2, pendingQty: 0, price: 33, packSize: 'Case', yieldQty: 1, isStarred: true } }),
-      safeTodayWrite({ action: 'add', collectionName: 'maintenanceLogs', label: 'Seed demo maintenance', data: { restaurantId: appUser.restaurantId, equipment: 'DEMO Fryer #2', issue: 'Filter due before dinner rush', urgency: 'High', status: 'Reported', reportedAt: stamp, reportedBy: '86 Demo' } }),
-      safeTodayWrite({ action: 'add', collectionName: 'recipes', label: 'Seed demo recipe', data: { restaurantId: appUser.restaurantId, title: 'DEMO House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 gallon', ingredients: 'Mayo\nButtermilk\nRanch seasoning', instructions: 'Whisk. Label. Chill.', authorName: '86 Demo', lastUpdated: stamp } })
+      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'note', title: 'DEMO: Tonight has live music and heavy dinner volume expected.', messageCategory: 'Announcement', author: '86 Demo', isImportant: true, date: stamp, replies: [], readBy: [] }),
+      addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type: 'special_event', title: 'DEMO: Patio Rush / Live Music', date: today, time: '19:00', notes: 'Expect extra bar and fryer volume.', addedBy: '86 Demo' }),
+      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Portion burger patties', station: 'Grill', qty: 24, isCompleted: false }),
+      addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date: today, text: 'DEMO: Backup ranch and blue cheese', station: 'Cold', qty: 2, isCompleted: false }),
+      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Chicken Breast', category: 'Protein', parLevel: 3, currentStock: 1, pendingQty: 0, price: 84, packSize: '40 lb case', yieldQty: 1, isStarred: true }),
+      addDoc(collection(db, 'inventoryItems'), { restaurantId: appUser.restaurantId, name: 'DEMO Fries', category: 'Frozen', parLevel: 5, currentStock: 2, pendingQty: 0, price: 33, packSize: 'Case', yieldQty: 1, isStarred: true }),
+      addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment: 'DEMO Fryer #2', issue: 'Filter due before dinner rush', urgency: 'High', status: 'Reported', reportedAt: stamp, reportedBy: '86 Demo' }),
+      addDoc(collection(db, 'recipes'), { restaurantId: appUser.restaurantId, title: 'DEMO House Ranch', category: 'Sauce/Dressing', prepTime: '10 mins', yieldAmt: '1 gallon', ingredients: 'Mayo\nButtermilk\nRanch seasoning', instructions: 'Whisk. Label. Chill.', authorName: '86 Demo', lastUpdated: stamp })
     ]);
     addToast('Demo Mode Seeded', 'Sample operating data was added to this workspace.');
   };
@@ -3436,20 +2560,20 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className={`${T.card} p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
           {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
-            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
+            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="The equipment gods are quiet, the schedule has a pulse, and nothing is screaming for help." />}
           </div>}
         </div>
 
         <div className={`${T.card} p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
-          {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={openInventoryFocus} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
-          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Kitchen Command" detail="Open Kitchen Command Center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
+          {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={() => setActiveTab('inventory')} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
+          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Ops" detail="Open full command center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
           {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
         </div>
 
         <div className={`${T.card} p-4`}>
           <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">Important Messages</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open Board</button></div>
-          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div>{(n.notes || n.menuImpact) && <div className="text-[11px] text-slate-300 font-bold mt-1 whitespace-pre-wrap line-clamp-3">{n.notes || n.menuImpact}</div>}</div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
+          <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div></div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
         </div>
       </div>
 

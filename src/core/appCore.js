@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, limit as firestoreLimit } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import { getMessaging } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
 import L from 'leaflet';
@@ -17,52 +17,46 @@ export const customMapIcon = new L.Icon({
 });
 
 
-// --- Master Theme (16.0.0: full command-center redesign) ---
+// --- Master Theme (86 Chaos 16.0.2 command-center system) ---
 export const T = {
-  bg: "bg-[#020609] text-slate-100",
-  card: "bg-[#0C141C] border border-[#FF7A1A]/30 shadow-lg rounded-3xl",
-  border: "border-[#2B4150]",
-  copper: "text-[#FF8A22]",
-  grad: "bg-gradient-to-r from-[#FFB15E] via-[#FF7A1A] to-[#C94F0B]",
-  btn: "bg-gradient-to-r from-[#FFB15E] via-[#FF7A1A] to-[#C94F0B] text-slate-950 font-black uppercase tracking-wider rounded-2xl shadow-[0_16px_36px_rgba(255,122,26,0.26)] hover:brightness-110 transition-all px-4 py-2.5 text-xs text-center",
-  btnAlt: "bg-[#05090D] text-slate-200 border border-[#2B4150] font-black rounded-2xl hover:text-[#FFB15E] hover:border-[#FF7A1A]/60 transition-all px-4 py-2.5 text-xs",
-  input: "w-full p-3 bg-[#05090D] border border-[#2B4150] text-white rounded-2xl outline-none focus:border-[#FF7A1A] focus:ring-1 focus:ring-[#FF7A1A]/30 transition-colors font-medium text-sm",
-  label: "block text-[10px] uppercase tracking-[0.18em] font-black text-slate-400 mb-1",
+  bg: "bg-[#070A0D] text-slate-100",
+  card: "bg-[#111821]/95 border border-[#33414B] shadow-[0_18px_60px_rgba(0,0,0,0.32)] rounded-2xl backdrop-blur-xl",
+  border: "border-[#33414B]",
+  copper: "text-[#F97316]",
+  grad: "bg-gradient-to-r from-[#FF8A1C] via-[#F59E0B] to-[#C76712]",
+  btn: "bg-gradient-to-r from-[#FF8A1C] via-[#F59E0B] to-[#C76712] text-slate-950 font-black uppercase tracking-wider rounded-xl shadow-[0_12px_30px_rgba(249,115,22,0.28)] hover:brightness-110 active:scale-[0.99] transition-all px-4 py-2.5 text-xs text-center",
+  btnAlt: "bg-[#0D1318]/95 text-slate-200 border border-[#33414B] font-black rounded-xl hover:text-[#FFB34D] hover:border-[#F97316]/60 hover:bg-[#151D24] transition-all px-4 py-2.5 text-xs",
+  input: "w-full p-3 bg-[#070A0D]/85 border border-[#33414B] text-white rounded-xl outline-none focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/20 transition-all font-medium text-sm placeholder:text-slate-600",
+  label: "block text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1.5",
   muted: "text-slate-400",
-  th: "bg-[#05090D] border-b border-[#2B4150] text-[10px] font-black text-[#FFB15E] uppercase tracking-widest p-3",
-  row: "hover:bg-[#FF7A1A]/5 border-b border-[#2B4150] transition-colors p-3",
+  th: "bg-[#0D1318] border-b border-[#33414B] text-[10px] font-black text-[#FFB34D] uppercase tracking-widest p-3",
+  row: "hover:bg-[#151D24]/70 border-b border-[#33414B] transition-colors p-3",
 };
 
 // --- Firebase Initialization ---
-const env = (key, fallback = '') => (process.env[key] || fallback);
-
 // 1. TEST DATABASE CONFIG (Sandbox)
-// Prefer Vercel env vars so preview/testing and production can stay completely separate.
 export const testConfig = {
-  apiKey: env('REACT_APP_TEST_FIREBASE_API_KEY', 'AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw'),
-  authDomain: env('REACT_APP_TEST_FIREBASE_AUTH_DOMAIN', 'chaos-test-d1601.firebaseapp.com'),
-  projectId: env('REACT_APP_TEST_FIREBASE_PROJECT_ID', 'chaos-test-d1601'),
-  storageBucket: env('REACT_APP_TEST_FIREBASE_STORAGE_BUCKET', 'chaos-test-d1601.firebasestorage.app'),
-  messagingSenderId: env('REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID', '534993379994'),
-  appId: env('REACT_APP_TEST_FIREBASE_APP_ID', '1:534993379994:web:9fefb6e10309223afe7523')
+  apiKey: "AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw",
+  authDomain: "chaos-test-d1601.firebaseapp.com",
+  projectId: "chaos-test-d1601",
+  storageBucket: "chaos-test-d1601.firebasestorage.app",
+  messagingSenderId: "534993379994",
+  appId: "1:534993379994:web:9fefb6e10309223afe7523"
 };
 
 // 2. MAIN PRODUCTION DATABASE CONFIG (Live Data)
 export const prodConfig = {
-  apiKey: env('REACT_APP_PROD_FIREBASE_API_KEY', 'AIzaSyA0kkmRCqGNoB1LXKfuCNIl1JKDyQci9hA'),
-  authDomain: env('REACT_APP_PROD_FIREBASE_AUTH_DOMAIN', 'cheers-34b8d.firebaseapp.com'),
-  projectId: env('REACT_APP_PROD_FIREBASE_PROJECT_ID', 'cheers-34b8d'),
-  storageBucket: env('REACT_APP_PROD_FIREBASE_STORAGE_BUCKET', 'cheers-34b8d.firebasestorage.app'),
-  messagingSenderId: env('REACT_APP_PROD_FIREBASE_MESSAGING_SENDER_ID', '762225019248'),
-  appId: env('REACT_APP_PROD_FIREBASE_APP_ID', '1:762225019248:web:3e142c9563e58ca762a7b5'),
-  measurementId: env('REACT_APP_PROD_FIREBASE_MEASUREMENT_ID', 'G-JFZ6EZB0E3')
+  apiKey: "AIzaSyA0kkmRCqGNoB1LXKfuCNIl1JKDyQci9hA",
+  authDomain: "cheers-34b8d.firebaseapp.com",
+  projectId: "cheers-34b8d",
+  storageBucket: "cheers-34b8d.firebasestorage.app",
+  messagingSenderId: "762225019248",
+  appId: "1:762225019248:web:3e142c9563e58ca762a7b5",
+  measurementId: "G-JFZ6EZB0E3"
 };
 
-export const PROD_FIREBASE_HOSTS = ['app.86chaos.com', '86chaos.com', 'www.86chaos.com'];
-export const isProdFirebaseHost = (hostname = '') => PROD_FIREBASE_HOSTS.includes(String(hostname || '').toLowerCase());
-
 // 3. THE SWITCHER (Automatically routes the database based on the URL)
-export const firebaseConfig = isProdFirebaseHost(window.location.hostname) ? prodConfig : testConfig;
+export const firebaseConfig = window.location.hostname === 'app.86chaos.com' ? prodConfig : testConfig;
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
@@ -77,7 +71,7 @@ export const auth = getAuth(app);
 // --- OPTIONAL APP CHECK + SECURE API KEYCHAIN ---
 // Put your Firebase App Check reCAPTCHA Enterprise site key here after enabling App Check in Firebase.
 // Example: const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '6Lc...';
-const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = process.env.REACT_APP_FIREBASE_APPCHECK_SITE_KEY || '';
+const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '';
 let appCheckInstance = null;
 
 if (typeof window !== "undefined" && APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY && !window.__chaosAppCheckBooted) {
@@ -105,69 +99,31 @@ const getAppCheckHeader = async () => {
   }
 };
 
-// Wait for Firebase Auth to finish restoring the browser session.
-// Mobile browsers can render the cached app user before auth.currentUser is ready,
-// which used to make server heartbeats fail with "No active user session".
-export const waitForAuthCurrentUser = async (timeoutMs = 8000) => {
-  if (auth.currentUser) return auth.currentUser;
-  return new Promise((resolve) => {
-    let settled = false;
-    let unsub = () => {};
-    const done = (user) => {
-      if (settled) return;
-      settled = true;
-      try { unsub(); } catch (_) {}
-      clearTimeout(timer);
-      resolve(user || auth.currentUser || null);
-    };
-    const timer = setTimeout(() => done(auth.currentUser || null), timeoutMs);
-    try {
-      unsub = onAuthStateChanged(auth, (user) => { if (user) done(user); });
-    } catch (_) {
-      done(auth.currentUser || null);
-    }
-  });
-};
-
 // This attaches the real Firebase Auth token to Vercel API requests.
 // Do not trust client-sent role/email/restaurantId in API routes; verify this token server-side.
 export const secureFetch = async (url, options = {}) => {
-  const { forceTokenRefresh = false, authWaitMs = 8000, headers: optionHeaders = {}, ...fetchOptions } = options;
-  const currentUser = await waitForAuthCurrentUser(authWaitMs);
-  if (!currentUser) throw new Error("Unauthorized: Firebase login is not active on this device. Please log out and log back in.");
-  const token = await currentUser.getIdToken(forceTokenRefresh);
+  if (!auth.currentUser) throw new Error("Unauthorized: No active user session.");
+  const { forceTokenRefresh = false, headers: optionHeaders = {}, ...fetchOptions } = options;
+  const token = await auth.currentUser.getIdToken(forceTokenRefresh);
   const appCheckHeader = await getAppCheckHeader();
-  let sessionHeader = {};
-  try {
-    const sid = sessionStorage.getItem('chaosSessionId');
-    if (sid) sessionHeader = { 'X-Chaos-Session-Id': sid };
-  } catch (_) {}
   const headers = {
     ...optionHeaders,
     ...appCheckHeader,
-    ...sessionHeader,
     'Authorization': `Bearer ${token}`
   };
   return fetch(url, { ...fetchOptions, headers });
 };
 
 // --- Master Configuration ---
-export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '').toLowerCase().trim();
+export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.0';
+export const CURRENT_VERSION = '16.0.2';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
-  const {
-    enabled = true,
-    limitCount = null,
-    whereClauses = [],
-    orderByField = null,
-    orderDirection = 'asc',
-    fallbackLimitCount = 75
-  } = options || {};
+  const { enabled = true, limitCount = null } = options || {};
   const [data, setData] = useState([]);
 
   useEffect(() => {
@@ -176,44 +132,22 @@ export const useLiveCollection = (coll, restId, options = {}) => {
       return;
     }
 
-    let fallbackUnsubscribe = null;
-    const serializedWhere = JSON.stringify(whereClauses || []);
-    const buildConstraints = (useWindow = true) => {
-      const constraints = [where("restaurantId", "==", restId)];
-      if (useWindow) {
-        (whereClauses || []).forEach(([field, op, value]) => {
-          if (field && op && value !== undefined && value !== null && value !== '') constraints.push(where(field, op, value));
-        });
-        if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
-      }
-      if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
-      return constraints;
-    };
+    const constraints = [where("restaurantId", "==", restId)];
+    if (limitCount && Number(limitCount) > 0) {
+      constraints.push(firestoreLimit(Number(limitCount)));
+    }
 
-    const subscribe = (constraints, label) => onSnapshot(
-      query(collection(db, coll), ...constraints),
+    const q = query(collection(db, coll), ...constraints);
+    const unsubscribe = onSnapshot(
+      q,
       snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err => {
-        console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
-        const canFallback = label !== 'fallback' && (err?.code === 'failed-precondition' || /index|requires an index|invalid/i.test(err?.message || ''));
-        if (canFallback) {
-          console.warn(`Falling back to capped ${coll} query while Firestore index is missing.`);
-          const fallbackConstraints = [where("restaurantId", "==", restId)];
-          const cap = Number(fallbackLimitCount || limitCount || 75);
-          if (cap > 0) fallbackConstraints.push(firestoreLimit(cap));
-          fallbackUnsubscribe = subscribe(fallbackConstraints, 'fallback');
-        } else {
-          setData([]);
-        }
+        console.error(`Live collection error for ${coll} / ${restId}:`, err);
+        setData([]);
       }
     );
-
-    const unsubscribe = subscribe(buildConstraints(true), 'primary');
-    return () => {
-      if (unsubscribe) unsubscribe();
-      if (fallbackUnsubscribe) fallbackUnsubscribe();
-    };
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, JSON.stringify(whereClauses || [])]);
+    return () => unsubscribe();
+  }, [coll, restId, enabled, limitCount]);
 
   return data;
 };
@@ -255,77 +189,6 @@ export const formatClockDateTime = (value, userOrFormat) => {
   if (Number.isNaN(d.getTime())) return '';
   return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${formatClockTime(d, userOrFormat)}`;
 };
-
-export const safeFilenamePart = (value, fallback = '86chaos') => {
-  const raw = String(value || fallback || '86chaos').trim();
-  const cleaned = raw
-    .replace(/&/g, 'and')
-    .replace(/[^a-z0-9\-_\.\s]/gi, '')
-    .replace(/\s+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 80);
-  return cleaned || fallback || '86chaos';
-};
-
-export const getRestaurantExportPrefix = (appUser, fallback = '86chaos') => {
-  const name = appUser?.restaurantName || appUser?.restaurant || appUser?.businessName || appUser?.systemSettings?.restaurantName || appUser?.systemSettings?.businessName || fallback;
-  return safeFilenamePart(name, fallback);
-};
-
-export const csvFromRows = (rows) => (rows || [])
-  .map(row => (row || []).map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
-  .join('\n');
-
-export const downloadTextFile = (filename, content, mime = 'text/plain;charset=utf-8;') => {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
-export const downloadCsvRows = (filename, rows) => {
-  downloadTextFile(filename, '\uFEFF' + csvFromRows(rows), 'text/csv;charset=utf-8;');
-};
-
-export const openPrintableReport = ({ title, subtitle = '', rows = [], filename = '86chaos-report' }) => {
-  const safeTitle = String(title || filename || '86 Chaos Report');
-  const safeSubtitle = String(subtitle || '');
-  const headers = rows[0] || [];
-  const bodyRows = rows.slice(1);
-  const esc = (v) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const html = `<!doctype html><html><head><title>${esc(filename)}</title><meta charset="utf-8" />
-    <style>
-      body{font-family:Arial,sans-serif;color:#111;margin:28px;}
-      .brand{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#7a4f31;margin-bottom:4px;}
-      h1{font-size:22px;margin:0 0 4px;}
-      .sub{font-size:12px;color:#555;margin-bottom:18px;}
-      table{width:100%;border-collapse:collapse;font-size:10px;}
-      th{background:#222;color:white;text-align:left;padding:7px;border:1px solid #444;}
-      td{padding:6px;border:1px solid #ccc;vertical-align:top;}
-      tr:nth-child(even) td{background:#f7f7f7;}
-      .foot{margin-top:14px;font-size:10px;color:#777;}
-      @media print{button{display:none} body{margin:18px}}
-    </style></head><body>
-    <button onclick="window.print()" style="float:right;padding:8px 12px;border-radius:8px;border:1px solid #999;background:#111;color:white;font-weight:bold;">Print / Save PDF</button>
-    <div class="brand">86 Chaos</div><h1>${esc(safeTitle)}</h1><div class="sub">${esc(safeSubtitle)}</div>
-    <table><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${bodyRows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>
-    <div class="foot">Generated ${esc(new Date().toLocaleString())}</div>
-    <script>setTimeout(() => window.print(), 350);</script>
-    </body></html>`;
-  const win = window.open('', '_blank');
-  if (!win) return false;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  return true;
-};
-
 export const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
 export const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 
@@ -432,252 +295,9 @@ export const logAudit = async (user, action, target, details) => {
       details,
       timestamp: new Date().toISOString(),
       restaurantId: user.restaurantId,
-      sessionId: (() => { try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; } })(),
       isGhost
     });
   } catch (err) { console.error("Audit log failed:", err); }
-};
-
-
-// ============================================================================
-// 86 CHAOS 14.x ROBUSTNESS ENGINE
-// Central helpers for safer writes, permission previews, offline queueing, import
-// templates, schema guardrails, and kitchen dependency analysis.
-// ============================================================================
-const V14_SENSITIVE_KEYS = ['password', 'temporaryPassword', 'ssn', 'address', 'phone', 'email', 'wage', 'hourlyRate', 'payRate', 'fcmToken', 'notesPrivate'];
-const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets'];
-const V14_WRITE_PERMISSIONS = {
-  shifts: ['schedule', 'team'], timeOffRequests: ['schedule', 'team'], scheduleTemplates: ['schedule', 'team'], scheduleCoverageTargets: ['schedule', 'team'],
-  inventoryItems: ['inventory', 'team'], vendors: ['inventory', 'team'], orders: ['inventory', 'team'], invoices: ['inventory', 'team'],
-  prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'team'],
-  sales: ['sales', 'labor', 'team'], timePunches: ['labor', 'team'],
-  pmSchedules: ['team'], maintenanceLogs: ['team'], tasks: ['prep', 'team'],
-  events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep', 'team']
-};
-
-export const isSuperAdminUser = (user = {}) => Boolean(user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || (MASTER_ADMIN_EMAIL && String(user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()));
-export const isWorkspaceManager = (user = {}) => Boolean(isSuperAdminUser(user) || user?.isAdmin === true || user?.isOwner === true || user?.accountOwner === true || user?.owner === true || user?.workspaceOwner === true || String(user?.accountRole || '').toLowerCase() === 'owner');
-export const hasAnyPermission = (user = {}, perms = []) => Boolean(isWorkspaceManager(user) || (perms || []).some(p => user?.permissions?.[p] === true));
-
-export const scrubForAudit = (value, depth = 0) => {
-  if (depth > 5) return '[depth-limit]';
-  if (Array.isArray(value)) return value.slice(0, 25).map(v => scrubForAudit(v, depth + 1));
-  if (value && typeof value === 'object') {
-    const out = {};
-    Object.entries(value).slice(0, 80).forEach(([key, val]) => {
-      out[key] = V14_SENSITIVE_KEYS.some(s => key.toLowerCase().includes(s.toLowerCase())) ? '[redacted]' : scrubForAudit(val, depth + 1);
-    });
-    return out;
-  }
-  return value;
-};
-
-export const canUserWriteCollection = (user = {}, collectionName = '') => {
-  if (!collectionName) return false;
-  if (isSuperAdminUser(user)) return true;
-  if (user?.demoMode || user?.isDemo) return false;
-  const needed = V14_WRITE_PERMISSIONS[collectionName] || [];
-  if (needed.length === 0) return isWorkspaceManager(user);
-  return hasAnyPermission(user, needed);
-};
-
-export const safeWrite = async ({ user, action = 'set', collectionName, docId = '', data = {}, merge = true, label = '', before = null, addToast = null }) => {
-  if (!user?.restaurantId && !isSuperAdminUser(user)) throw new Error('Safe Write blocked: missing restaurant workspace.');
-  if (user?.demoMode || user?.isDemo) throw new Error('Safe Write blocked: demo mode cannot change live data.');
-  if (!canUserWriteCollection(user, collectionName)) throw new Error(`Safe Write blocked: missing permission for ${collectionName}.`);
-  if (V14_TENANT_COLLECTIONS.includes(collectionName) && !isSuperAdminUser(user)) {
-    const incomingRest = data?.restaurantId || before?.restaurantId || user.restaurantId;
-    if (incomingRest && incomingRest !== user.restaurantId) throw new Error('Safe Write blocked: restaurant mismatch.');
-  }
-  const now = new Date().toISOString();
-  const payload = V14_TENANT_COLLECTIONS.includes(collectionName)
-    ? { ...data, restaurantId: data?.restaurantId || user.restaurantId, updatedAt: now, updatedBy: user?.name || user?.email || '86 Chaos' }
-    : { ...data, updatedAt: now, updatedBy: user?.name || user?.email || '86 Chaos' };
-  let refObj;
-  if (action === 'add') {
-    refObj = await addDoc(collection(db, collectionName), payload);
-  } else if (action === 'update') {
-    if (!docId) throw new Error('Safe Write blocked: update requires a document id.');
-    refObj = doc(db, collectionName, docId);
-    await updateDoc(refObj, payload);
-  } else if (action === 'delete') {
-    if (!docId) throw new Error('Safe Write blocked: delete requires a document id.');
-    refObj = doc(db, collectionName, docId);
-    await deleteDoc(refObj);
-  } else {
-    if (!docId) throw new Error('Safe Write blocked: set requires a document id.');
-    refObj = doc(db, collectionName, docId);
-    await setDoc(refObj, payload, { merge });
-  }
-  await logAudit(user, `SAFE_WRITE_${String(action).toUpperCase()}`, `${collectionName}/${docId || refObj?.id || ''}`, JSON.stringify({ label, after: scrubForAudit(payload), before: scrubForAudit(before) }).slice(0, 2500));
-  if (addToast) addToast('Saved', label || `${collectionName} updated safely.`);
-  return { id: refObj?.id || docId, path: `${collectionName}/${refObj?.id || docId}`, payload };
-};
-
-export const getOfflineQueueKey = (restaurantId, userId) => `chaosOfflineWriteQueue_${restaurantId || 'unknown'}_${userId || 'unknown'}`;
-export const getOfflineQueue = (restaurantId, userId) => {
-  if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(getOfflineQueueKey(restaurantId, userId)) || '[]'); } catch (_) { return []; }
-};
-export const queueOfflineWrite = ({ user, collectionName, docId = '', action = 'add', data = {}, label = '' }) => {
-  if (typeof window === 'undefined') return [];
-  const key = getOfflineQueueKey(user?.restaurantId, user?.id);
-  const queue = getOfflineQueue(user?.restaurantId, user?.id);
-  const item = { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, queuedAt: new Date().toISOString(), collectionName, docId, action, data: scrubForAudit(data), label };
-  queue.push(item);
-  localStorage.setItem(key, JSON.stringify(queue.slice(-75)));
-  return queue;
-};
-export const replayOfflineQueue = async (user, addToast) => {
-  const queue = getOfflineQueue(user?.restaurantId, user?.id);
-  if (!queue.length) return { attempted: 0, saved: 0, failed: 0 };
-  let saved = 0;
-  const failed = [];
-  for (const item of queue) {
-    try {
-      await safeWrite({ user, collectionName: item.collectionName, docId: item.docId, action: item.action, data: item.data || {}, label: item.label });
-      saved += 1;
-    } catch (err) {
-      failed.push({ ...item, lastError: err.message, lastTriedAt: new Date().toISOString() });
-    }
-  }
-  if (typeof window !== 'undefined') localStorage.setItem(getOfflineQueueKey(user?.restaurantId, user?.id), JSON.stringify(failed));
-  if (addToast && saved) addToast('Offline Queue Synced', `${saved} queued kitchen action(s) saved.`);
-  return { attempted: queue.length, saved, failed: failed.length };
-};
-
-export const safeWriteWithQueue = async ({ user, addToast = null, label = '', ...writeArgs }) => {
-  try {
-    return await safeWrite({ user, addToast, label, ...writeArgs });
-  } catch (err) {
-    const message = err?.message || String(err);
-    const looksOffline = typeof navigator !== 'undefined' && (navigator.onLine === false || /offline|network|unavailable|failed to fetch/i.test(message));
-    if (looksOffline && user?.restaurantId && user?.id && ['add','set','update'].includes(writeArgs.action || 'set')) {
-      queueOfflineWrite({ user, collectionName: writeArgs.collectionName, docId: writeArgs.docId || '', action: writeArgs.action || 'set', data: writeArgs.data || {}, label });
-      if (addToast) addToast('Queued Offline', `${label || writeArgs.collectionName || 'Kitchen action'} will sync when the connection comes back.`);
-      return { queued: true, error: message };
-    }
-    if (addToast) addToast('Save Blocked', message);
-    throw err;
-  }
-};
-
-export const buildPermissionPreview = (user = {}, features = {}) => {
-  const superAdmin = isSuperAdminUser(user);
-  const admin = isWorkspaceManager(user);
-  const allowed = [];
-  const blocked = [];
-  const push = (key, label, ok, reason = '') => (ok ? allowed : blocked).push({ key, label, reason });
-  push('today', 'Manager Brief', true, 'Base manager landing screen');
-  push('published', 'My Schedule', true, 'Everyone can see their published schedule');
-  push('messages', 'Messages', features.messages !== false, 'Workspace messages module');
-  push('prep', 'Prep + Line Check', features.prep !== false, 'Prep module');
-  push('recipes', 'Recipes', features.recipes !== false, 'Recipes module');
-  push('inventory', 'Inventory', features.inventory !== false, 'Inventory module');
-  push('events', 'Events', features.events !== false && (admin || user?.permissions?.events || user?.permissions?.schedule || user?.permissions?.team), 'Events/schedule permission');
-  push('schedule', 'Schedule Builder', admin || user?.permissions?.schedule || user?.permissions?.team, 'Schedule permission');
-  push('ops', 'Ops Center', features.ops !== false && (superAdmin || admin || user?.permissions?.ops), 'Ops permission');
-  push('financials', 'Financials', superAdmin || admin || user?.permissions?.labor || user?.permissions?.sales, 'Labor/sales permission');
-  push('team', 'Team', features.team !== false && (admin || user?.permissions?.team), 'Team permission');
-  push('maintenance', 'Maintenance', features.maintenance !== false && (admin || user?.permissions?.team), 'Manager/team permission');
-  push('settings', 'Settings', !user?.demoMode && (admin || user?.permissions?.settings || user?.permissions?.branding || user?.permissions?.integrations), 'Settings/owner permission');
-  push('godmode', 'System Administrator', superAdmin, 'Super Admin only');
-  const sensitive = {
-    wagesVisible: Boolean(superAdmin || admin || user?.permissions?.wageView || user?.permissions?.wageEdit),
-    wagesEditable: Boolean(superAdmin || user?.permissions?.wageEdit),
-    backupCenter: Boolean(superAdmin),
-    forensics: Boolean(superAdmin),
-    demoPrivateDataBlocked: Boolean(user?.demoMode || user?.isDemo)
-  };
-  return { userId: user.id || '', name: user.name || user.email || 'Selected user', role: user.role || '', allowed, blocked, sensitive };
-};
-
-export const buildImportBridgeTemplates = () => ({
-  toast_sales: [['date','grossSales','netSales','tax','tips','paymentType','notes'], [getToday(),'0.00','0.00','0.00','0.00','Card','Toast daily sales export']],
-  square_sales: [['date','grossSales','discounts','refunds','tax','tips','fees','netSales'], [getToday(),'0.00','0.00','0.00','0.00','0.00','0.00','0.00']],
-  clover_sales: [['date','grossSales','netSales','orders','cash','credit','tips','tax'], [getToday(),'0.00','0.00','0','0.00','0.00','0.00','0.00']],
-  payroll_time: [['employeeName','employeeEmail','date','clockIn','clockOut','breakMinutes','role','hourlyRate'], ['Demo Employee','demo@example.com',getToday(),'09:00','17:00','30','Cook','0.00']],
-  vendor_invoice: [['vendor','invoiceNumber','invoiceDate','itemName','sku','qty','unit','unitCost','category'], ['Vendor Name','INV-1001',getToday(),'Chicken Breast','','1','case','0.00','Food']],
-  inventory_count: [['itemName','category','currentStock','parLevel','unit','price','vendor'], ['Lettuce','Produce','0','1','case','0.00','Vendor Name']]
-});
-
-export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], prepItems = [], menuDependencies = [], events = [] }) => {
-  const normalize = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const low = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0));
-  const lowById = new Map(low.map(item => [item.id, item]));
-  const inventoryById = new Map(inventoryItems.map(item => [item.id, item]));
-  const recipeById = new Map(recipes.map(recipe => [recipe.id, recipe]));
-  const lowTokens = low.map(i => ({ item: i, key: normalize(i.name) })).filter(x => x.key);
-  const activePrep = prepItems.filter(p => p.isMaster || p.date === getToday() || p.frequency);
-  const activePrepKeys = activePrep.map(p => normalize(p.text || p.title || p.name));
-  const recipeHits = new Map();
-  const ensure = (recipe) => {
-    const id = recipe?.id || normalize(recipe?.name || recipe?.title || 'recipe');
-    if (!recipeHits.has(id)) recipeHits.set(id, { recipe, lowStockMatches: [], prepMatches: [], explicitDependencies: [], eightySixAlerts: [] });
-    return recipeHits.get(id);
-  };
-
-  // Manual dependency graph beats text guessing. These docs are created from Ops Center.
-  (menuDependencies || []).forEach(dep => {
-    const recipe = recipeById.get(dep.recipeId) || { id: dep.recipeId || dep.id, name: dep.recipeName || dep.menuItemName || 'Menu item' };
-    const lowItem = lowById.get(dep.inventoryItemId);
-    if (lowItem) {
-      const hit = ensure(recipe);
-      if (!hit.lowStockMatches.some(i => i.id === lowItem.id)) hit.lowStockMatches.push(lowItem);
-      hit.explicitDependencies.push({ ...dep, inventoryItem: lowItem });
-    }
-  });
-
-  // Text fallback catches recipes that have ingredients listed but no manual graph yet.
-  recipes.forEach(recipe => {
-    const text = normalize([recipe.name, recipe.title, recipe.description, recipe.ingredients, ...(Array.isArray(recipe.items) ? recipe.items.map(x => x.name || x.item || x.text || '') : [])].join(' '));
-    const hits = lowTokens.filter(({ key }) => key && (text.includes(key) || key.split(' ').some(part => part.length > 3 && text.includes(part))));
-    const prepHits = activePrepKeys.filter(key => key && text.includes(key));
-    if (hits.length || prepHits.length) {
-      const hit = ensure(recipe);
-      hits.forEach(h => { if (!hit.lowStockMatches.some(i => i.id === h.item.id)) hit.lowStockMatches.push(h.item); });
-      hit.prepMatches = Array.from(new Set([...(hit.prepMatches || []), ...prepHits]));
-    }
-  });
-
-  // 86 alerts are pulled into the same brain so the radar sees both inventory math and manager alerts.
-  const active86Alerts = (events || []).filter(e => {
-    const hay = normalize(`${e.messageCategory || ''} ${e.title || ''} ${e.notes || ''}`);
-    return hay.includes('86') || hay.includes('eighty six') || hay.includes('out of');
-  });
-  active86Alerts.forEach(alert => {
-    const alertText = normalize(`${alert.title || ''} ${alert.notes || ''}`);
-    recipes.forEach(recipe => {
-      const recipeNameKey = normalize(recipe.name || recipe.title || '');
-      const recipeText = normalize(`${recipe.name || recipe.title || ''} ${recipe.ingredients || ''}`);
-      if (alertText && recipeText && ((recipeNameKey && alertText.includes(recipeNameKey)) || recipeText.split(' ').some(part => part.length > 4 && alertText.includes(part)))) {
-        ensure(recipe).eightySixAlerts.push(alert);
-      }
-    });
-  });
-
-  const affectedRecipes = Array.from(recipeHits.values()).filter(r => r.lowStockMatches.length || r.prepMatches.length || r.eightySixAlerts.length);
-  const mappedDependencyCount = (menuDependencies || []).filter(dep => recipeById.has(dep.recipeId) && inventoryById.has(dep.inventoryItemId)).length;
-  return {
-    lowStockItems: low,
-    affectedRecipes,
-    active86Alerts,
-    mappedDependencyCount,
-    explicitDependencyCount: (menuDependencies || []).length,
-    recoveryCount: low.filter(i => Number(i.pendingQty || 0) > 0).length
-  };
-};
-
-export const buildV14ClientGuardrailReport = ({ currentVersion = CURRENT_VERSION, features = {}, hasBrandLock = true, hasHelpSearch = true, hasRules = true } = {}) => {
-  const checks = [
-    { id: 'version', label: `App version is ${CURRENT_VERSION}`, ok: currentVersion === CURRENT_VERSION, detail: `Running ${currentVersion}` },
-    { id: 'brand-lock', label: '86 Chaos brand lock', ok: hasBrandLock === true, detail: '86 Chaos must stay visible while restaurant logos remain optional.' },
-    { id: 'demo-scrub', label: 'Demo privacy rule', ok: true, detail: 'Demo mode should not display real email, phone, address, wage, or sensitive admin data.' },
-    { id: 'help-public', label: 'Help Center public boundary', ok: hasHelpSearch === true, detail: 'Help content must remain public-facing and avoid forensics/backups internals.' },
-    { id: 'rules', label: 'Rules included', ok: hasRules === true, detail: 'Firestore and Storage rules are bundled for separate publish.' },
-    { id: 'modules', label: 'Feature map readable', ok: typeof features === 'object', detail: `${Object.keys(features || {}).length} module flags loaded.` }
-  ];
-  return { generatedAt: new Date().toISOString(), checks, ok: checks.every(c => c.ok) };
 };
 
 

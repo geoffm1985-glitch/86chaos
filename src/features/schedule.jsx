@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -6,261 +6,33 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
-
-const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
-
-const getScheduleStaffRoleOptions = (users = [], dbRoles = []) => {
-  const byLower = new Map();
-  const addRole = (role) => {
-    const clean = cleanScheduleRoleName(role);
-    if (!clean || clean.toLowerCase() === 'unassigned') return;
-    if (!byLower.has(clean.toLowerCase())) byLower.set(clean.toLowerCase(), clean);
-  };
-
-  // This is the single role source used by Schedule Builder and Schedule Copilot:
-  // restaurant-created roles plus the exact role names currently visible in the schedule staff list.
-  (dbRoles || []).forEach(r => addRole(r?.name));
-  (users || []).filter(u => u?.isActive !== false).forEach(u => addRole(u?.role));
-
-  const roles = Array.from(byLower.values()).sort((a, b) => a.localeCompare(b));
-  return roles.length ? roles : ['Unassigned'];
-};
-
-const getRoleFromScheduleStaffList = (role, scheduleRoleOptions = []) => {
-  const clean = cleanScheduleRoleName(role);
-  if (!clean) return scheduleRoleOptions[0] || 'Unassigned';
-  const exact = scheduleRoleOptions.find(r => r.toLowerCase() === clean.toLowerCase());
-  if (exact) return exact;
-  const fuzzy = scheduleRoleOptions.find(r => roleMatches(r, clean) || roleMatches(clean, r));
-  return fuzzy || scheduleRoleOptions[0] || clean;
-};
-
-
-const parseScheduleTimeParts = (value, fallback = { hours: 0, minutes: 0 }) => {
-  const raw = String(value || '').trim().toUpperCase();
-  if (!raw) return fallback;
-  if (raw === 'CLOSE' || raw === 'CL') return { hours: 23, minutes: 59, seconds: 59 };
-  if (raw === 'OPEN') return { hours: 0, minutes: 0, seconds: 0 };
-
-  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(A|P|AM|PM)?$/);
-  if (!match) return fallback;
-
-  let hours = Number.parseInt(match[1], 10);
-  const minutes = Number.parseInt(match[2] || '0', 10);
-  const meridian = match[3] || '';
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return fallback;
-
-  if (meridian.startsWith('P') && hours < 12) hours += 12;
-  if (meridian.startsWith('A') && hours === 12) hours = 0;
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return fallback;
-
-  return { hours, minutes, seconds: 0 };
-};
-
-const buildScheduleDateTime = (dateKey, timeValue, fallback) => {
-  if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) return null;
-  const [year, month, day] = String(dateKey).split('-').map(Number);
-  const parts = parseScheduleTimeParts(timeValue, fallback);
-  return new Date(year, month - 1, day, parts.hours, parts.minutes, parts.seconds || 0, 0);
-};
-
-const getShiftStartDateTime = (shift) => buildScheduleDateTime(shift?.date, shift?.startTime, { hours: 0, minutes: 0, seconds: 0 });
-
-const getShiftEndDateTime = (shift) => {
-  const startAt = getShiftStartDateTime(shift);
-  const endAt = buildScheduleDateTime(shift?.date, shift?.endTime, { hours: 23, minutes: 59, seconds: 59 });
-  if (!endAt) return null;
-  if (startAt && endAt.getTime() <= startAt.getTime()) endAt.setDate(endAt.getDate() + 1);
-  return endAt;
-};
-
-const isShiftStillCurrentOrUpcoming = (shift, now = new Date()) => {
-  if (!shift?.date) return false;
-  const endAt = getShiftEndDateTime(shift);
-  if (!endAt) return String(shift.date) >= formatDate(now);
-  return endAt.getTime() > now.getTime();
-};
-
-const isShiftInPast = (shift, now = new Date()) => shift?.date ? !isShiftStillCurrentOrUpcoming(shift, now) : false;
-
-const isScheduleDateComplete = (dateKey, shiftsForDate = [], now = new Date()) => {
-  if (!dateKey) return false;
-  const dateValue = String(dateKey);
-  const today = formatDate(now);
-  if (dateValue < today) return true;
-  if (dateValue > today) return false;
-  const dayShifts = (shiftsForDate || []).filter(s => s?.date === dateValue);
-  return dayShifts.length > 0 && dayShifts.every(s => isShiftInPast(s, now));
-};
-
-const compareShiftsByStartDateTime = (a, b) => {
-  const aStart = getShiftStartDateTime(a)?.getTime() || 0;
-  const bStart = getShiftStartDateTime(b)?.getTime() || 0;
-  if (aStart !== bStart) return aStart - bStart;
-  return String(a?.role || '').localeCompare(String(b?.role || ''));
-};
-
-const mergeWorkspaceSettings = (appUser = {}, clientData = {}) => ({
-  ...(appUser?.systemSettings || {}),
-  ...(clientData?.systemSettings || {})
-});
-
-const settingBool = (value, fallback = false) => {
-  if (value === undefined || value === null || value === '') return fallback;
-  if (typeof value === 'string') {
-    const v = value.trim().toLowerCase();
-    if (['false', '0', 'off', 'no', 'disabled'].includes(v)) return false;
-    if (['true', '1', 'on', 'yes', 'enabled'].includes(v)) return true;
-  }
-  return Boolean(value);
-};
-
-
-const WEEKDAY_INDEX = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
-
-const normalizeScheduleWeekStart = (value = 'Monday') => {
-  const clean = String(value || 'Monday').trim();
-  return Object.prototype.hasOwnProperty.call(WEEKDAY_INDEX, clean) ? clean : 'Monday';
-};
-
-const getSchedulePublishingSettings = (appUser = {}, clientData = {}) => {
-  const settings = mergeWorkspaceSettings(appUser, clientData);
-  const rawMode = String(settings.schedulePublishMode || settings.scheduleCadence || settings.schedulePublishingCadence || 'monthly').toLowerCase();
-  const allowedModes = ['weekly', 'biweekly', 'monthly', 'custom'];
-  const mode = allowedModes.includes(rawMode) ? rawMode : 'monthly';
-  const customWeeks = Math.min(8, Math.max(1, parseInt(settings.scheduleCustomWeeks || settings.schedulePeriodWeeks || (mode === 'biweekly' ? 2 : 1), 10) || 1));
-  const weeks = mode === 'weekly' ? 1 : mode === 'biweekly' ? 2 : mode === 'custom' ? customWeeks : null;
-  const weekStartsOn = normalizeScheduleWeekStart(settings.scheduleWeekStartsOn || settings.weekStartsOn || 'Monday');
-  const allowPostPublishedTimeOff = settings.allowPostPublishedTimeOff !== false;
-  return { mode, weeks, customWeeks, weekStartsOn, allowPostPublishedTimeOff };
-};
-
-const getSchedulePeriodBounds = (dateKey, scheduleSettings = {}) => {
-  const base = new Date(`${dateKey || getToday()}T12:00:00`);
-  if (scheduleSettings.mode === 'monthly' || !scheduleSettings.weeks) {
-    const month = getMonthStr(dateKey || getToday());
-    return { start: `${month}-01`, end: `${month}-${String(getDaysInMonth(month)).padStart(2, '0')}` };
-  }
-  const weekStart = WEEKDAY_INDEX[normalizeScheduleWeekStart(scheduleSettings.weekStartsOn)] ?? 1;
-  const start = new Date(base);
-  while (start.getDay() !== weekStart) start.setDate(start.getDate() - 1);
-  const end = new Date(start);
-  end.setDate(start.getDate() + (Number(scheduleSettings.weeks || 1) * 7) - 1);
-  return { start: formatDate(start), end: formatDate(end) };
-};
-
-const buildDateRange = (startKey, endKey) => {
-  const days = [];
-  if (!startKey || !endKey) return days;
-  const cursor = new Date(`${startKey}T12:00:00`);
-  const end = new Date(`${endKey}T12:00:00`);
-  while (cursor <= end && days.length < 75) {
-    days.push(formatDate(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
-};
-
-const getSchedulePeriodLabel = (bounds, scheduleSettings = {}) => {
-  if (scheduleSettings.mode === 'monthly') return formatDisplayMonth(getMonthStr(bounds.start));
-  const modeLabel = scheduleSettings.mode === 'weekly' ? 'Weekly' : scheduleSettings.mode === 'biweekly' ? '2-Week' : `${scheduleSettings.weeks || 1}-Week`;
-  return `${modeLabel} Schedule: ${formatDisplayDate(bounds.start)} - ${formatDisplayDate(bounds.end)}`;
-};
-
-const isDateInsidePublishedSchedule = (dateKey, shifts = []) => {
-  if (!dateKey) return false;
-  return (shifts || []).some(s => String(s?.date || s?.scheduleDateKey || '') === String(dateKey) && s?.isPublished === true);
-};
-
-const isTipDeclarationEnabled = (appUser = {}, clientData = {}) => {
-  const settings = mergeWorkspaceSettings(appUser, clientData);
-  const raw = settings.tips ?? settings.mandatoryTipDeclaration ?? settings.tipDeclarationRequired ?? settings.tipDeclarationEnabled;
-  // The workspace setting has always defaulted to ON in Settings. Treat missing legacy
-  // fields as enabled so old restaurant docs cannot silently let employees bypass tips.
-  return settingBool(raw, true);
-};
-
-const normalizeTipAmount = (value) => {
-  const n = Number.parseFloat(value);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.round(n * 100) / 100;
-};
-
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast }) => {
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
   // --- TIME CLOCK LOGIC ---
   const [activePunch, setActivePunch] = useState(null);
-  const [clockActionBusy, setClockActionBusy] = useState(false);
-  const [clockActionType, setClockActionType] = useState(null);
-  const [clockActionPunch, setClockActionPunch] = useState(null);
-  const [scheduleNow, setScheduleNow] = useState(() => new Date());
-  const recentlyClockedOutRef = useRef({});
-
-  useEffect(() => {
-    const refreshScheduleNow = () => setScheduleNow(new Date());
-    refreshScheduleNow();
-    const tick = setInterval(refreshScheduleNow, 30000);
-    const onVisibility = () => { if (!document.hidden) refreshScheduleNow(); };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => { clearInterval(tick); document.removeEventListener('visibilitychange', onVisibility); };
-  }, []);
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
-  const [subTab, setSubTab] = useState(initialSubTab);
+  const [subTab, setSubTab] = useState('my-schedule');
 
   useEffect(() => {
-    const requested = voiceScheduleSubTabTarget?.subTab;
-    if (!requested) return;
-    const allowed = ['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off'];
-    if ((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps) allowed.push('schedule-builder');
-    if (allowed.includes(requested)) setSubTab(requested);
-  }, [voiceScheduleSubTabTarget?.id]);
-
-  useEffect(() => {
-    if (!appUser?.id || !appUser?.restaurantId) {
-      setActivePunch(null);
-      return;
-    }
-
-    // Keep this listener intentionally simple: restaurant + employee only.
-    // Filtering status in the browser avoids a Firestore composite-index trap that made
-    // regular employees wait for a full refresh before the button flipped state.
+    if (!appUser?.id) return;
     const q = query(
-      collection(db, 'timePunches'),
-      where('restaurantId', '==', appUser.restaurantId),
-      where('employeeId', '==', appUser.id)
+      collection(db, 'timePunches'), 
+      where('employeeId', '==', appUser.id), 
+      where('status', 'in', ['clocked_in', 'on_break'])
     );
     const unsub = onSnapshot(q, snap => {
-      const activeStatuses = ['clocked_in', 'on_break'];
-      const punches = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(p => activeStatuses.includes(p.status));
-      const newest = punches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0))[0] || null;
-
-      setActivePunch(prev => {
-        if (newest?.id) {
-          const suppressUntil = recentlyClockedOutRef.current[newest.id] || 0;
-          if (Date.now() < suppressUntil) return null;
-          return newest;
-        }
-
-        // Do not let an empty/stale snapshot erase the optimistic button flip
-        // immediately after a successful clock-in write.
-        if (prev?._optimisticUntil && Date.now() < prev._optimisticUntil) return prev;
-        return null;
-      });
-    }, err => {
-      console.error('Active punch listener failed:', err);
-      addToast('Clock Sync Warning', 'Clock-in saved, but the live clock button could not refresh automatically. Check Firestore rules/indexes if this repeats.');
+      if (!snap.empty) { setActivePunch({ id: snap.docs[0].id, ...snap.docs[0].data() }); } 
+      else { setActivePunch(null); }
     });
     return () => unsub();
-  }, [appUser?.id, appUser?.restaurantId]);
+  }, [appUser?.id]);
 
 
 
@@ -274,68 +46,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
     return (R * c) * 3.28084; // Convert final result to feet
   };
 
-
-  const getClockOutGeofenceReview = async () => {
-    const settings = mergeWorkspaceSettings(appUser, clientData);
-    if (!settings.geofence) return { status: 'not_required', update: {}, alertNeeded: false };
-    const targetLat = parseFloat(settings.lat);
-    const targetLon = parseFloat(settings.lon);
-    const allowedRadius = parseInt(settings.geofenceRadius, 10) || 300;
-    if (!targetLat || !targetLon || !navigator.geolocation) {
-      return {
-        status: 'unverified',
-        alertNeeded: true,
-        update: {
-          clockOutGeofenceStatus: 'unverified',
-          requiresManagerReview: true,
-          managerNote: 'Clock-out location could not be verified. Manager review needed.',
-          clockOutLocationCheckedAt: new Date().toISOString()
-        },
-        message: 'Your clock-out will be saved, but location could not be verified. A manager will be alerted.'
-      };
-    }
-    try {
-      const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }));
-      const dist = calculateDistance(targetLat, targetLon, pos.coords.latitude, pos.coords.longitude);
-      const outside = dist > allowedRadius;
-      return {
-        status: outside ? 'outside' : 'inside',
-        alertNeeded: outside,
-        distanceFeet: dist,
-        update: {
-          clockOutGeofenceStatus: outside ? 'outside' : 'inside',
-          clockOutDistanceFeet: Math.round(dist),
-          clockOutRequiredRadiusFeet: allowedRadius,
-          clockOutLocation: {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracy: pos.coords.accuracy || null,
-            capturedAt: new Date().toISOString()
-          },
-          requiresManagerReview: outside,
-          managerNote: outside ? `Clocked out outside required area (${Math.round(dist)} ft from required area). Manager review needed.` : null,
-          clockOutLocationCheckedAt: new Date().toISOString()
-        },
-        message: outside ? `You are clocking out ${Math.round(dist)} feet outside the required work area. Your clock-out will still save, but a manager will be alerted and the time punch will be marked.` : ''
-      };
-    } catch (err) {
-      return {
-        status: 'unverified',
-        alertNeeded: true,
-        update: {
-          clockOutGeofenceStatus: 'unverified',
-          requiresManagerReview: true,
-          managerNote: 'Clock-out location was denied or unavailable. Manager review needed.',
-          clockOutLocationError: err?.message || 'Location unavailable',
-          clockOutLocationCheckedAt: new Date().toISOString()
-        },
-        message: 'Your clock-out will be saved, but location was denied or unavailable. A manager will be alerted.'
-      };
-    }
-  };
-
 const handleClockIn = async () => {
-    if (clockActionBusy || activePunch) return;
     // Check if scheduled today
     const isScheduledToday = shifts.some(s => s.employeeId === appUser.id && s.date === getToday() && s.isPublished);
     
@@ -347,23 +58,12 @@ const handleClockIn = async () => {
     }
 
     const executePunch = async () => {
-      setClockActionType('in');
-      setClockActionBusy(true);
       try {
-        const clockInStamp = new Date().toISOString();
-        const punchData = {
-          employeeId: appUser.id,
-          employeeName: appUser.name,
-          clockInTime: clockInStamp,
-          status: 'clocked_in',
-          restaurantId: appUser.restaurantId,
-          date: getToday(),
-          breakMinutes: 0,
-          isUnscheduled: isUnscheduled,
-          isApproved: !isUnscheduled
-        };
-        const punchRef = await addDoc(collection(db, "timePunches"), punchData);
-        setActivePunch({ id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 });
+        await addDoc(collection(db, "timePunches"), { 
+          employeeId: appUser.id, employeeName: appUser.name, clockInTime: new Date().toISOString(), 
+          status: 'clocked_in', restaurantId: appUser.restaurantId, date: getToday(), breakMinutes: 0,
+          isUnscheduled: isUnscheduled, isApproved: !isUnscheduled
+        });
         
         // Blast the manager alert to the Message Board
         if (isUnscheduled) {
@@ -374,23 +74,15 @@ const handleClockIn = async () => {
         }
         
         addToast('Clocked In', isUnscheduled ? 'Unscheduled shift started. Manager notified.' : 'Shift started successfully.');
-      } catch (e) { 
-        setActivePunch(null);
-        addToast('Error', e.message); 
-      } finally {
-        setClockActionBusy(false);
-        setClockActionType(null);
-        setClockActionPunch(null);
-      }
+      } catch (e) { addToast('Error', e.message); }
     };
 
-    const workspaceSettings = mergeWorkspaceSettings(appUser, clientData);
-    if (workspaceSettings.geofence) {
+    if (appUser?.systemSettings?.geofence) {
       if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
       
-      const targetLat = parseFloat(workspaceSettings.lat);
-      const targetLon = parseFloat(workspaceSettings.lon);
-      const allowedRadius = parseInt(workspaceSettings.geofenceRadius) || 300; // Default to 300 feet
+      const targetLat = parseFloat(appUser.systemSettings.lat);
+      const targetLon = parseFloat(appUser.systemSettings.lon);
+      const allowedRadius = parseInt(appUser.systemSettings.geofenceRadius) || 300; // Default to 300 feet
       
       if (!targetLat || !targetLon) return addToast('Geofence Error', 'Location coordinates are not set in Workspace settings yet.');
       
@@ -410,111 +102,47 @@ const handleClockIn = async () => {
   };
 
   const handleStartBreak = async () => {
-    if (!activePunch?.id) return;
-    const breakStartTime = new Date().toISOString();
-    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime, status: 'on_break' });
-    setActivePunch(prev => prev ? { ...prev, breakStartTime, status: 'on_break' } : prev);
+    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: new Date().toISOString(), status: 'on_break' });
     addToast('Break Started', 'Enjoy your break.');
   };
 
   const handleEndBreak = async () => {
-    if (!activePunch?.id) return;
     const breakStart = new Date(activePunch.breakStartTime);
     const now = new Date();
-    const mins = Number.isNaN(breakStart.getTime()) ? 0 : (now - breakStart) / 60000;
+    const mins = (now - breakStart) / 60000;
     const currentBreaks = activePunch.breakMinutes || 0;
-    const breakMinutes = currentBreaks + mins;
-    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: null, breakMinutes, status: 'clocked_in' });
-    setActivePunch(prev => prev ? { ...prev, breakStartTime: null, breakMinutes, status: 'clocked_in' } : prev);
+    await updateDoc(doc(db, "timePunches", activePunch.id), { breakStartTime: null, breakMinutes: currentBreaks + mins, status: 'clocked_in' });
     addToast('Break Ended', 'Welcome back to work.');
   };
 
   const initiateClockOut = () => {
-    if (clockActionBusy) return;
-    if (isTipDeclarationEnabled(appUser, clientData)) { setIsTipModalOpen(true); } 
+    if (appUser?.systemSettings?.tips) { setIsTipModalOpen(true); } 
     else { finalizeClockOut(); }
   };
 
   const finalizeClockOut = async (e) => {
     if(e) e.preventDefault();
-    if (!activePunch || clockActionBusy) return;
-    const punchToClose = activePunch;
+    if (!activePunch) return;
     try {
-      let finalBreakMins = punchToClose.breakMinutes || 0;
-      if (punchToClose.status === 'on_break') {
-         const breakStart = new Date(punchToClose.breakStartTime);
+      let finalBreakMins = activePunch.breakMinutes || 0;
+      if (activePunch.status === 'on_break') {
+         const breakStart = new Date(activePunch.breakStartTime);
          finalBreakMins += (new Date() - breakStart) / 60000;
       }
       
-      const geofenceReview = await getClockOutGeofenceReview();
-      if (geofenceReview.alertNeeded && geofenceReview.message) {
-        const proceed = window.confirm(`${geofenceReview.message}
-
-Clock out anyway?`);
-        if (!proceed) return;
-      }
-      const clockOutStamp = new Date().toISOString();
-      const cashTipsDeclared = normalizeTipAmount(tipCash);
-      const creditTipsDeclared = normalizeTipAmount(tipCredit);
-      const tipRequired = isTipDeclarationEnabled(appUser, clientData);
-      const punchUpdate = { 
-        clockOutTime: clockOutStamp, 
+      await updateDoc(doc(db, "timePunches", activePunch.id), { 
+        clockOutTime: new Date().toISOString(), 
         status: 'clocked_out',
-        cashTips: cashTipsDeclared,
-        creditTips: creditTipsDeclared,
-        totalDeclaredTips: cashTipsDeclared + creditTipsDeclared,
-        tipDeclarationRequired: tipRequired,
-        tipDeclarationCompleted: tipRequired,
-        tipDeclaredAt: tipRequired ? clockOutStamp : null,
-        tipDeclarationVersion: '14.0.2',
+        cashTips: parseFloat(tipCash) || 0,
+        creditTips: parseFloat(tipCredit) || 0,
         breakMinutes: finalBreakMins,
-        breakStartTime: null,
-        ...(geofenceReview.update || {})
-      };
-      setClockActionType('out');
-      setClockActionPunch(punchToClose);
-      setClockActionBusy(true);
-      recentlyClockedOutRef.current[punchToClose.id] = Date.now() + 30000;
-      await updateDoc(doc(db, "timePunches", punchToClose.id), punchUpdate);
-      setActivePunch(null);
-      if (geofenceReview.alertNeeded) {
-        const distText = geofenceReview.distanceFeet ? `${Math.round(geofenceReview.distanceFeet)} ft outside required area` : 'location not verified';
-        const alertTitle = `GEOFENCE CLOCK-OUT REVIEW: ${appUser.name} clocked out with ${distText}. Review Financials → Timesheets.`;
-        await addDoc(collection(db, "events"), {
-          date: clockOutStamp,
-          title: alertTitle,
-          type: 'note',
-          category: 'Geofence Clock-Out Alert',
-          author: 'System Alert',
-          isImportant: true,
-          restaurantId: appUser.restaurantId,
-          employeeId: appUser.id,
-          employeeName: appUser.name,
-          punchId: punchToClose.id,
-          replies: [],
-          geofenceStatus: geofenceReview.status || 'review'
-        });
-        try {
-          await secureFetch('/api/send-push', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ restaurantId: appUser.restaurantId, type: 'geofence', title: 'Geofence Clock-Out Alert', body: alertTitle, isCritical: true })
-          });
-        } catch (pushErr) { console.warn('Geofence push failed:', pushErr); }
-      }
+        breakStartTime: null
+      });
       
       setIsTipModalOpen(false);
       setTipCash(''); setTipCredit('');
       addToast('Clocked Out', 'Shift ended. Great work today!');
-    } catch (err) {
-      if (punchToClose?.id) delete recentlyClockedOutRef.current[punchToClose.id];
-      setActivePunch(punchToClose || null);
-      addToast('Error', err.message); 
-    } finally {
-      setClockActionBusy(false);
-      setClockActionType(null);
-      setClockActionPunch(null);
-    }
+    } catch (err) { addToast('Error', err.message); }
   };
 
 // --- SHIFT LOGIC ---
@@ -523,8 +151,8 @@ Clock out anyway?`);
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts
-    .filter(s => s.employeeId === appUser.id && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
-    .sort(compareShiftsByStartDateTime)[0];
+    .filter(s => s.employeeId === appUser.id && s.date >= getToday() && s.isPublished)
+    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date))[0];
 
   const activeMonthShifts = shifts
     .filter(s => s.date.startsWith(monthStr) && s.isPublished)
@@ -610,14 +238,12 @@ const handleOfferSwap = async (shift) => {
     }
   };
 
-  const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
-
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="max-w-2xl mx-auto space-y-4 pb-24">
       
       <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
         <form onSubmit={finalizeClockOut} className="space-y-4">
-          <p className="text-xs text-slate-300 font-bold mb-2">Please declare your tips for this shift before clocking out. Enter 0 if you did not receive tips.</p>
+          <p className="text-xs text-slate-300 font-bold mb-2">Please declare your tips for this shift before clocking out.</p>
           <div>
             <label className={T.label}>Cash Tips ($)</label>
             <input type="number" step="0.01" min="0" value={tipCash} onChange={e=>setTipCash(e.target.value)} className={T.input} placeholder="0.00"/>
@@ -626,23 +252,17 @@ const handleOfferSwap = async (shift) => {
             <label className={T.label}>Credit Card Tips ($)</label>
             <input type="number" step="0.01" min="0" value={tipCredit} onChange={e=>setTipCredit(e.target.value)} className={T.input} placeholder="0.00"/>
           </div>
-          <button type="submit" disabled={clockActionBusy} className={`w-full ${T.btn} disabled:opacity-60 disabled:cursor-not-allowed`}>{clockActionBusy ? 'Finalizing...' : 'Finalize Clock Out'}</button>
+          <button type="submit" className={`w-full ${T.btn}`}>Finalize Clock Out</button>
         </form>
       </Modal>
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['my-schedule', 'full-schedule', 'month-view', 'time-off', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => (
+        {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {tab.replace('-', ' ')}
           </button>
         ))}
       </div>
-
-      {subTab === 'schedule-builder' && scheduleBuilderProps && (
-        <div className="animate-[slideIn_0.2s_ease-out]">
-          <TabScheduleWorkbench {...scheduleBuilderProps} />
-        </div>
-      )}
 
       {subTab === 'my-schedule' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
@@ -662,14 +282,14 @@ const handleOfferSwap = async (shift) => {
               <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(myNextShift.date)}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
             ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
             
-            {effectiveActivePunch ? (
+            {activePunch ? (
               <div className="space-y-2 relative z-10">
-                <button onClick={initiateClockOut} disabled={clockActionBusy} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">
-                  <span>{clockActionBusy && clockActionType === 'out' ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
-                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(effectiveActivePunch.clockInTime)}</span>
+                <button onClick={initiateClockOut} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1">
+                  <span>CLOCK OUT</span>
+                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(activePunch.clockInTime)}</span>
                 </button>
-                {mergeWorkspaceSettings(appUser, clientData).breaks && (
-                  effectiveActivePunch.status === 'on_break' ? (
+                {appUser?.systemSettings?.breaks && (
+                  activePunch.status === 'on_break' ? (
                     <button onClick={handleEndBreak} className="w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
                   ) : (
                     <button onClick={handleStartBreak} className="w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
@@ -677,8 +297,8 @@ const handleOfferSwap = async (shift) => {
                 )}
               </div>
             ) : (
-              <button onClick={handleClockIn} disabled={clockActionBusy} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10 disabled:opacity-60 disabled:cursor-not-allowed">
-                {clockActionBusy && clockActionType === 'in' ? 'CLOCKING IN...' : 'CLOCK IN'}
+              <button onClick={handleClockIn} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10">
+                CLOCK IN
               </button>
             )}
 
@@ -703,22 +323,20 @@ const handleOfferSwap = async (shift) => {
                 <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No shifts scheduled for you this month.</div>
               ) : (
                 myMonthShifts.map(s => {
-                  const isPastShift = isShiftInPast(s, scheduleNow);
+                  const isFuture = s.date >= getToday();
                   const isOffered = shiftSwaps.some(swap => swap.shiftId === s.id && swap.status === 'available');
 
                   return (
-                    <div key={s.id} className={`${T.row} flex justify-between items-center transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : ''}`}>
+                    <div key={s.id} className={`${T.row} flex justify-between items-center`}>
                       <div>
-                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{formatDisplayDate(s.date)}</div>
-                        <div className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${isPastShift ? 'text-slate-600' : T.copper}`}>{s.role}</div>
+                        <div className="font-bold text-white text-sm">{formatDisplayDate(s.date)}</div>
+                        <div className={`text-[9px] font-black uppercase tracking-widest ${T.copper} mt-0.5`}>{s.role}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>
+                        <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>
                           {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
                         </div>
-                        {isPastShift ? (
-                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-600 border border-[#1F2933] px-2 py-1 rounded">Ended</span>
-                        ) : (
+                        {isFuture && (
                           isOffered ? (
                             <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">Listed</span>
                           ) : (
@@ -781,13 +399,6 @@ const handleOfferSwap = async (shift) => {
 
 {subTab === 'full-schedule' && (() => {
         const filteredRosterShifts = activeMonthShifts.filter(s => rosterFilterDate ? s.date === rosterFilterDate : true);
-        const rosterShiftsByDate = filteredRosterShifts.reduce((acc, shift) => {
-          const key = shift?.date || '';
-          if (!key) return acc;
-          if (!acc[key]) acc[key] = [];
-          acc[key].push(shift);
-          return acc;
-        }, {});
         return (
           <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
             <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex flex-col sm:flex-row justify-between sm:items-center gap-3">
@@ -805,22 +416,19 @@ const handleOfferSwap = async (shift) => {
               {filteredRosterShifts.map((shift, index) => {
                  const emp = users.find(u => u.id === shift.employeeId);
                  const showDivider = index === 0 || shift.date !== filteredRosterShifts[index - 1].date;
-                 const isPastShift = isShiftInPast(shift, scheduleNow);
-                 const isPastDay = showDivider && isScheduleDateComplete(shift.date, rosterShiftsByDate[shift.date] || [], scheduleNow);
                  
                  return (
                    <React.Fragment key={shift.id}>
                      {showDivider && (
-                       <div className={`${isPastDay ? 'bg-[#0B0E11] text-slate-600 opacity-80' : 'bg-[#1A2126] text-[#D4A381]'} px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2 transition-colors`}>
+                       <div className="bg-[#1A2126] px-3 py-2 border-y border-[#2A353D] text-[10px] font-black uppercase tracking-widest text-[#D4A381] sticky top-0 z-10 shadow-sm flex flex-wrap items-center gap-2">
                          <span>{formatDisplayDate(shift.date)}</span>
                          {getHoliday(shift.date) && <span className="bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{getHoliday(shift.date)}</span>}
-                         {isPastDay && <span className="text-[8px] text-slate-600 border border-[#1F2933] px-1.5 py-0.5 rounded">PAST</span>}
                        </div>
                      )}
-                     <div className={`${T.row} transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : 'hover:bg-[#12161A]'}`}>
+                     <div className={`${T.row} hover:bg-[#12161A]`}>
                        <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
-                         <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                         <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border ${T.border} object-cover`} alt="avatar"/><div><div className="text-sm font-bold text-white">{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div><div className={`text-[9px] ${T.muted} font-bold uppercase`}>{shift.role}</div></div></div>
+                         <div className={`text-xs font-mono font-bold bg-[#12161A] ${T.copper} px-2 py-1 rounded-md border ${T.border}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
                        </div>
                      </div>
                    </React.Fragment>
@@ -833,12 +441,12 @@ const handleOfferSwap = async (shift) => {
       })()}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} appUser={appUser} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} shifts={shifts} clientData={clientData} /></div>}  
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} /></div>}  
     </div>
   );
 };
 
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, initialSubTab = 'schedule', hideSubTabs = false }) => {
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -880,12 +488,6 @@ const [eventDate, setEventDate] = useState(getToday());
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
-  const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
-  const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
-  const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
-  const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
-  const schedulePeriodShifts = shifts.filter(s => { const d = String(s.date || s.scheduleDateKey || ''); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
-  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
@@ -1046,19 +648,9 @@ const [eventDate, setEventDate] = useState(getToday());
     return 'bg-[#D4A381] text-slate-900'; 
   };
 
-  const rescueEditableMonths = Array.from(new Set([
-    ...(Array.isArray(clientData?.scheduleRescueDraftMonths) ? clientData.scheduleRescueDraftMonths : []),
-    ...(Array.isArray(clientData?.scheduleRescueBuilderOverwriteMonths) ? clientData.scheduleRescueBuilderOverwriteMonths : []),
-    ...(Array.isArray(clientData?.scheduleRescueProtectedMonths) ? clientData.scheduleRescueProtectedMonths : [])
-  ].filter(Boolean)));
-  const currentScheduleMonth = getMonthStr(currentDate);
-  const isRescueEditableMonth = (month = currentScheduleMonth) => rescueEditableMonths.includes(month);
-  const canEditRescueMonth = (month = currentScheduleMonth) => isRescueEditableMonth(month) && !!(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.permissions?.schedule || appUser?.permissions?.team);
-  const canEditScheduleDate = (d) => !(d < getToday()) || canEditRescueMonth(getMonthStr(d));
-
   const handleCellClick = (d, empId) => {
-    if (!canEditScheduleDate(d)) return addToast("Locked", "Cannot edit past dates.");
-    const existing = shifts.find(s => s.date === d && s.employeeId === empId);
+    if (d < getToday()) return addToast("Locked", "Cannot edit past dates.");
+    const existing = monthShifts.find(s => s.date === d && s.employeeId === empId);
     if (existing) { if(window.confirm("Delete shift?")) deleteDoc(doc(db,"shifts",existing.id)); return; }
     setSelectedEmp(empId); if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x!==d)); else setAssignDates([...assignDates, d]);
   };
@@ -1067,7 +659,7 @@ const [eventDate, setEventDate] = useState(getToday());
     if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
     const validDates = [];
     for (const d of assignDates) { 
-      const existingShift = shifts.find(s => s.date === d && s.employeeId === emp.id);
+      const existingShift = monthShifts.find(s => s.date === d && s.employeeId === emp.id);
       if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
       
       const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id && r.status !== 'pending');
@@ -1077,88 +669,27 @@ const [eventDate, setEventDate] = useState(getToday());
       }
       validDates.push(d);
     }
-    for (const d of validDates) {
-      const nowIso = new Date().toISOString();
-      const shiftMonth = getMonthStr(d);
-      const rescueEdit = canEditRescueMonth(shiftMonth);
-      const shiftData = {
-        date: d,
-        scheduleDateKey: d,
-        scheduleMonth: shiftMonth,
-        employeeId: emp.id,
-        employeeName: emp.name || emp.displayName || 'Unknown',
-        role: emp.role || 'Unassigned',
-        startTime: startTime,
-        endTime: endTime,
-        isPublished: false,
-        publishState: 'draft',
-        scheduleBuilderDraft: true,
-        readyToPublish: true,
-        restaurantId: appUser.restaurantId,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        createdBy: appUser?.id || appUser?.email || 'schedule-builder',
-        updatedBy: appUser?.id || appUser?.email || 'schedule-builder'
-      };
-      if (rescueEdit) {
-        shiftData.rescueProtected = true;
-        shiftData.rescueEditable = true;
-        shiftData.rescueMode = 'schedule_builder_manual_edit';
-        shiftData.rescueMonth = shiftMonth;
-        shiftData.restoreSourceKey = `manual-after-rescue-${shiftMonth}`;
-        shiftData.sourceKey = `manual-schedule-builder-edit-${shiftMonth}`;
-        shiftData.source = 'Schedule Builder manual edit after emergency rescue';
-      }
-      await addDoc(collection(db, "shifts"), shiftData);
-    }
+    for (const d of validDates) { await addDoc(collection(db, "shifts"), { date: d, employeeId: emp.id, role: emp.role || 'Unassigned', startTime: startTime, endTime: endTime, isPublished: false, restaurantId: appUser.restaurantId }); }
     setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
 const handlePublish = async () => { 
-    if(!window.confirm("Publish schedule? Notifications will be sent. A backup file will download first.")) return; 
+    if(!window.confirm("Publish schedule? Notifications will be sent.")) return; 
     
-    const unpub = schedulePeriodShifts.filter(s => !s.isPublished); 
+    const unpub = shifts.filter(s => !s.isPublished); 
     
     if (unpub.length === 0) {
       addToast('Notice', 'No unpublished shifts found.');
       return;
     }
-
-    try {
-      const publishPeriodStart = schedulePeriodBounds.start;
-      const publishPeriodEnd = schedulePeriodBounds.end;
-      const publishPeriodLabel = schedulePeriodLabel;
-      const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
-      const now = new Date();
-      const backupPayload = {
-        app: '86chaos',
-        type: 'schedule-publish-backup',
-        version: CURRENT_VERSION,
-        generatedAt: now.toISOString(),
-        restaurantId: appUser?.restaurantId || null,
-        restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
-        publishPeriodStart,
-        publishPeriodEnd,
-        publishPeriodLabel,
-        unpublishedShiftCount: unpub.length,
-        allPeriodShiftCount: schedulePeriodShifts.length,
-        unpublishedShifts: unpub.map(s => ({ ...s })),
-        periodShifts: schedulePeriodShifts.map(s => ({ ...s }))
-      };
-      const stamp = now.toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
-    } catch (backupErr) {
-      console.warn('Schedule publish backup download failed:', backupErr);
-      if (!window.confirm('The local backup download failed. Continue publishing anyway?')) return;
-    }
     
-    addToast('Publishing...', `Pushing ${unpub.length} ${publishPeriodLabel} draft shift(s) live. Please wait.`);
+    addToast('Publishing...', `Pushing ${unpub.length} shifts live. Please wait.`);
     
     try {
-      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser?.id || appUser?.email || 'unknown' })));
+      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true })));
       
-      addToast("Published", "Schedule is live and a backup file was downloaded."); 
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live for ${publishPeriodLabel}. Local backup JSON downloaded before publish.`); 
+      addToast("Published", "Schedule is live."); 
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live.`); 
 
 // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
       try {
@@ -1314,9 +845,9 @@ const handleAddEvent = async (e) => {
 
   let projectedMonthLabor = 0;
   const projectedDailyLabor = {};
-  schedulePeriodDays.forEach(d => projectedDailyLabor[d] = 0);
+  monthDays.forEach(d => projectedDailyLabor[d] = 0);
 
-  schedulePeriodShifts.forEach(shift => {
+  monthShifts.forEach(shift => {
     const emp = users.find(u => u.id === shift.employeeId);
     const wage = emp?.wage || 0; 
     const hours = calculateShiftHours(shift.startTime, shift.endTime);
@@ -1486,12 +1017,12 @@ const handleExportTimesheets = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a"); 
     link.setAttribute("href", url); 
-    link.setAttribute("download", `${getRestaurantExportPrefix(appUser)}-Payroll-Export-${periodStart}-to-${periodEnd}.csv`);
+    link.setAttribute("download", `Payroll_Export_${periodStart}_to_${periodEnd}.csv`);
     document.body.appendChild(link); 
     link.click(); 
     document.body.removeChild(link); 
     URL.revokeObjectURL(url); 
-    addToast('Exported', 'Spreadsheet generated with the restaurant name in the filename.');
+    addToast('Exported', 'Spreadsheet generated.');
   };
 
   const daysMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
@@ -1499,11 +1030,11 @@ const handleExportTimesheets = () => {
   const endDayInt = startDayInt === 0 ? 6 : startDayInt - 1;
 
   const weeksInMonth = []; let currentWeek = [];
-  schedulePeriodDays.forEach(d => { currentWeek.push(d); if (new Date(d+'T12:00').getDay() === endDayInt) { weeksInMonth.push(currentWeek); currentWeek = []; } });
+  monthDays.forEach(d => { currentWeek.push(d); if (new Date(d+'T12:00').getDay() === endDayInt) { weeksInMonth.push(currentWeek); currentWeek = []; } });
   if (currentWeek.length > 0) weeksInMonth.push(currentWeek);
 
   const scheduledHours = displayUsers.map(u => {
-     const userShifts = schedulePeriodShifts.filter(s => s.employeeId === u.id);
+     const userShifts = monthShifts.filter(s => s.employeeId === u.id);
      const weekly = weeksInMonth.map(weekDaysArr => { return weekDaysArr.reduce((sum, d) => { const shift = userShifts.find(s => s.date === d); return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0); }, 0); });
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
@@ -1512,7 +1043,7 @@ const handleExportTimesheets = () => {
     <div className="space-y-4 pb-12 w-full">
 
 {/* MANAGER EXPLANATION BANNER */}
-      {timeOffRequests.filter(r => r.status === 'pending' && r.date >= schedulePeriodBounds.start && r.date <= schedulePeriodBounds.end).length > 0 && (
+      {timeOffRequests.filter(r => r.status === 'pending' && r.date.startsWith(monthStr)).length > 0 && (
         <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center justify-between gap-4 shadow-lg animate-[slideIn_0.2s_ease-out]">
           <div className="flex items-center gap-3">
             <Shield className="text-red-500 flex-shrink-0 animate-pulse" size={24} />
@@ -1707,7 +1238,7 @@ const handleExportTimesheets = () => {
 {/* TOP NAVIGATION TOGGLE */}
       {!hideSubTabs && (
         <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3 mb-4">
-          <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Builder</button>
+          <button onClick={() => setSubTab('schedule')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Maker</button>
           <span className="text-[10px] font-bold text-slate-500 self-center">Labor and punch editing moved to the Labor tab.</span>
         </div>
       )}
@@ -1754,7 +1285,7 @@ const handleExportTimesheets = () => {
             {/* Action Row */}
             <div className="flex w-full 2xl:w-auto gap-2 items-center pt-3 2xl:pt-0 border-t 2xl:border-t-0 border-[#2A353D]">
               <div className="hidden sm:flex flex-col items-end mr-3 bg-[#12161A] border border-[#2A353D] px-4 py-1.5 rounded-xl">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Period Labor</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Month Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
 <button onClick={() => {
@@ -1767,24 +1298,15 @@ const handleExportTimesheets = () => {
             </div>
           </div>
 
-          <div className={`${T.card} p-3 border-[#D4A381]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2`}>
-            <div>
-              <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Schedule Publishing Window</div>
-              <div className="text-sm font-black text-white">{schedulePeriodLabel}</div>
-              <div className="text-[10px] font-bold text-slate-500 mt-0.5">Change this in Settings → Workspace → Schedule Publishing.</div>
-            </div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-2">{schedulePeriodShifts.filter(s => !s.isPublished).length} draft • {schedulePeriodShifts.filter(s => s.isPublished).length} live</div>
-          </div>
-
           <div className={`${T.card} w-full overflow-hidden`}>
             <div className="overflow-x-auto w-full no-scrollbar">
               <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
                 <thead>
                   <tr className="bg-[#12161A] border-b border-[#2A353D]">
                     <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
-                    {schedulePeriodDays.map(d => {
+                    {monthDays.map(d => {
                       const holiday = getHoliday(d);
-                      const dayEvents = schedulePeriodEvents.filter(e => e.date === d);
+                      const dayEvents = monthEvents.filter(e => e.date === d);
                       const hasAlert = holiday || dayEvents.length > 0;
                       
                       return (
@@ -1813,15 +1335,15 @@ const handleExportTimesheets = () => {
                   {sortedRoles.map(role => (
                     <React.Fragment key={`role-group-${role}`}>
                       <tr className="bg-[#1A2126]">
-                        <td colSpan={schedulePeriodDays.length + 1} className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
+                        <td colSpan={monthDays.length + 1} className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest ${T.copper} border-b border-[#2A353D] sticky left-0 z-10`}>
                           {role}
                         </td>
                       </tr>
                       {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
                         <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
                           <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
-                          {schedulePeriodDays.map(d => {
-                            const shift = schedulePeriodShifts.find(s=>s.date===d&&s.employeeId===u.id); 
+                          {monthDays.map(d => {
+                            const shift = monthShifts.find(s=>s.date===d&&s.employeeId===u.id); 
                             const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id && r.status !== 'pending'); 
                             const sel = assignDates.includes(d) && selectedEmp===u.id;
 
@@ -1856,7 +1378,7 @@ const handleExportTimesheets = () => {
                     <td className={`px-2 py-2 text-[8px] font-black uppercase tracking-widest text-[#D4A381] sticky left-0 z-10 border-r border-[#2A353D] text-right shadow-md`}>
                       Proj. Cost
                     </td>
-                    {schedulePeriodDays.map(d => (
+                    {monthDays.map(d => (
                       <td key={`cost-${d}`} className={`p-1 border-r border-[#2A353D] text-center align-middle font-black text-[9px] sm:text-[10px] ${projectedDailyLabor[d] > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
                         ${projectedDailyLabor[d].toFixed(0)}
                       </td>
@@ -2283,7 +1805,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   );
 };
 
-const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], shifts = [], clientData = null }) => {
+const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [] }) => {
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7)); 
   const [selectedDates, setSelectedDates] = useState([]); 
   const [isPartial, setIsPartial] = useState(false); 
@@ -2293,8 +1815,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(a.date) - new Date(b.date)); 
   const myFutureRequests = myRequests.filter(r => r.date >= getToday());
   const allFutureRequests = timeOffRequests.filter(r => r.date >= getToday()).sort((a,b) => new Date(a.date) - new Date(b.date));
-  const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
-  const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
   
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
@@ -2306,9 +1826,6 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
 
   const handleToggleDate = (d) => { 
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.'); 
-    if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) {
-      return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
-    }
     
     const existingReq = myRequests.find(r => r.date === d); 
     if (existingReq) { 
@@ -2328,10 +1845,6 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
     if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); 
     
     const currentMonth = getToday().substring(0, 7);
-    const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts));
-    if (blockedAfterPublish.length > 0) {
-      return addToast('Schedule Published', `${blockedAfterPublish.length} selected day(s) are already on a published schedule. Ask a manager to adjust those days.`);
-    }
 
     for (const d of selectedDates) { 
       const reqMonth = d.substring(0, 7);
@@ -2418,10 +1931,7 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
         <div className="md:col-span-1">
           <div className={`${T.card} p-4 sm:p-5 sticky top-20`}>
             <h3 className="font-black text-base mb-1 text-white">Log Availability</h3>
-            <p className={`text-[10px] font-bold ${T.muted} mb-2 leading-tight`}>Tap days on the calendar to mark yourself unavailable.</p>
-            {!postPublishedTimeOffAllowed && !appUser?.isAdmin && (
-              <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>
-            )}
+            <p className={`text-[10px] font-bold ${T.muted} mb-4 leading-tight`}>Tap days on the calendar to mark yourself unavailable.</p>
             <form onSubmit={handleSubmit} className="space-y-4">
               <label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}>
                 <input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />
@@ -2479,17 +1989,16 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
   );
 };
 
-const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser, clientData = null }) => (
+const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser }) => (
   <div className="space-y-5">
     <ScheduleCopilot currentDate={currentDate} users={users} shifts={shifts} timeOffRequests={timeOffRequests} addToast={addToast} appUser={appUser} />
-    <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} />
+    <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} />
   </div>
 );
 
 const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests = [], addToast, appUser }) => {
   const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { limitCount: 120 });
   const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { limitCount: 200 });
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { limitCount: 120 });
   const weekDates = getWeekDates(currentDate);
   const weekStart = weekDates[0];
   const weekEnd = weekDates[6];
@@ -2501,36 +2010,20 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [templateName, setTemplateName] = useState('Normal Week');
   const [templateDesc, setTemplateDesc] = useState('Reusable staffing pattern for this restaurant.');
-  const [templateRows, setTemplateRows] = useState([{ dayIndex: 5, role: 'Unassigned', startTime: '16:00', endTime: '21:00', count: 2 }]);
-  const [targetForm, setTargetForm] = useState({ dayIndex: 5, role: 'Unassigned', startTime: '16:00', endTime: '21:00', count: 2 });
+  const [templateRows, setTemplateRows] = useState([{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 }]);
+  const [targetForm, setTargetForm] = useState({ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 });
   const [draggedShiftId, setDraggedShiftId] = useState(null);
 
   const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const scheduleRoleOptions = getScheduleStaffRoleOptions(activeUsers, dbRoles);
-  const firstScheduleRole = scheduleRoleOptions[0] || 'Unassigned';
-  const canonicalScheduleRole = (role) => getRoleFromScheduleStaffList(role, scheduleRoleOptions);
-
-  useEffect(() => {
-    setTargetForm(f => {
-      const fixedRole = canonicalScheduleRole(f.role);
-      return fixedRole === f.role ? f : { ...f, role: fixedRole };
-    });
-    setTemplateRows(rows => rows.map(row => {
-      const fixedRole = canonicalScheduleRole(row.role);
-      return fixedRole === row.role ? row : { ...row, role: fixedRole };
-    }));
-  }, [firstScheduleRole, scheduleRoleOptions.join('|')]);
-
   const templateOptions = templates.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   const activeTemplate = templates.find(t => t.id === templateId) || null;
   const draftCount = weekShifts.filter(s => !s.isPublished).length;
   const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests, weekDates);
   const missingTargets = coverageTargets.flatMap(t => {
     const date = weekDates[parseInt(t.dayIndex || 0, 10)];
-    const targetRole = canonicalScheduleRole(t.role);
-    const existing = weekShifts.filter(s => s.date === date && roleMatches(s.role, targetRole) && (!t.startTime || s.startTime === t.startTime)).length;
+    const existing = weekShifts.filter(s => s.date === date && roleMatches(s.role, t.role) && (!t.startTime || s.startTime === t.startTime)).length;
     const needed = Math.max(0, (parseInt(t.count || 0,10) || 0) - existing);
-    return needed > 0 ? [{ ...t, role: targetRole, originalRole: t.role, date, needed, existing }] : [];
+    return needed > 0 ? [{ ...t, date, needed, existing }] : [];
   });
 
   function getScheduleWarnings(schedule, allUsers, requests, dates) {
@@ -2551,26 +2044,26 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     return [...new Set(warnings)].slice(0, 12);
   }
 
-  const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]);
+  const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 1 }]);
   const updateTemplateRow = (idx, patch) => setTemplateRows(templateRows.map((r,i) => i === idx ? { ...r, ...patch } : r));
   const removeTemplateRow = (idx) => setTemplateRows(templateRows.filter((_,i) => i !== idx));
 
   const saveTemplate = async (e) => {
     e.preventDefault();
-    const payload = { restaurantId: appUser.restaurantId, name: templateName.trim(), description: templateDesc.trim(), rows: templateRows.map(r => ({ ...r, role: canonicalScheduleRole(r.role), dayIndex: parseInt(r.dayIndex,10), count: parseInt(r.count,10) || 1 })), updatedAt: new Date().toISOString(), updatedBy: appUser.name || appUser.email };
+    const payload = { restaurantId: appUser.restaurantId, name: templateName.trim(), description: templateDesc.trim(), rows: templateRows.map(r => ({ ...r, dayIndex: parseInt(r.dayIndex,10), count: parseInt(r.count,10) || 1 })), updatedAt: new Date().toISOString(), updatedBy: appUser.name || appUser.email };
     try {
       if (editingTemplateId) { await updateDoc(doc(db, 'scheduleTemplates', editingTemplateId), payload); addToast('Template Updated', 'Schedule template saved.'); }
       else { await addDoc(collection(db, 'scheduleTemplates'), { ...payload, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Template Created', 'Reusable schedule template added.'); }
-      setEditingTemplateId(null); setTemplateName('Normal Week'); setTemplateDesc('Reusable staffing pattern for this restaurant.'); setTemplateRows([{ dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 2 }]); setActiveTool('templates');
+      setEditingTemplateId(null); setTemplateName('Normal Week'); setTemplateDesc('Reusable staffing pattern for this restaurant.'); setTemplateRows([{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 2 }]); setActiveTool('templates');
     } catch (err) { addToast('Error', err.message); }
   };
 
-  const editTemplate = (t) => { setEditingTemplateId(t.id); setTemplateName(t.name || 'Template'); setTemplateDesc(t.description || ''); setTemplateRows((t.rows && t.rows.length ? t.rows : [{ dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]).map(r => ({ ...r, role: canonicalScheduleRole(r.role) })));  setActiveTool('template-editor'); };
+  const editTemplate = (t) => { setEditingTemplateId(t.id); setTemplateName(t.name || 'Template'); setTemplateDesc(t.description || ''); setTemplateRows((t.rows && t.rows.length ? t.rows : [{ dayIndex: 5, role: 'Cook', startTime: '16:00', endTime: '21:00', count: 1 }])); setActiveTool('template-editor'); };
   const deleteTemplate = async (t) => { if (!window.confirm(`Delete template "${t.name}"?`)) return; try { await deleteDoc(doc(db, 'scheduleTemplates', t.id)); addToast('Deleted', 'Template removed.'); } catch(err) { addToast('Error', err.message); } };
 
   const saveCurrentWeekAsTemplate = async () => {
     const grouped = {};
-    weekShifts.forEach(s => { const key = `${new Date(s.date+'T12:00:00').getDay()}|${canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff')}|${s.startTime || '09:00'}|${s.endTime || '17:00'}`; grouped[key] = (grouped[key] || 0) + 1; });
+    weekShifts.forEach(s => { const key = `${new Date(s.date+'T12:00:00').getDay()}|${s.role || 'Staff'}|${s.startTime || '09:00'}|${s.endTime || '17:00'}`; grouped[key] = (grouped[key] || 0) + 1; });
     const rows = Object.entries(grouped).map(([key,count]) => { const [dayIndex, role, startTime, endTime] = key.split('|'); return { dayIndex: parseInt(dayIndex,10), role, startTime, endTime, count }; });
     if (!rows.length) return addToast('No Shifts', 'Build a week first, then save it as a template.');
     try { await addDoc(collection(db, 'scheduleTemplates'), { restaurantId: appUser.restaurantId, name: `Week of ${formatDisplayDate(weekStart)}`, description: 'Saved from actual schedule.', rows, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Saved', 'Current week saved as a reusable template.'); }
@@ -2578,17 +2071,14 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   };
 
   const pickUserForShift = (role, date, usedIds = []) => {
-    const scheduleRole = canonicalScheduleRole(role);
-    const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, scheduleRole));
+    const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, role));
     const pool = candidates.length ? candidates : activeUsers.filter(u => !usedIds.includes(u.id));
     return pool.find(u => !timeOffRequests.some(r => (r.userId === u.id || r.employeeId === u.id) && r.date === date && String(r.status || '').toLowerCase().includes('approved'))) || pool[0];
   };
 
   const createShiftDraft = async (row, date, usedIds = []) => {
-    const scheduleRole = canonicalScheduleRole(row.role);
-    const employee = pickUserForShift(scheduleRole, date, usedIds);
-    const finalRole = employee?.role ? canonicalScheduleRole(employee.role) : scheduleRole;
-    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: employee?.id || '', employeeName: employee?.name || 'Unassigned', role: finalRole, targetRole: scheduleRole, date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
+    const employee = pickUserForShift(row.role, date, usedIds);
+    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: employee?.id || '', employeeName: employee?.name || 'Unassigned', role: row.role || employee?.role || 'Staff', date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
     return employee?.id;
   };
 
@@ -2617,7 +2107,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         const oldIndex = prevDates.indexOf(s.date);
         const date = weekDates[oldIndex];
         if (weekShifts.some(x => x.date === date && x.employeeId === s.employeeId && x.startTime === s.startTime)) continue;
-        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: s.employeeId, employeeName: s.employeeName || users.find(u => u.id === s.employeeId)?.name || 'Unknown', role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
+        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: s.employeeId, employeeName: s.employeeName || users.find(u => u.id === s.employeeId)?.name || 'Unknown', role: s.role, date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
         made++;
       }
       addToast('Copied', `${made} draft shifts copied from previous week.`);
@@ -2626,9 +2116,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
 
   const addCoverageTarget = async (e) => {
     e.preventDefault();
-    const role = canonicalScheduleRole(targetForm.role);
-    if (!role || role === 'Unassigned') return addToast('Role Needed', 'Add or assign staff roles first, then create coverage targets from the same Schedule Builder staff list.');
-    try { await addDoc(collection(db, 'scheduleCoverageTargets'), { restaurantId: appUser.restaurantId, ...targetForm, role, dayIndex: parseInt(targetForm.dayIndex,10), count: parseInt(targetForm.count,10) || 1, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager', source: 'schedule_staff_roles' }); setTargetForm(f => ({ ...f, role })); addToast('Target Added', 'Coverage target saved using the Schedule Builder staff role list.'); }
+    try { await addDoc(collection(db, 'scheduleCoverageTargets'), { restaurantId: appUser.restaurantId, ...targetForm, dayIndex: parseInt(targetForm.dayIndex,10), count: parseInt(targetForm.count,10) || 1, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Target Added', 'Coverage target saved for this restaurant.'); }
     catch(err) { addToast('Error', err.message); }
   };
 
@@ -2683,15 +2171,15 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   return (
     <div className={`${T.card} p-4 space-y-4 border-[#D4A381]/30`}>
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div><h3 className="text-xl font-black text-white">Templates, Coverage, Smart Fill & Publish Preview</h3><p className="text-xs text-slate-400 font-bold">Week of {formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}. Templates, coverage targets, and the builder now use the same staff role list for this restaurant.</p></div>
+        <div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div><h3 className="text-xl font-black text-white">Templates, Coverage, Smart Fill & Publish Preview</h3><p className="text-xs text-slate-400 font-bold">Week of {formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}. Templates and coverage targets are saved per restaurant.</p></div>
         <div className="flex flex-wrap gap-2"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Previous Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={`${T.btn} py-2`}>Publish Preview</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"><StatusTile label="Drafts" value={draftCount}/><StatusTile label="Missing Targets" value={missingTargets.length}/><StatusTile label="Warnings" value={conflictList.length}/><StatusTile label="Templates" value={templates.length}/></div>
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-2">{[['targets','Coverage Targets'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
-      {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Roles come from Staff Roster / Settings and match the Schedule Builder staff list.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add targets from the same roles shown in the Schedule Builder staff list. Smart Fill and the builder now use one shared role source."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
+      {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input} placeholder="Role, e.g. Cook"/><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add targets like Friday dinner: 2 cooks, 3 servers, 1 bartender. Smart Fill uses these."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
-      {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
-      {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days on desktop, or use the Move to day dropdown on mobile. Quick edit controls can change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none md:hidden"><option value="">Move to day...</option>{weekDates.map((d,i)=><option key={d} value={d}>{dayNames[i]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}
+      {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input} placeholder="Role"/><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
+      {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days, or use the quick edit controls on each card to change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}
       {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{missingTargets.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps found for the current week."/> : missingTargets.map(m => <div key={`${m.id}-${m.date}`} className="bg-amber-900/10 border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-amber-300">{formatDisplayDate(m.date)} needs {m.needed} more {m.role}</div><div className="text-xs text-slate-400">Existing: {m.existing} • Target: {m.count}</div></div>)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map((w,i)=><div key={i} className="bg-red-900/10 border border-red-900/40 rounded-xl p-3 mb-2 text-sm font-bold text-red-200">{w}</div>)}</div></div>}
     </div>
   );
