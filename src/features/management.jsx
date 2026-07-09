@@ -5375,6 +5375,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.36 Master Admin Repair Verification', group: 'System Administrator', keywords: 'v15 15.0.36 master admin repair firestore users auth uid verified project mismatch placeholder env whoami', body: ['15.0.36 hardens Master Admin Self-Repair so /api/master-admin-repair writes users/{authUid} and immediately reads the document back to verify it exists.', 'The repair result now shows the Firebase project the API wrote to. If you are checking chaos-test-d1601 but the result shows cheers-34b8d, fix Vercel Firebase admin env vars and run repair again.', 'Invalid placeholder values such as SECOND_ADMIN_EMAIL_HERE are skipped and shown in the result instead of making a successful repair look failed.', 'After the row shows Verified: yes, log out and back in before publishing hardened Firestore rules so Firebase custom claims refresh.'] },
     { title: 'Version 15.0.35 Administrator Layout Polish', group: 'System Administrator', keywords: 'v15 15.0.35 administrator layout left menu info board command deck mobile collapsible navigation', body: ['15.0.35 moves System Administrator section buttons from the top of the tab into a left-side admin menu on desktop.', 'On phones, the admin menu is collapsible. Tap Menu from the current-section bar to open it, then pick a section and the menu closes automatically.', 'The Command Deck / signal information board now sits above the main admin workspace and remains collapsible through Show Info Board / Hide Info Board.', 'This layout keeps troubleshooting signals visible at the top while leaving the actual tools easier to scan from the left rail.'] },
     ...ADMIN_TROUBLESHOOTING_ARTICLES,
     { title: 'Version 15.0.34 Master Admin Self-Repair', group: 'System Administrator', keywords: 'v15 15.0.34 master admin repair firestore users auth uid super admin custom claim rules lockout', body: ['15.0.34 adds a Master Admin Self-Repair button in System Administrator -> Overview.', 'The button calls /api/master-admin-repair and recreates missing Firestore users profiles for emails configured in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS.', 'It also sets Super Admin profile flags and a Firebase custom claim. Log out and back in after running it so the new claim appears in the browser token.', 'Run this before publishing hardened Firestore rules if an admin email exists in Firebase Authentication but not in Firestore users.'] },
@@ -5783,10 +5784,23 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
         body: JSON.stringify({ restaurantId: defaultRestaurantId })
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || result.ok === false) throw new Error(result.error || 'Master admin repair failed.');
-      setMasterAdminRepairResult(result);
-      const repaired = (result.results || []).filter(r => r.status === 'created' || r.status === 'updated').length;
-      addToast('Master Admin Repair Complete', `${repaired}/${(result.results || []).length} configured admin profile(s) repaired. Log out and back in before publishing hardened rules.`);
+      const repaired = (result.results || []).filter(r => (r.status === 'created' || r.status === 'updated') && r.firestoreWriteVerified !== false).length;
+      const hasVerifiedRepair = repaired > 0;
+      if (!response.ok || (!hasVerifiedRepair && result.ok === false)) throw new Error(result.error || 'Master admin repair failed.');
+      let serverCheckAfterRepair = null;
+      try {
+        const whoamiRes = await secureFetch('/api/whoami', { method: 'GET', forceTokenRefresh: true });
+        serverCheckAfterRepair = { ok: whoamiRes.ok, ...(await whoamiRes.json().catch(() => ({}))) };
+      } catch (refreshErr) {
+        serverCheckAfterRepair = { ok: false, error: refreshErr.message || String(refreshErr) };
+      }
+      const nextResult = { ...result, serverCheckAfterRepair };
+      setMasterAdminRepairResult(nextResult);
+      if (result.ok === false) {
+        addToast('Master Admin Repair Partly Complete', `${repaired}/${(result.results || []).length} admin profile(s) verified. Check the row details before publishing hardened rules.`);
+      } else {
+        addToast('Master Admin Repair Complete', `${repaired}/${(result.results || []).length} configured admin profile(s) verified in Firestore. Log out and back in before publishing hardened rules.`);
+      }
     } catch (err) {
       setMasterAdminRepairResult({ ok: false, error: err.message || String(err), results: [] });
       addToast('Master Admin Repair Failed', err.message || 'Could not repair master admin profiles.');
@@ -6833,17 +6847,41 @@ Type RESTORE to continue.`);
             </div>
             {masterAdminRepairResult && (
               <div className={`mt-3 rounded-xl p-3 border ${masterAdminRepairResult.ok === false ? 'bg-red-900/10 border-red-900/50' : 'bg-emerald-900/10 border-emerald-900/40'}`}>
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Last repair result</div>
-                {masterAdminRepairResult.error && <div className="text-xs font-bold text-red-300 mb-2">{masterAdminRepairResult.error}</div>}
-                <div className="space-y-1">
-                  {(masterAdminRepairResult.results || []).map((row) => (
-                    <div key={row.email} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                      <span className="font-mono break-all">{row.email}</span>
-                      <span className={row.status === 'created' || row.status === 'updated' ? 'text-emerald-400' : 'text-red-300'}>{row.status}{row.uid ? ` • ${row.uid}` : ''}</span>
-                    </div>
-                  ))}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Last repair result</div>
+                  <div className="text-[9px] font-mono text-slate-400 break-all">Project: {masterAdminRepairResult.runtime?.firebaseProjectId || 'unknown'} • Verified: {masterAdminRepairResult.successCount ?? (masterAdminRepairResult.results || []).filter(r => r.firestoreWriteVerified).length}/{(masterAdminRepairResult.results || []).length}</div>
                 </div>
+                {masterAdminRepairResult.error && <div className="text-xs font-bold text-red-300 mb-2">{masterAdminRepairResult.error}</div>}
+                {(masterAdminRepairResult.skippedMasterAdminEmails || []).length > 0 && (
+                  <div className="bg-amber-900/10 border border-amber-900/40 rounded-lg p-2 text-[10px] text-amber-200 font-bold mb-2">Skipped invalid/placeholder master admin env value(s): {(masterAdminRepairResult.skippedMasterAdminEmails || []).map(row => row.value).join(', ')}</div>
+                )}
+                <div className="space-y-1">
+                  {(masterAdminRepairResult.results || []).map((row) => {
+                    const good = (row.status === 'created' || row.status === 'updated') && row.firestoreWriteVerified !== false;
+                    return (
+                      <div key={row.email} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-300 flex flex-col gap-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                          <span className="font-mono break-all">{row.email}</span>
+                          <span className={good ? 'text-emerald-400' : 'text-red-300'}>{row.status}{row.uid ? ` • ${row.uid}` : ''}</span>
+                        </div>
+                        <div className="grid sm:grid-cols-2 gap-1 text-[9px] text-slate-500 font-mono break-all">
+                          <span>Doc: {row.firestoreDocPath || row.firestoreProfileId || 'not written'}</span>
+                          <span>Verified: {row.firestoreWriteVerified === true ? 'yes' : row.firestoreWriteVerified === false ? 'no' : 'n/a'}</span>
+                          <span>Restaurant: {row.restaurantId || 'unknown'}</span>
+                          <span>Workspace member: {row.workspaceMemberRepair?.status || 'n/a'}</span>
+                        </div>
+                        {row.error && <div className="text-[10px] text-red-300">{row.error}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {masterAdminRepairResult.serverCheckAfterRepair && (
+                  <div className="mt-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-[10px] font-bold text-slate-300">
+                    Token refresh check: <span className={masterAdminRepairResult.serverCheckAfterRepair.superAdmin ? 'text-emerald-400' : 'text-amber-300'}>{masterAdminRepairResult.serverCheckAfterRepair.superAdmin ? 'Super Admin recognized' : 'Log out and back in still needed'}</span>
+                  </div>
+                )}
                 {masterAdminRepairResult.reloginRecommended && <p className="text-[10px] text-amber-200 font-bold mt-2 leading-snug">Custom claims were updated. Log out and back in before publishing hardened Firebase rules.</p>}
+                {masterAdminRepairResult.runtime?.firebaseProjectId && <p className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">Make sure you are viewing the same Firebase project shown above. If the API project is production while you are checking the testing database, the repair wrote to the other kitchen drawer.</p>}
               </div>
             )}
           </div>

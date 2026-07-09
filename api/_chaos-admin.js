@@ -28,9 +28,31 @@ function profileForWorkspace(user, member, restaurantId) {
     isOwner: source?.isOwner === true || source?.accountOwner === true || source?.workspaceOwner === true || (legacy && (user?.isOwner === true || user?.accountOwner === true || user?.workspaceOwner === true || norm(user?.accountRole) === 'owner'))
   };
 }
+function parseMasterEmailEnv() {
+  const rawValues = [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
+    .filter(Boolean)
+    .flatMap(v => String(v).split(/[\s,;]+/));
+  const skipped = [];
+  const valid = [];
+  const seen = new Set();
+  for (const raw of rawValues) {
+    const email = norm(raw);
+    if (!email) continue;
+    const looksPlaceholder = /^(second_admin_email_here|admin@example\.com|your-email@example\.com|email@example\.com|none|null|undefined|todo|replace_me)$/i.test(email) || email.includes('placeholder') || email.includes('<') || email.includes('>');
+    const looksEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+    if (looksPlaceholder || !looksEmail) {
+      skipped.push({ value: email, reason: looksPlaceholder ? 'placeholder' : 'invalid-email-format' });
+      continue;
+    }
+    if (!seen.has(email)) {
+      seen.add(email);
+      valid.push(email);
+    }
+  }
+  return { valid, skipped, rawCount: rawValues.filter(v => String(v || '').trim()).length };
+}
 function masterEmails() {
-  return [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
-    .filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
+  return parseMasterEmailEnv().valid;
 }
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
@@ -138,4 +160,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, readBody, authorize, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };
+module.exports = { admin, initAdmin, readBody, authorize, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };
