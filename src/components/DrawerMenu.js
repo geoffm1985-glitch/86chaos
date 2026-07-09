@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Clock, MessageSquare, Calendar, ClipboardList, BookOpen, Package, Users, TrendingUp, Shield, Settings, Bug, LogOut, Globe, Repeat } from 'lucide-react';
+import { X, Clock, MessageSquare, Calendar, ClipboardList, BookOpen, Package, Users, TrendingUp, Shield, Settings, Bug, LogOut, Globe, Repeat, Sparkles } from 'lucide-react';
 
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, clientFeatures = {}, T, getAvatar, MASTER_ADMIN_EMAIL, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   if (!isOpen) return null;
@@ -27,6 +27,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });  
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
+  if (!appUser?.isDemo && (appUser?.isAdmin || perms.inventory || perms.prep || perms.team)) tabs.push({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
   
   // Core UI (Always active)
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
@@ -77,7 +78,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
           </div>
           <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
            <button 
-              onClick={() => { window.location.href = "mailto:support@86chaos.com?subject=86chaos Beta Bug Report&body=Please describe the issue or error you found:%0D%0A%0D%0A"; }} 
+              onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} 
               className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
             >
               <Bug size={16} /> Report a Bug / Error

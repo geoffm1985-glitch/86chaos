@@ -65,6 +65,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
+  if (!appUser?.isDemo && (appUser?.isAdmin || perms.inventory || perms.prep || perms.team || canUseMenuIntelligence(appUser, clientData))) tabs.push({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
   if (canUseMenuIntelligence(appUser, clientData)) tabs.push({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
   tabs.push({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/> });
   if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
@@ -149,6 +150,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
+             <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> Report Problem</button>
              <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
             </div>
           </div>
@@ -798,7 +800,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       const parsedPrepItems = parsePrepCommandItems(raw);
       if (parsedPrepItems.length) {
         const prepDate = parsedPrepItems.find(item => item.prepDate)?.prepDate || getToday();
-        const preview = parsedPrepItems.slice(0, 3).map(item => `${item.itemText} (${formatPrepAmount(item.amount, item.unit)})`).join(', ');
+        const preview = parsedPrepItems.slice(0, 3).map(item => `${item.itemText} (${formatPrepAmount(item.amount, item.unit)}${item.station ? ` • ${item.station}` : ''})`).join(', ');
         return {
           intent:'smart_prep',
           label:'Update prep list',
@@ -1069,7 +1071,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
               parsedItem: parsed,
               appUser,
               prepDate,
-              station: 'Voice',
+              station: parsed.station || 'Voice',
               isMaster: false,
               sourceText,
               source: '86_voice_smart_prep'

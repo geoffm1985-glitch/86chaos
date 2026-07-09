@@ -1,83 +1,44 @@
 # 86 Chaos
 
-Current version: **15.0.13**
+Current Version: 15.0.18 - Mobile & Paperwork Polish
 
-## 15.0.13 focus
+# 86 Chaos
 
-15.0.13 adds shared reminders, Security Center foundations, tighter scanner upload checks, route rate limiting, and the first pass of a cleaner kitchen-first visual system.
+Current version: **15.0.14**
+
+## 15.0.14 focus
+
+15.0.14 is a reliability and review-control update. It adds a dedicated AI Tools area, stronger problem reporting with device diagnostics, offline queue visibility, a full Vercel API route health manifest, and per-ingredient confidence/review controls in Menu Intelligence.
 
 ## What changed
 
-- **Shared reminders:** My Reminders now has a **Share With** dropdown so a reminder can be assigned to one teammate.
-- **Reminder delivery:** due shared reminders dispatch to the assigned teammate’s push token.
-- **Reminder rules:** Firestore rules now keep reminders private to the creator and assigned teammate.
-- **Security Center:** System Administrator now includes Security Center for rules status, Storage rules status, App Check status, missing env vars, cron status, rate-limit trips, risky elevated users, and suspicious activity.
-- **Admin organization:** System Administrator sections are grouped as Security, Deployments, Customers, Diagnostics, Backups, AI Tools, and Audit.
-- **Rate limiting:** expensive AI, scan, push, push repair, schedule alert, and reminder routes now have server-side rate-limit protection.
-- **Upload protection:** menu and invoice scans check path, file type, size, and upload-purpose metadata before server processing.
-- **Storage rules:** menu uploads require `purpose: menu-scan`; invoice uploads require `purpose: invoice-scan`.
-- **App Check foundation:** the frontend now reads `REACT_APP_FIREBASE_APPCHECK_SITE_KEY` and sends App Check headers through secure API calls when configured.
-- **Professional polish foundation:** added calmer visual-system CSS tokens, mobile tap sizing, loading skeleton style, print-paper style, and consistent status color tokens.
-- **Help Center/Admin Manual:** both are updated for 15.0.13.
+- **AI Tools area:** Added a dedicated AI Tools screen with shortcuts to Menu Intelligence, Invoice Scanner, voice commands, and Smart Prep Matching.
+- **Problem reporting:** Added an app-shell Report Problem flow. Error-style toasts now offer a Report Problem action, and reports include device diagnostics.
+- **Device diagnostics:** Problem reports capture app version, Firebase project, host, online status, service worker support, notification permission, camera/mic support, local storage status, screen size, and offline queue count.
+- **Offline queue visibility:** The app shell now shows when offline writes are queued and can attempt a replay from the support/report flow.
+- **API route health checks:** Added `/api/health-checks` and wired System Administrator → Health Dashboard to show a full Vercel API route manifest.
+- **Menu Intelligence review polish:** Review rows now show confidence badges and an Approve/Skip toggle for each ingredient. Skipped rows are not saved as menu-impact links.
+- **Help Center/Admin Manual:** Release notes and administrator instructions were updated for this release.
 
 ## Deploy steps
 
 1. Deploy this app through GitHub/Vercel.
-2. Confirm `/version.json` reports `15.0.13`.
-3. Publish the included **Firestore rules**.
-4. Publish the included **Storage rules**.
-5. Open System Administrator → Security Center and press **Refresh Security Center**.
-6. Test shared reminders with two users.
-7. Test menu scan and invoice scan uploads.
+2. Confirm `/version.json` reports `15.0.14`.
+3. Open System Administrator → Health Dashboard and press **Refresh Health**.
+4. Confirm `/api/health-checks` returns the API route manifest and route rows show as ready.
+5. Open **AI Tools** from the drawer and confirm shortcuts route correctly.
+6. Use the header bug button or an error toast to confirm problem reports include diagnostics.
+7. In testing, scan a menu and confirm each ingredient shows confidence plus Approve/Skip before saving.
 
 ## Separate publishing required
 
-- **Firestore rules:** yes. Required for shared reminders.
-- **Storage rules:** yes. Required for scan-purpose upload checks.
-- **Vercel/API routes:** yes. Required for Security Center and route rate limiting.
-- **New required env vars:** none.
-- **New optional env vars:** see below.
+- **Firestore rules:** no changes in this release.
+- **Storage rules:** no changes in this release.
+- **Vercel/API routes:** yes. Deploy required for the new `/api/health-checks` route and updated frontend.
+- **Vercel env vars:** no new required env vars.
 
-## Optional Vercel env vars
+## Still not completed
 
-- `REACT_APP_FIREBASE_APPCHECK_SITE_KEY`: Firebase App Check reCAPTCHA Enterprise site key used by the frontend at build time.
-- `APP_CHECK_ENFORCE`: set to `true` only after App Check is confirmed working.
-- `FIREBASE_APP_CHECK_ENFORCE`: alternate App Check enforcement flag.
-- `SCAN_MENU_RATE_LIMIT`: default 8/min per caller.
-- `SCAN_INVOICE_RATE_LIMIT`: default 10/min per caller.
-- `VOICE_COMMAND_RATE_LIMIT`: default 30/min per caller.
-- `PUSH_ROUTE_RATE_LIMIT`: default 40/min per caller.
-- `PUSH_REPAIR_RATE_LIMIT`: default 25/min per caller.
-- `REMINDER_ROUTE_RATE_LIMIT`: default 12/min for reminder dispatch route.
-- `REACT_APP_TEST_FIREBASE_*` and `REACT_APP_PROD_FIREBASE_*`: optional frontend Firebase config overrides for keeping preview/testing and production fully separated.
+This release does **not** complete full MFA enrollment/enforcement, automated Firebase rules tests, full E2E tests, full setup wizard, owner dashboard, recurring prep templates, professional demo mode, or full mobile cleanup across every screen.
 
-## Firebase App Check setup
-
-App Check is not finished by code alone. After deploy:
-
-1. In Firebase Console, enable App Check for the testing project first.
-2. Register the web app and copy the reCAPTCHA Enterprise site key.
-3. Add `REACT_APP_FIREBASE_APPCHECK_SITE_KEY` in Vercel for the matching environment.
-4. Redeploy.
-5. Open Security Center and confirm App Check status.
-6. Turn on Firebase App Check enforcement for Firestore/Storage only after testing passes.
-7. Repeat separately for production.
-
-## MFA/two-step setup
-
-The app now identifies elevated users that are missing an MFA flag in Security Center. Actual Firebase MFA enforcement must be configured in Firebase Authentication / Identity Platform policy. Require it for owners, managers, admins, and system admins. Roll it out in testing before production so nobody gets locked out during dinner service.
-
-## Test vs production separation
-
-Keep testing Firebase and production Firebase fully separate:
-
-- separate Firebase projects,
-- separate Firestore rules publishes,
-- separate Storage rules publishes,
-- separate Storage buckets,
-- separate service account keys,
-- separate Vercel env vars,
-- separate App Check keys,
-- separate frontend Firebase config env vars for preview/testing vs production.
-
-Do not point a test Vercel deployment at production Firebase unless you are intentionally testing production data.
+Latest Build: 15.0.18 - Mobile & Paperwork Polish

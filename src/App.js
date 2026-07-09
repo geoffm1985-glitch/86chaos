@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Bell, ChevronLeft, ChevronRight, Menu, Moon, X } from 'lucide-react';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
+import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat } from './core/appCore';
+import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue } from './core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
-import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence } from './features';
+import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools } from './features';
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
@@ -709,7 +709,21 @@ useEffect(() => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isKitchenTVOpen, setIsKitchenTVOpen] = useState(false);
   const [undoItem, setUndoItem] = useState(null);
+  const [problemModal, setProblemModal] = useState({ open: false, title: '', message: '', category: 'Bug / Error' });
+  const [problemText, setProblemText] = useState('');
+  const [isSubmittingProblem, setIsSubmittingProblem] = useState(false);
+  const [offlineQueueTick, setOfflineQueueTick] = useState(0);
+  const [offlineSyncing, setOfflineSyncing] = useState(false);
   const registerUndo = (item) => { setUndoItem(item); setTimeout(() => setUndoItem(prev => prev === item ? null : prev), 12000); };
+
+  useEffect(() => {
+    const openFromMenu = () => {
+      setProblemModal({ open: true, title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' });
+      setProblemText(`What happened:\nPage: ${activeTabState}\n\nWhat I clicked / expected:\n`);
+    };
+    window.addEventListener('chaosOpenProblemReport', openFromMenu);
+    return () => window.removeEventListener('chaosOpenProblemReport', openFromMenu);
+  }, [activeTabState]);
 
 
 // --- NOTIFICATION DOT LOGIC (WITH READ RECEIPTS) ---
@@ -745,11 +759,90 @@ useEffect(() => {
     if (activeTabState === 'schedule') localStorage.setItem(`${liveAppUser.id}_lastReadTimeOff`, Date.now().toString());
   }, [activeTabState, events, shiftSwaps, timeOffRequests, liveAppUser]);
 
+  const isReportableToast = (title = '', message = '') => /error|failed|blocked|denied|missing|invalid|crash|permission|offline|stopped/i.test(`${title} ${message}`);
+  const openProblemReport = ({ title = 'Report Problem', message = '', category = 'Bug / Error' } = {}) => {
+    setProblemModal({ open: true, title, message, category });
+    setProblemText(message ? `What happened:
+${message}
+
+What I clicked / expected:
+` : '');
+  };
+
+  const getDeviceDiagnostics = () => {
+    if (typeof window === 'undefined') return [];
+    const queue = getOfflineQueue(liveAppUser?.restaurantId, liveAppUser?.id);
+    let storageOk = false;
+    try { localStorage.setItem('__chaos_storage_test__', '1'); localStorage.removeItem('__chaos_storage_test__'); storageOk = true; } catch (_) { storageOk = false; }
+    return [
+      ['App version', CURRENT_VERSION],
+      ['Firebase project', firebaseConfig?.projectId || 'unknown'],
+      ['Host', window.location.host],
+      ['Browser online', navigator.onLine ? 'yes' : 'no'],
+      ['Service worker', 'serviceWorker' in navigator ? 'available' : 'missing'],
+      ['Notifications', typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'],
+      ['Camera/Mic API', navigator.mediaDevices?.getUserMedia ? 'available' : 'missing'],
+      ['Local storage', storageOk ? 'available' : 'blocked'],
+      ['Offline queue', `${queue.length} queued action${queue.length === 1 ? '' : 's'}`],
+      ['Screen', `${window.innerWidth}x${window.innerHeight}`]
+    ];
+  };
+
+  const submitProblemReport = async (e) => {
+    e?.preventDefault?.();
+    if (!problemText.trim()) return;
+    setIsSubmittingProblem(true);
+    try {
+      const diagnostics = Object.fromEntries(getDeviceDiagnostics());
+      await addDoc(collection(db, 'crashReports'), {
+        type: 'user_reported_problem',
+        category: problemModal.category || 'Bug / Error',
+        title: problemModal.title || 'Report Problem',
+        message: problemText.trim(),
+        sourceToastMessage: problemModal.message || '',
+        user: liveAppUser?.name || 'Unknown',
+        userEmail: liveAppUser?.email || '',
+        userId: liveAppUser?.id || '',
+        restaurantId: liveAppUser?.restaurantId || 'Unknown',
+        activeTab: activeTabState || '',
+        diagnostics,
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        url: window.location.href,
+        time: new Date().toISOString()
+      });
+      setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' });
+      setProblemText('');
+      addToast('Report Sent', 'Support report sent with device diagnostics.');
+    } catch (err) {
+      addToast('Report Failed', err.message || 'Could not send problem report.');
+    } finally {
+      setIsSubmittingProblem(false);
+    }
+  };
+
+  const syncOfflineQueueFromShell = async () => {
+    if (offlineSyncing) return;
+    setOfflineSyncing(true);
+    try {
+      const result = await replayOfflineQueue(liveAppUser, addToast);
+      setOfflineQueueTick(t => t + 1);
+      addToast('Offline Queue Checked', `${result.saved || 0} saved • ${result.failed || 0} still queued.`);
+    } catch (err) {
+      addToast('Offline Sync Failed', err.message || 'Could not replay queued actions.');
+    } finally {
+      setOfflineSyncing(false);
+    }
+  };
+
   const addToast = (title, message) => {
     const id = Date.now();
-    setToasts(prev => [...prev, { id, title, message }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
+    const reportable = isReportableToast(title, message);
+    setToasts(prev => [...prev, { id, title, message, reportable }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), reportable ? 9000 : 6000);
   };
+
+  const offlineQueue = liveAppUser ? getOfflineQueue(liveAppUser.restaurantId, liveAppUser.id) : [];
 
   const availableWorkspaces = useMemo(() => {
     const byId = new Map();
@@ -1045,6 +1138,7 @@ useEffect(() => {
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
     if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}`} addToast={addToast} appUser={liveAppUser} />;
+    if (activeTabState === 'ai-tools' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
@@ -1228,10 +1322,14 @@ return (
           </div>
         )}
 
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
+          {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
         <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
           {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
         </button>
+        </div>
       </header>
 
       {/* SYSTEM BROADCAST BANNER */}
@@ -1249,6 +1347,25 @@ return (
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
       <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} menuDependencies={menuDependencies} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
+
+      <Modal isOpen={problemModal.open} onClose={() => !isSubmittingProblem && setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' })} title="Report Problem" sizeClass="max-w-3xl">
+        <form onSubmit={submitProblemReport} className="space-y-4">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+            <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Problem context</div>
+            <div className="text-sm font-black text-white mt-1">{problemModal.title || 'Manual report'}</div>
+            {problemModal.message && <div className="text-xs font-bold text-slate-400 mt-1 whitespace-pre-wrap">{problemModal.message}</div>}
+          </div>
+          <select value={problemModal.category || 'Bug / Error'} onChange={e => setProblemModal(prev => ({ ...prev, category: e.target.value }))} className={T.input}>
+            <option>Bug / Error</option><option>Permission Problem</option><option>Data Looks Wrong</option><option>Mobile Layout Problem</option><option>Device Problem</option><option>Feature Request</option>
+          </select>
+          <textarea value={problemText} onChange={e => setProblemText(e.target.value)} rows={5} className={T.input} placeholder="Tell me what you clicked, what you expected, and what happened." required />
+          <div className="grid sm:grid-cols-2 gap-2">
+            {getDeviceDiagnostics().map(([label, value]) => <div key={label} className="bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</div><div className="text-xs font-bold text-slate-200 break-all mt-1">{value}</div></div>)}
+          </div>
+          {offlineQueue.length > 0 && <button type="button" onClick={syncOfflineQueueFromShell} disabled={offlineSyncing} className={`${T.btnAlt} w-full disabled:opacity-50`}>{offlineSyncing ? 'Syncing Offline Queue...' : `Try Sync Offline Queue (${offlineQueue.length})`}</button>}
+          <button type="submit" disabled={isSubmittingProblem || !problemText.trim()} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{isSubmittingProblem ? <Loader2 className="animate-spin" size={18}/> : <Send size={18}/>} Send Problem Report</button>
+        </form>
+      </Modal>
 
       {ghostTenant?.impersonate && (
         <div className="bg-fuchsia-950/60 border-b border-fuchsia-500/30 px-4 py-2 text-[10px] sm:text-xs text-fuchsia-100 font-bold flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
@@ -1350,7 +1467,7 @@ return (
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
             <div className="bg-[#12161A] p-1.5 rounded-full text-[#D4A381] mt-0.5 border border-[#2A353D]"><Bell size={16} /></div>
-            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p></div>
+            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p>{t.reportable && <button type="button" onClick={() => openProblemReport({ title: t.title, message: t.message, category: 'Bug / Error' })} className="mt-2 text-[9px] font-black uppercase tracking-widest text-orange-300 hover:text-white">Report Problem</button>}</div>
             <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
           </div>
         ))}

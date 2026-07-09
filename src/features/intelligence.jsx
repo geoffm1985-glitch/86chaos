@@ -329,6 +329,34 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const deleteBusyRef = useRef(false);
   const impacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
 
+  const isIngredientApproved = (ingredient = {}) => ingredient.reviewStatus !== 'rejected' && ingredient.approved !== false;
+  const normalizeReviewResult = (result = {}) => ({
+    ...result,
+    menuItems: (result.menuItems || []).map(item => ({
+      ...item,
+      ingredients: (item.ingredients || []).map(ingredient => ({
+        ...ingredient,
+        reviewStatus: ingredient.reviewStatus || (ingredient.matchedInventoryItemId ? 'approved' : 'needs-match')
+      }))
+    }))
+  });
+  const confidenceLabel = (value) => {
+    if (value === undefined || value === null || value === '') return 'manual';
+    if (typeof value === 'number') return `${Math.round(value * 100)}%`;
+    const text = String(value).trim();
+    if (/^0?\.\d+$/.test(text)) return `${Math.round(Number(text) * 100)}%`;
+    return text.replace(/_/g, ' ');
+  };
+  const confidenceClass = (value) => {
+    const text = String(value || '').toLowerCase();
+    const num = typeof value === 'number' ? value : (/^0?\.\d+$/.test(text) ? Number(text) : null);
+    if (num !== null) return num >= 0.82 ? 'text-emerald-300 border-emerald-900/50 bg-emerald-900/20' : num >= 0.55 ? 'text-amber-300 border-amber-900/50 bg-amber-900/20' : 'text-red-300 border-red-900/50 bg-red-900/20';
+    if (/high|strong|exact|reviewed|manual/.test(text)) return 'text-emerald-300 border-emerald-900/50 bg-emerald-900/20';
+    if (/medium|possible|ai/.test(text)) return 'text-amber-300 border-amber-900/50 bg-amber-900/20';
+    if (/low|weak|unknown/.test(text)) return 'text-red-300 border-red-900/50 bg-red-900/20';
+    return 'text-slate-300 border-[#2A353D] bg-[#0B0E11]';
+  };
+
   useEffect(() => {
     if (!busy && !approving && !editSaving && !deletingScanId) return undefined;
     const timer = setInterval(() => setProgressTick(Date.now()), 1000);
@@ -374,7 +402,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
         name: dep.ingredientName || dep.inventoryItemName || '',
         matchedInventoryItemId: dep.inventoryItemId || '',
         matchedInventoryItemName: dep.inventoryItemName || '',
-        confidence: dep.confidence || 'manual'
+        confidence: dep.confidence || 'manual',
+        reviewStatus: dep.status === 'rejected' ? 'rejected' : 'approved'
       });
     });
     return {
@@ -445,13 +474,13 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const addIngredientToItem = (itemIdx, mode = 'scan') => {
     const source = mode === 'edit' ? editResult : scanResult;
     const item = (source?.menuItems || [])[itemIdx] || {};
-    updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', confidence: 'manual' }] }, mode);
+    updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', confidence: 'manual', reviewStatus: 'needs-match' }] }, mode);
   };
 
   const addMenuItemToEdit = () => {
     setEditResult({
       ...(editResult || {}),
-      menuItems: [...(editResult?.menuItems || []), { name: '', category: '', description: '', ingredients: [{ name: '', matchedInventoryItemId: '', confidence: 'manual' }] }]
+      menuItems: [...(editResult?.menuItems || []), { name: '', category: '', description: '', ingredients: [{ name: '', matchedInventoryItemId: '', confidence: 'manual', reviewStatus: 'needs-match' }] }]
     });
   };
 
@@ -545,7 +574,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       setScanProgress({ label: 'Building review screen', detail: 'Loading the menu matches for approval.', percent: 90, startedAt: scanStartedAt });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Menu scan failed.');
-      setScanResult({ ...result, storagePath: path, downloadUrl, fileName: file.name, uploadedFileName: uploadFile.name, compression: prepared.compression });
+      setScanResult(normalizeReviewResult({ ...result, storagePath: path, downloadUrl, fileName: file.name, uploadedFileName: uploadFile.name, compression: prepared.compression }));
       setReviewOpen(true);
       setScanProgress({ label: 'Menu scan ready', detail: 'Review the AI matches before saving.', percent: 100, done: true, startedAt: scanStartedAt });
       addToast('Menu Scanned', 'Review the AI matches before saving.');
@@ -565,7 +594,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     if (approvingRef.current) return;
     approvingRef.current = true;
     const menuItems = scanResult?.menuItems || [];
-    const totalLinks = menuItems.reduce((sum, item) => sum + (item.ingredients || []).filter(ingredient => ingredient.matchedInventoryItemId).length, 0);
+    const totalLinks = menuItems.reduce((sum, item) => sum + (item.ingredients || []).filter(ingredient => ingredient.matchedInventoryItemId && isIngredientApproved(ingredient)).length, 0);
     let saved = 0;
     setApproving(true);
     const approveStartedAt = Date.now();
@@ -574,7 +603,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     try {
       for (const item of menuItems) {
         for (const ingredient of item.ingredients || []) {
-          if (!ingredient.matchedInventoryItemId) continue;
+          if (!ingredient.matchedInventoryItemId || !isIngredientApproved(ingredient)) continue;
           const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
           await addDoc(collection(db, 'menuDependencies'), {
             restaurantId: appUser.restaurantId,
@@ -640,7 +669,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       let savedLinks = 0;
       for (const item of editResult?.menuItems || []) {
         for (const ingredient of item.ingredients || []) {
-          if (!ingredient.matchedInventoryItemId) continue;
+          if (!ingredient.matchedInventoryItemId || !isIngredientApproved(ingredient)) continue;
           const inventoryItem = inventoryItems.find(inv => inv.id === ingredient.matchedInventoryItemId);
           const payload = {
             restaurantId: appUser.restaurantId,
@@ -777,12 +806,16 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
           <textarea value={item.description || ''} onChange={e => updateMenuItem(itemIdx, { description: e.target.value }, mode)} className={T.input} rows={2} placeholder="Description" />
           <div className="space-y-2">
             {(item.ingredients || []).map((ingredient, ingIdx) => (
-              <div key={`${ingredient.dependencyId || 'new'}-${ingIdx}`} className="grid sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
+              <div key={`${ingredient.dependencyId || 'new'}-${ingIdx}`} className={`grid sm:grid-cols-[1fr_1fr_.85fr_auto] gap-2 items-center ${!isIngredientApproved(ingredient) ? 'opacity-60' : ''}`}>
                 <input value={ingredient.name || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { name: e.target.value }, mode)} className={T.input} placeholder="Ingredient" />
-                <select value={ingredient.matchedInventoryItemId || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { matchedInventoryItemId: e.target.value }, mode)} className={T.input}>
+                <select value={ingredient.matchedInventoryItemId || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { matchedInventoryItemId: e.target.value, reviewStatus: e.target.value ? 'approved' : 'needs-match' }, mode)} className={T.input}>
                   <option value="">No inventory match</option>
                   {inventoryItems.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
                 </select>
+                <div className="flex items-center gap-2">
+                  <span className={`flex-1 text-center px-2 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest ${confidenceClass(ingredient.confidence || item.confidence)}`}>Conf {confidenceLabel(ingredient.confidence || item.confidence)}</span>
+                  <button type="button" onClick={() => updateIngredient(itemIdx, ingIdx, { reviewStatus: isIngredientApproved(ingredient) ? 'rejected' : (ingredient.matchedInventoryItemId ? 'approved' : 'needs-match'), approved: !isIngredientApproved(ingredient) }, mode)} disabled={approving || editSaving} className={`px-3 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest disabled:opacity-50 ${isIngredientApproved(ingredient) ? 'border-emerald-900/50 text-emerald-300 bg-emerald-900/20' : 'border-red-900/50 text-red-300 bg-red-900/20'}`}>{isIngredientApproved(ingredient) ? 'Approve' : 'Skip'}</button>
+                </div>
                 <button type="button" onClick={() => removeIngredient(itemIdx, ingIdx, mode)} disabled={approving || editSaving} className="p-3 rounded-xl border border-red-900/50 text-red-300 bg-red-900/10 disabled:opacity-50"><X size={16}/></button>
               </div>
             ))}
@@ -850,6 +883,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       <Modal isOpen={reviewOpen} onClose={() => { if (!approving) setReviewOpen(false); }} title="Review Menu Intelligence" sizeClass="max-w-5xl">
         <div className="space-y-4">
           {approveProgress && <WorkProgressBar label={approveProgress.label} detail={approveProgress.detail} percent={displayedPercent(approveProgress, approving ? 99 : 100)} elapsedSeconds={progressElapsed(approveProgress)} />}
+          <div className="bg-blue-900/10 border border-blue-900/40 rounded-xl p-3 text-xs font-bold text-blue-100">Each ingredient now has a confidence badge and an Approve/Skip toggle. Skipped rows are not saved into Menu Impact links.</div>
           {renderMenuEditor(scanResult, 'scan')}
           <button onClick={approveMenu} disabled={approving} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}><Check size={18}/> {approving ? 'Approving Reviewed Menu Links' : 'Approve Reviewed Menu Links'}</button>
         </div>
@@ -871,4 +905,72 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   );
 };
 
-export { TabPersonalReminders, TabMenuIntelligence };
+
+const TabAITools = ({ appUser, clientData, setActiveTab, addToast }) => {
+  const canMenu = canUseMenuIntelligence(appUser, clientData);
+  const cards = [
+    {
+      title: 'Menu Intelligence',
+      tag: canMenu ? 'Ready' : 'Owner-controlled',
+      desc: 'Upload a menu, review AI ingredient matches, and power 86 Menu Impact Alerts.',
+      action: 'Open Menu Intelligence',
+      tab: 'menu-intelligence',
+      enabled: canMenu,
+      note: 'Best for owners/managers after inventory names are cleaned up.'
+    },
+    {
+      title: 'Invoice Scanner',
+      tag: 'Inventory',
+      desc: 'Scan vendor invoices from Inventory, review raw extraction details, and approve stock changes.',
+      action: 'Open Inventory Scanner',
+      tab: 'inventory',
+      enabled: true,
+      note: 'Always review scanned rows before approving. Blurry invoices still need human eyeballs.'
+    },
+    {
+      title: 'Voice Commands',
+      tag: 'Beta',
+      desc: 'Use the microphone dock to navigate, add prep, search Help Center, and trigger kitchen actions.',
+      action: 'Open Help Article',
+      tab: 'help',
+      enabled: true,
+      note: 'Voice obeys the same permissions as tapping through the app.'
+    },
+    {
+      title: 'Smart Prep Matching',
+      tag: 'Kitchen',
+      desc: 'Prep voice now prefers updating an existing matching prep row instead of creating duplicates.',
+      action: 'Open Prep',
+      tab: 'prep',
+      enabled: true,
+      note: 'Use clear item names and quantities: “prep 2 pans onions.”'
+    }
+  ];
+  return (
+    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+      <div className="cockpit-panel cockpit-grid rounded-2xl p-5 border border-[#2A353D]">
+        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Dedicated AI Tools</div>
+        <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><Sparkles size={24}/> AI Tools</h2>
+        <p className="text-sm text-slate-400 font-bold mt-2 max-w-3xl">One landing pad for the app’s AI-powered kitchen tools. Results should still be reviewed by a manager before they change real restaurant data.</p>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {cards.map(card => (
+          <div key={card.title} className={`${T.card} p-4 space-y-3 ${card.enabled ? '' : 'opacity-80'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div><h3 className="font-black text-white text-lg">{card.title}</h3><p className="text-xs font-bold text-slate-400 mt-1 leading-relaxed">{card.desc}</p></div>
+              <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${card.enabled ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-amber-900/20 text-amber-300 border-amber-900/50'}`}>{card.tag}</span>
+            </div>
+            <p className="text-[10px] font-bold text-slate-500 leading-snug">{card.note}</p>
+            <button type="button" onClick={() => card.enabled ? setActiveTab(card.tab) : addToast?.('Access Needed', 'Ask the account owner to enable Menu Intelligence access first.')} className={card.enabled ? T.btn : T.btnAlt}>{card.action}</button>
+          </div>
+        ))}
+      </div>
+      <div className={`${T.card} p-4 border-blue-900/40`}>
+        <h3 className="font-black text-blue-200">AI safety rule</h3>
+        <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">AI can read, suggest, and match. Humans still approve anything that affects stock, prep, menu availability, reminders, or customer-facing paperwork.</p>
+      </div>
+    </div>
+  );
+};
+
+export { TabPersonalReminders, TabMenuIntelligence, TabAITools };
