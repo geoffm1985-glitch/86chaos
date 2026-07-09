@@ -1,7 +1,7 @@
 {
-  "version": "15.0.38",
-  "name": "86 Chaos 15.0.38 Diagnostics Cleanup and Admin Nav Top Rail",
+  "version": "15.0.41",
+  "name": "86 Chaos 15.0.41 System Administrator Tool Reorganization",
   "releasedAt": "2026-07-09",
-  "label": "86 Chaos 15.0.38",
-  "build": "15.0.38"
+  "label": "86 Chaos 15.0.41",
+  "build": "15.0.41"
 }

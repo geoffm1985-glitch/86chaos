@@ -1,24 +1,38 @@
 # 86 Chaos
 
-Current Version: 15.0.38 - Diagnostics Cleanup and Admin Nav Top Rail
+Current Version: 15.0.41 - System Administrator Tool Reorganization
 
-## 15.0.38 focus
-- Fixes the System Administrator Health Checks manifest so deployed Vercel API routes are no longer falsely reported as missing.
-- Keeps signed Firebase Storage backup download URLs out of diagnostics exports by default.
-- Keeps the System Administrator left Admin Menu pinned at the top of the desktop layout instead of letting the Command Deck push it down.
-- Adds a Super Admin backup watchdog check button so stale automatic backups can be tested directly from System Administrator.
-- Improves Security Diagnostics cron reporting with backup age, scheduled cron stamps, and watchdog status.
+## 15.0.41 focus
 
-## Deploy notes
-- Deploy the updated app through Vercel because API routes, `vercel.json`, and frontend code changed.
-- Production automatic backups still depend on Vercel Cron invoking `/api/firestore-backup` and `/api/firestore-backup-watchdog` on the production deployment.
-- Preview/testing deployments should still use **Run Backup Now** or **Check Watchdog Now** because preview deployments do not receive production cron invocations.
-- Firestore rules and Storage rules are unchanged in this version.
+This release reorganizes System Administrator so the right tools live together and the menu is easier to understand on desktop and mobile.
 
-## QA quick start
-1. Confirm `/version.json` reports `15.0.38`.
-2. Open System Administrator on desktop and confirm the left Admin Menu starts at the top of the page.
-3. Run System Administrator → Health Checks and confirm the API route manifest no longer reports every route missing.
-4. Run Full System Diagnostics and confirm backup objects do not include signed download URLs.
-5. Open Backup Center, refresh backups, and confirm the Download button still works.
-6. Use **Check Watchdog Now** from the backup card and confirm stale/fresh backup status is reported clearly.
+### Included fixes
+- Rebuilt the System Administrator menu categories around jobs instead of scattered feature names.
+- Added these new tool groups: Start Here, Backup & Recovery, Security & Access, Workspaces & People, Support & Monitoring, Maintenance & Releases, and Platform Tools.
+- Added a System Administrator Tool Map on Overview that explains what each category is for and opens the correct tool directly.
+- Updated the desktop left rail and mobile section picker to use the same category structure.
+- Moved high-risk global tools into Platform Tools, with Danger Zone grouped beside global platform operations instead of mixed into normal support areas.
+- Added the previously orphaned Global Event Injection / Forge tool back into the organized menu.
+- Updated Administrator Manual release documentation for the new category layout.
+
+### Separate deployment / publishing
+- Vercel redeploy required because frontend code and version metadata changed.
+- API behavior unchanged. Version metadata only.
+- No `vercel.json` changes.
+- No Firestore rules changes.
+- No Storage rules changes.
+- No new env vars required.
+
+### Quick validation
+1. Deploy to Vercel preview/testing first.
+2. Confirm `/version.json` reports `15.0.41`.
+3. Open System Administrator on desktop and confirm the left menu starts at the top and shows the new grouped categories.
+4. Open System Administrator on a phone or browser mobile emulator and confirm the picker groups match the desktop left rail.
+5. Open Overview and confirm the System Administrator Tool Map appears under the status widgets.
+6. Test category jumps: Health, Backups, Security, People, Support, Maintenance, Platform Operations, and Manual.
+7. Confirm the high-risk Danger Zone is grouped under Platform Tools and still requires its existing confirmations.
+
+## Notes
+- 86 Chaos branding remains mandatory and cannot be hidden or replaced.
+- Customer restaurant logos may appear beside 86 Chaos branding, but not instead of it.
+- Keep Help Center public-facing and generic. Keep System Administrator security details inside the Administrator Manual.

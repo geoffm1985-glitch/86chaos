@@ -175,3 +175,28 @@ select {
   table { min-width: 0 !important; page-break-inside: auto; }
   tr { page-break-inside: avoid; page-break-after: auto; }
 }
+
+/* 15.0.40 System Administrator mobile comfort layer */
+.admin-mobile-chip-row {
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+.admin-mobile-chip-row > button {
+  scroll-snap-align: start;
+}
+@media (max-width: 720px) {
+  #admin-mobile-command-strip select {
+    min-width: 0;
+  }
+  #admin-left-nav {
+    scroll-margin-top: .75rem;
+  }
+  #admin-left-nav button,
+  #admin-mobile-command-strip button {
+    -webkit-tap-highlight-color: transparent;
+  }
+  #admin-command-deck .cockpit-panel,
+  #admin-left-nav .cockpit-panel {
+    backdrop-filter: blur(12px);
+  }
+}
