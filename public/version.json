@@ -1,7 +1,7 @@
 {
-  "version": "15.0.23",
-  "name": "86 Chaos 15.0.23 Firebase Email Action Fix",
+  "version": "15.0.24",
+  "name": "86 Chaos 15.0.24 Deployment Syntax Fix",
   "releasedAt": "2026-07-08",
-  "label": "86 Chaos 15.0.23",
-  "build": "15.0.23"
+  "label": "86 Chaos 15.0.24",
+  "build": "15.0.24"
 }

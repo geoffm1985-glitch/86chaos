@@ -1,16 +1,16 @@
 # 86 Chaos
 
-Current Version: 15.0.23 - Firebase Email Action Fix
+Current Version: 15.0.24 - Deployment Syntax Fix
 
-## 15.0.23 focus
+## 15.0.24 focus
 
-15.0.23 fixes the Account Security email-action flow after testing showed Firebase Console password reset emails were delivering, but app-triggered verification/reset links were not reliable in the testing deployment.
+15.0.24 fixes a Vercel build failure caused by a quote/apostrophe syntax issue in the Account Security release wording added in 15.0.23. The Firebase email verification and password reset behavior remains the same as 15.0.23.
 
 ## What changed
 
-- Account Security now sends verification email using Firebase's default email action link, matching the console flow.
-- Settings password reset now targets the active Firebase Auth email first instead of only the profile email.
-- Help Center/release wording now explains the verification flow more clearly.
+- Fixed build-blocking JSX/JavaScript wording in Account Security release/help text.
+- Kept Account Security verification email on Firebase's default email action link.
+- Kept Settings password reset targeting the active Firebase Auth email first.
 
 ## Deploy notes
 
@@ -23,10 +23,11 @@ Current Version: 15.0.23 - Firebase Email Action Fix
 
 ## Post-deploy QA
 
-1. Confirm `/version.json` reports `15.0.23`.
-2. Go to Settings > Account Security.
-3. Click Send Verification Email.
-4. Confirm the Firebase verification email arrives.
-5. Click the email verification link.
-6. Return to Account Security and click Refresh Email Status.
-7. Enroll SMS MFA only after email status is verified.
+1. Confirm `/version.json` reports `15.0.24`.
+2. Confirm the Vercel build completes successfully.
+3. Go to Settings > Account Security.
+4. Click Send Verification Email.
+5. Confirm the Firebase verification email arrives.
+6. Click the email verification link.
+7. Return to Account Security and click Refresh Email Status.
+8. Enroll SMS MFA only after email status is verified.
