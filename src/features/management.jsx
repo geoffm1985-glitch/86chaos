@@ -2981,15 +2981,15 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
 const ADMIN_TROUBLESHOOTING_ARTICLES = [
   {
-    "title": "Version 15.0.30 Deployment Access Hotfix",
+    "title": "Version 15.0.31 App Load Hotfix",
     "group": "System Administrator",
-    "keywords": "v15 15.0.30 deployment access hotfix version mismatch system administrator locked out master admin env whoami",
+    "keywords": "v15 15.0.31 app load hotfix version mismatch system administrator locked out master admin env whoami",
     "body": [
-      "15.0.30 forces all browser/API version files to 15.0.30 so a deployment mismatch is obvious from /version.json, the footer, and System Administrator diagnostics.",
+      "15.0.31 fixes a startup crash from the 15.0.30 System Administrator access update so the app loads normally again.",
       "System Administrator lockout now shows a plain-English access report instead of the generic page-not-available card. It shows the signed-in email, Firebase UID, frontend env match, server /api/whoami result, master-admin env status, custom claim status, and Firestore super-admin flag status.",
       "The app now asks /api/whoami whether the server recognizes the account as Super Admin. This helps when MASTER_ADMIN_EMAIL is configured in Vercel server env but REACT_APP_MASTER_ADMIN_EMAIL was not set for frontend menu visibility.",
       "System Administrator includes an Admin Access signal card that explains which authority source opened the tab: server master-admin env, Firebase custom claim, Firestore profile flag, or local profile state.",
-      "The 15.0.29 question-mark helpers, menu-search cleanup, and backup troubleshooting manual remain included."
+      "The 15.0.30 Super Admin diagnostics and the 15.0.29 question-mark helpers, menu-search cleanup, and backup troubleshooting manual remain included."
     ]
   },
   {
@@ -3233,7 +3233,7 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
     "keywords": "hamburger menu search auto populated drawer search old query clears",
     "body": [
       "The drawer search is a convenience filter for tabs and support actions.",
-      "If the drawer opens with old text, clear the search and refresh. Version 15.0.30 resets drawer search on open/close so stale queries do not linger.",
+      "If the drawer opens with old text, clear the search and refresh. Version 15.0.31 resets drawer search on open/close so stale queries do not linger.",
       "If it still appears, check whether a voice command or global search shortcut is sending text into the menu state."
     ]
   },
@@ -8139,7 +8139,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-15030', title:'What changed in version 15.0.30', group:'Release Notes', keywords:'new update 15.0.30 deployment access hotfix system administrator locked out version mismatch whoami admin access', body:['Deployment/version checks were tightened so /version.json, footer/version labels, API metadata, README, and release files all report 15.0.30.', 'If a user opens System Administrator without access, the app now shows exactly why access was denied instead of a generic unavailable page.', 'The app now calls /api/whoami to see whether the server recognizes the signed-in email through MASTER_ADMIN_EMAIL(S), Firebase custom claims, or Firestore super-admin flags.', 'System Administrator includes an Admin Access signal card explaining the current Super Admin authority source.', 'The 15.0.29 question-mark helpers, drawer search reset, and backup troubleshooting manual remain included.'] },
+  { id:'new-15031', title:'What changed in version 15.0.31', group:'Release Notes', keywords:'new update 15.0.31 app load hotfix system administrator locked out version mismatch whoami admin access', body:['The app load crash from 15.0.30 was fixed; /version.json, footer/version labels, API metadata, README, and release files now report 15.0.31.', 'If a user opens System Administrator without access, the app now shows exactly why access was denied instead of a generic unavailable page.', 'The app now calls /api/whoami to see whether the server recognizes the signed-in email through MASTER_ADMIN_EMAIL(S), Firebase custom claims, or Firestore super-admin flags.', 'System Administrator includes an Admin Access signal card explaining the current Super Admin authority source.', 'The 15.0.30 Super Admin diagnostics plus the 15.0.29 question-mark helpers, drawer search reset, and backup troubleshooting manual remain included.'] },
   { id:'new-15028', title:'What changed in version 15.0.28', group:'Release Notes', keywords:'new update 15.0.28 productization account deletion restore drill security center hardcoded admin', body:['Account Security now has an Account Deletion Request flow that records a reviewable request instead of silently deleting operational records.', 'Security Center now includes Restore Drill status so backups can be proven with a safe test restore.', 'System Administrator access no longer relies on hardcoded personal email fallbacks. Use configured env vars, custom claims, or Super Admin profile flags.', 'Several internal/testing labels were cleaned up for public-readiness polish.'] },
   { id:'new-15027', title:'What changed in version 15.0.27', group:'Release Notes', keywords:'new update 15.0.27 recovery codes mfa lost phone security alerts voice preview', body:['Account Security now supports one-time recovery codes for lost-phone MFA recovery.', 'The two-step login screen can use a saved recovery code to reset MFA and let the user sign in again.', 'System Administrator MFA reset now writes a security alert for the affected user and keeps the audit trail clear.', 'Account Security has a simple readiness status so owners know whether enforcement is safe.', 'The floating voice button now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
   { id:'new-15026', title:'What changed in version 15.0.26', group:'Release Notes', keywords:'new update 15.0.26 mfa recovery reset lost phone backup phone elevated roles', body:['Account Security now supports backup SMS MFA phone enrollment after the first factor is enabled.', 'Super Admin MFA Recovery can inspect a user MFA status, reset lost-phone MFA factors, require a written reason, and log the action for audit review.', 'MFA enforcement guidance now clearly targets owners, managers, admins, and System Administrators while keeping regular employee enrollment optional.'] },

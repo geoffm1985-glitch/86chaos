@@ -1,7 +1,7 @@
 {
-  "version": "15.0.30",
-  "name": "86 Chaos 15.0.30 Deployment Access Hotfix",
+  "version": "15.0.31",
+  "name": "86 Chaos 15.0.31 App Load Hotfix",
   "releasedAt": "2026-07-09",
-  "label": "86 Chaos 15.0.30",
-  "build": "15.0.30"
+  "label": "86 Chaos 15.0.31",
+  "build": "15.0.31"
 }

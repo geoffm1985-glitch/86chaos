@@ -357,6 +357,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   }
 
 
+  const isDemoMode = !!liveAppUser?.isDemo;
   const serverSaysSuperAdmin = Boolean(serverAdminCheck?.superAdmin === true);
   if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
     liveAppUser = {
@@ -395,7 +396,6 @@ if (liveAppUser && clientData) {
   }
   setActiveTimeFormat(liveAppUser?.preferences?.timeFormat || '12h');
 
-  const isDemoMode = !!liveAppUser?.isDemo;
   const rawDemoFeatures = liveAppUser?.demoFeatures || {};
   const displayClientFeatures = isDemoMode ? {
     schedule: rawDemoFeatures.published !== false && rawDemoFeatures.schedule !== false,
