@@ -1,9 +1,12 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 
-const APP_VERSION = '15.0.41';
+const APP_VERSION = '15.0.42';
 const DEFAULT_MODEL = 'gemini-3.5-flash';
 const MAX_QUESTION_CHARS = 1600;
 const MAX_CONTEXT_CHARS = 26000;
+const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+const HARD_MAX_OUTPUT_TOKENS = 8192;
+const AUTO_CONTINUE_LIMIT = 2;
 
 const ADMIN_MAP = [
   { section: 'Overview', useFor: 'Command Deck, action queue, master admin self-repair, backup/watchdog shortcuts, platform health summary.' },
@@ -94,7 +97,7 @@ function buildManualContext({ question, articles, playbook, currentState, runtim
     matchedManualArticles: articles,
     answerContract: {
       audience: '86 Chaos Super Admin troubleshooting a live restaurant/kitchen web app.',
-      style: 'Specific, calm, step-by-step. Do not answer like a generic chatbot.',
+      style: 'Specific, calm, step-by-step. Do not answer like a generic chatbot. Complete every sentence.',
       requiredSections: [
         'What this probably means',
         'Go here in System Administrator',
@@ -103,6 +106,11 @@ function buildManualContext({ question, articles, playbook, currentState, runtim
         'What not to touch yet',
         'Deploy/publish separately',
         'Escalate if'
+      ],
+      completionRules: [
+        'Prefer shorter complete instructions over long cut-off instructions.',
+        'Do not end with an unfinished bullet, unfinished sentence, or dangling word such as if, because, and, or, when, with, for, to.',
+        'If space is tight, summarize the Escalate if section in one complete sentence.'
       ]
     }
   };
@@ -113,6 +121,46 @@ function extractGenerateContentText(data) {
   const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
   const parts = candidates[0]?.content?.parts || [];
   return parts.map(part => part?.text || '').join('\n').trim();
+}
+
+function getGenerateContentFinishReason(data) {
+  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+  return String(candidates[0]?.finishReason || '').trim();
+}
+
+function getManualMaxOutputTokens() {
+  const raw = Number(process.env.GEMINI_MANUAL_MAX_OUTPUT_TOKENS || process.env.MANUAL_GEMINI_MAX_OUTPUT_TOKENS || DEFAULT_MAX_OUTPUT_TOKENS);
+  if (!Number.isFinite(raw) || raw < 1200) return DEFAULT_MAX_OUTPUT_TOKENS;
+  return Math.min(Math.round(raw), HARD_MAX_OUTPUT_TOKENS);
+}
+
+function answerLooksIncomplete(text = '') {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return true;
+  const tail = trimmed.slice(-220).trim();
+  if (/\b(if|because|and|or|when|while|with|for|to|from|that|the|a|an|by|after|before|unless|until)$/i.test(tail)) return true;
+  if (/[,:;]$/.test(tail)) return true;
+  if (/[-*•]\s*$/i.test(tail)) return true;
+  const lastNonEmptyLine = trimmed.split(/\n+/).map(line => line.trim()).filter(Boolean).pop() || '';
+  if (/^(Escalate if|Deploy\/publish separately|What not to touch yet|How to know it worked|Do this in order|Go here in System Administrator|What this probably means)$/i.test(lastNonEmptyLine)) return true;
+  return false;
+}
+
+function smartAppendAnswer(base = '', continuation = '') {
+  const left = String(base || '').trimEnd();
+  const right = String(continuation || '').trim();
+  if (!left) return right;
+  if (!right) return left;
+  if (/\b(if|because|and|or|when|while|with|for|to|from|that|the|a|an|by|after|before|unless|until)$|[,;:]$/i.test(left.trim())) {
+    return `${left} ${right.replace(/^[-*•\s]+/, '')}`.trim();
+  }
+  return `${left}\n\n${right}`.trim();
+}
+
+function getIncompleteReason({ finishReason, text }) {
+  if (String(finishReason || '').toUpperCase() === 'MAX_TOKENS') return 'Gemini hit the output limit.';
+  if (answerLooksIncomplete(text)) return 'Answer appears to end mid-sentence.';
+  return '';
 }
 
 function buildFallbackAnswer({ question, playbook, articles, currentState }) {
@@ -142,6 +190,9 @@ function buildFallbackAnswer({ question, playbook, articles, currentState }) {
     'Deploy/publish separately',
     'If you changed API routes, vercel.json, or env vars, redeploy Vercel. If you changed firestore.rules or storage.rules, publish those rules separately to the correct Firebase project after testing. If no code/rules/env changed, do not redeploy just to test a data repair.',
     '',
+    'Escalate if',
+    playbook.escalation || 'Escalate if the issue affects multiple restaurants, the same repair fails twice, a backup/restore is involved, or the logs show permission denied after the expected role/rule checks pass.',
+    '',
     'Relevant manual articles',
     articleTitles,
     '',
@@ -149,17 +200,17 @@ function buildFallbackAnswer({ question, playbook, articles, currentState }) {
   ].join('\n');
 }
 
-async function callGemini({ prompt, apiKey, model }) {
+async function callGemini({ prompt, apiKey, model, maxOutputTokens, temperature = 0.15 }) {
   const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
   const generationConfig = {
-    temperature: 0.15,
+    temperature,
     topP: 0.8,
     topK: 32,
-    maxOutputTokens: 2200
+    maxOutputTokens: maxOutputTokens || getManualMaxOutputTokens()
   };
   const body = {
     systemInstruction: {
-      parts: [{ text: 'You are the private 86 Chaos System Administrator Manual assistant. You write operational instructions for a Super Admin. Be exact, ordered, and safety-conscious.' }]
+      parts: [{ text: 'You are the private 86 Chaos System Administrator Manual assistant. You write operational instructions for a Super Admin. Be exact, ordered, safety-conscious, and finish every sentence.' }]
     },
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig
@@ -176,7 +227,73 @@ async function callGemini({ prompt, apiKey, model }) {
   }
   const text = extractGenerateContentText(generateData);
   if (!text) throw new Error('Gemini returned an empty manual answer.');
-  return { text, api: 'generateContent', model };
+  return { text, api: 'generateContent', model, finishReason: getGenerateContentFinishReason(generateData), maxOutputTokens: generationConfig.maxOutputTokens };
+}
+
+function buildInitialPrompt({ manualContext }) {
+  return [
+    'Use only the JSON context below. If the context is missing a fact, say exactly where the admin should check it in the app instead of guessing.',
+    'Write a better System Administrator Manual answer than a generic help bot. Include exact 86 Chaos screen names and button/action names when the context gives them.',
+    'Give instructions that answer: where do I go, what do I click/read, what result proves it worked, and what requires Vercel/Firebase deployment outside the app.',
+    'Never reveal secrets, signed URLs, customer private data, employee private data, service account JSON, or raw tokens.',
+    'Use this exact plain-text format. Keep each section concise, but complete. Do not end on an unfinished sentence:',
+    'What this probably means',
+    'Go here in System Administrator',
+    'Do this in order',
+    'How to know it worked',
+    'What not to touch yet',
+    'Deploy/publish separately',
+    'Escalate if',
+    '',
+    manualContext
+  ].join('\n');
+}
+
+function buildContinuationPrompt({ manualContext, partialAnswer }) {
+  return [
+    'Continue and finish the 86 Chaos System Administrator Manual answer below.',
+    'Do not restart the answer. Do not repeat completed sections unless absolutely needed for clarity.',
+    'Start exactly where the partial answer stopped, finish any incomplete bullet or sentence, and complete any missing required sections.',
+    'Keep it concise. The final output must end with a complete sentence and must not end with if, because, and, or, when, with, for, to, a comma, or a colon.',
+    'Never reveal secrets, signed URLs, customer private data, employee private data, service account JSON, or raw tokens.',
+    '',
+    'JSON context:',
+    manualContext.slice(0, 18000),
+    '',
+    'Partial answer to continue:',
+    String(partialAnswer || '').slice(-9000)
+  ].join('\n');
+}
+
+async function generateCompleteAnswer({ prompt, manualContext, apiKey, model }) {
+  const finishReasons = [];
+  const maxOutputTokens = getManualMaxOutputTokens();
+  let result = await callGemini({ prompt, apiKey, model, maxOutputTokens });
+  let answer = result.text;
+  finishReasons.push(result.finishReason || 'UNKNOWN');
+
+  let incompleteReason = getIncompleteReason({ finishReason: result.finishReason, text: answer });
+  let autoContinuationCount = 0;
+  while (incompleteReason && autoContinuationCount < AUTO_CONTINUE_LIMIT) {
+    autoContinuationCount += 1;
+    const continuationPrompt = buildContinuationPrompt({ manualContext, partialAnswer: answer });
+    const continuation = await callGemini({ prompt: continuationPrompt, apiKey, model, maxOutputTokens: Math.min(maxOutputTokens, 4096), temperature: 0.1 });
+    finishReasons.push(continuation.finishReason || 'UNKNOWN');
+    answer = smartAppendAnswer(answer, continuation.text);
+    incompleteReason = getIncompleteReason({ finishReason: continuation.finishReason, text: answer });
+  }
+
+  return {
+    text: answer,
+    api: result.api,
+    model: result.model,
+    finishReason: finishReasons[finishReasons.length - 1] || result.finishReason || '',
+    finishReasons,
+    maxOutputTokens,
+    autoContinuationCount,
+    answerIncomplete: Boolean(incompleteReason),
+    incompleteReason
+  };
 }
 
 module.exports = async function handler(req, res) {
@@ -205,35 +322,45 @@ module.exports = async function handler(req, res) {
       vercelEnv: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown'
     };
     const manualContext = buildManualContext({ question, articles, playbook, currentState, runtime });
-    const prompt = [
-      'Use only the JSON context below. If the context is missing a fact, say exactly where the admin should check it in the app instead of guessing.',
-      'Write a better System Administrator Manual answer than a generic help bot. Include exact 86 Chaos screen names and button/action names when the context gives them.',
-      'Give instructions that answer: where do I go, what do I click/read, what result proves it worked, and what requires Vercel/Firebase deployment outside the app.',
-      'Never reveal secrets, signed URLs, customer private data, employee private data, service account JSON, or raw tokens.',
-      'Use this exact plain-text format and keep it under 650 words:',
-      'What this probably means',
-      'Go here in System Administrator',
-      'Do this in order',
-      'How to know it worked',
-      'What not to touch yet',
-      'Deploy/publish separately',
-      'Escalate if',
-      '',
-      manualContext
-    ].join('\n');
-
     const started = Date.now();
     let result;
     let fallbackUsed = false;
+
     try {
-      result = await callGemini({ prompt, apiKey, model });
+      if (body.continueFrom) {
+        const partialAnswer = redactText(body.continueFrom, 10000);
+        const continuationPrompt = buildContinuationPrompt({ manualContext, partialAnswer });
+        const continuation = await callGemini({ prompt: continuationPrompt, apiKey, model, maxOutputTokens: Math.min(getManualMaxOutputTokens(), 4096), temperature: 0.1 });
+        const incompleteReason = getIncompleteReason({ finishReason: continuation.finishReason, text: continuation.text });
+        result = {
+          ...continuation,
+          finishReasons: [continuation.finishReason || 'UNKNOWN'],
+          autoContinuationCount: 0,
+          answerIncomplete: Boolean(incompleteReason),
+          incompleteReason,
+          continuation: true
+        };
+      } else {
+        const prompt = buildInitialPrompt({ manualContext });
+        result = await generateCompleteAnswer({ prompt, manualContext, apiKey, model });
+      }
     } catch (err) {
       fallbackUsed = true;
-      result = { text: buildFallbackAnswer({ question, playbook, articles, currentState }), api: 'local-fallback', model, error: err.message || 'Gemini failed' };
+      result = {
+        text: buildFallbackAnswer({ question, playbook, articles, currentState }),
+        api: 'local-fallback',
+        model,
+        error: err.message || 'Gemini failed',
+        finishReason: 'FALLBACK',
+        finishReasons: ['FALLBACK'],
+        autoContinuationCount: 0,
+        answerIncomplete: false,
+        incompleteReason: ''
+      };
     }
 
     const db = app.firestore();
-    await writeAudit(db, ctx, 'GEMINI_ADMIN_MANUAL_QUERY', 'system-administrator/manual', `Manual answer generated with ${result.api}. Question: ${question.slice(0, 160)}`, ctx.restaurantId || 'platform');
+    await writeAudit(db, ctx, body.continueFrom ? 'GEMINI_ADMIN_MANUAL_CONTINUE' : 'GEMINI_ADMIN_MANUAL_QUERY', 'system-administrator/manual', `Manual answer generated with ${result.api}. Question: ${question.slice(0, 160)}`, ctx.restaurantId || 'platform');
 
     return res.status(200).json({
       ok: true,
@@ -246,6 +373,14 @@ module.exports = async function handler(req, res) {
       durationMs: Date.now() - started,
       articleCount: articles.length,
       generatedAt: new Date().toISOString(),
+      finishReason: result.finishReason || '',
+      finishReasons: result.finishReasons || [],
+      maxOutputTokens: result.maxOutputTokens || getManualMaxOutputTokens(),
+      autoContinuationCount: result.autoContinuationCount || 0,
+      answerIncomplete: Boolean(result.answerIncomplete),
+      incompleteReason: result.incompleteReason || '',
+      canContinue: Boolean(result.answerIncomplete && !fallbackUsed),
+      continuation: Boolean(result.continuation),
       answerShape: ['What this probably means', 'Go here in System Administrator', 'Do this in order', 'How to know it worked', 'What not to touch yet', 'Deploy/publish separately', 'Escalate if']
     });
   } catch (err) {

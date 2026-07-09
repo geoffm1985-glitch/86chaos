@@ -1,36 +1,37 @@
 # 86 Chaos
 
-Current Version: 15.0.41 - System Administrator Tool Reorganization
+Current Version: 15.0.42 - Gemini Manual Completion Guard
 
-## 15.0.41 focus
+## 15.0.42 focus
 
-This release reorganizes System Administrator so the right tools live together and the menu is easier to understand on desktop and mobile.
+This release fixes the System Administrator Manual assistant issue where Gemini answers could stop mid-sentence on longer troubleshooting responses.
 
 ### Included fixes
-- Rebuilt the System Administrator menu categories around jobs instead of scattered feature names.
-- Added these new tool groups: Start Here, Backup & Recovery, Security & Access, Workspaces & People, Support & Monitoring, Maintenance & Releases, and Platform Tools.
-- Added a System Administrator Tool Map on Overview that explains what each category is for and opens the correct tool directly.
-- Updated the desktop left rail and mobile section picker to use the same category structure.
-- Moved high-risk global tools into Platform Tools, with Danger Zone grouped beside global platform operations instead of mixed into normal support areas.
-- Added the previously orphaned Global Event Injection / Forge tool back into the organized menu.
-- Updated Administrator Manual release documentation for the new category layout.
+- Increased the Gemini Manual assistant output budget on the server route.
+- Added Gemini finish-reason tracking so `MAX_TOKENS` cutoffs are visible in the UI.
+- Added server-side incomplete-answer detection for dangling endings such as answers ending with “if”, “because”, commas, or unfinished section headers.
+- Added automatic continuation attempts so the server asks Gemini to finish the answer before returning it to the app.
+- Added a `Continue Gemini Answer` button when Gemini still appears incomplete after automatic retries.
+- Updated Gemini instructions so it favors shorter complete instructions over long answers that cut off.
+- Added response metadata in the Manual panel showing finish reason and auto-continuation count.
+- Updated Administrator Manual release documentation for the Gemini completion guard.
 
 ### Separate deployment / publishing
-- Vercel redeploy required because frontend code and version metadata changed.
-- API behavior unchanged. Version metadata only.
+- Vercel redeploy required because frontend code, `/api/gemini-admin-manual`, and version metadata changed.
 - No `vercel.json` changes.
 - No Firestore rules changes.
 - No Storage rules changes.
 - No new env vars required.
+- Optional tuning env var: `GEMINI_MANUAL_MAX_OUTPUT_TOKENS` or `MANUAL_GEMINI_MAX_OUTPUT_TOKENS`. Default is `4096`, capped at `8192`.
 
 ### Quick validation
 1. Deploy to Vercel preview/testing first.
-2. Confirm `/version.json` reports `15.0.41`.
-3. Open System Administrator on desktop and confirm the left menu starts at the top and shows the new grouped categories.
-4. Open System Administrator on a phone or browser mobile emulator and confirm the picker groups match the desktop left rail.
-5. Open Overview and confirm the System Administrator Tool Map appears under the status widgets.
-6. Test category jumps: Health, Backups, Security, People, Support, Maintenance, Platform Operations, and Manual.
-7. Confirm the high-risk Danger Zone is grouped under Platform Tools and still requires its existing confirmations.
+2. Confirm `/version.json` reports `15.0.42`.
+3. Open System Administrator → Manual.
+4. Ask a longer Gemini question, such as “Users schedule has disappeared and backup is stale, what do I check?”
+5. Confirm the answer does not stop mid-sentence.
+6. Confirm metadata shows model, API, duration, finish reason, and auto-continuation count when used.
+7. If a warning appears, tap `Continue Gemini Answer` and confirm the answer appends instead of replacing the existing response.
 
 ## Notes
 - 86 Chaos branding remains mandatory and cannot be hidden or replaced.

@@ -4935,7 +4935,7 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.41 keeps the watchdog check and adds reorganized System Administrator tool categories.'
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.42 keeps the watchdog check and adds Gemini answer completion protection.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
@@ -5406,6 +5406,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.42 Gemini Manual Completion Guard', group: 'System Administrator', keywords: 'v15 15.0.42 gemini manual assistant cut off max tokens continue answer incomplete finish reason system administrator', body: ['15.0.42 improves the Gemini-powered System Administrator Manual assistant so long answers are less likely to stop mid-sentence.', 'The server route now uses a larger output token budget, checks Gemini finish reasons, detects dangling endings, and automatically asks Gemini to continue when it hits the output limit.', 'If Gemini still appears cut off, the Manual panel shows a warning and a Continue Gemini Answer button so the Super Admin can finish the answer without starting over.', 'The Gemini response metadata now shows finish reason and auto-continuation count, which helps troubleshoot model output limits without exposing secrets or signed URLs.'] },
     { title: 'Version 15.0.41 System Administrator Tool Reorganization', group: 'System Administrator', keywords: 'v15 15.0.41 system administrator reorganized categories recategorized navigation tool map left menu mobile groups', body: ['15.0.41 reorganizes the entire System Administrator into clearer tool neighborhoods: Start Here, Backup & Recovery, Security & Access, Workspaces & People, Support & Monitoring, Maintenance & Releases, and Platform Tools.', 'The left desktop rail, mobile picker, and overview Tool Map now use the same categories so the correct tools sit together instead of being scattered through one long command list.', 'Use Start Here for daily status and the AI Administrator Manual. Use Backup & Recovery before risky changes. Use Security & Access for lockouts, MFA, App Check, rules, and permission design. Use Workspaces & People for restaurants, clients, profiles, setup, and branding.', 'High-risk global tools now live under Platform Tools so they are easier to find when needed but less likely to be clicked while doing normal support work.'] },
     { title: 'Version 15.0.40 System Administrator Mobile Usability', group: 'System Administrator', keywords: 'v15 15.0.40 mobile phone system administrator menu quick jump sticky nav touch friendly command deck', body: ['15.0.40 makes System Administrator easier to operate from a phone by adding a mobile command strip with critical status, section picker, and quick-jump chips for the most common admin tools.', 'The left Admin Menu still lives on the left side on desktop, but on phones it opens immediately under the System Administrator header instead of getting buried below the Command Deck.', 'Mobile admin buttons now have larger touch targets, shorter labels, and a two-column menu layout where space allows. The active section is easier to see and switching sections automatically closes the mobile menu.', 'The Command Deck stays available, but it no longer has to be the first thing you fight through on a mobile device. Use Show Info Board only when you need the full signal board.'] },
     { title: 'Version 15.0.39 Gemini Manual Instruction Upgrade', group: 'System Administrator', keywords: 'v15 15.0.39 gemini manual assistant instructions step by step what to do system administrator support', body: ['15.0.39 improves the Gemini-powered System Administrator Manual assistant so answers are structured around what the issue means, where to go in System Administrator, what to click or check, how to verify success, what not to touch yet, and what needs separate Vercel/Firebase deployment.', 'The manual assistant now sends current admin context such as active admin section, backup freshness, health attention count, risky user count, and environment clues when available. It redacts secrets and signed URLs before sending context.', 'If Gemini fails or returns no useful text, the route now returns a local manual fallback answer from the matched playbook instead of leaving the admin with a dead panel.', 'Use Ask Gemini for troubleshooting guidance only. Do not paste service account JSON, raw tokens, private employee/customer information, or signed backup download URLs into the question.'] },
@@ -5629,6 +5630,53 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     'Relevant articles:',
     ...topManualArticles.slice(0, 5).map(article => `- ${article.title}`)
   ] : [];
+  const buildGeminiManualRequestPayload = (question, extras = {}) => ({
+    question,
+    currentState: {
+      appVersion: CURRENT_VERSION,
+      activeAdminSection: subTab,
+      browserVersion: envReport.host,
+      vercelEnv: isPreviewLikeHost ? 'preview/testing host' : 'production-like host',
+      firebaseProjectId: healthSnapshot?.env?.firebaseProjectId || securityReport?.security?.environmentSeparation?.projectId || '',
+      storageBucket: healthSnapshot?.env?.firebaseStorageBucket || securityReport?.security?.environmentSeparation?.storageBucket || '',
+      lastBackupAt: backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastRunAt || '',
+      lastBackupStatus: backupStatus?.status || backupStatus?.lastStatus || '',
+      backupAgeHours: actualBackupAgeHours ?? backupAgeHours,
+      backupStale: backupIsStale,
+      nextBackupAt: nextAutoBackupDate?.toISOString?.() || backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || '',
+      watchdogStatus: backupWatchdogDetail,
+      healthOk: healthSnapshot ? (healthSnapshot.ok !== false && !(healthSnapshot.apiChecks || []).some(check => !check.ok)) : null,
+      healthAttentionCount: healthSnapshot?.apiRouteManifest?.filter?.(route => route.status !== 'ready')?.length ?? null,
+      riskyUserCount: securityReport?.riskyUsers?.length ?? null,
+      suspiciousActivityCount: securityReport?.suspiciousActivity?.count ?? null,
+      notes: [
+        backupIsStale ? 'Backup is currently stale or missed the daily window.' : '',
+        isPreviewLikeHost ? 'Preview/testing hosts do not receive Vercel Cron invocations automatically.' : 'Production-like host should receive Vercel Cron invocations.',
+        healthSnapshot ? 'Health Checks have been run in this session.' : 'Health Checks have not been run in this session.',
+        securityReport ? 'Security Diagnostics have been loaded in this session.' : 'Security Diagnostics have not been loaded in this session.'
+      ].filter(Boolean)
+    },
+    playbook: primarySupportPlaybook,
+    articles: topManualArticles.slice(0, 12).map(article => ({
+      title: article.title,
+      group: article.group,
+      keywords: article.keywords,
+      body: article.body
+    })),
+    ...extras
+  });
+
+  const appendGeminiManualText = (base = '', next = '') => {
+    const left = String(base || '').trimEnd();
+    const right = String(next || '').trim();
+    if (!left) return right;
+    if (!right) return left;
+    if (/\b(if|because|and|or|when|while|with|for|to|from|that|the|a|an|by|after|before|unless|until)$|[,;:]$/i.test(left.trim())) {
+      return `${left} ${right.replace(/^[-*•\s]+/, '')}`.trim();
+    }
+    return `${left}\n\n${right}`.trim();
+  };
+
   const handleAskGeminiAdminManual = async () => {
     const question = (geminiManualQuestion || adminManualQuestion || adminManualSearch || '').trim();
     if (!question) {
@@ -5645,48 +5693,46 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       const response = await secureFetch('/api/gemini-admin-manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question,
-          currentState: {
-            appVersion: CURRENT_VERSION,
-            activeAdminSection: subTab,
-            browserVersion: envReport.host,
-            vercelEnv: isPreviewLikeHost ? 'preview/testing host' : 'production-like host',
-            firebaseProjectId: healthSnapshot?.env?.firebaseProjectId || securityReport?.security?.environmentSeparation?.projectId || '',
-            storageBucket: healthSnapshot?.env?.firebaseStorageBucket || securityReport?.security?.environmentSeparation?.storageBucket || '',
-            lastBackupAt: backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastRunAt || '',
-            lastBackupStatus: backupStatus?.status || backupStatus?.lastStatus || '',
-            backupAgeHours: actualBackupAgeHours ?? backupAgeHours,
-            backupStale: backupIsStale,
-            nextBackupAt: nextAutoBackupDate?.toISOString?.() || backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || '',
-            watchdogStatus: backupWatchdogDetail,
-            healthOk: healthSnapshot ? (healthSnapshot.ok !== false && !(healthSnapshot.apiChecks || []).some(check => !check.ok)) : null,
-            healthAttentionCount: healthSnapshot?.apiRouteManifest?.filter?.(route => route.status !== 'ready')?.length ?? null,
-            riskyUserCount: securityReport?.riskyUsers?.length ?? null,
-            suspiciousActivityCount: securityReport?.suspiciousActivity?.count ?? null,
-            notes: [
-              backupIsStale ? 'Backup is currently stale or missed the daily window.' : '',
-              isPreviewLikeHost ? 'Preview/testing hosts do not receive Vercel Cron invocations automatically.' : 'Production-like host should receive Vercel Cron invocations.',
-              healthSnapshot ? 'Health Checks have been run in this session.' : 'Health Checks have not been run in this session.',
-              securityReport ? 'Security Diagnostics have been loaded in this session.' : 'Security Diagnostics have not been loaded in this session.'
-            ].filter(Boolean)
-          },
-          playbook: primarySupportPlaybook,
-          articles: topManualArticles.slice(0, 12).map(article => ({
-            title: article.title,
-            group: article.group,
-            keywords: article.keywords,
-            body: article.body
-          }))
-        })
+        body: JSON.stringify(buildGeminiManualRequestPayload(question))
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Gemini manual failed with status ${response.status}`);
       setGeminiManualAnswer(result.answer || 'Gemini returned no answer.');
       setGeminiManualMeta(result);
-      addToast('Gemini Manual Ready', `${result.articleCount || 0} article(s) used • ${result.model || 'Gemini'}`);
+      const continuationNote = result.autoContinuationCount ? ` • auto-continued ${result.autoContinuationCount}x` : '';
+      addToast('Gemini Manual Ready', `${result.articleCount || 0} article(s) used • ${result.model || 'Gemini'}${continuationNote}`);
+      if (result.answerIncomplete) addToast('Gemini Answer Needs Continue', result.incompleteReason || 'Gemini may have stopped before the answer was finished.');
     } catch (err) {
       const message = err.message || 'Gemini manual assistant failed.';
+      setGeminiManualError(message);
+      addToast('Gemini Manual Error', message);
+    } finally {
+      setIsGeminiManualLoading(false);
+    }
+  };
+
+  const handleContinueGeminiAdminManual = async () => {
+    const question = (geminiManualQuestion || adminManualQuestion || adminManualSearch || '').trim();
+    if (!question || !geminiManualAnswer) {
+      addToast('Gemini Manual', 'Ask Gemini first, then continue a cut-off answer.');
+      return;
+    }
+    if (isGeminiManualLoading) return;
+    setGeminiManualError('');
+    setIsGeminiManualLoading(true);
+    try {
+      const response = await secureFetch('/api/gemini-admin-manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildGeminiManualRequestPayload(question, { continueFrom: geminiManualAnswer }))
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Gemini manual continue failed with status ${response.status}`);
+      setGeminiManualAnswer(prev => appendGeminiManualText(prev, result.answer || ''));
+      setGeminiManualMeta(result);
+      addToast('Gemini Continued', result.answerIncomplete ? 'Added more text, but Gemini may still need one more continuation.' : 'Answer completed.');
+    } catch (err) {
+      const message = err.message || 'Gemini manual continuation failed.';
       setGeminiManualError(message);
       addToast('Gemini Manual Error', message);
     } finally {
@@ -8582,9 +8628,13 @@ another@email.com"></textarea>
                 <textarea value={geminiManualQuestion || adminManualQuestion} onChange={e => setGeminiManualQuestion(e.target.value)} rows={3} placeholder="Ask Gemini exactly what to do. Example: Backup is 65 hours old on preview, what should I check next?" className="mt-4 w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl px-4 py-3 text-sm font-bold text-white outline-none focus:border-blue-400 resize-none" />
                 {geminiManualError && <div className="mt-3 bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{geminiManualError}</div>}
                 {geminiManualAnswer && <div className="mt-3 bg-[#0B0E11] border border-blue-500/20 rounded-xl p-4">
-                  <div className="flex flex-wrap items-center gap-2 mb-3 text-[9px] uppercase tracking-widest font-black text-slate-500"><span>{geminiManualMeta?.model || 'Gemini'}</span><span>•</span><span>{geminiManualMeta?.api || 'api'}</span><span>•</span><span>{geminiManualMeta?.durationMs || 0}ms</span></div>
+                  <div className="flex flex-wrap items-center gap-2 mb-3 text-[9px] uppercase tracking-widest font-black text-slate-500"><span>{geminiManualMeta?.model || 'Gemini'}</span><span>•</span><span>{geminiManualMeta?.api || 'api'}</span><span>•</span><span>{geminiManualMeta?.durationMs || 0}ms</span>{geminiManualMeta?.finishReason && <><span>•</span><span>{geminiManualMeta.finishReason}</span></>}{geminiManualMeta?.autoContinuationCount > 0 && <><span>•</span><span>auto-continued {geminiManualMeta.autoContinuationCount}x</span></>}</div>
+                  {geminiManualMeta?.answerIncomplete && <div className="mb-3 bg-amber-900/20 border border-amber-500/40 rounded-xl p-3 text-xs font-bold text-amber-100">Gemini may have stopped before the answer finished: {geminiManualMeta.incompleteReason || 'output limit reached'}. Tap Continue Gemini Answer to finish it.</div>}
                   <div className="whitespace-pre-wrap text-sm font-bold text-slate-200 leading-relaxed">{geminiManualAnswer}</div>
-                  <button type="button" onClick={() => { navigator.clipboard?.writeText(geminiManualAnswer); addToast('Copied', 'Gemini manual answer copied.'); }} className="mt-3 px-3 py-2 rounded-lg bg-[#12161A] border border-[#2A353D] text-slate-300 text-[10px] font-black uppercase tracking-widest hover:border-blue-400">Copy Gemini Answer</button>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {geminiManualMeta?.canContinue && <button type="button" onClick={handleContinueGeminiAdminManual} disabled={isGeminiManualLoading} className="px-3 py-2 rounded-lg bg-amber-900/20 border border-amber-500/40 text-amber-100 text-[10px] font-black uppercase tracking-widest hover:border-amber-300 disabled:opacity-50">{isGeminiManualLoading ? 'Continuing…' : 'Continue Gemini Answer'}</button>}
+                    <button type="button" onClick={() => { navigator.clipboard?.writeText(geminiManualAnswer); addToast('Copied', 'Gemini manual answer copied.'); }} className="px-3 py-2 rounded-lg bg-[#12161A] border border-[#2A353D] text-slate-300 text-[10px] font-black uppercase tracking-widest hover:border-blue-400">Copy Gemini Answer</button>
+                  </div>
                 </div>}
               </div>
 
