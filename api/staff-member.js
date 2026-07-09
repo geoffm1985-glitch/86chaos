@@ -33,9 +33,7 @@ function cleanPerms(perms = {}) {
 function masterEmails() {
   return [
     process.env.MASTER_ADMIN_EMAIL,
-    process.env.MASTER_ADMIN_EMAILS,
-    'geoffm1985@gmail.com',
-    'geoffrm1985@gmail.com'
+    process.env.MASTER_ADMIN_EMAILS
   ].filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
 }
 function memberDocId(uid, restaurantId) {

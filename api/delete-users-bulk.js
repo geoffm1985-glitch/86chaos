@@ -14,7 +14,7 @@ async function verifySuperAdmin(req) {
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
   if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) throw new Error('Super admin access required.');
   const mfa = requireMfaIfEnforced(decoded, {}, true);
   if (!mfa.ok) throw new Error(mfa.error);
@@ -44,7 +44,7 @@ module.exports = async function handler(req, res) {
     const db = app.firestore();
     const emails = normalizeEmails(req.body?.emails || req.body?.emailText);
     const userIds = normalizeIds(req.body?.userIds || req.body?.uids || req.body?.profileIds);
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
     const protectedEmails = new Set([masterEmail, (caller.email || '').toLowerCase()]);
 
     let authDeleted = 0;

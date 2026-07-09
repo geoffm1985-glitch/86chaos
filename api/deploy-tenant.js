@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     const requester = requesterSnap.exists ? requesterSnap.data() : {};
     const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
     const requesterEmail = (decoded.email || requester.email || '').toLowerCase();
-    if (!requester.isSuperAdmin && requesterEmail !== masterEmail) {
+    if (!requester.isSuperAdmin && !(masterEmail && requesterEmail === masterEmail)) {
       return res.status(403).json({ error: 'Super Admin required to deploy workspaces.' });
     }
     const chaosAdmin = await import('./_chaos-admin.js');

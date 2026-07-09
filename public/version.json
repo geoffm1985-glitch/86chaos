@@ -1,7 +1,7 @@
 {
-  "version": "15.0.26",
-  "name": "86 Chaos 15.0.26 MFA Recovery & Safer Enforcement",
-  "releasedAt": "2026-07-08",
-  "label": "86 Chaos 15.0.26",
-  "build": "15.0.26"
+  "version": "15.0.28",
+  "name": "86 Chaos 15.0.28 Productization Cleanup",
+  "releasedAt": "2026-07-09",
+  "label": "86 Chaos 15.0.28",
+  "build": "15.0.28"
 }

@@ -31,7 +31,7 @@ async function authorize(req, app) {
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
   try {
     const decoded = await app.auth().verifyIdToken(token);
-    const master = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+    const master = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
     const email = (decoded.email || '').toLowerCase();
     if (email === master || decoded.superAdmin === true) {
       const mfa = requireMfaIfEnforced(decoded, {}, true);

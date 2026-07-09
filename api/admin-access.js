@@ -24,7 +24,7 @@ async function verifySuperAdmin(req) {
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
   if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) {
     throw new Error('Super admin access required.');
   }

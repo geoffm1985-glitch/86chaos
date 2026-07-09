@@ -65,7 +65,7 @@ async function enforceRouteRateLimit(req, res, decoded, routeName, limit = 30, w
 const norm = (value = '') => String(value || '').toLowerCase().trim();
 const cleanId = (value = '') => String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
 const memberDocId = (uid, restaurantId) => `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
-const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS, 'geoffm1985@gmail.com', 'geoffrm1985@gmail.com']
+const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
   .filter(Boolean)
   .flatMap(v => String(v).split(','))
   .map(norm)

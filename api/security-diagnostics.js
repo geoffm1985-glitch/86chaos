@@ -17,6 +17,7 @@ const roleNeedsMfa = (user = {}) => {
 };
 const userHasMfaFlag = (user = {}) => Boolean(user.mfaEnabled || user.multiFactorEnabled || user.security?.mfaEnabled || user.accountSecurity?.mfaEnabled);
 const boolEnv = (name) => /^(1|true|yes|enforce)$/i.test(String(process.env[name] || '').trim());
+const SECURITY_BUILD_VERSION = '15.0.28';
 const mfaEnforcementEnabled = () => boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES');
 const decodedHasMfa = (decoded = {}) => Boolean(decoded.firebase?.sign_in_second_factor || decoded.firebase?.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true);
 const authUserHasMfa = async (app, user) => {
@@ -50,16 +51,17 @@ module.exports = async function handler(req, res) {
     if (!token) return res.status(401).json({ ok: false, error: 'Missing token' });
     const app = initAdmin();
     const decoded = await app.auth().verifyIdToken(token);
-    const masterEmails = [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS, 'geoffm1985@gmail.com', 'geoffrm1985@gmail.com']
+    const masterEmails = [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
       .filter(Boolean).flatMap(v => String(v).split(',')).map(norm);
     if (decoded.superAdmin !== true && !masterEmails.includes(norm(decoded.email))) return res.status(403).json({ ok: false, error: 'Super admin required' });
     const mfaGate = requireMfaIfEnforced(decoded, {}, true);
     if (!mfaGate.ok) return res.status(mfaGate.status || 403).json({ ok: false, error: mfaGate.error });
 
     const db = app.firestore();
-    const [securityStatusSnap, backupStatusSnap, usersSnap, auditSnap, rateSnap] = await Promise.all([
+    const [securityStatusSnap, backupStatusSnap, restoreDrillSnap, usersSnap, auditSnap, rateSnap] = await Promise.all([
       db.collection('system').doc('securityStatus').get().catch(() => null),
       db.collection('system').doc('backupStatus').get().catch(() => null),
+      db.collection('system').doc('restoreDrillStatus').get().catch(() => null),
       db.collection('users').limit(500).get(),
       db.collection('auditLogs').orderBy('timestamp', 'desc').limit(250).get().catch(async () => db.collection('auditLogs').limit(250).get()),
       db.collection('apiRateLimits').orderBy('updatedAt', 'desc').limit(100).get().catch(async () => db.collection('apiRateLimits').limit(100).get())
@@ -67,6 +69,7 @@ module.exports = async function handler(req, res) {
 
     const securityStatus = securityStatusSnap?.exists ? securityStatusSnap.data() : {};
     const backupStatus = backupStatusSnap?.exists ? backupStatusSnap.data() : {};
+    const restoreDrillStatus = restoreDrillSnap?.exists ? restoreDrillSnap.data() : {};
     const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     const elevatedUsers = users.filter(roleNeedsMfa);
     const elevatedMfaPairs = await Promise.all(elevatedUsers.slice(0, 200).map(async user => ({ user, hasMfa: await authUserHasMfa(app, user) })));
@@ -91,7 +94,7 @@ module.exports = async function handler(req, res) {
     const envVars = [
       'CRON_SECRET', 'GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'FIREBASE_SERVICE_ACCOUNT_KEY',
       'FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY', 'FIREBASE_STORAGE_BUCKET',
-      'MASTER_ADMIN_EMAIL', 'APP_CHECK_ENFORCE', 'FIREBASE_APP_CHECK_ENFORCE',
+      'MASTER_ADMIN_EMAIL', 'MASTER_ADMIN_EMAILS', 'APP_CHECK_ENFORCE', 'FIREBASE_APP_CHECK_ENFORCE',
       'MFA_ENFORCE_ELEVATED_ROLES', 'FIREBASE_MFA_ENFORCE_ELEVATED_ROLES',
       'REACT_APP_TEST_FIREBASE_PROJECT_ID', 'REACT_APP_PROD_FIREBASE_PROJECT_ID', 'REACT_APP_FIREBASE_APPCHECK_SITE_KEY'
     ].map(name => ({ name, present: hasEnv(name) }));
@@ -116,6 +119,8 @@ module.exports = async function handler(req, res) {
           note: 'Testing and production should use separate Firebase projects, service keys, buckets, rules, and Vercel env vars.'
         }
       },
+      app: { version: SECURITY_BUILD_VERSION, latestVersion: SECURITY_BUILD_VERSION, checkedAt: new Date().toISOString() },
+      restoreDrill: { status: restoreDrillStatus.status || 'not-recorded', lastDrillAt: restoreDrillStatus.lastDrillAt || '', sourceBackupPath: restoreDrillStatus.sourceBackupPath || '', restoreProjectId: restoreDrillStatus.restoreProjectId || '', checklist: restoreDrillStatus.checklist || {} },
       envVars,
       cron: {
         cronSecretConfigured: hasEnv('CRON_SECRET'),
@@ -137,7 +142,9 @@ module.exports = async function handler(req, res) {
       rateLimitedRouteCount: rateLimited.length,
       appCheckStatus: appCheck.status,
       rulesVersion,
-      storageRulesVersion
+      storageRulesVersion,
+      restoreDrillStatus: restoreDrillStatus.status || 'not-recorded',
+      restoreDrillAt: restoreDrillStatus.lastDrillAt || ''
     }, { merge: true }).catch(() => null);
 
     res.status(200).json(report);

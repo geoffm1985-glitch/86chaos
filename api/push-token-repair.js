@@ -38,9 +38,8 @@ async function requireAppCheckIfEnforced(req, res) {
 
 
 const MASTER_EMAILS = new Set([
-  (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase(),
-  'geoffrm1985@gmail.com'
-]);
+  (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase()
+].filter(Boolean));
 if (process.env.MASTER_ADMIN_EMAILS) {
   process.env.MASTER_ADMIN_EMAILS.split(',').map(v => v.toLowerCase().trim()).filter(Boolean).forEach(email => MASTER_EMAILS.add(email));
 }

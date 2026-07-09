@@ -14,7 +14,7 @@ async function verifySuperAdmin(req) {
   if (!token) throw new Error('Missing Firebase ID token.');
   const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
   if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) throw new Error('Super admin access required.');
   const mfa = requireMfaIfEnforced(decoded, {}, true);
   if (!mfa.ok) throw new Error(mfa.error);
@@ -30,12 +30,12 @@ module.exports = async function handler(req, res) {
     if (!targetUid) return res.status(400).json({ error: 'targetUid is required.' });
     if (targetUid === caller.uid) return res.status(400).json({ error: 'Refusing to delete the signed-in admin account.' });
 
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
     let targetEmail = '';
     try {
       const target = await app.auth().getUser(targetUid);
       targetEmail = (target.email || '').toLowerCase();
-      if (targetEmail === masterEmail) return res.status(400).json({ error: 'Refusing to delete master admin.' });
+      if (masterEmail && targetEmail === masterEmail) return res.status(400).json({ error: 'Refusing to delete master admin.' });
       await app.auth().deleteUser(targetUid);
     } catch (authErr) {
       if (authErr.code !== 'auth/user-not-found') throw authErr;

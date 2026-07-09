@@ -165,9 +165,9 @@ async function authorize(req, adminApp) {
 
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
     const email = (decoded.email || '').toLowerCase();
-    if (email === masterEmail || decoded.superAdmin === true) {
+    if ((masterEmail && email === masterEmail) || decoded.superAdmin === true) {
       const mfa = requireMfaIfEnforced(decoded, {}, true);
       if (!mfa.ok) return mfa;
       return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '', mfa };

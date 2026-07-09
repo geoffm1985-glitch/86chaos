@@ -152,11 +152,11 @@ export const secureFetch = async (url, options = {}) => {
 };
 
 // --- Master Configuration ---
-export const MASTER_ADMIN_EMAIL = 'geoffm1985@gmail.com';
+export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '').toLowerCase().trim();
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.26';
+export const CURRENT_VERSION = '15.0.28';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -455,7 +455,7 @@ const V14_WRITE_PERMISSIONS = {
   events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep', 'team']
 };
 
-export const isSuperAdminUser = (user = {}) => Boolean(user?.isSuperAdmin === true || String(user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || String(user?.email || '').toLowerCase() === 'geoffrm1985@gmail.com');
+export const isSuperAdminUser = (user = {}) => Boolean(user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || (MASTER_ADMIN_EMAIL && String(user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()));
 export const isWorkspaceManager = (user = {}) => Boolean(isSuperAdminUser(user) || user?.isAdmin === true || user?.isOwner === true || user?.accountOwner === true || user?.owner === true || user?.workspaceOwner === true || String(user?.accountRole || '').toLowerCase() === 'owner');
 export const hasAnyPermission = (user = {}, perms = []) => Boolean(isWorkspaceManager(user) || (perms || []).some(p => user?.permissions?.[p] === true));
 

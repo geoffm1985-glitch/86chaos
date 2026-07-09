@@ -29,7 +29,7 @@ function profileForWorkspace(user, member, restaurantId) {
   };
 }
 function masterEmails() {
-  return [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS, 'geoffm1985@gmail.com', 'geoffrm1985@gmail.com']
+  return [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
     .filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
 }
 function loadServiceAccount() {

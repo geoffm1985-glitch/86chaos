@@ -52,7 +52,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
-  const isGod = appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin;
+  const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin);
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
@@ -71,7 +71,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
-  const isTrueGod = (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || appUser?.isSuperAdmin === true;
+  const isTrueGod = Boolean((MASTER_ADMIN_EMAIL && (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin === true);
   if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
   if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   tabs.push({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
@@ -228,7 +228,7 @@ const MiniProblemCard = ({ tone='amber', title, detail, action, onClick }) => {
 
 const getHomeProfile = (user) => {
   const role = (user?.role || '').toLowerCase();
-  if (user?.isSuperAdmin || user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) return 'system';
+  if (user?.isSuperAdmin || (MASTER_ADMIN_EMAIL && user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())) return 'system';
   if (user?.isAdmin || user?.permissions?.ops || user?.permissions?.sales || user?.permissions?.team || user?.permissions?.schedule || user?.permissions?.labor) return 'manager';
   if (role.includes('cook') || role.includes('chef') || role.includes('kitchen') || role.includes('prep') || user?.permissions?.prep) return 'kitchen';
   if (role.includes('bartender') || role.includes('bar')) return 'bar';
@@ -499,7 +499,7 @@ const parseNextWeekday = (phrase = '') => {
   return formatDate(d);
 };
 
-const isVoiceSuperAdmin = (user = {}) => Boolean((user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || user?.isSuperAdmin === true);
+const isVoiceSuperAdmin = (user = {}) => Boolean((MASTER_ADMIN_EMAIL && (user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true);
 const isVoiceAdmin = (user = {}) => Boolean(isVoiceSuperAdmin(user) || user?.isAdmin === true);
 const isVoiceManagerOrAdmin = (user = {}) => {
   const role = normalizeVoiceText(user?.role || '');
@@ -1144,7 +1144,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
     </div>}
-    <button onClick={open ? () => setOpen(false) : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice Beta"><div className="relative"><Mic size={24}/><span className="absolute -right-6 -top-3 bg-blue-600 text-white text-[8px] font-black px-1 rounded-full border border-blue-300">BETA</span></div></button>
+    <button onClick={open ? () => setOpen(false) : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice Assistant Preview"><div className="relative"><Mic size={24}/><span className="absolute -right-6 -top-3 bg-blue-600 text-white text-[8px] font-black px-1 rounded-full border border-blue-300">PREVIEW</span></div></button>
   </div>;
 };
 

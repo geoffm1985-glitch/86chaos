@@ -70,7 +70,7 @@ export const canUseMenuIntelligence = (user = {}, clientData = {}) => {
   const accessEmails = clientData?.systemSettings?.menuIntelligenceAccessEmails || [];
   return Boolean(
     user?.isSuperAdmin === true ||
-    email === MASTER_ADMIN_EMAIL.toLowerCase() ||
+    (MASTER_ADMIN_EMAIL && email === MASTER_ADMIN_EMAIL.toLowerCase()) ||
     user?.isOwner === true ||
     user?.accountOwner === true ||
     user?.owner === true ||

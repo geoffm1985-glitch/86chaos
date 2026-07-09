@@ -1,4 +1,6 @@
 const admin = require('firebase-admin');
+const crypto = require('crypto');
+
 
 function norm(value = '') { return String(value || '').toLowerCase().trim(); }
 
@@ -69,15 +71,84 @@ function readJsonBody(req) {
 function masterEmails() {
   return [
     process.env.MASTER_ADMIN_EMAIL,
-    process.env.MASTER_ADMIN_EMAILS,
-    'geoffm1985@gmail.com',
-    'geoffrm1985@gmail.com'
+    process.env.MASTER_ADMIN_EMAILS
   ].filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
 }
 
 function safeNameFromEmail(email = '') {
   const local = String(email || '').split('@')[0] || '86 Chaos User';
   return local.replace(/[._-]+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()).trim() || '86 Chaos User';
+}
+
+
+function recoveryCodeSecret() {
+  return String(process.env.RECOVERY_CODE_SECRET || process.env.CRON_SECRET || process.env.FIREBASE_PROJECT_ID || '86-chaos-recovery-secret');
+}
+
+function normalizeRecoveryCode(value = '') {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function hashRecoveryCode(value = '') {
+  const normalized = normalizeRecoveryCode(value);
+  return crypto.createHmac('sha256', recoveryCodeSecret()).update(normalized).digest('hex');
+}
+
+function formatRecoveryCode(raw = '') {
+  const clean = normalizeRecoveryCode(raw).slice(0, 12).padEnd(12, 'X');
+  return `86C-${clean.slice(0, 4)}-${clean.slice(4, 8)}-${clean.slice(8, 12)}`;
+}
+
+function generateRecoveryCodes(count = 10) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const codes = [];
+  for (let i = 0; i < count; i += 1) {
+    const bytes = crypto.randomBytes(12);
+    let raw = '';
+    for (let b of bytes) raw += alphabet[b % alphabet.length];
+    codes.push(formatRecoveryCode(raw));
+  }
+  return codes;
+}
+
+function recoveryCodeStatus(user = {}) {
+  const codes = Array.isArray(user?.accountSecurity?.recoveryCodes) ? user.accountSecurity.recoveryCodes : [];
+  const active = codes.filter(code => !code.usedAt && code.hash).length;
+  const used = codes.filter(code => !!code.usedAt).length;
+  return {
+    recoveryCodesReady: active > 0,
+    recoveryCodeCount: codes.length,
+    unusedRecoveryCodeCount: active,
+    usedRecoveryCodeCount: used,
+    recoveryCodesGeneratedAt: user?.accountSecurity?.recoveryCodesGeneratedAt || '',
+    recoveryCodesLastUsedAt: user?.accountSecurity?.recoveryCodesLastUsedAt || ''
+  };
+}
+
+async function writeUserSecurityNotice(db, userId, notice = {}) {
+  if (!userId) return;
+  const now = new Date().toISOString();
+  await db.collection('userSecurityAlerts').add({
+    userId,
+    targetUserId: userId,
+    type: notice.type || 'account-security',
+    severity: notice.severity || 'warning',
+    title: notice.title || 'Account security notice',
+    body: notice.body || '',
+    createdAt: now,
+    isRead: false,
+    source: 'account-security',
+    ...notice
+  }).catch(() => null);
+}
+
+async function bestEffortPush(app, targetUser = {}, title = '86 Chaos Security Alert', body = '') {
+  const token = targetUser.fcmToken || targetUser.pushToken || targetUser.messagingToken || targetUser.deviceToken;
+  if (!token) return false;
+  try {
+    await app.messaging().send({ token, notification: { title, body } });
+    return true;
+  } catch (_) { return false; }
 }
 
 async function audit(db, entry) {
@@ -89,6 +160,7 @@ async function buildStatus({ app, db, decoded, authUser, action = 'sync', extra 
   const snap = await userRef.get();
   const user = snap.exists ? (snap.data() || {}) : { email: decoded.email || authUser.email || '' };
   const factors = factorSummary(authUser);
+  const recoveryStatus = recoveryCodeStatus(user);
   const enabled = factors.length > 0;
   const elevated = roleNeedsMfa(user, decoded);
   const secondFactorThisSession = decodedHadSecondFactor(decoded);
@@ -120,6 +192,7 @@ async function buildStatus({ app, db, decoded, authUser, action = 'sync', extra 
       mfaEnforcementEnabled: mfaEnforcementEnabled(),
       secondFactorThisSession,
       lastSecondFactorAt: secondFactorThisSession ? now : (user.accountSecurity?.lastSecondFactorAt || ''),
+      ...recoveryCodeStatus(user),
       lastSyncAt: now
     }
   };
@@ -154,6 +227,7 @@ async function buildStatus({ app, db, decoded, authUser, action = 'sync', extra 
     factors,
     elevatedRole: elevated,
     mfaRequired: elevated,
+    ...recoveryStatus,
     mfaEnforcementEnabled: mfaEnforcementEnabled(),
     secondFactorThisSession,
     firestoreUserDocExists: snap.exists,
@@ -178,6 +252,8 @@ async function buildStatus({ app, db, decoded, authUser, action = 'sync', extra 
       providerIds: (authUser.providerData || []).map(p => p.providerId).filter(Boolean),
       emailVerified: authUser.emailVerified === true,
       mfaFactorCount: factors.length,
+      recoveryCodesReady: recoveryStatus.recoveryCodesReady,
+      unusedRecoveryCodeCount: recoveryStatus.unusedRecoveryCodeCount,
       mfaEnforcementEnabled: mfaEnforcementEnabled()
     }
   };
@@ -247,6 +323,18 @@ module.exports = async function handler(req, res) {
         baseProfile.isAdmin = true;
       }
       await userRef.set(baseProfile, { merge: true });
+      await writeUserSecurityNotice(db, targetAuthUser.uid, {
+        type: 'mfa-reset',
+        severity: 'critical',
+        title: 'Two-step login was reset',
+        body: `A System Administrator reset MFA for this account. Reason: ${reason}. If this was not expected, contact your owner or support before re-enrolling.`,
+        actorUserId: decoded.uid,
+        actorEmail: email,
+        targetEmail,
+        restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || existingUser.activeRestaurantId || existingUser.restaurantId || 'system'
+      });
+      await bestEffortPush(app, targetUser, '86 Chaos Security Alert', 'Your two-step login was reset by a System Administrator. Open Account Security to re-enroll.');
+
       await audit(db, {
         userId: decoded.uid,
         userName: baseProfile.name || email || 'User',
@@ -261,6 +349,45 @@ module.exports = async function handler(req, res) {
       authUser = await app.auth().getUser(decoded.uid);
       const status = await buildStatus({ app, db, decoded, authUser, action, extra: { restaurantId: requestedRestaurantId } });
       return res.status(200).json({ ...status, profileRepairApplied: true, profileRepairCreatedDoc: !snap.exists, message: snap.exists ? 'Profile refreshed.' : 'Missing Firestore user profile was created.' });
+    }
+
+    if (action === 'generate-recovery-codes') {
+      if (!authUser.emailVerified) return res.status(400).json({ ok: false, error: 'Verify your email before generating recovery codes.' });
+      const codes = generateRecoveryCodes(10);
+      const stampedAt = new Date().toISOString();
+      const recoveryCodes = codes.map((code, index) => ({
+        id: crypto.randomBytes(8).toString('hex'),
+        hash: hashRecoveryCode(code),
+        createdAt: stampedAt,
+        usedAt: '',
+        index: index + 1
+      }));
+      await userRef.set({
+        accountSecurity: {
+          ...(existingUser.accountSecurity || {}),
+          recoveryCodes,
+          recoveryCodesGeneratedAt: stampedAt,
+          recoveryCodesLastShownAt: stampedAt,
+          recoveryCodesReady: true,
+          unusedRecoveryCodeCount: recoveryCodes.length
+        }
+      }, { merge: true });
+      await audit(db, {
+        userId: decoded.uid,
+        userName: existingUser.name || email || 'User',
+        userEmail: email,
+        action: 'ACCOUNT_SECURITY_GENERATE_RECOVERY_CODES',
+        target: decoded.uid,
+        details: `Generated ${codes.length} one-time MFA recovery codes. Existing codes were replaced. Plaintext codes were returned once only.`,
+        timestamp: stampedAt,
+        restaurantId: existingUser.activeRestaurantId || existingUser.restaurantId || existingUser.defaultRestaurantId || 'system',
+        securityLevel: 'account-security'
+      });
+      authUser = await app.auth().getUser(decoded.uid);
+      const updatedSnap = await userRef.get();
+      const updatedUser = updatedSnap.exists ? (updatedSnap.data() || {}) : existingUser;
+      const status = await buildStatus({ app, db, decoded, authUser, action });
+      return res.status(200).json({ ...status, ...recoveryCodeStatus(updatedUser), recoveryCodes: codes, message: 'Recovery codes generated. Save them now; they will not be shown again.' });
     }
 
     if (action === 'generate-verification-link') {

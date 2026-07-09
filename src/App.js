@@ -289,7 +289,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
          restaurantId: ghostWorkspaceId,
          restaurantName: ghostTenant.name,
          isAdmin: true,
-         isSuperAdmin: realAppUser.isSuperAdmin || realAppUser.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase(),
+         isSuperAdmin: realAppUser.isSuperAdmin || (MASTER_ADMIN_EMAIL && realAppUser.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()),
          role: `Ghosting ${ghostTenant.impersonate.role || 'User'}`,
          permissions: { ...fullGhostPermissions, ...(ghostTenant.impersonate.permissions || {}) },
          isGhost: true,
@@ -420,7 +420,7 @@ if (liveAppUser && clientData) {
   const wageEditAccess = Array.isArray(wageSettings.wageEditAccess) ? wageSettings.wageEditAccess : [];
   const sessionEmail = (liveAppUser?.email || appUser?.email || '').toLowerCase().trim();
   const sessionOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
+  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
   const sessionCanViewWages = Boolean(sessionIsOwner || liveAppUser?.permissions?.wageView || liveAppUser?.permissions?.wageEdit || wageViewAccess.includes(liveAppUser?.id) || wageEditAccess.includes(liveAppUser?.id));
 
   const displayUsers = useMemo(() => {
@@ -1187,7 +1187,7 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && ((liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || liveAppUser?.isSuperAdmin === true)) return <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode' && ((MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isSuperAdmin === true)) return <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
     if (activeTabState === 'audit' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin)) return <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />;
 
     return (
@@ -1208,11 +1208,11 @@ What I clicked / expected:
   };
 
   // MAINTENANCE LOCK SCREEN
-  // Global lockdown should affect every workspace, including Cheers, but never lock out
+  // Global lockdown should affect every workspace, including the active workspace, but never lock out
   // the platform owner/super-admin account that needs to lift the lockdown.
   const maintenanceBypass = Boolean(
     liveAppUser?.isSuperAdmin === true ||
-    (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()
+    (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())
   );
   const maintenanceEndsMs = clientData?.maintenanceEndsAt ? new Date(clientData.maintenanceEndsAt).getTime() : 0;
   const maintenanceExpired = maintenanceEndsMs && Number.isFinite(maintenanceEndsMs) && maintenanceEndsMs <= Date.now();
@@ -1359,7 +1359,7 @@ return (
               className={`max-w-full truncate text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
               title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
             >
-              {liveAppUser.restaurantName || "Cheers"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
+              {liveAppUser.restaurantName || "Restaurant"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
             </button>
           </div>
         )}

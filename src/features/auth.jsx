@@ -73,6 +73,8 @@ const LoginScreen = ({ setAppUser }) => {
   const [mfaHintIndex, setMfaHintIndex] = useState(0);
   const [mfaVerificationId, setMfaVerificationId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const [mfaRecoveryCode, setMfaRecoveryCode] = useState('');
+  const [mfaRecoveryBusy, setMfaRecoveryBusy] = useState(false);
   const [mfaSending, setMfaSending] = useState(false);
   const [mfaVerifying, setMfaVerifying] = useState(false);
   const mfaRecaptchaRef = useRef(null);
@@ -188,6 +190,7 @@ const LoginScreen = ({ setAppUser }) => {
     setMfaHintIndex(0);
     setMfaVerificationId('');
     setMfaCode('');
+    setMfaRecoveryCode('');
   };
 
   const getMfaRecaptcha = () => {
@@ -281,6 +284,28 @@ const LoginScreen = ({ setAppUser }) => {
       setLoginError(err.message || 'Two-step login code was not accepted.');
     } finally {
       setMfaVerifying(false);
+    }
+  };
+
+  const handleUseMfaRecoveryCode = async () => {
+    if (!email || !mfaRecoveryCode.trim()) return setLoginError('Enter the account email and one recovery code.');
+    setLoginError('');
+    setMfaRecoveryBusy(true);
+    try {
+      const response = await fetch('/api/mfa-recovery-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: mfaRecoveryCode.trim() })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Recovery code was not accepted.');
+      clearMfaChallenge();
+      setPassword('');
+      setLoginError(data.message || 'Recovery code accepted. Sign in again, then re-enroll MFA from Account Security.');
+    } catch (err) {
+      setLoginError(err.message || 'Recovery code could not be used.');
+    } finally {
+      setMfaRecoveryBusy(false);
     }
   };
 
@@ -390,6 +415,12 @@ const LoginScreen = ({ setAppUser }) => {
             <button type="submit" disabled={mfaVerifying || !mfaVerificationId} className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2 disabled:opacity-50 disabled:hover:scale-100">
               {mfaVerifying ? 'Verifying…' : 'Verify & Enter'}
             </button>
+            <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-2">
+              <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Lost your phone?</div>
+              <p className="text-[10px] text-slate-400 font-bold leading-snug">Use one saved recovery code to reset two-step login, then sign in again and enroll a new phone.</p>
+              <input type="text" placeholder="Recovery code" value={mfaRecoveryCode} onChange={e => setMfaRecoveryCode(e.target.value)} className="w-full text-center text-sm font-bold bg-[#12161A] border border-[#2A353D] rounded-xl py-3 text-white focus:outline-none focus:border-[#D4A381] transition-colors" />
+              <button type="button" onClick={handleUseMfaRecoveryCode} disabled={mfaRecoveryBusy || !mfaRecoveryCode.trim()} className="w-full bg-red-900/20 border border-red-900/50 text-red-200 font-black tracking-widest uppercase text-[10px] py-3 rounded-xl hover:bg-red-900/40 disabled:opacity-50 transition-all">{mfaRecoveryBusy ? 'Checking Recovery Code…' : 'Use Recovery Code'}</button>
+            </div>
             <button type="button" onClick={clearMfaChallenge} className="w-full text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">Back to login</button>
           </form>
         ) : pendingUser ? (

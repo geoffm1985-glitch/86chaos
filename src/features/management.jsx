@@ -112,7 +112,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const normalizedEmail = (appUser?.email || '').toLowerCase().trim();
   const ownerEmail = (clientData?.ownerEmail || appUser?.ownerEmail || '').toLowerCase().trim();
   const ownerUserId = clientData?.ownerUserId || clientData?.ownerUid || '';
-  const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || normalizedEmail === MASTER_ADMIN_EMAIL.toLowerCase() || normalizedEmail === 'geoffrm1985@gmail.com');
+  const isSuperAdminUser = Boolean(appUser?.isSuperAdmin === true || (MASTER_ADMIN_EMAIL && normalizedEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || false);
   const isAccountOwner = Boolean(
     isSuperAdminUser ||
     appUser?.isOwner === true ||
@@ -814,6 +814,10 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [mfaRecoveryLookup, setMfaRecoveryLookup] = useState(null);
   const [mfaRecoveryResult, setMfaRecoveryResult] = useState(null);
   const [isMfaRecoveryBusy, setIsMfaRecoveryBusy] = useState(false);
+  const [recoveryCodes, setRecoveryCodes] = useState([]);
+  const [isRecoveryCodeBusy, setIsRecoveryCodeBusy] = useState(false);
+  const [accountDeletionStatus, setAccountDeletionStatus] = useState(null);
+  const [isAccountDeletionBusy, setIsAccountDeletionBusy] = useState(false);
   const mfaEnrollRecaptchaRef = useRef(null);
 
   // --- Preferences State ---
@@ -849,7 +853,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   // --- System Config State (Admin Only) ---
   const settingsEmail = (appUser?.email || '').toLowerCase().trim();
   const settingsOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const isWorkspaceOwner = Boolean(appUser?.isSuperAdmin || settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase() || settingsEmail === 'geoffrm1985@gmail.com' || appUser?.isOwner === true || appUser?.accountOwner === true || appUser?.owner === true || appUser?.workspaceOwner === true || String(appUser?.accountRole || '').toLowerCase().trim() === 'owner' || (settingsOwnerEmail && settingsEmail === settingsOwnerEmail));
+  const isWorkspaceOwner = Boolean(appUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || false || appUser?.isOwner === true || appUser?.accountOwner === true || appUser?.owner === true || appUser?.workspaceOwner === true || String(appUser?.accountRole || '').toLowerCase().trim() === 'owner' || (settingsOwnerEmail && settingsEmail === settingsOwnerEmail));
   const canManageWorkspaceSettings = Boolean(isWorkspaceOwner || appUser?.permissions?.settings === true);
   const canManageBranding = Boolean(isWorkspaceOwner || appUser?.permissions?.branding === true);
   const canManageIntegrations = Boolean(isWorkspaceOwner || appUser?.permissions?.integrations === true);
@@ -903,10 +907,23 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const accountSecurityDebug = mfaStatus?.debug || {};
   const firestoreProfileMissing = mfaStatus && mfaStatus.firestoreUserDocExists === false;
   const canAdminVerifyEmail = Boolean(mfaStatus?.canAdminVerifyEmail || mfaStatus?.isMasterAdminEmail || appUser?.isSuperAdmin);
-  const canRecoverUserMfa = Boolean(mfaStatus?.canMfaRecovery || appUser?.isSuperAdmin || appUser?.systemAccess?.superAdmin || settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase() || settingsEmail === 'geoffrm1985@gmail.com');
+  const canRecoverUserMfa = Boolean(mfaStatus?.canMfaRecovery || appUser?.isSuperAdmin || appUser?.systemAccess?.superAdmin || (MASTER_ADMIN_EMAIL && settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || false);
   const mfaRecoveryUsers = [...(users || [])].filter(u => u?.id && (u.email || u.name)).sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
   const selectedMfaRecoveryUser = mfaRecoveryUsers.find(u => u.id === mfaRecoveryTargetId) || null;
   const mfaFactorLimitReached = Number(mfaStatus?.mfaFactorCount || 0) >= 5;
+  const unusedRecoveryCodeCount = Number(mfaStatus?.unusedRecoveryCodeCount ?? appUser?.accountSecurity?.unusedRecoveryCodeCount ?? 0);
+  const recoveryCodesReady = Boolean(mfaStatus?.recoveryCodesReady || unusedRecoveryCodeCount > 0 || appUser?.accountSecurity?.recoveryCodesReady);
+  const hasBackupMfaPhone = Number(mfaStatus?.mfaFactorCount || appUser?.mfaFactorCount || 0) > 1;
+  const accountRecoveryReady = Boolean(accountMfaEnabled && (hasBackupMfaPhone || recoveryCodesReady));
+  const accountSecuritySummary = (() => {
+    if (firestoreProfileMissing) return { label: 'Repair profile first', tone: 'red', desc: 'This Auth account is missing its Firestore profile. Repair it before enforcing MFA.' };
+    if (isElevatedForMfa && !accountEmailVerified) return { label: 'Verify email first', tone: 'amber', desc: 'Email verification must be complete before two-step login can be enrolled.' };
+    if (isElevatedForMfa && !accountMfaEnabled) return { label: 'Do not enable enforcement yet', tone: 'red', desc: 'This elevated account still needs two-step login before enforcement is safe.' };
+    if (accountMfaEnabled && !accountRecoveryReady) return { label: 'Needs recovery backup', tone: 'amber', desc: 'Add a backup phone or generate recovery codes so a lost phone does not lock this account out.' };
+    if (accountMfaEnabled && accountRecoveryReady) return { label: 'Protected', tone: 'emerald', desc: 'Two-step login is enrolled and at least one recovery path is ready.' };
+    return { label: 'Optional protection', tone: 'slate', desc: 'Standard employees can enroll two-step login, but enforcement is aimed at elevated roles.' };
+  })();
+  const accountSecurityStatusClass = accountSecuritySummary.tone === 'emerald' ? 'bg-emerald-900/20 border-emerald-500/40 text-emerald-200' : accountSecuritySummary.tone === 'red' ? 'bg-red-900/20 border-red-900/50 text-red-200' : accountSecuritySummary.tone === 'amber' ? 'bg-amber-900/20 border-amber-500/40 text-amber-200' : 'bg-[#12161A] border-[#2A353D] text-slate-300';
 
   const normalizeMfaPhone = (value) => {
     const raw = String(value || '').trim();
@@ -947,6 +964,11 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
       if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Could not read account security status.');
       setMfaStatus(data);
       setMfaError('');
+      try {
+        const deletionRes = await secureFetch('/api/account-deletion-request', { method: 'GET' });
+        const deletionData = await deletionRes.json().catch(() => ({}));
+        if (deletionRes.ok && deletionData?.ok !== false) setAccountDeletionStatus(deletionData.request || null);
+      } catch (_) {}
       if (!silent) addToast('Account Security', data.mfaEnabled ? 'Two-step login is enrolled.' : 'Two-step login is not enrolled yet.');
       return data;
     } catch (err) {
@@ -1385,6 +1407,68 @@ const handleEnableNotifications = async () => {
     }
   };
 
+  const handleGenerateRecoveryCodes = async () => {
+    setMfaError('');
+    setRecoveryCodes([]);
+    if (!accountEmailVerified) return setMfaError('Verify your email before generating recovery codes.');
+    if (!accountMfaEnabled) return setMfaError('Enroll two-step login first, then generate recovery codes.');
+    if (!window.confirm('Generate new recovery codes? This replaces any old unused recovery codes. Save the new codes immediately; they are shown once.')) return;
+    setIsRecoveryCodeBusy(true);
+    try {
+      const data = await postAccountSecurityAction('generate-recovery-codes');
+      setRecoveryCodes(Array.isArray(data.recoveryCodes) ? data.recoveryCodes : []);
+      addToast('Recovery Codes Ready', 'Save or print these one-time codes now. They will not be shown again.');
+    } catch (err) {
+      const msg = err.message || 'Could not generate recovery codes.';
+      setMfaError(msg);
+      addToast('Recovery Codes Failed', msg);
+    } finally {
+      setIsRecoveryCodeBusy(false);
+    }
+  };
+
+  const handleCopyRecoveryCodes = async () => {
+    if (!recoveryCodes.length) return;
+    const text = [`86 Chaos recovery codes for ${auth.currentUser?.email || appUser?.email || 'this account'}`, 'Save these somewhere safe. Each code works once.', '', ...recoveryCodes].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      addToast('Codes Copied', 'Recovery codes copied to clipboard. Store them somewhere safe.');
+    } catch (_) {
+      addToast('Copy Failed', 'Your browser blocked clipboard access. Select and copy the codes manually.');
+    }
+  };
+
+  const handleAccountDeletionRequest = async (action = 'request') => {
+    setMfaError('');
+    const isCancel = action === 'cancel';
+    let reason = '';
+    if (isCancel) {
+      if (!window.confirm('Cancel your pending account deletion request?')) return;
+    } else {
+      reason = window.prompt('Request account deletion? This starts an administrator review. Type a short reason or note for the request.', 'Please delete my account and review any operational records tied to it.') || '';
+      if (!reason.trim()) return addToast('Canceled', 'Account deletion request was not submitted.');
+      if (!window.confirm('Submit this account deletion request for administrator review? This does not immediately delete restaurant records.')) return;
+    }
+    setIsAccountDeletionBusy(true);
+    try {
+      const response = await secureFetch('/api/account-deletion-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, reason })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Account deletion request failed.');
+      setAccountDeletionStatus({ ...(accountDeletionStatus || {}), status: data.status, requestedAt: data.requestedAt || accountDeletionStatus?.requestedAt, updatedAt: new Date().toISOString() });
+      addToast(isCancel ? 'Deletion Request Canceled' : 'Deletion Request Submitted', data.message || (isCancel ? 'The request was canceled.' : 'Your request was sent for administrator review.'));
+    } catch (err) {
+      const msg = err.message || 'Could not submit account deletion request.';
+      setMfaError(msg);
+      addToast('Account Deletion Error', msg);
+    } finally {
+      setIsAccountDeletionBusy(false);
+    }
+  };
+
   const handleSendMfaEnrollmentCode = async () => {
     setMfaError('');
     if (!auth.currentUser) return setMfaError('Please log out and back in before enrolling two-step login.');
@@ -1626,10 +1710,20 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               </div>
             </div>
             {mfaError && <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{mfaError}</div>}
+            <div className={`rounded-xl border p-3 ${accountSecurityStatusClass}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest">{accountSecuritySummary.label}</div>
+                  <p className="text-[10px] font-bold leading-snug mt-1 opacity-90">{accountSecuritySummary.desc}</p>
+                </div>
+                <div className="text-[9px] font-black uppercase tracking-widest opacity-90">{accountRecoveryReady ? 'Recovery ready' : recoveryCodesReady ? 'Codes ready' : hasBackupMfaPhone ? 'Backup phone ready' : 'Needs backup'}</div>
+              </div>
+            </div>
             <div className="grid sm:grid-cols-3 gap-2 text-[10px] font-bold">
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Role</div><div className="text-white mt-1">{isElevatedForMfa ? 'Elevated' : 'Standard'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Enforcement</div><div className={accountMfaEnforced ? 'text-red-300 mt-1' : 'text-amber-300 mt-1'}>{accountMfaEnforced ? 'On' : 'Testing / Off'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Factors</div><div className="text-white mt-1">{mfaStatus?.mfaFactorCount ?? appUser?.mfaFactorCount ?? 0}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Recovery Codes</div><div className="text-white mt-1">{unusedRecoveryCodeCount || 0}</div></div>
             </div>
             <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -1695,6 +1789,27 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 </div>
               </div>
             )}
+            {accountMfaEnabled && (
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Recovery Codes</div>
+                    <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">Generate one-time codes for a lost or broken phone. Save them somewhere safe. Each code can reset two-step login once at the login screen.</p>
+                  </div>
+                  <div className={`px-2 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest ${recoveryCodesReady ? 'bg-emerald-900/10 border-emerald-900/40 text-emerald-300' : 'bg-amber-900/20 border-amber-500/40 text-amber-200'}`}>{recoveryCodesReady ? `${unusedRecoveryCodeCount} unused` : 'Not ready'}</div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={handleGenerateRecoveryCodes} disabled={isRecoveryCodeBusy || !accountEmailVerified || !accountMfaEnabled} className="bg-[#12161A] border border-[#D4A381]/40 text-[#D4A381] hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{isRecoveryCodeBusy ? 'Generating…' : recoveryCodesReady ? 'Replace Recovery Codes' : 'Generate Recovery Codes'}</button>
+                  {recoveryCodes.length > 0 && <button type="button" onClick={handleCopyRecoveryCodes} className="bg-emerald-900/20 border border-emerald-500/40 text-emerald-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Copy Codes</button>}
+                </div>
+                {recoveryCodes.length > 0 && (
+                  <div className="grid sm:grid-cols-2 gap-2 bg-red-950/10 border border-red-900/40 rounded-xl p-3">
+                    <div className="sm:col-span-2 text-[10px] font-bold text-red-200 leading-snug">Save these now. 86 Chaos will not show them again after you leave this screen.</div>
+                    {recoveryCodes.map(code => <div key={code} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-sm font-mono text-white text-center tracking-widest">{code}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
             {(!accountMfaEnabled || showBackupMfaForm) && (
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
                 <div>
@@ -1747,6 +1862,21 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 {mfaRecoveryResult?.message && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-[10px] font-bold text-emerald-200">{mfaRecoveryResult.message}</div>}
               </div>
             )}
+            <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Account Deletion Request</div>
+                  <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">Store-ready intake for privacy/app-store requirements. This records a request for administrator review; it does not silently delete schedules, payroll, audit logs, or workspace records.</p>
+                </div>
+                <span className={`px-2 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest ${accountDeletionStatus?.status === 'requested' ? 'bg-amber-900/20 border-amber-500/40 text-amber-200' : accountDeletionStatus?.status === 'canceled' ? 'bg-slate-900/40 border-slate-700 text-slate-300' : 'bg-emerald-900/10 border-emerald-900/40 text-emerald-200'}`}>{accountDeletionStatus?.status || 'No Request'}</span>
+              </div>
+              {accountDeletionStatus?.requestedAt && <div className="text-[10px] text-slate-400 font-bold">Requested: {formatClockDateTime(accountDeletionStatus.requestedAt)}</div>}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button type="button" onClick={() => handleAccountDeletionRequest('request')} disabled={isAccountDeletionBusy || accountDeletionStatus?.status === 'requested'} className="bg-red-900/20 border border-red-900/50 text-red-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{isAccountDeletionBusy ? 'Working…' : accountDeletionStatus?.status === 'requested' ? 'Request Pending' : 'Request Account Deletion'}</button>
+                {accountDeletionStatus?.status === 'requested' && <button type="button" onClick={() => handleAccountDeletionRequest('cancel')} disabled={isAccountDeletionBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Cancel Request</button>}
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-2"><button type="button" onClick={handleSyncMfaStatus} disabled={isMfaBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Status</button><div className="text-[10px] text-slate-500 font-bold leading-snug flex items-center">Require MFA only for owners, managers, admins, and System Administrators. Keep enforcement off until recovery reset has been tested.</div></div>
             <div id="mfa-enroll-recaptcha-container" className="hidden"></div>
           </div>
@@ -1766,10 +1896,20 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               </div>
             </div>
             {mfaError && <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{mfaError}</div>}
+            <div className={`rounded-xl border p-3 ${accountSecurityStatusClass}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest">{accountSecuritySummary.label}</div>
+                  <p className="text-[10px] font-bold leading-snug mt-1 opacity-90">{accountSecuritySummary.desc}</p>
+                </div>
+                <div className="text-[9px] font-black uppercase tracking-widest opacity-90">{accountRecoveryReady ? 'Recovery ready' : recoveryCodesReady ? 'Codes ready' : hasBackupMfaPhone ? 'Backup phone ready' : 'Needs backup'}</div>
+              </div>
+            </div>
             <div className="grid sm:grid-cols-3 gap-2 text-[10px] font-bold">
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Role</div><div className="text-white mt-1">{isElevatedForMfa ? 'Elevated' : 'Standard'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Enforcement</div><div className={accountMfaEnforced ? 'text-red-300 mt-1' : 'text-amber-300 mt-1'}>{accountMfaEnforced ? 'On' : 'Testing / Off'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Factors</div><div className="text-white mt-1">{mfaStatus?.mfaFactorCount ?? appUser?.mfaFactorCount ?? 0}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Recovery Codes</div><div className="text-white mt-1">{unusedRecoveryCodeCount || 0}</div></div>
             </div>
             <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -1835,6 +1975,27 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 </div>
               </div>
             )}
+            {accountMfaEnabled && (
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Recovery Codes</div>
+                    <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">Generate one-time codes for a lost or broken phone. Save them somewhere safe. Each code can reset two-step login once at the login screen.</p>
+                  </div>
+                  <div className={`px-2 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest ${recoveryCodesReady ? 'bg-emerald-900/10 border-emerald-900/40 text-emerald-300' : 'bg-amber-900/20 border-amber-500/40 text-amber-200'}`}>{recoveryCodesReady ? `${unusedRecoveryCodeCount} unused` : 'Not ready'}</div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button type="button" onClick={handleGenerateRecoveryCodes} disabled={isRecoveryCodeBusy || !accountEmailVerified || !accountMfaEnabled} className="bg-[#12161A] border border-[#D4A381]/40 text-[#D4A381] hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{isRecoveryCodeBusy ? 'Generating…' : recoveryCodesReady ? 'Replace Recovery Codes' : 'Generate Recovery Codes'}</button>
+                  {recoveryCodes.length > 0 && <button type="button" onClick={handleCopyRecoveryCodes} className="bg-emerald-900/20 border border-emerald-500/40 text-emerald-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest">Copy Codes</button>}
+                </div>
+                {recoveryCodes.length > 0 && (
+                  <div className="grid sm:grid-cols-2 gap-2 bg-red-950/10 border border-red-900/40 rounded-xl p-3">
+                    <div className="sm:col-span-2 text-[10px] font-bold text-red-200 leading-snug">Save these now. 86 Chaos will not show them again after you leave this screen.</div>
+                    {recoveryCodes.map(code => <div key={code} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-sm font-mono text-white text-center tracking-widest">{code}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
             {(!accountMfaEnabled || showBackupMfaForm) && (
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
                 <div>
@@ -1887,6 +2048,21 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 {mfaRecoveryResult?.message && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-[10px] font-bold text-emerald-200">{mfaRecoveryResult.message}</div>}
               </div>
             )}
+            <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Account Deletion Request</div>
+                  <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">Store-ready intake for privacy/app-store requirements. This records a request for administrator review; it does not silently delete schedules, payroll, audit logs, or workspace records.</p>
+                </div>
+                <span className={`px-2 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest ${accountDeletionStatus?.status === 'requested' ? 'bg-amber-900/20 border-amber-500/40 text-amber-200' : accountDeletionStatus?.status === 'canceled' ? 'bg-slate-900/40 border-slate-700 text-slate-300' : 'bg-emerald-900/10 border-emerald-900/40 text-emerald-200'}`}>{accountDeletionStatus?.status || 'No Request'}</span>
+              </div>
+              {accountDeletionStatus?.requestedAt && <div className="text-[10px] text-slate-400 font-bold">Requested: {formatClockDateTime(accountDeletionStatus.requestedAt)}</div>}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button type="button" onClick={() => handleAccountDeletionRequest('request')} disabled={isAccountDeletionBusy || accountDeletionStatus?.status === 'requested'} className="bg-red-900/20 border border-red-900/50 text-red-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{isAccountDeletionBusy ? 'Working…' : accountDeletionStatus?.status === 'requested' ? 'Request Pending' : 'Request Account Deletion'}</button>
+                {accountDeletionStatus?.status === 'requested' && <button type="button" onClick={() => handleAccountDeletionRequest('cancel')} disabled={isAccountDeletionBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Cancel Request</button>}
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-2"><button type="button" onClick={handleSyncMfaStatus} disabled={isMfaBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Status</button><div className="text-[10px] text-slate-500 font-bold leading-snug flex items-center">Require MFA only for owners, managers, admins, and System Administrators. Keep enforcement off until recovery reset has been tested.</div></div>
             <div id="mfa-enroll-recaptcha-container" className="hidden"></div>
           </div>
@@ -2375,7 +2551,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               </div>
               <div>
                 <label className={T.label}>Restaurant / Group Display Name</label>
-                <input type="text" value={sysRestaurantGroupName} onChange={e => setSysRestaurantGroupName(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Cheers Chilton" />
+                <input type="text" value={sysRestaurantGroupName} onChange={e => setSysRestaurantGroupName(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Restaurant Group" />
               </div>
               <div>
                 <label className={T.label}>Default Timezone</label>
@@ -2489,7 +2665,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
       )}
 
       {/* --- TRANSFER OWNERSHIP ZONE --- */}
-      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com') && (
+      {subTab === 'workspace' && (appUser?.email?.toLowerCase() === clientData?.ownerEmail?.toLowerCase() || appUser?.isSuperAdmin || appUser?.isSuperAdmin === true) && (
         <form onSubmit={async (e) => {
           e.preventDefault();
           if (!newOwnerId) return addToast('Error', 'Select a new owner.');
@@ -2596,7 +2772,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 
 const TabAuditLog = ({ appUser }) => {
   const logs = useLiveCollection('auditLogs', appUser?.restaurantId, { limitCount: 200 });
-  const isGeoff = appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com';
+  const isGeoff = appUser?.isSuperAdmin === true;
   const sortedLogs = [...logs]
     .filter(log => isGeoff ? true : log.action !== 'APP_INSTALLED')
     .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -2846,6 +3022,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [securityReport, setSecurityReport] = useState(null);
   const [isSecurityLoading, setIsSecurityLoading] = useState(false);
   const [securityError, setSecurityError] = useState(''); 
+  const [restoreDrillStatus, setRestoreDrillStatus] = useState(null);
+  const [isRestoreDrillBusy, setIsRestoreDrillBusy] = useState(false);
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -2978,6 +3156,48 @@ const [editingRest, setEditingRest] = useState(null);
     }
   };
 
+
+  const loadRestoreDrillStatus = async ({ silent = true } = {}) => {
+    setIsRestoreDrillBusy(true);
+    try {
+      const response = await secureFetch('/api/restore-drill', { method: 'GET' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Restore drill status failed.');
+      setRestoreDrillStatus(data.restoreDrillStatus || null);
+      if (!silent) addToast('Restore Drill Loaded', data.restoreDrillStatus?.lastDrillAt ? `Last drill: ${formatBackupTimestamp(data.restoreDrillStatus.lastDrillAt)}` : 'No restore drill recorded yet.');
+      return data.restoreDrillStatus || null;
+    } catch (err) {
+      if (!silent) addToast('Restore Drill Error', err.message || 'Could not load restore drill status.');
+      return null;
+    } finally {
+      setIsRestoreDrillBusy(false);
+    }
+  };
+
+  const handleRecordRestoreDrill = async () => {
+    const sourceBackupPath = window.prompt('Restore drill source backup path. Use the latest backup path or paste the backup you tested.', backupStatus?.storagePath || backupList?.[0]?.path || '');
+    if (sourceBackupPath === null) return;
+    const result = window.prompt('Result for the safe test restore: type passed, needs_followup, failed, or planned.', 'planned');
+    if (result === null) return;
+    const notes = window.prompt('Restore drill notes. Example: restored into chaos-test-d1601, checked login, users, inventory, schedules.', '') || '';
+    setIsRestoreDrillBusy(true);
+    try {
+      const response = await secureFetch('/api/restore-drill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceBackupPath, result, notes })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Restore drill record failed.');
+      setRestoreDrillStatus(data.restoreDrillStatus || null);
+      addToast('Restore Drill Recorded', data.message || 'Monthly restore drill status was updated.');
+    } catch (err) {
+      addToast('Restore Drill Error', err.message || 'Could not record restore drill.');
+    } finally {
+      setIsRestoreDrillBusy(false);
+    }
+  };
+
   const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
   const printWorkspaceLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
@@ -2994,10 +3214,10 @@ const [editingRest, setEditingRest] = useState(null);
 
   // Emergency client-side restore data. This writes through the same Firebase app the UI is currently using,
   // so it cannot accidentally restore into the wrong Firebase project.
-  const CHEERS_RESTORE_RESTAURANT_ID = 'cheers_chilton_01';
-  const CHEERS_RESTORE_MONTH_START = '2026-07-01';
-  const CHEERS_RESTORE_MONTH_END = '2026-07-31';
-const CHEERS_JULY_2026_SCHEDULE = [
+  const LEGACY_RESTORE_RESTAURANT_ID = 'cheers_chilton_01';
+  const LEGACY_RESTORE_MONTH_START = '2026-07-01';
+  const LEGACY_RESTORE_MONTH_END = '2026-07-31';
+const LEGACY_JULY_2026_SCHEDULE = [
     ['2026-07-01','Chuck','10:00','21:00'],['2026-07-01','Julia','10:00','16:00'],['2026-07-01','Maicol','16:00','21:00'],['2026-07-01','Lani','16:00','21:00'],
     ['2026-07-02','Lani','10:00','21:00'],['2026-07-02','Geoff','10:00','21:00'],['2026-07-02','Ellis','16:00','21:00'],['2026-07-02','Maicol','16:00','21:00'],
     ['2026-07-03','Ellis','16:00','21:00'],['2026-07-03','Clare','11:00','14:00'],['2026-07-03','Chuck','14:00','22:00'],['2026-07-03','Lani','10:00','21:00'],['2026-07-03','Geoff','10:00','21:00'],
@@ -3130,11 +3350,15 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('backupStatus');
        setBackupStatus(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setBackupStatus(null); noteLoadError('backupStatus', err); });
+    const unsubRestoreDrill = onSnapshot(doc(db, 'system', 'restoreDrillStatus'), docSnap => {
+       clearLoadError('restoreDrillStatus');
+       setRestoreDrillStatus(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
+    }, err => { setRestoreDrillStatus(null); noteLoadError('restoreDrillStatus', err); });
     const unsubOpsReview = onSnapshot(doc(db, 'system', 'operationsReview'), docSnap => {
        clearLoadError('operationsReview');
        setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubOpsReview(); };
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubRestoreDrill(); unsubOpsReview(); };
   }, []);
 
 
@@ -3656,7 +3880,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     const selectedRestaurant = restaurants.find(r => r.id === supportUserForm.restaurantId);
     if (!selectedRestaurant) return addToast('Invalid Restaurant', 'That workspace could not be found.');
 
-    const protectedEmail = (editingGlobalUser.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+    const protectedEmail = Boolean(MASTER_ADMIN_EMAIL && (editingGlobalUser.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
     const movingSelf = editingGlobalUser.id === appUser?.id && supportUserForm.restaurantId !== editingGlobalUser.restaurantId;
     if (protectedEmail && supportUserForm.restaurantId !== editingGlobalUser.restaurantId) {
       return addToast('Protected', 'The master admin account cannot be moved from this support editor.');
@@ -4111,6 +4335,10 @@ const handleRevokeAccess = async (user) => {
   const backupStatusLabel = backupRunning ? 'Running...' : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported');
   const backupIsStale = !backupRunning && (!lastBackupDate || backupAgeHours > 7 * 24);
   const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp' : 'No backup status doc'));
+  const restoreDrillDate = parseAnyDate(restoreDrillStatus?.lastDrillAt || restoreDrillStatus?.updatedAt);
+  const restoreDrillAgeDays = restoreDrillDate ? Math.floor((Date.now() - restoreDrillDate.getTime()) / 86400000) : null;
+  const restoreDrillStale = !restoreDrillDate || restoreDrillAgeDays > 35 || ['failed', 'needs_followup'].includes(String(restoreDrillStatus?.status || '').toLowerCase());
+  const restoreDrillLabel = restoreDrillDate ? `${restoreDrillAgeDays}d ago` : 'Not recorded';
   const getNextAutoBackupDate = () => {
     const explicit = parseAnyDate(backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || backupStatus?.nextRunAt);
     if (explicit && explicit.getTime() > backupCountdownTick) return explicit;
@@ -4225,7 +4453,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'import-cheers-july-schedule', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks'];
+  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
   const envReport = typeof window !== 'undefined' ? {
     host: window.location.host,
     path: window.location.pathname,
@@ -4304,6 +4532,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'System Status', value: platformStatus, detail: `${adminRiskQueue.length} action item(s)`, jump: 'overview', tone: platformStatus === 'Clean' ? 'emerald' : platformStatus === 'Monitoring' ? 'amber' : 'red' },
     { title: 'Manual Presence', value: presenceSnapshot.fetchedAt ? onlineUsers.length : '—', detail: presenceSnapshot.fetchedAt ? `${onlineUsers.length} recent check-in(s) • fetched ${timeAgo(presenceSnapshot.fetchedAt)}` : 'Press Refresh Snapshot in Live', jump: 'live', tone: presenceSnapshot.fetchedAt ? (onlineUsers.length ? 'emerald' : 'amber') : 'blue' },
     { title: 'Backup Status', value: backupStatusLabel, detail: `${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'} • Next ${nextBackupCountdown}`, jump: 'health', tone: backupIsStale ? 'amber' : 'emerald' },
+    { title: 'Restore Drill', value: restoreDrillLabel, detail: restoreDrillStatus?.status || 'Monthly safe-restore proof', jump: 'forensics', tone: restoreDrillStale ? 'amber' : 'emerald' },
     { title: 'Push Health', value: `${pushEnabledUsers.length}/${allUsers.length}`, detail: `${stalePushUsers.length} stale • last result ${backupStatus?.lastPushResult || 'not logged'}`, jump: 'push', tone: stalePushUsers.length ? 'amber' : 'emerald' },
     { title: 'Recent Admin Actions', value: auditLogs.length ? auditLogs.slice(0, 10).length : 0, detail: auditLogs[0] ? `${auditLogs[0].action || 'Action'} by ${auditLogs[0].userName || 'unknown'}` : 'No audit actions loaded', jump: 'forensics', tone: 'blue' },
     { title: 'Deployment Readiness', value: deploymentReady ? 'READY' : 'CHECK', detail: `${deploymentChecks.filter(c => c.ok).length}/${deploymentChecks.length} checks passing`, jump: 'deployment', tone: deploymentReady ? 'emerald' : 'red' }
@@ -4594,6 +4823,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.28 Productization Cleanup', group: 'System Administrator', keywords: 'v15 15.0.28 public release productization hardcoded admin account deletion restore drill security center', body: ['15.0.28 removes hardcoded personal master-admin fallbacks from app and API checks. Use MASTER_ADMIN_EMAIL, MASTER_ADMIN_EMAILS, custom claims, or isSuperAdmin profile flags instead.', 'Account Security now includes an in-app account deletion request flow for app-store/privacy readiness. It records a request for admin review instead of silently deleting operational records.', 'Security Center now includes restore-drill readiness so backups are paired with monthly safe test restores into a non-production project.', 'Public wording was cleaned for old internal System Administrator and restaurant-specific labels.'] },
+    { title: 'Version 15.0.27 Public-Readiness Security Polish', group: 'System Administrator', keywords: 'v15 15.0.27 recovery codes mfa lost phone security alerts voice preview security center', body: ['15.0.27 adds one-time recovery codes for MFA accounts. Save the codes after generating them because they are shown once.', 'The two-step login screen now has a recovery-code reset path for lost or broken phones. A used code is burned and cannot be reused.', 'When a System Administrator resets a user MFA factors, the app writes a security alert for the affected user and records the action in audit logs.', 'Account Security now shows a simple readiness status so owners know whether it is safe to turn on elevated-role MFA enforcement.', 'The voice control now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
     { title: 'Version 15.0.26 MFA Recovery & Safer Enforcement', group: 'System Administrator', keywords: 'v15 15.0.26 mfa recovery reset lost phone backup phone elevated roles enforcement', body: ['15.0.26 adds Super Admin MFA Recovery inside Account Security so a lost or broken phone can be handled without disabling MFA for everyone.', 'Recovery lets a Super Admin inspect a user MFA status, remove enrolled Firebase MFA factors, require a written reason, and write the action to audit logs.', 'Account Security now supports adding a backup SMS phone after the first factor is enrolled. MFA should be required for owners, managers, admins, and System Administrators when enforcement is on. Standard employees can enroll optionally.'] },
     { title: 'Version 15.0.25 Account Repair + Verification Debug', group: 'System Administrator', keywords: 'v15 15.0.25 account repair verification debug mfa firebase auth firestore profile rescue link', body: ['15.0.25 adds Account Security diagnostics that show the Firebase Auth UID/email, browser Firebase project, API/Admin Firebase project, and Firestore profile status.', 'If the Auth user exists but the Firestore user profile is missing, Account Security now offers a safe Repair My User Profile action.', 'If Firebase Console emails work but the app verification email does not arrive, Account Security can generate a self-service verification rescue link.'] },
     { title: 'Version 15.0.22 Email Verification for MFA', group: 'System Administrator', keywords: 'v15 15.0.22 account security email verification mfa two step login sms', body: ['15.0.22 adds Send Verification Email and Refresh Email Status actions to Account Security because Firebase requires verified email before SMS MFA enrollment.', 'This update changes /api/account-security so the app can show emailVerified alongside MFA factor status.'] },
@@ -5040,9 +5271,9 @@ Type RESTORE to continue.`);
   };
 
 
-  const handleRestoreCheersJulySchedule = async () => {
+  const handleRestoreLegacyJulySchedule = async () => {
     if (isScheduleReinjecting) return;
-    const phrase = window.prompt('EMERGENCY SCHEDULE BUILDER OVERWRITE\n\nThis will erase every July 2026 shift currently on the Schedule Builder for cheers_chilton_01, then reload the uploaded July PDF schedule as UNPUBLISHED draft shifts so you can review it and republish it. A JSON backup downloads first.\n\nType REINJECT JULY to continue.');
+    const phrase = window.prompt('LEGACY SCHEDULE BUILDER OVERWRITE\n\nThis will erase the selected legacy July schedule builder draft, then reload the stored schedule import as UNPUBLISHED draft shifts so it can be reviewed and republished. A JSON backup downloads first.\n\nType REINJECT JULY to continue.');
     if ((phrase || '').trim().toUpperCase() !== 'REINJECT JULY') {
       addToast('Canceled', 'July schedule reinject was not run.');
       return;
@@ -5055,18 +5286,18 @@ Type RESTORE to continue.`);
       const response = await secureFetch('/api/import-cheers-july-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: 'IMPORT_JULY_2026', restaurantId: CHEERS_RESTORE_RESTAURANT_ID, replaceMode: 'schedule-builder-overwrite-draft' })
+        body: JSON.stringify({ confirm: 'IMPORT_JULY_2026', restaurantId: LEGACY_RESTORE_RESTAURANT_ID, replaceMode: 'schedule-builder-overwrite-draft' })
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Schedule reinject failed with status ${response.status}`);
 
       if (result.backup) {
-        const backupName = `Cheers_Chilton_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        const backupName = `Legacy_July_2026_Shifts_Replaced_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
         downloadTextFile(backupName, JSON.stringify(result.backup, null, 2), 'application/json;charset=utf-8;');
       }
 
       await addDoc(collection(db, 'auditLogs'), {
-        restaurantId: CHEERS_RESTORE_RESTAURANT_ID,
+        restaurantId: LEGACY_RESTORE_RESTAURANT_ID,
         action: 'EMERGENCY_REINJECT_JULY_SCHEDULE_BUTTON',
         target: 'shifts',
         details: `System Administrator button overwrote the July 2026 Schedule Builder. Deleted ${result.deletedCount || 0} existing/restored shift(s), imported ${result.importedCount || 0} unpublished draft shift(s). Run ${result.runId || 'unknown'}.`,
@@ -5078,7 +5309,7 @@ Type RESTORE to continue.`);
       }).catch(() => {});
 
       addToast('Schedule Builder Loaded', `${result.importedCount || 0} July draft shift(s) loaded for review and republish. Reloading to clear schedule cache.`);
-      window.alert(`Schedule Builder overwrite complete.\n\nRestaurant: ${result.restaurantId || CHEERS_RESTORE_RESTAURANT_ID}\nDeleted old/restored July shifts: ${result.deletedCount || 0}\nLoaded draft July shifts: ${result.importedCount || 0}\nRun ID: ${result.runId || 'n/a'}\n\nA backup JSON of replaced July shifts was downloaded to this computer.\n\nThe app will reload once. Then open Time Clock & Schedule → Schedule Builder, go to July 2026, review the draft, and click Publish Schedule.`);
+      window.alert(`Schedule Builder overwrite complete.\n\nRestaurant: ${result.restaurantId || LEGACY_RESTORE_RESTAURANT_ID}\nDeleted old/restored July shifts: ${result.deletedCount || 0}\nLoaded draft July shifts: ${result.importedCount || 0}\nRun ID: ${result.runId || 'n/a'}\n\nA backup JSON of replaced July shifts was downloaded to this computer.\n\nThe app will reload once. Then open Time Clock & Schedule → Schedule Builder, go to July 2026, review the draft, and click Publish Schedule.`);
       try { sessionStorage.setItem('86chaosPostRestoreTab', 'schedule'); } catch (_) {}
       window.location.reload();
     } catch (err) {
@@ -5767,7 +5998,7 @@ Type RESTORE to continue.`);
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr.toLocaleString()}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
             <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-            {appUser?.email?.toLowerCase() === 'geoffm1985@gmail.com' && (
+            {appUser?.isSuperAdmin === true && (
               <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
             )}          
           </div>
@@ -6125,12 +6356,15 @@ Type RESTORE to continue.`);
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-4">
             <StatusTile label="Firestore Rules" value={securityReport?.security?.firestoreRules?.status || 'Not checked'} />
             <StatusTile label="Storage Rules" value={securityReport?.security?.storageRules?.status || 'Not checked'} />
             <StatusTile label="App Check" value={securityReport?.security?.appCheck?.status || 'Not checked'} />
             <StatusTile label="MFA Enforcement" value={securityReport?.security?.mfa?.apiEnforcementEnabled ? 'On' : 'Testing'} />
             <StatusTile label="Risky Users" value={securityReport?.riskyUsers?.length ?? '—'} />
+            <StatusTile label="Last Backup" value={securityReport?.cron?.lastBackupAt ? formatClockDateTime(securityReport.cron.lastBackupAt) : 'Not checked'} />
+            <StatusTile label="Restore Drill" value={restoreDrillStatus?.lastDrillAt ? formatBackupTimestamp(restoreDrillStatus.lastDrillAt) : 'Not recorded'} />
+            <StatusTile label="Version" value={securityReport?.app?.version || CURRENT_VERSION || 'Unknown'} />
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -6160,6 +6394,23 @@ Type RESTORE to continue.`);
               {(securityReport?.suspiciousActivity?.events || []).length === 0 ? <SmartEmptyState title="No suspicious activity found" desc="Failed, denied, risky upload, and destructive-action logs show here." /> : securityReport.suspiciousActivity.events.map(event => (
                 <div key={event.id} className={`${T.row}`}><div className="font-black text-white text-sm">{event.action || 'Event'}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{event.userName || 'Unknown'} • {event.restaurantId || 'platform'} • {event.timestamp ? formatClockDateTime(event.timestamp) : 'no time'}</div><div className="text-[10px] text-slate-400 font-mono mt-1 truncate">{event.target || ''}</div></div>
               ))}
+            </div>
+          </div>
+
+          <div className={`${T.card} p-4 border ${restoreDrillStale ? 'border-amber-900/50' : 'border-emerald-900/40'}`}>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Restore Drill</div>
+                <h3 className="font-black text-white text-lg">Monthly backup restore proof</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1">Backups only count if a safe test restore works. Record the last drill after restoring into a non-production Firebase project and checking critical screens.</p>
+              </div>
+              <button type="button" onClick={handleRecordRestoreDrill} disabled={isRestoreDrillBusy} className="bg-amber-900/20 border border-amber-500/40 text-amber-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{isRestoreDrillBusy ? 'Working…' : 'Record Restore Drill'}</button>
+            </div>
+            <div className="grid sm:grid-cols-4 gap-2 mt-3 text-[10px] font-bold">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Last Drill</div><div className="text-white">{restoreDrillStatus?.lastDrillAt ? formatBackupTimestamp(restoreDrillStatus.lastDrillAt) : 'Not recorded'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Status</div><div className={restoreDrillStale ? 'text-amber-200' : 'text-emerald-200'}>{restoreDrillStatus?.status || 'needed'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Safe Project</div><div className="text-white truncate">{restoreDrillStatus?.restoreProjectId || 'not logged'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Backup</div><div className="text-white truncate">{restoreDrillStatus?.sourceBackupPath || backupStatus?.storagePath || 'choose backup'}</div></div>
             </div>
           </div>
 
@@ -6893,12 +7144,12 @@ another@email.com"></textarea>
                     <Shield size={16} className="text-red-300 mt-0.5 shrink-0" />
                     <div>
                       <div className="text-[9px] font-black uppercase tracking-widest text-red-300">Emergency Schedule Rescue</div>
-                      <div className="text-[10px] text-slate-400 font-bold leading-snug">Overwrites the July 2026 Schedule Builder for <span className="text-slate-200">cheers_chilton_01</span>. It deletes that restaurant's July 2026 builder shifts, downloads a backup, then reloads the PDF schedule as unpublished drafts so it can be reviewed and republished.</div>
+                      <div className="text-[10px] text-slate-400 font-bold leading-snug">Legacy guarded schedule import for a stored July 2026 draft. It downloads a backup first, then reloads the saved schedule as unpublished drafts for review and republish.</div>
                     </div>
                   </div>
-                  <button type="button" onClick={handleRestoreCheersJulySchedule} disabled={isScheduleReinjecting} className="w-full bg-red-900/30 text-red-200 border border-red-800/70 hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
+                  <button type="button" onClick={handleRestoreLegacyJulySchedule} disabled={isScheduleReinjecting} className="w-full bg-red-900/30 text-red-200 border border-red-800/70 hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
                     {isScheduleReinjecting ? <Loader2 size={12} className="animate-spin" /> : <Calendar size={12} />}
-                    {isScheduleReinjecting ? 'Reinjecting July Schedule...' : 'Reinject Cheers July 2026 Schedule'}
+                    {isScheduleReinjecting ? 'Importing Legacy July Schedule...' : 'Run Legacy July 2026 Schedule Import'}
                   </button>
                   <div className="text-[9px] text-slate-500 font-bold leading-snug">Safety phrase required: <span className="text-red-200">REINJECT JULY</span>. Super Admin only.</div>
                 </div>
@@ -7437,6 +7688,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15028', title:'What changed in version 15.0.28', group:'Release Notes', keywords:'new update 15.0.28 productization account deletion restore drill security center hardcoded admin', body:['Account Security now has an Account Deletion Request flow that records a reviewable request instead of silently deleting operational records.', 'Security Center now includes Restore Drill status so backups can be proven with a safe test restore.', 'System Administrator access no longer relies on hardcoded personal email fallbacks. Use configured env vars, custom claims, or Super Admin profile flags.', 'Several internal/testing labels were cleaned up for public-readiness polish.'] },
+  { id:'new-15027', title:'What changed in version 15.0.27', group:'Release Notes', keywords:'new update 15.0.27 recovery codes mfa lost phone security alerts voice preview', body:['Account Security now supports one-time recovery codes for lost-phone MFA recovery.', 'The two-step login screen can use a saved recovery code to reset MFA and let the user sign in again.', 'System Administrator MFA reset now writes a security alert for the affected user and keeps the audit trail clear.', 'Account Security has a simple readiness status so owners know whether enforcement is safe.', 'The floating voice button now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
   { id:'new-15026', title:'What changed in version 15.0.26', group:'Release Notes', keywords:'new update 15.0.26 mfa recovery reset lost phone backup phone elevated roles', body:['Account Security now supports backup SMS MFA phone enrollment after the first factor is enabled.', 'Super Admin MFA Recovery can inspect a user MFA status, reset lost-phone MFA factors, require a written reason, and log the action for audit review.', 'MFA enforcement guidance now clearly targets owners, managers, admins, and System Administrators while keeping regular employee enrollment optional.'] },
   { id:'new-15025', title:'What changed in version 15.0.25', group:'Release Notes', keywords:'new update 15.0.25 account repair verification debug mfa firebase auth firestore profile rescue link', body:['Account Security now shows Auth UID/email, browser Firebase project, Vercel API/Admin Firebase project, Firestore profile status, and MFA status in one debug panel.', 'If a Firebase Auth user is missing its Firestore users/{uid} profile, Account Security can repair the profile instead of leaving MFA setup in limbo.', 'If Firebase Console email delivery works but the app verification email does not arrive, Account Security can generate a verification rescue link for the signed-in user.'] },
   { id:'new-15022', title:'What changed in version 15.0.22', group:'Release Notes', keywords:'new update 15.0.22 account security email verification mfa two step login sms', body:['Account Security now includes Send Verification Email for accounts blocked by Firebase auth/unverified-email.', 'After clicking the Firebase inbox link, Refresh Email Status reloads the Firebase Auth user and lets SMS MFA setup continue.', '/api/account-security now reports emailVerified, so Vercel redeploy is required.'] },
@@ -7476,7 +7729,7 @@ const HELP_ARTICLES = [
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
   { id:'manager-quick-start', title:'Manager / Restaurant Quick Start', group:'Quick Start Guides', keywords:'manager restaurant setup workspace tour add employees permissions backups geofence', body:['New workspaces open a manager setup tour that covers saving the app, adding employees, setting permissions, setting clock rules, backups, and Help Center.','Staff Roster shows the one-time generated login popup after adding employees. Copy, print, email, or text before closing.','Set the required work area in Settings so clock-out location can be reviewed.','Backup Center is under System Administrator → Forensics & Backups and requires RESTORE confirmation for restore actions.'] },
-  { id:'voice-beta', title:'Using 86 Voice beta', group:'Voice Commands', keywords:'voice beta microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list manager brief kitchen command center 86 alert', body:['The microphone button is marked BETA. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.' , 'Saying “86 salmon”, “86 burger”, or “we’re out of ranch” posts an important 86 alert and does not edit inventory stock counts. When Menu Intelligence links exist, the alert can include the matched inventory item and unavailable menu items.','Navigation commands can pull up screens by plain name: “open manager brief”, “open kitchen command center”, “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, “open prep”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice can open specific recipes by name, such as “open beer cheese recipe” or “show me chicken marsala recipe”. It searches the live Recipe Book, so recipes added later work without adding new command phrases.', 'Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
+  { id:'voice-preview', title:'Using Voice Assistant Preview', group:'Voice Commands', keywords:'voice preview microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list manager brief kitchen command center 86 alert', body:['The microphone button is marked PREVIEW. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.' , 'Saying “86 salmon”, “86 burger”, or “we’re out of ranch” posts an important 86 alert and does not edit inventory stock counts. When Menu Intelligence links exist, the alert can include the matched inventory item and unavailable menu items.','Navigation commands can pull up screens by plain name: “open manager brief”, “open kitchen command center”, “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, “open prep”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice can open specific recipes by name, such as “open beer cheese recipe” or “show me chicken marsala recipe”. It searches the live Recipe Book, so recipes added later work without adding new command phrases.', 'Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
   { id:'clock-out-geofence-review', title:'Clock-out location review', group:'Time Clock', keywords:'geofence clock out outside area manager alerted timesheet note location', body:['If a location rule is enabled and an employee clocks out outside the required area, the app still lets them clock out.','The employee sees a warning, the manager gets an important alert, and the punch is marked in Financials → Timesheets with a manager review note.','This avoids trapping someone on the clock while still keeping a clean accountability trail.','If location is denied or unavailable, the punch is saved and marked for review.'] },
   { id:'safe-demo-mode', title:'Safe customer demo mode', group:'System Administrator', keywords:'demo mode customer tier tabs read only hide phone email address employee manager', body:['Open System Administrator → Workspaces, choose a workspace, then start Demo Manager or Demo Employee.','Choose the tier and visible tabs before starting the demo. Demo mode hides System Administrator and masks emails, phone numbers, addresses, and wages.','Demo mode is read-only. Buttons that would save, publish, restore, delete, upload, post, clock, or edit are blocked.','Use the banner at the top to exit demo mode and return to System Administrator.'] },
   { id:'new-13118', title:'What changed in version 13.1.18', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
