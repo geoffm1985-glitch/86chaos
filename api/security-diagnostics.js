@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 
 function initAdmin() {
   if (admin.apps.length) return admin;
@@ -15,6 +16,20 @@ const roleNeedsMfa = (user = {}) => {
   return Boolean(user.isSuperAdmin || user.isAdmin || user.isOwner || user.accountOwner || user.owner || user.workspaceOwner || ['owner', 'manager', 'admin', 'general manager', 'super admin'].some(token => role.includes(token)));
 };
 const userHasMfaFlag = (user = {}) => Boolean(user.mfaEnabled || user.multiFactorEnabled || user.security?.mfaEnabled || user.accountSecurity?.mfaEnabled);
+const boolEnv = (name) => /^(1|true|yes|enforce)$/i.test(String(process.env[name] || '').trim());
+const mfaEnforcementEnabled = () => boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES');
+const decodedHasMfa = (decoded = {}) => Boolean(decoded.firebase?.sign_in_second_factor || decoded.firebase?.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true);
+const authUserHasMfa = async (app, user) => {
+  if (userHasMfaFlag(user)) return true;
+  try {
+    let authUser = null;
+    if (user?.id) authUser = await app.auth().getUser(user.id).catch(() => null);
+    if (!authUser && user?.email) authUser = await app.auth().getUserByEmail(user.email).catch(() => null);
+    return (authUser?.multiFactor?.enrolledFactors || []).length > 0;
+  } catch (_) {
+    return false;
+  }
+};
 
 async function verifyOptionalAppCheck(app, req) {
   const header = String(req.headers['x-firebase-appcheck'] || '').trim();
@@ -38,6 +53,8 @@ module.exports = async function handler(req, res) {
     const masterEmails = [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS, 'geoffm1985@gmail.com', 'geoffrm1985@gmail.com']
       .filter(Boolean).flatMap(v => String(v).split(',')).map(norm);
     if (decoded.superAdmin !== true && !masterEmails.includes(norm(decoded.email))) return res.status(403).json({ ok: false, error: 'Super admin required' });
+    const mfaGate = requireMfaIfEnforced(decoded, {}, true);
+    if (!mfaGate.ok) return res.status(mfaGate.status || 403).json({ ok: false, error: mfaGate.error });
 
     const db = app.firestore();
     const [securityStatusSnap, backupStatusSnap, usersSnap, auditSnap, rateSnap] = await Promise.all([
@@ -51,11 +68,12 @@ module.exports = async function handler(req, res) {
     const securityStatus = securityStatusSnap?.exists ? securityStatusSnap.data() : {};
     const backupStatus = backupStatusSnap?.exists ? backupStatusSnap.data() : {};
     const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const riskyUsers = users
-      .filter(roleNeedsMfa)
-      .filter(user => !userHasMfaFlag(user))
+    const elevatedUsers = users.filter(roleNeedsMfa);
+    const elevatedMfaPairs = await Promise.all(elevatedUsers.slice(0, 200).map(async user => ({ user, hasMfa: await authUserHasMfa(app, user) })));
+    const riskyUsers = elevatedMfaPairs
+      .filter(row => !row.hasMfa)
       .slice(0, 50)
-      .map(user => ({ id: user.id, name: user.name || '', email: user.email || '', role: user.role || user.accountRole || '', restaurantId: user.restaurantId || user.activeRestaurantId || '', risk: 'MFA missing for elevated account' }));
+      .map(({ user }) => ({ id: user.id, name: user.name || '', email: user.email || '', role: user.role || user.accountRole || '', restaurantId: user.restaurantId || user.activeRestaurantId || '', risk: 'MFA missing for elevated account' }));
 
     const suspiciousTerms = /(permission_denied|denied|failed|invalid|unauthorized|security|scan_failed|upload|delete|bulk|danger|repair)/i;
     const suspiciousEvents = auditSnap.docs
@@ -74,6 +92,7 @@ module.exports = async function handler(req, res) {
       'CRON_SECRET', 'GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'FIREBASE_SERVICE_ACCOUNT_KEY',
       'FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY', 'FIREBASE_STORAGE_BUCKET',
       'MASTER_ADMIN_EMAIL', 'APP_CHECK_ENFORCE', 'FIREBASE_APP_CHECK_ENFORCE',
+      'MFA_ENFORCE_ELEVATED_ROLES', 'FIREBASE_MFA_ENFORCE_ELEVATED_ROLES',
       'REACT_APP_TEST_FIREBASE_PROJECT_ID', 'REACT_APP_PROD_FIREBASE_PROJECT_ID', 'REACT_APP_FIREBASE_APPCHECK_SITE_KEY'
     ].map(name => ({ name, present: hasEnv(name) }));
 
@@ -89,7 +108,7 @@ module.exports = async function handler(req, res) {
         firestoreRules: { status: securityStatus.firestoreRulesStatus || 'publish-date-needed', currentRulesVersion: rulesVersion, lastPublishedAt: securityStatus.firestoreRulesPublishedAt || securityStatus.rulesPublishedAt || '', note: 'Record publish dates in system/securityStatus after Firebase rule publishes.' },
         storageRules: { status: securityStatus.storageRulesStatus || 'publish-date-needed', currentRulesVersion: storageRulesVersion, lastPublishedAt: securityStatus.storageRulesPublishedAt || '', note: 'Record publish dates in system/securityStatus after Storage rule publishes.' },
         appCheck,
-        mfa: { requiredFor: 'owners, managers, admins, system admins', riskyUserCount: riskyUsers.length, status: riskyUsers.length ? 'action-needed' : 'clean' },
+        mfa: { requiredFor: 'owners, managers, admins, system admins', riskyUserCount: riskyUsers.length, elevatedUserCount: elevatedUsers.length, status: riskyUsers.length ? 'action-needed' : 'clean', apiEnforcementEnabled: mfaEnforcementEnabled(), callerSecondFactor: decodedHasMfa(decoded), note: mfaEnforcementEnabled() ? 'Protected admin API routes require a second-factor sign-in where the shared guard is used.' : 'Enrollment can be tested safely. Enable MFA_ENFORCE_ELEVATED_ROLES only after elevated users enroll.' },
         environmentSeparation: {
           mode: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
           projectId: process.env.FIREBASE_PROJECT_ID || (hasEnv('FIREBASE_SERVICE_ACCOUNT_KEY') ? 'from-service-account-json' : 'missing'),

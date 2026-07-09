@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -34,7 +35,9 @@ async function authorize(req, adminApp) {
     const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
     const email = (decoded.email || '').toLowerCase();
     if (email === masterEmail || decoded.superAdmin === true) {
-      return { ok: true, actor: decoded.email || decoded.uid };
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
+      if (!mfa.ok) return mfa;
+      return { ok: true, actor: decoded.email || decoded.uid, mfa };
     }
     return { ok: false, status: 403, error: 'Only the master admin or a super admin can list backups.' };
   } catch (err) {

@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 const {
   stableShiftDocId,
   hardReplaceScheduleMonth
@@ -32,7 +33,11 @@ async function authorize(req, app) {
     const decoded = await app.auth().verifyIdToken(token);
     const master = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
     const email = (decoded.email || '').toLowerCase();
-    if (email === master || decoded.superAdmin === true) return { ok: true, decoded };
+    if (email === master || decoded.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
+      if (!mfa.ok) return mfa;
+      return { ok: true, decoded, mfa };
+    }
     return { ok: false, status: 403, error: 'Only master admin or super admin can run this import.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid token: ${err.message}` };

@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
@@ -167,7 +168,9 @@ async function authorize(req, adminApp) {
     const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
     const email = (decoded.email || '').toLowerCase();
     if (email === masterEmail || decoded.superAdmin === true) {
-      return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '' };
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
+      if (!mfa.ok) return mfa;
+      return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '', mfa };
     }
     return { ok: false, status: 403, error: 'Only the master admin or a super admin can run backups.' };
   } catch (err) {

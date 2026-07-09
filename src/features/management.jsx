@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
@@ -797,6 +797,16 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [phone, setPhone] = useState(appUser?.phone || '');
   const [photoURL, setPhotoURL] = useState(appUser?.photoURL || '');
 
+  // --- Account Security / MFA State ---
+  const [mfaStatus, setMfaStatus] = useState(null);
+  const [mfaPhone, setMfaPhone] = useState(appUser?.phone ? String(appUser.phone).trim() : '');
+  const [mfaCurrentPassword, setMfaCurrentPassword] = useState('');
+  const [mfaVerificationId, setMfaVerificationId] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [isMfaBusy, setIsMfaBusy] = useState(false);
+  const [mfaError, setMfaError] = useState('');
+  const mfaEnrollRecaptchaRef = useRef(null);
+
   // --- Preferences State ---
   const prefs = appUser?.preferences || {};
   const [defaultTab, setDefaultTab] = useState(prefs.defaultTab || (appUser?.isAdmin ? 'schedule' : 'published'));
@@ -875,6 +885,47 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const [mapRefreshNonce, setMapRefreshNonce] = useState(0);
   const mapTileErrorAtRef = useRef(0);
   const activeMapProvider = GEOFENCE_TILE_PROVIDERS[mapProviderIndex] || GEOFENCE_TILE_PROVIDERS[0];
+
+  const elevatedRolePattern = /owner|manager|admin|supervisor|lead|gm|system administrator|super admin/i;
+  const isElevatedForMfa = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.owner || appUser?.workspaceOwner || elevatedRolePattern.test(String(appUser?.role || appUser?.accountRole || '')));
+  const accountMfaEnabled = Boolean(mfaStatus?.mfaEnabled || appUser?.mfaEnabled || appUser?.multiFactorEnabled || appUser?.accountSecurity?.mfaEnabled);
+  const accountMfaEnforced = Boolean(mfaStatus?.mfaEnforcementEnabled || clientData?.systemSettings?.mfaEnforceElevatedRoles === true);
+
+  const normalizeMfaPhone = (value) => {
+    const raw = String(value || '').trim();
+    if (raw.startsWith('+')) return raw.replace(/\s+/g, '');
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+    return raw;
+  };
+
+  const getMfaEnrollmentRecaptcha = () => {
+    if (mfaEnrollRecaptchaRef.current) return mfaEnrollRecaptchaRef.current;
+    mfaEnrollRecaptchaRef.current = new RecaptchaVerifier(auth, 'mfa-enroll-recaptcha-container', { size: 'invisible' });
+    return mfaEnrollRecaptchaRef.current;
+  };
+
+  const refreshAccountSecurityStatus = async ({ silent = false } = {}) => {
+    try {
+      const response = await secureFetch('/api/account-security', { method: 'GET' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Could not read account security status.');
+      setMfaStatus(data);
+      setMfaError('');
+      if (!silent) addToast('Account Security', data.mfaEnabled ? 'Two-step login is enrolled.' : 'Two-step login is not enrolled yet.');
+      return data;
+    } catch (err) {
+      const msg = err.message || 'Could not refresh account security.';
+      setMfaError(msg);
+      if (!silent) addToast('Account Security Error', msg);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if ((subTab === 'profile' || subTab === 'accountSecurity') && appUser?.id) refreshAccountSecurityStatus({ silent: true });
+  }, [subTab, appUser?.id]);
 
   useEffect(() => {
     setSysTips(sys.tips ?? true);
@@ -1190,6 +1241,63 @@ const handleEnableNotifications = async () => {
     } catch (err) { addToast('Error', err.message); }
   };
 
+  const handleSendMfaEnrollmentCode = async () => {
+    setMfaError('');
+    if (!auth.currentUser) return setMfaError('Please log out and back in before enrolling two-step login.');
+    if (!mfaCurrentPassword) return setMfaError('Enter your current password first.');
+    const normalizedPhone = normalizeMfaPhone(mfaPhone);
+    if (!/^\+[1-9]\d{9,14}$/.test(normalizedPhone)) return setMfaError('Use E.164 phone format, like +19205551234.');
+    setIsMfaBusy(true);
+    try {
+      const credential = EmailAuthProvider.credential(auth.currentUser.email || appUser.email, mfaCurrentPassword);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      const session = await multiFactor(auth.currentUser).getSession();
+      const provider = new PhoneAuthProvider(auth);
+      const verificationId = await provider.verifyPhoneNumber({ phoneNumber: normalizedPhone, session }, getMfaEnrollmentRecaptcha());
+      setMfaVerificationId(verificationId);
+      setMfaPhone(normalizedPhone);
+      addToast('Code Sent', 'Enter the SMS code to finish two-step login enrollment.');
+    } catch (err) {
+      const msg = err?.code === 'auth/operation-not-allowed' ? 'Firebase SMS MFA is not enabled yet for this Firebase project.' : (err.message || 'Could not send MFA setup code.');
+      setMfaError(msg);
+      addToast('MFA Setup Error', msg);
+    } finally {
+      setIsMfaBusy(false);
+    }
+  };
+
+  const handleConfirmMfaEnrollment = async () => {
+    setMfaError('');
+    if (!auth.currentUser) return setMfaError('Please log out and back in before finishing enrollment.');
+    if (!mfaVerificationId || !mfaCode.trim()) return setMfaError('Send and enter the verification code first.');
+    setIsMfaBusy(true);
+    try {
+      const credential = PhoneAuthProvider.credential(mfaVerificationId, mfaCode.trim());
+      const assertion = PhoneMultiFactorGenerator.assertion(credential);
+      await multiFactor(auth.currentUser).enroll(assertion, 'SMS two-step login');
+      setMfaVerificationId('');
+      setMfaCode('');
+      setMfaCurrentPassword('');
+      await refreshAccountSecurityStatus({ silent: true });
+      addToast('Two-Step Login Enabled', 'This account now requires an SMS code when signing in.');
+    } catch (err) {
+      const msg = err.message || 'Could not finish MFA enrollment.';
+      setMfaError(msg);
+      addToast('MFA Enrollment Failed', msg);
+    } finally {
+      setIsMfaBusy(false);
+    }
+  };
+
+  const handleSyncMfaStatus = async () => {
+    setIsMfaBusy(true);
+    try {
+      await refreshAccountSecurityStatus({ silent: false });
+    } finally {
+      setIsMfaBusy(false);
+    }
+  };
+
   const handleAddRole = async (e) => {
     e.preventDefault();
     if(!newRoleName.trim()) return;
@@ -1251,14 +1359,14 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
 <div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
-        {['profile', 'preferences', 'alerts'].concat(canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], canManageIntegrations ? ['integrations'] : []).map((tab) => (
+        {['profile', 'accountSecurity', 'preferences', 'alerts'].concat(canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], canManageIntegrations ? ['integrations'] : []).map((tab) => (
 <button type="button" key={tab} onClick={() => {
             if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
               return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
             }
             setSubTab(tab);
           }} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
-            {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab}
+            {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab === 'accountSecurity' ? 'Account Security' : tab}
             {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Beta</span>}
           </button>
         ))}
@@ -1297,12 +1405,82 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <button type="submit" className={`w-full ${T.btn} py-2`}>Save Profile</button>
             </form>
           </div>
+          <div className={`${T.card} p-3 sm:p-5 border-blue-900/40 bg-blue-950/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
+             <div>
+               <h3 className="text-xs font-black text-blue-300 uppercase tracking-widest mb-1">Account Security / Two-Step Login</h3>
+               <p className="text-[10px] text-slate-400 font-medium">Set up MFA, refresh enrollment status, and check elevated-role security readiness.</p>
+             </div>
+             <button type="button" onClick={() => setSubTab('accountSecurity')} className="w-full sm:w-auto bg-[#12161A] text-blue-300 border border-blue-900/50 hover:bg-blue-900/30 font-bold px-4 py-2 rounded-xl transition-colors text-xs whitespace-nowrap">Open Account Security</button>
+          </div>
+
           <div className={`${T.card} p-3 sm:p-5 bg-red-900/10 border-red-900/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
              <div>
                <h3 className="text-xs font-black text-red-500 uppercase tracking-widest mb-1">Security</h3>
                <p className="text-[10px] text-slate-400 font-medium">Get a secure password reset link.</p>
              </div>
              <button type="button" onClick={handlePasswordReset} className="w-full sm:w-auto bg-[#12161A] text-red-400 border border-red-900/50 hover:bg-red-900/30 font-bold px-4 py-2 rounded-xl transition-colors text-xs whitespace-nowrap">Reset Password</button>
+          </div>
+
+          <div className={`${T.card} p-3 sm:p-5 border-blue-900/40 bg-blue-950/10 space-y-4`}>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-black text-blue-300 uppercase tracking-widest mb-1">Account Security / Two-Step Login</h3>
+                <p className="text-[10px] text-slate-400 font-bold leading-snug">Owners, managers, admins, and System Administrators should enroll SMS MFA before enforcement is turned on.</p>
+              </div>
+              <div className={`px-3 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest ${accountMfaEnabled ? 'bg-emerald-900/20 border-emerald-500/40 text-emerald-300' : isElevatedForMfa ? 'bg-amber-900/20 border-amber-500/40 text-amber-300' : 'bg-[#12161A] border-[#2A353D] text-slate-400'}`}>
+                {accountMfaEnabled ? 'MFA Enabled' : isElevatedForMfa ? 'MFA Recommended' : 'Standard Account'}
+              </div>
+            </div>
+            {mfaError && <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{mfaError}</div>}
+            <div className="grid sm:grid-cols-3 gap-2 text-[10px] font-bold">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Role</div><div className="text-white mt-1">{isElevatedForMfa ? 'Elevated' : 'Standard'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Enforcement</div><div className={accountMfaEnforced ? 'text-red-300 mt-1' : 'text-amber-300 mt-1'}>{accountMfaEnforced ? 'On' : 'Testing / Off'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Factors</div><div className="text-white mt-1">{mfaStatus?.mfaFactorCount ?? appUser?.mfaFactorCount ?? 0}</div></div>
+            </div>
+            {!accountMfaEnabled && (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className={T.label}>Current Password</label><input type="password" value={mfaCurrentPassword} onChange={e => setMfaCurrentPassword(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Required to enroll" /></div>
+                <div><label className={T.label}>Mobile Phone for SMS MFA</label><input type="tel" value={mfaPhone} onChange={e => setMfaPhone(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="+19205551234" /></div>
+                <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : 'Send Setup Code'}</button>
+                <div className="flex gap-2"><input type="text" inputMode="numeric" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="SMS code" /><button type="button" onClick={handleConfirmMfaEnrollment} disabled={isMfaBusy || !mfaVerificationId} className={`${T.btn} whitespace-nowrap disabled:opacity-50`}>Confirm</button></div>
+              </div>
+            )}
+            {accountMfaEnabled && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">Two-step login is enrolled for this Firebase Auth account. Next login should ask for an SMS code after the password.</div>}
+            <div className="flex flex-col sm:flex-row gap-2"><button type="button" onClick={handleSyncMfaStatus} disabled={isMfaBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Status</button><div className="text-[10px] text-slate-500 font-bold leading-snug flex items-center">Enable SMS MFA in Firebase Console first. Do not turn on enforcement until an elevated account has enrolled and completed a fresh MFA login.</div></div>
+            <div id="mfa-enroll-recaptcha-container" className="hidden"></div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'accountSecurity' && (
+        <div className="space-y-3">
+          <div className={`${T.card} p-3 sm:p-5 border-blue-900/40 bg-blue-950/10 space-y-4`}>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-black text-blue-300 uppercase tracking-widest mb-1">Account Security / Two-Step Login</h3>
+                <p className="text-[10px] text-slate-400 font-bold leading-snug">Owners, managers, admins, and System Administrators should enroll SMS MFA before enforcement is turned on.</p>
+              </div>
+              <div className={`px-3 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest ${accountMfaEnabled ? 'bg-emerald-900/20 border-emerald-500/40 text-emerald-300' : isElevatedForMfa ? 'bg-amber-900/20 border-amber-500/40 text-amber-300' : 'bg-[#12161A] border-[#2A353D] text-slate-400'}`}>
+                {accountMfaEnabled ? 'MFA Enabled' : isElevatedForMfa ? 'MFA Recommended' : 'Standard Account'}
+              </div>
+            </div>
+            {mfaError && <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{mfaError}</div>}
+            <div className="grid sm:grid-cols-3 gap-2 text-[10px] font-bold">
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Role</div><div className="text-white mt-1">{isElevatedForMfa ? 'Elevated' : 'Standard'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Enforcement</div><div className={accountMfaEnforced ? 'text-red-300 mt-1' : 'text-amber-300 mt-1'}>{accountMfaEnforced ? 'On' : 'Testing / Off'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Factors</div><div className="text-white mt-1">{mfaStatus?.mfaFactorCount ?? appUser?.mfaFactorCount ?? 0}</div></div>
+            </div>
+            {!accountMfaEnabled && (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className={T.label}>Current Password</label><input type="password" value={mfaCurrentPassword} onChange={e => setMfaCurrentPassword(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="Required to enroll" /></div>
+                <div><label className={T.label}>Mobile Phone for SMS MFA</label><input type="tel" value={mfaPhone} onChange={e => setMfaPhone(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="+19205551234" /></div>
+                <button type="button" onClick={handleSendMfaEnrollmentCode} disabled={isMfaBusy} className={`${T.btnAlt} disabled:opacity-50`}>{isMfaBusy && !mfaVerificationId ? 'Sending…' : mfaVerificationId ? 'Resend Setup Code' : 'Send Setup Code'}</button>
+                <div className="flex gap-2"><input type="text" inputMode="numeric" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className={`${T.input} py-2 text-sm`} placeholder="SMS code" /><button type="button" onClick={handleConfirmMfaEnrollment} disabled={isMfaBusy || !mfaVerificationId} className={`${T.btn} whitespace-nowrap disabled:opacity-50`}>Confirm</button></div>
+              </div>
+            )}
+            {accountMfaEnabled && <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">Two-step login is enrolled for this Firebase Auth account. Next login should ask for an SMS code after the password.</div>}
+            <div className="flex flex-col sm:flex-row gap-2"><button type="button" onClick={handleSyncMfaStatus} disabled={isMfaBusy} className="bg-[#12161A] border border-[#2A353D] text-slate-300 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Refresh Status</button><div className="text-[10px] text-slate-500 font-bold leading-snug flex items-center">Enable SMS MFA in Firebase Console first. Do not turn on enforcement until an elevated account has enrolled and completed a fresh MFA login.</div></div>
+            <div id="mfa-enroll-recaptcha-container" className="hidden"></div>
           </div>
         </div>
       )}
@@ -4008,6 +4186,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.21 Account Security Tab Fix', group: 'System Administrator', keywords: 'v15 15.0.21 account security settings mfa two step login tab visible mobile', body: ['15.0.21 makes Account Security a visible Settings tab and adds an Open Account Security button inside Profile so MFA setup is easy to find on mobile.', 'This is a UI routing fix only. It does not change Firebase rules, Storage rules, API routes, or Vercel environment variables.'] },
+    { title: 'Version 15.0.20 MFA & Permissions Enforcement', group: 'System Administrator', keywords: 'v15 15.0.20 mfa two step login account security sms elevated roles permissions preview enforcement', body: ['15.0.20 adds Account Security two-step login enrollment under Settings, MFA-aware login prompts, a server-side account-security sync route, and an elevated-role enforcement switch for protected admin API routes.', 'Keep MFA enforcement off until Firebase SMS MFA is enabled and at least one owner or System Administrator has successfully enrolled and completed a fresh MFA login.'] },
+    { title: '15.0.20 deployment checklist', group: 'System Administrator', keywords: '15.0.20 deploy qa firebase authentication identity platform sms mfa vercel env enforce permissions preview', body: ['Enable SMS MFA in Firebase Authentication / Identity Platform for the matching Firebase project.', 'Deploy through Vercel and confirm version.json reports 15.0.20.', 'Keep MFA_ENFORCE_ELEVATED_ROLES=false while enrolling and testing elevated accounts. Turn it true only after successful MFA login, then redeploy.', 'Open System Administrator → Permission & Role Manager and verify Full Permissions Preview shows allowed, blocked, and sensitive areas.'] },
     { title: 'Version 15.0.19 AI Invoice Scanner Shortcut Fix', group: 'System Administrator', keywords: 'v15 15.0.19 ai tools invoice scanner inventory shortcut navigation invoices subtab', body: ['15.0.19 fixes the AI Tools Invoice Scanner shortcut so it opens Inventory directly on the Invoices scanner panel instead of the default Inventory view.', 'The shortcut action now reads Open Invoice Scanner, and the Inventory sub-tab target is consumed once so normal Inventory drawer navigation stays unchanged.'] },
     { title: '15.0.19 deployment checklist', group: 'System Administrator', keywords: '15.0.19 deploy qa vercel checklist ai tools invoice scanner inventory invoices', body: ['Deploy the updated app through Vercel and confirm public/version.json reports 15.0.19.', 'Open AI Tools and click Open Invoice Scanner. Confirm Inventory opens on the Invoices tab and the Scan Invoice PDF/Photo upload control is visible.', 'Firestore rules, Storage rules, API routes, and Vercel environment variables are unchanged for this fix.'] },
     { title: 'Version 15.0.18 Mobile & Paperwork Polish', group: 'System Administrator', keywords: 'v15 15.0.18 administrator manual release update setup owner onboarding prep voice recurring templates invoice raw scan inventory import mobile print export paperwork', body: ['15.0.18 adds mobile-first polish for tighter touch targets, safer horizontal scrolling, steadier modal heights, and less cramped kitchen-device layouts.', 'Invoice History and Invoice Detail now include print/PDF report actions using the 86 Chaos paperwork format.', 'Print CSS was hardened so generated paperwork is cleaner, with fewer floating app controls leaking onto paper.'] },
@@ -4078,7 +4259,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → People or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Workspaces', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Workspaces and click the workspace name or People button.', 'The workspace drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and status state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that workspace or user sees.'] },
-    { title: 'Admin/Settings command-center upgrade', group: 'System Administrator', keywords: 'admin overview command center roles permissions push live presence setup wizard deployment readiness audit settings history import export maintenance branding danger zone', body: ['System Administrator is organized into Overview, Customer Operations, Support & Safety, Platform Settings, and Reference.', 'Command Center shows system status, active users, backup status, push health, recent admin actions, and deployment readiness on one landing page.', 'Permission & Role Manager is the platform guide for who should be able to edit staff, schedules, financials, inventory, recipes, diagnostics, and forensics.', 'Push Control Center is where you troubleshoot tokens, browser permission, token freshness, per-user test pushes, repair flags, and push diagnostic exports.', 'Deployment Readiness should be run before production deploys. It gives READY TO DEPLOY or DO NOT DEPLOY YET with exact reasons.'] },
+    { title: 'Admin/Settings command-center upgrade', group: 'System Administrator', keywords: 'admin overview command center roles permissions push live presence setup wizard deployment readiness audit settings history import export maintenance branding danger zone', body: ['System Administrator is organized into Overview, Customer Operations, Support & Safety, Platform Settings, and Reference.', 'Command Center shows system status, active users, backup status, push health, recent admin actions, and deployment readiness on one landing page.', 'Permission & Role Manager is the platform guide for who should be able to edit staff, schedules, financials, inventory, recipes, diagnostics, and forensics. The Full Permissions Preview shows allowed screens, blocked screens, and sensitive-access flags for a selected user.', 'Push Control Center is where you troubleshoot tokens, browser permission, token freshness, per-user test pushes, repair flags, and push diagnostic exports.', 'Deployment Readiness should be run before production deploys. It gives READY TO DEPLOY or DO NOT DEPLOY YET with exact reasons.'] },
     { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings keep the app name locked as 86 Chaos, store restaurant/group display name, customer logo URL/display preference, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record. Customer logo uploads use a secure server route first, with Firebase Storage rules as fallback protection. The customer logo can appear beside 86 Chaos, but cannot replace or hide it.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
     { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
@@ -5290,6 +5471,26 @@ Type RESTORE to continue.`);
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-4">{ROLE_MANAGER_PERMISSIONS.map(p => <div key={p.key} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-white">{p.label}</div><div className="text-[10px] text-slate-400 font-bold mt-1 leading-snug">{p.desc}</div></div>)}</div>
           </div>
+
+          <div className={`${T.card} p-4 sm:p-5 space-y-4 border-cyan-900/40 bg-cyan-950/10`}>
+            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-black text-white">Full Permissions Preview</h2>
+                <p className="text-xs text-slate-400 font-bold mt-1">Pick a user and see the screens, sensitive tools, and blocked areas they should experience before you hand them the keys.</p>
+              </div>
+              <select value={v14PermissionUserId} onChange={e => setV14PermissionUserId(e.target.value)} className={`${T.input} lg:max-w-sm`}>
+                <option value="">Auto-select user</option>
+                {allUsers.slice(0, 400).map(u => <option key={u.id} value={u.id}>{u.name || u.email || u.id} • {restaurants.find(r => r.id === u.restaurantId)?.name || u.restaurantId || 'no workspace'}</option>)}
+              </select>
+            </div>
+            {v14PermissionPreview ? (
+              <div className="grid lg:grid-cols-[1fr_1fr_.75fr] gap-3">
+                <div className="bg-[#0B0E11] border border-emerald-900/40 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-emerald-300 mb-2">Allowed Screens</div>{v14PermissionPreview.allowed.map(x => <div key={x.key} className="text-xs font-bold text-slate-300 py-1">✓ {x.label}<span className="text-slate-500"> • {x.reason}</span></div>)}</div>
+                <div className="bg-[#0B0E11] border border-red-900/40 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300 mb-2">Blocked Screens</div>{v14PermissionPreview.blocked.map(x => <div key={x.key} className="text-xs font-bold text-slate-400 py-1">× {x.label}<span className="text-slate-600"> • {x.reason}</span></div>)}</div>
+                <div className="bg-[#0B0E11] border border-blue-900/40 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-blue-300 mb-2">Sensitive Areas</div>{Object.entries(v14PermissionPreview.sensitive || {}).map(([key, value]) => <div key={key} className="flex items-center justify-between gap-2 py-1 text-xs font-bold"><span className="text-slate-400">{key.replace(/([A-Z])/g, ' $1')}</span><span className={value ? 'text-emerald-300' : 'text-red-300'}>{value ? 'yes' : 'no'}</span></div>)}</div>
+              </div>
+            ) : <div className="text-xs text-slate-500 font-bold">No user selected.</div>}
+          </div>
         </div>
       )}
 
@@ -5513,10 +5714,11 @@ Type RESTORE to continue.`);
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
             <StatusTile label="Firestore Rules" value={securityReport?.security?.firestoreRules?.status || 'Not checked'} />
             <StatusTile label="Storage Rules" value={securityReport?.security?.storageRules?.status || 'Not checked'} />
             <StatusTile label="App Check" value={securityReport?.security?.appCheck?.status || 'Not checked'} />
+            <StatusTile label="MFA Enforcement" value={securityReport?.security?.mfa?.apiEnforcementEnabled ? 'On' : 'Testing'} />
             <StatusTile label="Risky Users" value={securityReport?.riskyUsers?.length ?? '—'} />
           </div>
 
@@ -5552,7 +5754,7 @@ Type RESTORE to continue.`);
 
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-4 text-xs text-slate-400 font-bold leading-relaxed">
             <div className="text-white font-black text-sm mb-2">Security setup notes</div>
-            <p>Firebase App Check also needs to be enabled/enforced inside Firebase Console for Firestore, Storage, and callable services. Set <span className="font-mono text-slate-200">REACT_APP_FIREBASE_APPCHECK_SITE_KEY</span> at build time, then set <span className="font-mono text-slate-200">APP_CHECK_ENFORCE=true</span> when you are ready to make API routes reject missing App Check tokens.</p>
+            <p>Firebase App Check also needs to be enabled/enforced inside Firebase Console for Firestore, Storage, and callable services. Set <span className="font-mono text-slate-200">REACT_APP_FIREBASE_APPCHECK_SITE_KEY</span> at build time, then set <span className="font-mono text-slate-200">APP_CHECK_ENFORCE=true</span> when you are ready to make API routes reject missing App Check tokens.</p><p className="mt-2">For MFA, enable SMS multi-factor authentication in Firebase Authentication / Identity Platform first. Keep <span className="font-mono text-slate-200">MFA_ENFORCE_ELEVATED_ROLES=false</span> until owners, managers, and System Administrators have enrolled and completed a fresh two-step login.</p>
           </div>
         </div>
       )}
@@ -6824,15 +7026,17 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15021', title:'What changed in version 15.0.21', group:'Release Notes', keywords:'new update 15.0.21 account security settings mfa two step login tab mobile', body:['Account Security now has its own visible Settings tab instead of being buried below the Profile form.', 'Profile also includes an Open Account Security button so elevated users can get to MFA setup quickly on phone screens.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15019', title:'What changed in version 15.0.19', group:'Release Notes', keywords:'new update 15.0.19 ai tools invoice scanner inventory shortcut invoices', body:['AI Tools now opens the Invoice Scanner directly on Inventory → Invoices instead of dropping users on the default Inventory view.', 'The button now says Open Invoice Scanner so it matches where it goes.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15018', title:'What changed in version 15.0.18', group:'Release Notes', keywords:'new update 15.0.18 owner setup onboarding prep voice invoice import mobile print export', body:['Mobile screens get safer touch targets, scrolling, modal sizing, and layout polish.', 'Invoice History and Invoice Details can now print or save as PDF.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15017', title:'What changed in version 15.0.17', group:'Release Notes', keywords:'new update 15.0.17 owner setup onboarding prep voice invoice import mobile print export', body:['Invoice scanning now has matched, raw, and skipped review panels before approval.', 'CSV inventory imports now go through a cleanup review screen with create/update/skip actions.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15016', title:'What changed in version 15.0.16', group:'Release Notes', keywords:'new update 15.0.16 owner setup onboarding prep voice invoice import mobile print export', body:['Prep voice better understands date, station, unit, and multiple items in one command.', 'Managers can load recurring prep template packs for daily, weekly, and monthly kitchen routines.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15015', title:'What changed in version 15.0.15', group:'Release Notes', keywords:'new update 15.0.15 owner setup onboarding prep voice invoice import mobile print export', body:['Owner Dashboard, Setup Wizard, and Staff Onboarding are grouped into a cleaner launch flow.', 'Managers can print an owner snapshot and staff onboarding packet for rollout meetings.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15014', title:'What changed in version 15.0.14', group:'Release Notes', keywords:'new update 15.0.14 ai tools report problem device diagnostics offline queue menu confidence approve skip api health', body:['AI Tools now has its own page with shortcuts to Menu Intelligence, Invoice Scanner, voice commands, and Smart Prep Matching.', 'Error toasts and the header bug button can open an in-app Report Problem form with device diagnostics attached automatically.', 'Menu Intelligence review now shows confidence badges and lets managers approve or skip each ingredient before saving menu-impact links.', 'The app can show when offline writes are queued and gives managers a safer way to try syncing them.', 'System Administrator Health Dashboard now includes a full Vercel API route manifest through the new health-checks route.'] },
+  { id:'new-15020', title:'What changed in version 15.0.20', group:'Release Notes', keywords:'new update 15.0.20 mfa two step login account security sms elevated roles permissions preview', body:['Account Security under Settings now supports SMS two-step login enrollment for elevated users after Firebase SMS MFA is enabled.', 'Login now handles Firebase multi-factor challenges and asks for a code when an enrolled account signs in.', 'System Administrator Security Center now reports MFA enforcement status and risky elevated accounts using Firebase Auth enrollment where possible.', 'Permission & Role Manager now has a Full Permissions Preview that shows allowed screens, blocked screens, and sensitive-access flags for a selected user.', 'Protected admin API routes that use the shared admin guard can require a fresh MFA sign-in when MFA_ENFORCE_ELEVATED_ROLES is turned on in Vercel.'] },
   { id:'new-15013', title:'What changed in version 15.0.13', group:'Release Notes', keywords:'new update 15.0.13 shared reminders security center app check mfa rate limiting upload protection professional look', body:['Reminders can now be shared with a teammate from a dropdown. Choose Just me for a private reminder or choose a team member so they can see and complete it.', 'Security Center was added for system admins to check setup health, including rules status, storage status, App Check readiness, missing environment variables, cron status, risky elevated users, and suspicious activity signals.', 'Expensive routes such as AI scans, voice, push, and reminder dispatch now include rate limiting so one device cannot hammer costly actions.', 'Menu and invoice uploads now include stricter file purpose, path, type, and size protection.', 'The app also starts a cleaner visual system with more consistent spacing, buttons, badges, mobile controls, and status colors.'] },
   { id:'shared-reminders-guide', title:'Sharing Reminders', group:'Reminders', keywords:'shared reminders share reminder teammate assign dropdown just me personal reminders team member', body:['Open My Reminders and type the reminder you want to create.', 'Use Share With to choose Just me for a private reminder or select a teammate from the list.', 'Pick the reminder date and time, then save it. Shared reminders appear for both the person who created them and the teammate they were assigned to.', 'The assigned teammate can mark the reminder done. The person who created the reminder can edit or delete it.', 'Use shared reminders for simple handoffs like check the walk-in, order buns, call vendor, prep sauce, or follow up on a maintenance item.'] },
-  { id:'security-center-overview', title:'Security Center Overview', group:'Security', keywords:'security center rules app check mfa risky users suspicious activity environment variables cron status', body:['Security Center gives system admins a plain-English snapshot of important setup checks.', 'It can show whether rules, storage protection, App Check readiness, cron setup, environment variables, rate limiting, and risky elevated accounts need attention.', 'Some security steps still happen outside the app in Firebase or Vercel. For example, App Check enforcement, MFA/two-step login, and secret rotation must be completed in those admin consoles.', 'If a card shows warning or action needed, follow the Administrator Manual checklist before changing production settings.'] },
+  { id:'security-center-overview', title:'Security Center Overview', group:'Security', keywords:'security center rules app check mfa risky users suspicious activity environment variables cron status', body:['Security Center gives system admins a plain-English snapshot of important setup checks.', 'It can show whether rules, storage protection, App Check readiness, MFA enrollment/enforcement status, cron setup, environment variables, rate limiting, and risky elevated accounts need attention.', 'Some security steps still happen outside the app in Firebase or Vercel. For example, App Check enforcement, enabling SMS MFA, Vercel MFA enforcement env vars, and secret rotation must be completed in those admin consoles.', 'If a card shows warning or action needed, follow the Administrator Manual checklist before changing production settings.'] },
   { id:'new-15012', title:'What changed in version 15.0.12', group:'Release Notes', keywords:'new update 15.0.12 menu intelligence help guide intelligent menu instructions scan approve edit delete 86 impact', body:['Help Center now has a dedicated Using Menu Intelligence guide instead of only release notes.', 'The guide walks managers through menu upload, file compression, AI review, matching ingredients to inventory, approving links, editing scans, deleting scans, and checking menu impact when something is 86d.', 'The article uses public-facing wording and avoids System Administrator, Forensics, backup, and security internals.', 'No Firebase rules, Storage rules, API routes, or environment variables changed in this help-only polish build.'] },
   { id:'menu-intelligence-guide', title:'Using Menu Intelligence', group:'Menu Intelligence', keywords:'menu intelligence intelligent menu menu scanner scan menu upload photo pdf approve reviewed menu links ingredient match inventory link unavailable menu items 86 burger patty beef gr pty edit delete recent menu scans', body:['Menu Intelligence helps managers connect menu items to the inventory products that make them. Once those links are approved, 86 Chaos can tell staff which menu items are affected when an ingredient is 86d or unavailable.', 'Open Menu Intelligence, choose a clear menu photo or PDF, and start the scan. Large photos are compressed before upload when possible. If a PDF is still too large, split it into smaller sections or export fewer pages.', 'When the scan finishes, review the detected menu items. The AI is a helper, not the boss. Check names, ingredients, and suggested inventory matches before approving anything.', 'For each menu item, connect the ingredients to the real inventory rows your kitchen uses. Use the actual product name when possible. For example, a burger may need to link to an inventory item named BEEF GR PTY, beef patty, hamburger patty, bun, cheese, lettuce, tomato, or other items you track.', 'Click Approve Reviewed Menu Links after the matches look right. The approval button shows progress and locks while saving so duplicate links are not created by extra clicks.', 'Use Recent Menu Scans to edit a scan when an ingredient match is wrong or delete a scan when it is outdated. Deleting a scan removes its menu-impact links so old menus do not keep affecting 86 alerts.', 'When someone posts or says an 86 alert such as 86 burger, the app can use approved Menu Intelligence links to find the best inventory match and show unavailable menu items on the Message Board, Manager Brief, and Kitchen Command Center.', 'For best results, approve links for common shorthand items staff actually say: burger, patty, wings, fries, chicken, buns, ranch, cheese, lettuce, tomatoes, and sauces. If an 86 alert does not show menu impact, edit the menu scan and make sure that ingredient is linked to the correct inventory item.'] },
   { id:'new-15011', title:'What changed in version 15.0.11', group:'Release Notes', keywords:'new update 15.0.11 kitchen 86 alerts voice navigation menu intelligence burger simple command center', body:['86 Voice now refreshes Inventory and Menu Intelligence context only when an 86 command runs, so alerts are smarter without adding constant reads.', 'Kitchen phrases like “86 burger” can match approved Menu Intelligence links and inventory names such as beef patties, hamburger patties, or BEEF GR PTY.', '86 alert posts now show the matched inventory item and unavailable menu items when the app can identify them.', 'Voice navigation understands more plain screen names, including Manager Brief, Kitchen Command Center, Inventory, Prep, Time Off, Financials, and Help Center.', 'Kitchen Command Center wording was simplified so the screen is easier to use during service.'] },

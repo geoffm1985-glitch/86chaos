@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
@@ -33,7 +34,11 @@ async function authorize(req, adminApp) {
     const decoded = await adminApp.auth().verifyIdToken(token);
     const masterEmail = (process.env.MASTER_ADMIN_EMAIL || 'geoffm1985@gmail.com').toLowerCase();
     const email = (decoded.email || '').toLowerCase();
-    if (email === masterEmail || decoded.superAdmin === true) return { ok: true, uid: decoded.uid, email: decoded.email || '', actor: decoded.email || decoded.uid };
+    if (email === masterEmail || decoded.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
+      if (!mfa.ok) return mfa;
+      return { ok: true, uid: decoded.uid, email: decoded.email || '', actor: decoded.email || decoded.uid, mfa };
+    }
     return { ok: false, status: 403, error: 'Super admin required.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };

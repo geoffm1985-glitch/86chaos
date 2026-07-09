@@ -46,6 +46,10 @@ export default async function handler(req, res) {
     if (!requester.isSuperAdmin && requesterEmail !== masterEmail) {
       return res.status(403).json({ error: 'Super Admin required to deploy workspaces.' });
     }
+    const chaosAdmin = await import('./_chaos-admin.js');
+    const requireMfaIfEnforced = chaosAdmin.requireMfaIfEnforced || chaosAdmin.default?.requireMfaIfEnforced;
+    const mfaGate = requireMfaIfEnforced ? requireMfaIfEnforced(decoded, requester, true) : { ok: true };
+    if (!mfaGate.ok) return res.status(mfaGate.status || 403).json({ error: mfaGate.error });
 
     const { rName, oName, oEmail, oPhone, rAddress, tPass } = req.body;
 

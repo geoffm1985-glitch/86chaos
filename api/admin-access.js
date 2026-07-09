@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 
 function initAdmin() {
   if (admin.apps.length) return admin;
@@ -27,6 +28,8 @@ async function verifySuperAdmin(req) {
   if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) {
     throw new Error('Super admin access required.');
   }
+  const mfa = requireMfaIfEnforced(decoded, {}, true);
+  if (!mfa.ok) throw new Error(mfa.error);
   return decoded;
 }
 

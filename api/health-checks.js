@@ -3,6 +3,7 @@ const fs = require('fs');
 const { initAdmin, authorize, requireAppCheckIfEnforced } = require('./_chaos-admin');
 
 const ROUTE_CHECKS = [
+  { route: '/api/account-security', file: 'account-security.js', method: 'GET/POST', auth: 'signed-in-user', notes: 'MFA enrollment/status sync route.' },
   { route: '/api/admin-access', file: 'admin-access.js', method: 'POST', auth: 'super-admin', notes: 'Admin access escalation route.' },
   { route: '/api/alerts', file: 'alerts.js', method: 'POST', auth: 'workspace-admin', notes: 'Alert writer route.' },
   { route: '/api/backup-preview', file: 'backup-preview.js', method: 'POST', auth: 'super-admin', notes: 'Reads backup files for preview only.' },
@@ -75,7 +76,8 @@ module.exports = async function handler(req, res) {
       vercelEnv: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
       cronSecretConfigured: hasEnv('CRON_SECRET'),
       geminiConfigured: hasEnv('GEMINI_API_KEY') || hasEnv('GOOGLE_GENERATIVE_AI_API_KEY'),
-      appCheckEnvConfigured: hasEnv('APP_CHECK_ENFORCE') || hasEnv('FIREBASE_APP_CHECK_ENFORCE')
+      appCheckEnvConfigured: hasEnv('APP_CHECK_ENFORCE') || hasEnv('FIREBASE_APP_CHECK_ENFORCE'),
+      mfaEnforcementConfigured: hasEnv('MFA_ENFORCE_ELEVATED_ROLES') || hasEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || hasEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES')
     };
     return res.status(200).json({
       ok: rows.every(r => r.status === 'ready'),

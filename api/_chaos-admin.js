@@ -52,6 +52,21 @@ function initAdmin() {
   const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
   return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
 }
+
+function boolEnv(name) { return ['true', '1', 'yes', 'enforce'].includes(String(process.env[name] || '').toLowerCase().trim()); }
+function mfaEnforcementEnabled() { return boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES'); }
+function decodedHasMfa(decoded = {}) { const fb = decoded.firebase || {}; return Boolean(fb.sign_in_second_factor || fb.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true); }
+function roleNeedsMfa(user = {}, decoded = {}, isSuperAdmin = false) {
+  const role = norm(user.role || user.accountRole || decoded.role || '');
+  return Boolean(isSuperAdmin || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true || user.isAdmin === true || user.isOwner === true || user.accountOwner === true || user.owner === true || user.workspaceOwner === true || ['owner', 'manager', 'admin', 'general manager', 'super admin', 'system administrator'].some(token => role.includes(token)));
+}
+function requireMfaIfEnforced(decoded = {}, user = {}, isSuperAdmin = false) {
+  if (!mfaEnforcementEnabled()) return { ok: true, enforced: false };
+  if (!roleNeedsMfa(user, decoded, isSuperAdmin)) return { ok: true, enforced: true, required: false };
+  if (decodedHasMfa(decoded)) return { ok: true, enforced: true, required: true };
+  return { ok: false, status: 403, error: 'Two-step login is required for this elevated account. Log out, sign in again, and complete MFA before using protected admin tools.' };
+}
+
 function appCheckEnforced() {
   return ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
 }
@@ -94,7 +109,9 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
     const permissions = workspaceUser?.permissions || {};
     const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && (isSuperAdmin || member || userHasWorkspace(user, restaurantId)) && (workspaceUser?.isAdmin === true || workspaceUser?.isOwner === true || workspaceUser?.accountOwner === true || permissions.settings === true || permissions.team === true));
     if (!isSuperAdmin && !tenantAdmin) return { ok: false, status: 403, error: 'System Administrator access is required for this tool.' };
-    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions };
+    const mfa = requireMfaIfEnforced(decoded, workspaceUser || user || {}, isSuperAdmin);
+    if (!mfa.ok) return mfa;
+    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions, mfa };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }
@@ -121,4 +138,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, readBody, authorize, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace };
+module.exports = { admin, initAdmin, readBody, authorize, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };

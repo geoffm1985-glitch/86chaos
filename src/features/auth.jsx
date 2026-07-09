@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, getMultiFactorResolver, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
@@ -67,6 +67,15 @@ const LoginScreen = ({ setAppUser }) => {
   const [pendingUser, setPendingUser] = useState(null);
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
+
+  // MFA sign-in state. Enrollment lives under Settings → Profile → Account Security.
+  const [mfaResolver, setMfaResolver] = useState(null);
+  const [mfaHintIndex, setMfaHintIndex] = useState(0);
+  const [mfaVerificationId, setMfaVerificationId] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaSending, setMfaSending] = useState(false);
+  const [mfaVerifying, setMfaVerifying] = useState(false);
+  const mfaRecaptchaRef = useRef(null);
 
 
   const loadWorkspaceChoices = async (baseUser, firebaseUser) => {
@@ -174,34 +183,104 @@ const LoginScreen = ({ setAppUser }) => {
     setWorkspaceUser(null);
   };
 
+  const clearMfaChallenge = () => {
+    setMfaResolver(null);
+    setMfaHintIndex(0);
+    setMfaVerificationId('');
+    setMfaCode('');
+  };
+
+  const getMfaRecaptcha = () => {
+    if (mfaRecaptchaRef.current) return mfaRecaptchaRef.current;
+    mfaRecaptchaRef.current = new RecaptchaVerifier(auth, 'mfa-login-recaptcha-container', { size: 'invisible' });
+    return mfaRecaptchaRef.current;
+  };
+
+  const syncAccountSecurity = async () => {
+    try {
+      await secureFetch('/api/account-security', { method: 'POST' });
+    } catch (err) {
+      console.warn('Account security sync failed:', err?.message || err);
+    }
+  };
+
+  const completeFirebaseLogin = async (userCredential) => {
+    const firebaseUser = userCredential.user;
+    await syncAccountSecurity();
+    const userDocRef = doc(db, 'users', firebaseUser.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      const userData = { id: firebaseUser.uid, ...userDocSnap.data() };
+      delete userData.password;
+      if (userData.forcePasswordChange) {
+        setPendingUser(userData);
+      } else {
+        await finishLoginWithWorkspace(userData, firebaseUser, { forcePicker: true });
+      }
+    } else {
+      setLoginError('Login successful, but user profile is missing in the database.');
+    }
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
     setWorkspaceChoices([]);
     setWorkspaceUser(null);
+    clearMfaChallenge();
     
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-      
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
-      
-      if (userDocSnap.exists()) {
-        const userData = { id: firebaseUser.uid, ...userDocSnap.data() };
-        delete userData.password;
-        
-        // INTERCEPT: If the flag is true, hold them in the pending state
-        if (userData.forcePasswordChange) {
-          setPendingUser(userData);
-        } else {
-          await finishLoginWithWorkspace(userData, firebaseUser, { forcePicker: true });
-        }
-      } else {
-        setLoginError('Login successful, but user profile is missing in the database.');
-      }
+      await completeFirebaseLogin(userCredential);
     } catch (error) {
+      if (error?.code === 'auth/multi-factor-auth-required') {
+        try {
+          const resolver = getMultiFactorResolver(auth, error);
+          setMfaResolver(resolver);
+          setLoginError('This account requires two-step login. Send a code to continue.');
+          return;
+        } catch (resolverErr) {
+          setLoginError(resolverErr.message || 'Two-step login could not be prepared.');
+          return;
+        }
+      }
       setLoginError(error.message);
+    }
+  };
+
+  const handleSendMfaSignInCode = async () => {
+    if (!mfaResolver) return;
+    setLoginError('');
+    setMfaSending(true);
+    try {
+      const hint = mfaResolver.hints?.[Number(mfaHintIndex) || 0];
+      if (!hint) throw new Error('No MFA phone factor was found for this account.');
+      const provider = new PhoneAuthProvider(auth);
+      const verificationId = await provider.verifyPhoneNumber({ multiFactorHint: hint, session: mfaResolver.session }, getMfaRecaptcha());
+      setMfaVerificationId(verificationId);
+      setLoginError('Code sent. Enter the verification code to unlock 86 Chaos.');
+    } catch (err) {
+      setLoginError(err.message || 'Could not send MFA code.');
+    } finally {
+      setMfaSending(false);
+    }
+  };
+
+  const handleVerifyMfaSignInCode = async (e) => {
+    e?.preventDefault?.();
+    if (!mfaResolver || !mfaVerificationId || !mfaCode.trim()) return setLoginError('Send and enter the two-step login code first.');
+    setLoginError('');
+    setMfaVerifying(true);
+    try {
+      const credential = PhoneAuthProvider.credential(mfaVerificationId, mfaCode.trim());
+      const assertion = PhoneMultiFactorGenerator.assertion(credential);
+      const userCredential = await mfaResolver.resolveSignIn(assertion);
+      clearMfaChallenge();
+      await completeFirebaseLogin(userCredential);
+    } catch (err) {
+      setLoginError(err.message || 'Two-step login code was not accepted.');
+    } finally {
+      setMfaVerifying(false);
     }
   };
 
@@ -291,6 +370,28 @@ const LoginScreen = ({ setAppUser }) => {
               Back to Login
             </button>
           </div>
+        ) : mfaResolver ? (
+          <form onSubmit={handleVerifyMfaSignInCode} className="w-full space-y-4 animate-[slideIn_0.2s_ease-out]">
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-black text-white leading-tight">Two-Step Login</h2>
+              <p className="text-xs text-[#D4A381] font-bold mt-1 uppercase tracking-widest">Elevated account security</p>
+              <p className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">Send a code to your enrolled phone, then enter it here.</p>
+            </div>
+            {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">{loginError}</div>}
+            {Array.isArray(mfaResolver.hints) && mfaResolver.hints.length > 1 && (
+              <select value={mfaHintIndex} onChange={e => setMfaHintIndex(e.target.value)} className="w-full text-center text-sm font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-3 text-white focus:outline-none focus:border-[#D4A381]">
+                {mfaResolver.hints.map((hint, idx) => <option key={hint.uid || idx} value={idx}>{hint.displayName || hint.phoneNumber || `Phone factor ${idx + 1}`}</option>)}
+              </select>
+            )}
+            <button type="button" onClick={handleSendMfaSignInCode} disabled={mfaSending} className="w-full bg-[#12161A] border border-[#2A353D] text-[#D4A381] font-black tracking-widest uppercase text-xs py-3 rounded-xl hover:border-[#D4A381] disabled:opacity-50 transition-all">
+              {mfaSending ? 'Sending Code…' : mfaVerificationId ? 'Resend Code' : 'Send Code'}
+            </button>
+            <input type="text" inputMode="numeric" placeholder="Verification Code" value={mfaCode} onChange={e => setMfaCode(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
+            <button type="submit" disabled={mfaVerifying || !mfaVerificationId} className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2 disabled:opacity-50 disabled:hover:scale-100">
+              {mfaVerifying ? 'Verifying…' : 'Verify & Enter'}
+            </button>
+            <button type="button" onClick={clearMfaChallenge} className="w-full text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">Back to login</button>
+          </form>
         ) : pendingUser ? (
           <form onSubmit={handleForcePasswordChange} className="w-full space-y-4 animate-[slideIn_0.2s_ease-out]">
             <div className="text-center mb-4">
@@ -342,6 +443,7 @@ const LoginScreen = ({ setAppUser }) => {
             </div>
           </form>
         )}
+        <div id="mfa-login-recaptcha-container" className="hidden"></div>
       </div>
 
       <Modal isOpen={isPrivacyModalOpen} onClose={() => setIsPrivacyModalOpen(false)} title="Privacy Policy">
@@ -361,7 +463,7 @@ const LoginScreen = ({ setAppUser }) => {
             <li><strong className="text-white">Location Information:</strong> precise GPS location may be requested only when a clock-in or clock-out location rule is enabled. Location is used to compare the punch against the restaurant's required work area. 86chaos does not run background location tracking.</li>
             <li><strong className="text-white">Operational Content:</strong> prep lists, inventory records, recipes, invoices, vendor information, maintenance logs, sales/ledger entries, message board posts, likes, alerts, and uploaded attachments.</li>
             <li><strong className="text-white">Camera, Files, and Photos:</strong> with permission, the app can use camera/file access for invoice scanning, profile photos, message attachments, maintenance photos, and similar restaurant workflows.</li>
-            <li><strong className="text-white">Device, Security, and Diagnostic Data:</strong> browser/device type, screen size, active tab, notification permission status, push token status, service worker support, IndexedDB support, error logs, audit logs, and recent app actions attached to crash reports.</li>
+            <li><strong className="text-white">Device, Security, and Diagnostic Data:</strong> browser/device type, screen size, active tab, notification permission status, push token status, service worker support, IndexedDB support, error logs, audit logs, MFA enrollment status/masked factor metadata, and recent app actions attached to crash reports.</li>
           </ul>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">2. How We Use Information</h4>
@@ -389,7 +491,7 @@ const LoginScreen = ({ setAppUser }) => {
           <p>Operational data is retained while the restaurant workspace is active and as needed for payroll, scheduling, compliance, support, backups, fraud prevention, and legitimate business records. Backup files may retain restored or historical data for a limited backup window. If a workspace or user is deleted, active records are removed according to the restaurant's instructions and our backup/maintenance practices.</p>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">6. Security</h4>
-          <p>We use authentication, role-based permissions, server-side admin routes, audit logs, secure hosting, Firebase security rules, and backup controls to protect data. No system is perfect, so restaurants should use strong passwords, limit administrator access, and promptly disable accounts that no longer need access.</p>
+          <p>We use authentication, optional two-step login for elevated accounts, role-based permissions, server-side admin routes, audit logs, secure hosting, Firebase security rules, and backup controls to protect data. No system is perfect, so restaurants should use strong passwords, limit administrator access, and promptly disable accounts that no longer need access.</p>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">7. Choices and Permissions</h4>
           <p>You can deny browser permissions such as notifications, camera, or location, but some features may be limited. Location permission is only requested for location-based punch verification. Push notification preferences may be controlled inside the app or through the browser/device settings.</p>
