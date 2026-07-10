@@ -40,8 +40,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   return (
      <div className="fixed inset-0 z-[70] flex justify-end">
        <div className="absolute inset-0 bg-[#05090D]/72 backdrop-blur-md" onClick={onClose}></div>
-       <div className={`chaos-drawer w-80 max-w-[88vw] bg-[#071017] border-l border-[#FF7A1A]/25 h-full shadow-[0_0_60px_rgba(0,0,0,0.55)] flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
-          <div className={`p-4 border-b border-[#FF7A1A]/20 bg-[#05090D] flex justify-between items-start`}>
+       <div className={`chaos-drawer w-80 max-w-[88vw] bg-[#071017] border-l border-[#D4A381]/25 h-full shadow-[0_0_60px_rgba(0,0,0,0.55)] flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+          <div className={`p-4 border-b border-[#D4A381]/20 bg-[#05090D] flex justify-between items-start`}>
              <div className="flex items-center gap-3">
                <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
                <div>
@@ -65,7 +65,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
              {tabs.map(tab => (
-               <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-950 shadow-[0_14px_30px_rgba(255,122,26,0.20)]` : 'text-slate-400 hover:bg-orange-500/10 hover:text-white hover:border-orange-400/40'}`}>
+               <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-950 shadow-[0_14px_30px_rgba(212,163,129,0.20)]` : 'text-slate-400 hover:bg-[#D4A381]/10 hover:text-white hover:border-[#D4A381]/40'}`}>
                  <div className="flex items-center gap-3">
                    <div className="relative">
                      <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
@@ -76,10 +76,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                </button>
              ))}
           </div>
-          <div className={`p-3 border-t border-[#FF7A1A]/20 bg-[#05090D] space-y-2`}>
+          <div className={`p-3 border-t border-[#D4A381]/20 bg-[#05090D] space-y-2`}>
            <button 
               onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} 
-              className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"
+              className="w-full flex items-center justify-center gap-2 py-2.5 text-[#D4A381] text-sm font-bold rounded-xl hover:bg-[#8F6040]/20 transition-colors border border-[#8F6040]/30"
             >
               <Bug size={16} /> Report a Bug / Error
             </button>

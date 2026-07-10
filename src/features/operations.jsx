@@ -1481,7 +1481,7 @@ const groupedItems = inventoryItems
             {(scannedInvoice.extractionWarnings || scannedInvoice.extractionNotes || scannedInvoice.rawTranscription) && (
               <details className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
                 <summary className="cursor-pointer text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Full Extraction Audit / Raw Text</summary>
-                {scannedInvoice.extractionWarnings && <div className="mt-2 text-[10px] text-orange-300 font-bold">Warnings: {Array.isArray(scannedInvoice.extractionWarnings) ? scannedInvoice.extractionWarnings.join(' • ') : scannedInvoice.extractionWarnings}</div>}
+                {scannedInvoice.extractionWarnings && <div className="mt-2 text-[10px] text-[#D4A381] font-bold">Warnings: {Array.isArray(scannedInvoice.extractionWarnings) ? scannedInvoice.extractionWarnings.join(' • ') : scannedInvoice.extractionWarnings}</div>}
                 {scannedInvoice.extractionNotes && <div className="mt-2 text-[10px] text-slate-300 font-bold">Notes: {Array.isArray(scannedInvoice.extractionNotes) ? scannedInvoice.extractionNotes.join(' • ') : scannedInvoice.extractionNotes}</div>}
                 {scannedInvoice.rawTranscription && <pre className="mt-2 max-h-36 overflow-auto text-[10px] whitespace-pre-wrap text-slate-400 bg-black/20 p-2 rounded-lg border border-[#2A353D]">{scannedInvoice.rawTranscription}</pre>}
               </details>
@@ -1536,7 +1536,7 @@ const groupedItems = inventoryItems
                        newItems[idx].matchedItemId = e.target.value;
                        setScannedInvoice({...scannedInvoice, lineItems: newItems});
                     }}
-                    className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
+                    className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-[#D4A381]/50 text-[#D4A381] bg-[#8F6040]/10'}`}
                   >
                     <option value="">{item.isInventoryLine ? '-- Do Not Import / Skip --' : '-- Non-inventory row saved to invoice only --'}</option>
                     {item.isInventoryLine && <option value="CREATE_NEW">➕ Add as New Item</option>}
@@ -2554,7 +2554,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   };
 
   const getStatusColor = (s) => {
-    if (s === 'Reported') return 'text-orange-400 bg-orange-900/20 border-orange-900/50';
+    if (s === 'Reported') return 'text-[#D4A381] bg-[#8F6040]/20 border-[#8F6040]/50';
     if (s === 'In Progress' || s === 'Pending Parts') return 'text-blue-400 bg-blue-900/20 border-blue-900/50';
     if (s === 'Resolved') return 'text-emerald-400 bg-emerald-900/20 border-emerald-900/50';
     return 'text-slate-400 bg-slate-900/20 border-slate-700';
@@ -2562,7 +2562,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
 
   const getUrgencyColor = (u) => {
     if (u === 'Critical') return 'text-red-500 font-black animate-pulse';
-    if (u === 'High') return 'text-orange-500 font-bold';
+    if (u === 'High') return 'text-[#D4A381] font-bold';
     return 'text-slate-400';
   };
 
@@ -2684,7 +2684,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
                 let statusColor = 'text-emerald-500 bg-emerald-900/20 border-emerald-900/50';
                 let statusText = `${daysLeft} Days Left`;
                 if (daysLeft <= 0) { statusColor = 'text-red-500 bg-red-900/20 border-red-900/50 animate-pulse'; statusText = `OVERDUE (${Math.abs(daysLeft)}d)`; }
-                else if (daysLeft <= 7) { statusColor = 'text-orange-400 bg-orange-900/20 border-orange-900/50'; statusText = `DUE SOON (${daysLeft}d)`; }
+                else if (daysLeft <= 7) { statusColor = 'text-[#D4A381] bg-[#8F6040]/20 border-[#8F6040]/50'; statusText = `DUE SOON (${daysLeft}d)`; }
 
                 return (
                   <div key={pm.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
@@ -3155,7 +3155,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
                     <div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Stock {stock} / Par {par}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs font-black text-orange-400">Order {needed}</div>
+                    <div className="text-xs font-black text-[#D4A381]">Order {needed}</div>
                     <div className="text-[9px] text-slate-500 font-bold">${Number(item.price || 0).toFixed(2)}</div>
                   </div>
                 </button>
@@ -3175,7 +3175,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
                     <div className="text-sm font-bold text-white truncate">{log.equipment}</div>
                     <div className="text-xs text-slate-400 font-medium mt-1 line-clamp-2">{log.issue}</div>
                   </div>
-                  <span className={`text-[9px] font-black uppercase tracking-widest ${log.urgency === 'Critical' ? 'text-red-500' : log.urgency === 'High' ? 'text-orange-400' : 'text-slate-500'}`}>{log.urgency || 'Standard'}</span>
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${log.urgency === 'Critical' ? 'text-red-500' : log.urgency === 'High' ? 'text-[#D4A381]' : 'text-slate-500'}`}>{log.urgency || 'Standard'}</span>
                 </div>
               </div>
             ))}
@@ -3269,7 +3269,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
             <div className="font-black text-white text-sm">Graph Status</div>
             <div className="grid grid-cols-2 gap-2 mt-3">
               <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Links</div><div className="text-xl font-black text-white">{menuDependencies.length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Collisions</div><div className="text-xl font-black text-orange-300">{affectedMenuItems.length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Collisions</div><div className="text-xl font-black text-[#D4A381]">{affectedMenuItems.length}</div></div>
             </div>
             <div className="mt-3 max-h-28 overflow-y-auto custom-scrollbar space-y-1">
               {menuDependencies.length === 0 && <div className="text-xs text-slate-500 font-bold">No manual links yet. Start with your best sellers and 86-prone ingredients.</div>}
@@ -3284,7 +3284,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
             {affectedMenuItems.map(({ recipe, lowStockMatches, prepMatches, explicitDependencies, eightySixAlerts }) => (
               <div key={recipe.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="min-w-0"><div className="font-black text-white text-sm truncate">{recipe.name || recipe.title || 'Recipe'}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lowStockMatches.length ? `Affected by ${lowStockMatches.map(i => i.name).join(', ')}` : 'Affected by 86/prep signal'}</div><div className="text-[10px] text-slate-600 font-bold mt-1">{explicitDependencies?.length ? 'Manual graph link • ' : 'Text match • '}{prepMatches?.length ? `${prepMatches.length} prep signal(s) • ` : ''}{eightySixAlerts?.length ? `${eightySixAlerts.length} active 86 alert(s)` : ''}</div></div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-orange-300">{lowStockMatches.some(i => Number(i.pendingQty || 0) > 0) ? 'Recovery pending' : 'Needs action'}</div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{lowStockMatches.some(i => Number(i.pendingQty || 0) > 0) ? 'Recovery pending' : 'Needs action'}</div>
               </div>
             ))}
           </div>

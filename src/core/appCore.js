@@ -17,20 +17,20 @@ export const customMapIcon = new L.Icon({
 });
 
 
-// --- Master Theme (16.0.3: feature recovery, safer 86 Voice, OpenAI diagnostics, organized menu) ---
+// --- Master Theme (16.0.4: feature recovery, safer 86 Voice, OpenAI diagnostics, organized menu) ---
 export const T = {
   bg: "bg-[#070B10] text-slate-100",
-  card: "bg-[#101820] border border-[#FF7A1A]/25 shadow-lg rounded-2xl",
+  card: "bg-[#101820] border border-[#D4A381]/25 shadow-lg rounded-2xl",
   border: "border-[#263844]",
-  copper: "text-[#FF7A1A]",
-  grad: "bg-gradient-to-r from-[#FF8A22] via-[#FF7A1A] to-[#C94F0B]",
-  btn: "bg-gradient-to-r from-[#FF8A22] via-[#FF7A1A] to-[#C94F0B] text-slate-950 font-black uppercase tracking-wider rounded-xl shadow-[0_12px_30px_rgba(255,122,26,0.24)] hover:brightness-110 transition-all px-3 py-2 text-xs text-center",
-  btnAlt: "bg-[#0A1118] text-slate-200 border border-[#2B4150] font-bold rounded-xl hover:text-[#FF8A22] hover:border-[#FF7A1A]/50 transition-all px-3 py-2 text-xs",
-  input: "w-full p-2.5 bg-[#070B10] border border-[#2B4150] text-white rounded-xl outline-none focus:border-[#FF7A1A] focus:ring-1 focus:ring-[#FF7A1A]/30 transition-colors font-medium text-sm",
+  copper: "text-[#D4A381]",
+  grad: "bg-gradient-to-r from-[#C59373] via-[#D4A381] to-[#8F6040]",
+  btn: "bg-gradient-to-r from-[#C59373] via-[#D4A381] to-[#8F6040] text-slate-950 font-black uppercase tracking-wider rounded-xl shadow-[0_12px_30px_rgba(212,163,129,0.24)] hover:brightness-110 transition-all px-3 py-2 text-xs text-center",
+  btnAlt: "bg-[#0A1118] text-slate-200 border border-[#2B4150] font-bold rounded-xl hover:text-[#C59373] hover:border-[#D4A381]/50 transition-all px-3 py-2 text-xs",
+  input: "w-full p-2.5 bg-[#070B10] border border-[#2B4150] text-white rounded-xl outline-none focus:border-[#D4A381] focus:ring-1 focus:ring-[#D4A381]/30 transition-colors font-medium text-sm",
   label: "block text-[10px] uppercase tracking-[0.18em] font-black text-slate-400 mb-1",
   muted: "text-slate-400",
-  th: "bg-[#071017] border-b border-[#263844] text-[10px] font-black text-[#FF8A22] uppercase tracking-widest p-2.5",
-  row: "hover:bg-[#FF7A1A]/5 border-b border-[#263844] transition-colors p-2.5",
+  th: "bg-[#071017] border-b border-[#263844] text-[10px] font-black text-[#C59373] uppercase tracking-widest p-2.5",
+  row: "hover:bg-[#D4A381]/5 border-b border-[#263844] transition-colors p-2.5",
 };
 
 // --- Firebase Initialization ---
@@ -156,7 +156,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.3';
+export const CURRENT_VERSION = '16.0.4';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

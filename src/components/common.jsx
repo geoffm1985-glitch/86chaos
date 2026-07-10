@@ -36,7 +36,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
   return (
     <div className="fixed inset-0 bg-[#12161A]/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md transition-opacity">
       <div className={`${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto`}>
-        <div className={`flex justify-between items-center p-4 border-b ${T.border}`}>
+        <div className={`flex justify-between items-center p-3 border-b ${T.border}`}>
           <h3 className="font-bold text-lg text-white">{title}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors"><X size={20}/></button>
         </div>
@@ -51,6 +51,37 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   useEffect(() => {
     setMenuSearch('');
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return undefined;
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    const previousBody = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+      overflow: document.body.style.overflow
+    };
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.position = previousBody.position;
+      document.body.style.top = previousBody.top;
+      document.body.style.left = previousBody.left;
+      document.body.style.right = previousBody.right;
+      document.body.style.width = previousBody.width;
+      document.body.style.overflow = previousBody.overflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      window.scrollTo(0, scrollY);
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -118,21 +149,21 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-[70] flex justify-end">
+        <div className="fixed inset-0 z-[100] flex justify-end overflow-hidden">
           <div className="absolute inset-0 bg-[#05080A]/70 backdrop-blur-md" onClick={onClose}></div>
-          <div className={`w-[94vw] max-w-sm sm:w-96 cockpit-panel border-l ${T.border} h-full shadow-[0_28px_90px_rgba(0,0,0,.52)] flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
-            <div className={`p-4 border-b ${T.border} bg-[#070A0D]/76 space-y-4`}>
+          <div className={`w-[90vw] max-w-[22rem] sm:w-[22rem] cockpit-panel border-l ${T.border} h-full shadow-[0_28px_90px_rgba(0,0,0,.52)] flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+            <div className={`p-3 border-b ${T.border} bg-[#070A0D]/76 space-y-2.5`}>
               <div className="flex items-center justify-between gap-3">
                 <CheersLogo clientData={clientData} />
-                <button onClick={onClose} className="no-compact h-10 w-10 flex items-center justify-center bg-[#111821] border border-[#33414B] rounded-xl text-slate-400 hover:text-white hover:border-[#F97316]/60 transition-colors" aria-label="Close navigation menu"><X size={18}/></button>
+                <button onClick={onClose} className="no-compact h-9 w-9 flex items-center justify-center bg-[#111821] border border-[#33414B] rounded-xl text-slate-400 hover:text-white hover:border-[#D4A381]/60 transition-colors" aria-label="Close navigation menu"><X size={18}/></button>
               </div>
               <div className="flex items-center justify-between gap-3">
-               <div className="flex items-center gap-3 min-w-0">
-                 <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
+               <div className="flex items-center gap-2.5 min-w-0">
+                 <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-9 h-9 rounded-full border ${T.border} object-cover`}/>
                  <div className="min-w-0">
                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div>
-                   <div className="text-white font-black text-lg tracking-tight leading-none truncate">{appUser.name}</div>
-                   <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
+                   <div className="text-white font-black text-base tracking-tight leading-none truncate">{appUser.name}</div>
+                   <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-0.5 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
                  </div>
                </div>
                <button
@@ -142,7 +173,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                  className={`hidden sm:block text-right min-w-0 rounded-xl px-2 py-1 border ${canSwitchWorkspace ? 'border-[#D4A381]/40 hover:border-[#D4A381] cursor-pointer' : 'border-transparent cursor-default'}`}
                  title={canSwitchWorkspace ? 'Change restaurant workspace' : 'Current restaurant workspace'}
                >
-                 <div className="text-[9px] uppercase tracking-widest font-black text-[#FFB34D]">Workspace</div>
+                 <div className="text-[9px] uppercase tracking-widest font-black text-[#C59373]">Workspace</div>
                  <div className="text-[10px] font-bold text-slate-500 truncate max-w-[8rem]">{activeWorkspaceLabel}</div>
                </button>
               </div>
@@ -156,20 +187,20 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                 {canSwitchWorkspace && <Repeat size={13} className="flex-shrink-0" />}
               </button>
             </div>
-            <div className="p-3 border-b border-[#33414B] bg-[#0D1318]/65">
+            <div className="p-2.5 border-b border-[#33414B] bg-[#0D1318]/65">
               <div className="relative">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#070A0D] border border-[#33414B] rounded-xl pl-9 pr-3 py-2.5 text-xs font-bold text-white outline-none focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/20" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#070A0D] border border-[#33414B] rounded-xl pl-8 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381] focus:ring-2 focus:ring-[#D4A381]/20" />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-2.5 space-y-2 custom-scrollbar">
                {visibleTabs.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#33414B] rounded-xl">No menu results. Try schedule, punch, recipe, inventory, or help.</div>}
                {menuSections.map(section => (
-                 <div key={section.title} className="space-y-1.5">
-                   <div className="px-2 text-[9px] uppercase tracking-widest font-black text-slate-500">{section.title}</div>
+                 <div key={section.title} className="space-y-1">
+                   <div className="px-2 text-[8px] uppercase tracking-widest font-black text-slate-500">{section.title}</div>
                    {section.tabs.map(tab => (
-                     <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 border ${activeTab === tab.id ? `${T.grad} text-slate-950 border-[#FFB34D]/40 shadow-[0_12px_30px_rgba(249,115,22,.24)]` : tab.id === 'godmode' ? 'text-slate-300 bg-[#111821]/80 border-[#F97316]/25 hover:bg-[#151D24] hover:text-white hover:border-[#F97316]/60' : 'text-slate-400 bg-transparent border-transparent hover:bg-[#151D24] hover:text-white hover:border-[#33414B]'}`}>
-                       <div className="flex items-center gap-3 min-w-0">
+                     <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full min-h-[36px] flex items-center justify-between px-2.5 py-1.5 rounded-lg font-bold text-xs transition-all duration-200 border ${activeTab === tab.id ? `${T.grad} text-slate-950 border-[#C59373]/40 shadow-[0_12px_30px_rgba(212,163,129,.24)]` : tab.id === 'godmode' ? 'text-slate-300 bg-[#111821]/80 border-[#D4A381]/25 hover:bg-[#151D24] hover:text-white hover:border-[#D4A381]/60' : 'text-slate-400 bg-transparent border-transparent hover:bg-[#151D24] hover:text-white hover:border-[#33414B]'}`}>
+                       <div className="flex items-center gap-2.5 min-w-0">
                          <div className="relative shrink-0">
                            <span className={activeTab === tab.id ? 'text-slate-950' : T.copper}>{tab.icon}</span>
                            {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
@@ -180,12 +211,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    ))}
                  </div>
                ))}
-               {visibleActions.length > 0 && <div className="pt-3 mt-2 border-t border-[#33414B]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-1">Suggested actions</div>{visibleActions.map(a => (
-                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full min-h-[40px] text-left px-3 py-2 rounded-xl font-bold text-xs text-slate-300 hover:bg-[#151D24] hover:text-[#FFB34D] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
+               {visibleActions.length > 0 && <div className="pt-2 mt-1 border-t border-[#33414B]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-1">Suggested actions</div>{visibleActions.map(a => (
+                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full min-h-[34px] text-left px-2.5 py-1.5 rounded-lg font-bold text-xs text-slate-300 hover:bg-[#151D24] hover:text-[#C59373] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
                ))}</div>}
             </div>
-            <div className={`p-3 border-t ${T.border} bg-[#070A0D]/78 space-y-2`}>
-             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); sessionStorage.removeItem('86chaosUser'); onClose(); }} className="w-full min-h-[44px] flex items-center justify-center gap-2 py-2.5 text-red-300 text-sm font-bold rounded-xl hover:bg-red-900/20 border border-red-500/20 transition-colors"><LogOut size={16} /> Log Out</button>
+            <div className={`p-2.5 border-t ${T.border} bg-[#070A0D]/78 space-y-2`}>
+             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); sessionStorage.removeItem('86chaosUser'); onClose(); }} className="w-full min-h-[38px] flex items-center justify-center gap-2 py-2 text-red-300 text-sm font-bold rounded-xl hover:bg-red-900/20 border border-red-500/20 transition-colors"><LogOut size={16} /> Log Out</button>
             </div>
           </div>
         </div>

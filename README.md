@@ -1,29 +1,29 @@
 # 86 Chaos
 
-Version: 16.0.3
+Version: 16.0.4
 
-## 16.0.3 update
+## 16.0.4 update
 
-16.0.3 is a recovery-and-reliability build based on the last stable 16.0.1 app line. It keeps the features we built before the Codex 16.0.2 regression, restores the organized System Administrator experience, and only carries forward the Codex-style main menu organization that was actually useful.
+16.0.4 is a visual/menu cleanup build on top of 16.0.3. It keeps the recovered 16.0.1 feature set, the safer 86 Voice behavior, OpenAI diagnostics explanations, Gemini Manual improvements, backup watchdog work, and the organized main menu.
 
 What changed:
 
-- The main hamburger menu is now grouped into Command, Kitchen Ops, Management, and System sections while preserving all existing feature tabs and permissions.
-- 86 Voice alerts are now safer: 86/out-of-stock phrases require confirmation before sending, never edit inventory, and only use very strong inventory matches automatically.
-- Weak 86 item matches are treated as review-only instead of silently mapping to the wrong inventory row.
-- System Administrator now has a search box for quickly finding admin tools like backups, MFA, users, push, cron, rules, Gemini, and diagnostics.
-- Full System Diagnostics now has an OpenAI-powered structured explanation button that generates repair steps, verification steps, deploy/publish notes, and escalation criteria.
-- Added the protected `/api/openai-diagnostics-explain` route for Super Admin-only diagnostics explanations.
+- Removed the bright action color from the app shell and restored the copper look across the core theme, menu, buttons, borders, focus rings, scrollbars, and command panels.
+- Tightened the main hamburger menu so menu items take less vertical space and the drawer is easier to scan on desktop and mobile.
+- Changed the main menu drawer to behave as a true overlay: opening it locks the page behind it instead of letting the current page shift or get pushed around.
+- Preserved the grouped main menu categories: Command, Kitchen Ops, Management, and System.
+- Preserved the stable System Administrator layout/tools from the recovered app line.
+- Kept the OpenAI diagnostics route, safer 86 Voice confirmation behavior, System Administrator search, Gemini Manual, backup watchdog, and other 16.0.x features.
 
 ## Deployment notes
 
-- Redeploy on Vercel because frontend code, version metadata, `/api/voice-command`, `/api/health-checks`, `/api/security-diagnostics`, and the new `/api/openai-diagnostics-explain` route changed.
+- Redeploy on Vercel because frontend styling, version metadata, and the displayed API version changed.
 - Add `OPENAI_API_KEY` to the Vercel environment where you want OpenAI diagnostics explanations to work.
 - Optional: set `OPENAI_DIAGNOSTICS_MODEL` if you want a different OpenAI model. The default is `gpt-5-mini`.
 - Firestore rules are unchanged.
 - Storage rules are unchanged.
-- No new Firebase publishing is required for this build.
+- No Firebase publishing is required for this build.
 
 ## Important QA focus
 
-Test the main menu first on desktop and mobile, then confirm System Administrator still has the organized categories from 16.0.1. Test 86 Voice with exact, partial, and bad item names before service. Run Full System Diagnostics, then click Explain with OpenAI after adding the OpenAI key in Vercel.
+Test the main menu first on desktop and mobile. Confirm it opens over the current page, does not push the page down, keeps the copper styling, and still exposes every permitted feature. Then verify System Administrator, 86 Voice confirmation, and OpenAI diagnostics still work.

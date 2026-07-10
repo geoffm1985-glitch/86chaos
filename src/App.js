@@ -1313,7 +1313,7 @@ What I clicked / expected:
     );
   }
 
-  const appAccentColor = /^#[0-9A-Fa-f]{6}$/.test(displayClientData?.systemSettings?.accentColor || '') ? displayClientData.systemSettings.accentColor : '#FF7A1A';
+  const appAccentColor = /^#[0-9A-Fa-f]{6}$/.test(displayClientData?.systemSettings?.accentColor || '') ? displayClientData.systemSettings.accentColor : '#D4A381';
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
@@ -1343,17 +1343,17 @@ return (
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .cockpit-shell { --chaos-copper: var(--chaos-accent, #FF7A1A); --chaos-panel: #101820; --chaos-deck: #070B10; --chaos-accent-soft: color-mix(in srgb, var(--chaos-accent, #FF7A1A) 78%, white); --chaos-accent-strong: color-mix(in srgb, var(--chaos-accent, #FF7A1A) 72%, black); --chaos-border-glow: color-mix(in srgb, var(--chaos-accent, #FF7A1A) 28%, #263844); }
-        .cockpit-shell [class*="text-[#D4A381]"], .cockpit-shell [class*="hover:text-[#D4A381]"]:hover, .cockpit-shell [class*="text-[#FF7A1A]"], .cockpit-shell [class*="hover:text-[#FF7A1A]"]:hover { color: var(--chaos-accent, #FF7A1A) !important; }
-        .cockpit-shell [class*="border-[#D4A381]"], .cockpit-shell [class*="focus:border-[#D4A381]"]:focus, .cockpit-shell [class*="border-[#FF7A1A]"], .cockpit-shell [class*="focus:border-[#FF7A1A]"]:focus { border-color: var(--chaos-accent, #FF7A1A) !important; }
+        .cockpit-shell { --chaos-copper: var(--chaos-accent, #D4A381); --chaos-panel: #101820; --chaos-deck: #070B10; --chaos-accent-soft: color-mix(in srgb, var(--chaos-accent, #D4A381) 78%, white); --chaos-accent-strong: color-mix(in srgb, var(--chaos-accent, #D4A381) 72%, black); --chaos-border-glow: color-mix(in srgb, var(--chaos-accent, #D4A381) 28%, #263844); }
+        .cockpit-shell [class*="text-[#D4A381]"], .cockpit-shell [class*="hover:text-[#D4A381]"]:hover, .cockpit-shell [class*="text-[#D4A381]"], .cockpit-shell [class*="hover:text-[#D4A381]"]:hover { color: var(--chaos-accent, #D4A381) !important; }
+        .cockpit-shell [class*="border-[#D4A381]"], .cockpit-shell [class*="focus:border-[#D4A381]"]:focus, .cockpit-shell [class*="border-[#D4A381]"], .cockpit-shell [class*="focus:border-[#D4A381]"]:focus { border-color: var(--chaos-accent, #D4A381) !important; }
         .cockpit-shell [class*="bg-[#8F6040]"] { background-color: var(--chaos-accent-strong) !important; }
-        .cockpit-shell [class*="accent-[#8F6040]"] { accent-color: var(--chaos-accent, #FF7A1A) !important; }
+        .cockpit-shell [class*="accent-[#8F6040]"] { accent-color: var(--chaos-accent, #D4A381) !important; }
         .cockpit-shell [class*="from-[#C59373]"][class*="to-[#8F6040]"] { background-image: linear-gradient(to right, var(--chaos-accent-soft), var(--chaos-accent), var(--chaos-accent-strong)) !important; }
         .cockpit-shell .brand-logo-stack img { object-fit: contain; }
         .chaos-command-theme {
           color: #F8FAFC;
           background:
-            radial-gradient(circle at 18% 0%, rgba(255,122,26,.16), transparent 34%),
+            radial-gradient(circle at 18% 0%, rgba(212,163,129,.16), transparent 34%),
             radial-gradient(circle at 82% 8%, rgba(14,165,233,.12), transparent 30%),
             linear-gradient(180deg, #05090D 0%, #071017 46%, #05090D 100%) !important;
         }
@@ -1371,14 +1371,14 @@ return (
         .chaos-command-theme > header {
           height: 72px;
           background: linear-gradient(180deg, rgba(5,9,13,.96), rgba(7,16,23,.88)) !important;
-          border-bottom-color: rgba(255,122,26,.26) !important;
-          box-shadow: 0 18px 55px rgba(0,0,0,.38), inset 0 -1px 0 rgba(255,122,26,.08) !important;
+          border-bottom-color: rgba(212,163,129,.26) !important;
+          box-shadow: 0 18px 55px rgba(0,0,0,.38), inset 0 -1px 0 rgba(212,163,129,.08) !important;
         }
         .chaos-command-theme main { max-width: 1280px !important; }
         .chaos-command-theme .cockpit-panel,
         .chaos-command-theme [class*="bg-[#1A2126]"] {
           background: linear-gradient(180deg, rgba(16,24,32,.94), rgba(8,14,20,.96)) !important;
-          border-color: rgba(255,122,26,.22) !important;
+          border-color: rgba(212,163,129,.22) !important;
           box-shadow: inset 0 1px 0 rgba(255,255,255,.045), 0 18px 45px rgba(0,0,0,.24) !important;
         }
         .chaos-command-theme [class*="bg-[#12161A]"],
@@ -1389,7 +1389,7 @@ return (
         .chaos-command-theme [class*="border-[#2A353D]"] { border-color: rgba(43,65,80,.88) !important; }
         .chaos-command-theme .cockpit-panel:hover,
         .chaos-command-theme [class*="bg-[#1A2126]"]:hover {
-          border-color: rgba(255,122,26,.38) !important;
+          border-color: rgba(212,163,129,.38) !important;
         }
         .chaos-command-theme button:not(:disabled) {
           transition: transform .18s ease, border-color .18s ease, background-color .18s ease, filter .18s ease, box-shadow .18s ease;
@@ -1401,19 +1401,19 @@ return (
           box-shadow: inset 0 1px 0 rgba(255,255,255,.03) !important;
         }
         .chaos-command-theme input:focus, .chaos-command-theme textarea:focus, .chaos-command-theme select:focus {
-          border-color: var(--chaos-accent, #FF7A1A) !important;
-          box-shadow: 0 0 0 1px color-mix(in srgb, var(--chaos-accent, #FF7A1A) 36%, transparent), 0 0 24px color-mix(in srgb, var(--chaos-accent, #FF7A1A) 14%, transparent) !important;
+          border-color: var(--chaos-accent, #D4A381) !important;
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--chaos-accent, #D4A381) 36%, transparent), 0 0 24px color-mix(in srgb, var(--chaos-accent, #D4A381) 14%, transparent) !important;
         }
         .chaos-command-theme .brand-logo-stack {
           background: rgba(8,14,20,.56);
-          border: 1px solid rgba(255,122,26,.16);
+          border: 1px solid rgba(212,163,129,.16);
           border-radius: 18px;
           padding: .4rem .6rem;
           box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
         }
         .chaos-command-theme h1, .chaos-command-theme h2, .chaos-command-theme h3 { letter-spacing: -.025em; }
         .chaos-command-theme .cockpit-grid {
-          background-image: radial-gradient(circle at 1px 1px, rgba(255,122,26,.105) 1px, transparent 0);
+          background-image: radial-gradient(circle at 1px 1px, rgba(212,163,129,.105) 1px, transparent 0);
           background-size: 20px 20px;
         }
         .ui-v12-compact button { touch-action: manipulation; }
@@ -1508,7 +1508,7 @@ return (
         )}
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
+          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-[#D4A381] hover:text-white" title="Report a problem"><Bug size={18}/></button>
           {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
         <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
@@ -1652,13 +1652,13 @@ return (
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
             <div className="bg-[#12161A] p-1.5 rounded-full text-[#D4A381] mt-0.5 border border-[#2A353D]"><Bell size={16} /></div>
-            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p>{t.reportable && <button type="button" onClick={() => openProblemReport({ title: t.title, message: t.message, category: 'Bug / Error' })} className="mt-2 text-[9px] font-black uppercase tracking-widest text-orange-300 hover:text-white">Report Problem</button>}</div>
+            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p>{t.reportable && <button type="button" onClick={() => openProblemReport({ title: t.title, message: t.message, category: 'Bug / Error' })} className="mt-2 text-[9px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white">Report Problem</button>}</div>
             <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
           </div>
         ))}
       </div>
       
-      <div className="w-full flex flex-col items-center justify-center py-5 border-t z-10 mt-auto bg-[#05090D]/95 border-[#FF7A1A]/20">
+      <div className="w-full flex flex-col items-center justify-center py-5 border-t z-10 mt-auto bg-[#05090D]/95 border-[#D4A381]/20">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
         <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version {CURRENT_VERSION}</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>

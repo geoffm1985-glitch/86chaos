@@ -1,7 +1,7 @@
 const { initAdmin, requireAppCheckIfEnforced } = require('./_chaos-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
-const APP_VERSION = '16.0.3';
+const APP_VERSION = '16.0.4';
 
 function cleanText(value = '', max = 500) {
   return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);

@@ -317,14 +317,14 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
 
           {/* STALE ACCOUNT ALERTS */}
           {staleTenants.length > 0 && (
-            <div className={`${T.card} p-6 border-orange-900/30`}>
-              <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Bell className="text-orange-500" size={18}/> Stale Account Alerts</h3>
+            <div className={`${T.card} p-6 border-[#8F6040]/30`}>
+              <h3 className="font-black text-lg text-white mb-2 flex items-center gap-2"><Bell className="text-[#D4A381]" size={18}/> Stale Account Alerts</h3>
               <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-3">These active accounts have not logged in for over 21 days.</p>
               <div className="space-y-2">
                 {staleTenants.map(r => (
                   <div key={r.id} className="flex justify-between items-center bg-[#12161A] p-3 rounded-lg border border-[#2A353D]">
                     <div><div className="font-bold text-sm text-white">{r.name}</div><div className="text-[10px] text-slate-500">{r.ownerEmail}</div></div>
-                    <div className="text-orange-400 font-black text-xs">Inactive {Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000)} Days</div>
+                    <div className="text-[#D4A381] font-black text-xs">Inactive {Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000)} Days</div>
                   </div>
                 ))}
               </div>
@@ -420,7 +420,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
       {subTab === 'support' && (
         <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
           <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-            <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Live Diagnostics / Bug Ledger</h3>
+            <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-[#D4A381]" size={18}/> Live Diagnostics / Bug Ledger</h3>
             <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
           </div>
           <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
@@ -428,7 +428,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
             {crashLogs.map(log => (
               <div key={log.id} className={`${T.row} flex flex-col gap-2`}>
                 <div className="flex justify-between items-start">
-                  <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
+                  <span className="text-xs font-black text-[#D4A381] bg-[#8F6040]/20 px-2 py-0.5 rounded border border-[#8F6040]/50 break-all leading-tight">{log.message}</span>
                   <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{new Date(log.time).toLocaleString()}</span>
                 </div>
                 

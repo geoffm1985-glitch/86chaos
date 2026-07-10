@@ -720,7 +720,7 @@ const handleOfferSwap = async (shift) => {
                           <span className="text-[8px] font-black uppercase tracking-widest text-slate-600 border border-[#1F2933] px-2 py-1 rounded">Ended</span>
                         ) : (
                           isOffered ? (
-                            <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 bg-orange-900/20 border border-orange-900/50 px-2 py-1 rounded">Listed</span>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-[#D4A381] bg-[#8F6040]/20 border border-[#8F6040]/50 px-2 py-1 rounded">Listed</span>
                           ) : (
                             <button onClick={() => handleOfferSwap(s)} className="text-[8px] font-black uppercase tracking-widest bg-[#1A2126] text-slate-300 border border-[#2A353D] hover:text-[#D4A381] hover:border-[#D4A381]/50 px-2 py-1 rounded transition-colors shadow-sm">
                               Swap
@@ -1038,7 +1038,7 @@ const [eventDate, setEventDate] = useState(getToday());
     if (!isPublished) return 'bg-slate-400 text-slate-900';
     const r = (role || '').toLowerCase();
     if (r.includes('bartender')) return 'bg-blue-400 text-blue-950';
-    if (r.includes('cook') || r.includes('chef') || r.includes('kitchen')) return 'bg-orange-400 text-orange-950';
+    if (r.includes('cook') || r.includes('chef') || r.includes('kitchen')) return 'bg-[#D4A381] text-[#26170F]';
     if (r.includes('server') || r.includes('wait')) return 'bg-pink-400 text-pink-950';
     if (r.includes('host')) return 'bg-emerald-400 text-emerald-950';
     if (r.includes('manager')) return 'bg-purple-400 text-purple-950';
@@ -2270,7 +2270,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
               <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
                 {dayShifts.map(s=>(
-                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-orange-400'} print-shift`}>
+                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-[#D4A381]'} print-shift`}>
                     {users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}
                   </div>
                 ))}
@@ -2363,7 +2363,7 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
                   <div className="font-black text-sm text-white leading-tight">{r.userName}</div>
           <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex flex-wrap items-center gap-2`}>
                     {formatDisplayDate(r.date)} {r.isPartial && <span className={`text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}
-                    {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1.5 py-0.5 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                    {r.status === 'pending' && <span className="bg-[#8F6040]/40 text-[#D4A381] border border-[#8F6040]/50 px-1.5 py-0.5 rounded uppercase tracking-widest text-[8px]">Pending</span>}
                     {r.submittedAt && <span className="text-slate-500 border-l border-[#2A353D] pl-2 ml-1">Req: {formatClockDateTime(r.submittedAt)}</span>}
                   </div>
                 </div>
@@ -2407,7 +2407,7 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
                     </span>
                   ))}
 
-                  {existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}
+                  {existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-[#D4A381]' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}
                   {isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}
                 </div>
               )
@@ -2451,7 +2451,7 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
                     <div>
                       <div className="text-xs font-bold text-white flex items-center gap-2">
                         {formatDisplayDate(r.date)}
-                        {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                        {r.status === 'pending' && <span className="bg-[#8F6040]/40 text-[#D4A381] border border-[#8F6040]/50 px-1 rounded uppercase tracking-widest text-[8px]">Pending</span>}
                       </div>
              {r.isPartial ? (
                         <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-wider mt-0.5">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</div>

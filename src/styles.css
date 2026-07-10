@@ -202,11 +202,11 @@ select {
 }
 
 
-/* 16.0.3: stable shell plus organized menu, admin search, safer 86 Voice, OpenAI diagnostics */
+/* 16.0.4: stable shell plus organized menu, admin search, safer 86 Voice, OpenAI diagnostics */
 :root {
-  --chaos-orange: #ff7a1a;
-  --chaos-orange-soft: #ffb15e;
-  --chaos-orange-deep: #c94f0b;
+  --chaos-copper: #d4a381;
+  --chaos-copper-soft: #c59373;
+  --chaos-copper-deep: #8f6040;
   --chaos-ink: #05090d;
   --chaos-ink-2: #071017;
   --chaos-panel-dark: #101820;
@@ -215,7 +215,7 @@ select {
 
 body {
   background:
-    radial-gradient(circle at 15% 0%, rgba(255,122,26,.16), transparent 30%),
+    radial-gradient(circle at 15% 0%, rgba(212,163,129,.16), transparent 30%),
     radial-gradient(circle at 85% 12%, rgba(14,165,233,.11), transparent 28%),
     linear-gradient(180deg, var(--chaos-ink) 0%, var(--chaos-ink-2) 50%, var(--chaos-ink) 100%) !important;
 }
@@ -242,7 +242,7 @@ body {
 
 .chaos-command-theme th {
   background: rgba(5,9,13,.88) !important;
-  color: var(--chaos-orange-soft) !important;
+  color: var(--chaos-copper-soft) !important;
   border-color: rgba(43,65,80,.95) !important;
 }
 
@@ -255,7 +255,7 @@ body {
 }
 
 .chaos-command-theme .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255,122,26,.45);
+  background: rgba(212,163,129,.45);
 }
 
 .chaos-command-theme .custom-scrollbar::-webkit-scrollbar-track {
@@ -272,7 +272,7 @@ body {
 }
 
 .chaos-drawer .flex-1.overflow-y-auto button:hover {
-  border-color: rgba(255,122,26,.22);
+  border-color: rgba(212,163,129,.22);
 }
 
 @media (min-width: 900px) {

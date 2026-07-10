@@ -340,7 +340,7 @@ const TabInventory = ({ inventoryItems = [], vendors = [], wasteLogs = [], sales
                        newItems[idx].matchedItemId = e.target.value;
                        setScannedInvoice({...scannedInvoice, lineItems: newItems});
                     }}
-                    className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
+                    className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-[#D4A381]/50 text-[#D4A381] bg-[#8F6040]/10'}`}
                   >
                     <option value="">-- Do Not Import / Skip --</option>
                     <option value="CREATE_NEW">➕ Add as New Item</option>

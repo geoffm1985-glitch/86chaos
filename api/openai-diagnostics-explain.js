@@ -1,6 +1,6 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 
-const APP_VERSION = '16.0.3';
+const APP_VERSION = '16.0.4';
 const DEFAULT_MODEL = process.env.OPENAI_DIAGNOSTICS_MODEL || process.env.OPENAI_MODEL || 'gpt-5-mini';
 const MAX_REPORT_CHARS = 42000;
 
