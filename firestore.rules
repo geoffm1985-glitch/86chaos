@@ -410,6 +410,18 @@ service cloud.firestore {
     }
 
     // ============================================================
+    // SERVER-ONLY AI PAGE USAGE + LIMITS
+    // Firebase Admin SDK enforces access, monthly limits, bypass identity,
+    // idempotency, and event logging. Browser clients cannot edit usage or limits.
+    // ============================================================
+    match /aiUsage/{usageId} {
+      allow read, write: if false;
+      match /events/{eventId} {
+        allow read, write: if false;
+      }
+    }
+
+    // ============================================================
     // SERVER-ONLY RETENTION JOB LOCKS
     // Firebase Admin SDK bypasses rules. Browser clients never need these.
     // ============================================================
@@ -421,9 +433,9 @@ service cloud.firestore {
     // STANDARD TENANT COLLECTIONS
     // ============================================================
     match /{collectionName}/{docId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && canTenantWriteCollection(collectionName, request.resource.data.restaurantId)));
-      allow update, delete: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canTenantWriteCollection(collectionName, resource.data.restaurantId)));
+      allow read: if collectionName != 'aiUsage' && collectionName != '_retentionJobLocks' && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+      allow create: if collectionName != 'aiUsage' && collectionName != '_retentionJobLocks' && signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && canTenantWriteCollection(collectionName, request.resource.data.restaurantId)));
+      allow update, delete: if collectionName != 'aiUsage' && collectionName != '_retentionJobLocks' && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canTenantWriteCollection(collectionName, resource.data.restaurantId)));
     }
   }
 }

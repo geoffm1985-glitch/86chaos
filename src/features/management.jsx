@@ -3553,6 +3553,12 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [geminiManualMeta, setGeminiManualMeta] = useState(null);
   const [geminiManualError, setGeminiManualError] = useState('');
   const [isGeminiManualLoading, setIsGeminiManualLoading] = useState(false);
+  const [aiUsageRows, setAiUsageRows] = useState([]);
+  const [aiUsageMonth, setAiUsageMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [aiUsageLoading, setAiUsageLoading] = useState(false);
+  const [aiUsageError, setAiUsageError] = useState('');
+  const [aiUsageLimitDrafts, setAiUsageLimitDrafts] = useState({});
+  const [aiUsageSavingId, setAiUsageSavingId] = useState('');
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -5055,7 +5061,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
+  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'ai-usage', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
 
   const adminAccessSourceLabel = appUser?.serverAdminCheck?.serverMasterAdminMatched ? 'Server env' :
     appUser?.serverAdminCheck?.customClaimSuperAdmin ? 'Custom claim' :
@@ -5430,6 +5436,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.49 AI Page Limits and Invoice Noise Filtering', group: 'System Administrator', keywords: 'v15 15.0.49 ai usage scan limits page limits invoice menu monthly master admin bypass idempotency non food review', body: ['Invoice and Menu Intelligence scans are now counted by AI-processed pages per workspace and month instead of by scan count. Defaults are 40 invoice pages and 10 menu pages.', 'The scan routes verify PDF page counts before calling AI, reserve pages in a Firestore transaction, and use idempotency keys so simultaneous requests and duplicate clicks cannot double-count.', 'Configured Master Admin accounts can test beyond the limit. The server verifies the Firebase token email or trusted custom claim, logs every bypass, and never trusts a frontend environment variable or customer-controlled setting.', 'Open System Administrator → AI Usage / Scan Limits to review every workspace, page totals, submitted scans, bypass pages, failures, blocks, providers/models, recent events, and monthly limit overrides.', 'Invoice Scanner now separates obvious non-food supplies and document noise from food/product review. Publish the included Firestore rules so browser clients cannot edit aiUsage counters or limits. No Storage rules, indexes, or Firebase Functions deployment is required.'] },
     { title: 'Version 15.0.48 Invoice Product Row Recovery', group: 'System Administrator', keywords: 'v15 15.0.48 invoice scanner skipped rows needs review dense distributor sysco pfg product row stock matcher', body: ['Invoice Scanner now inspects both the AI lineItems list and every allExtractedRows audit row. Valid product rows are recovered even when the entire distributor line arrives as one dense OCR string.', 'Rows beginning with a purchased quantity and unit such as 1 CS, 2 EA, or 3 PK are treated as likely products when they also contain a pack size, product code, description, or price. The scanner extracts those fields before Stock Matcher review.', 'The former Skipped Rows panel is now Needs Review. A manager can click Move to Stock Matcher on any genuine product the automatic classifier still cannot recognize.', 'Document rows such as taxes, totals, addresses, freight, fees, discounts, credits, payments, and signatures remain excluded from inventory.', 'No Firebase rules, Storage rules, indexes, or Cloud Functions deployment is required. Deploy the updated app and Vercel API routes, then rescan the invoice.'] },
     { title: 'Version 15.0.44 Automated Data Retention and Compact Menu', group: 'System Administrator', keywords: 'v15 15.0.44 retention cleanup prep 86 alerts ai uploads time punches archive workspace delete restore cloud functions menu sections compact drawer', body: ['15.0.44 adds Firebase Cloud Functions that run every day to clean up old operational data. Prep items and 86 alerts are removed after 30 days. Raw Menu Intelligence and Invoice Scanner files are removed from Storage after 30 days.', 'Time punches leave the active Firestore database after 365 days. The function writes a compressed, verified archive file before deleting the active records. Archive files are deleted at the three-year mark.', 'System Administrator workspace deletion now starts a 30-day recovery window instead of instantly deleting the restaurant record. The workspace is disabled immediately. Use Restore beside a scheduled workspace before the deadline to cancel deletion.', 'The Firebase Functions are separate from Vercel. Open DATA_RETENTION_SETUP_15_0_44.md in the ZIP and follow the testing-project steps before production. RETENTION_ARCHIVE_BUCKET must be configured or the time-clock archive job safely stops without deleting source records.', 'The main app drawer is grouped into Account, Operations, Manager Tools, Management, and System. Button spacing is tighter, but the existing copper color system and permission filtering are unchanged.'] },
     { title: 'Version 15.0.47 Project-Aware Backend and Dark Admin Console', group: 'System Administrator', keywords: 'v15 15.0.47 firebase project aware test production audience service account scanner push dark admin slate', body: ['Backend routes now read the Firebase project from the signed ID token and select matching server credentials instead of assuming cheers-34b8d.', 'Menu, invoice, and recipe scans verify tokens from either approved Firebase project. Menu and invoice scans can securely read the exact uploaded file from its Firebase download URL when a matching Admin credential is unavailable.', 'Push delivery and data-changing admin routes still require the matching service account. Configure FIREBASE_TEST_SERVICE_ACCOUNT_KEY for Preview and FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY for Production.', 'Security Diagnostics now reports the active token project and which credential source was selected, without displaying secrets.', 'System Administrator now uses a darker charcoal/slate professional palette with bright readable text while preserving the compact layout.', 'No Firestore rules, Storage rules, indexes, or retention-function deployment is required for this update. Redeploy Vercel after setting the matching environment credentials.'] },
@@ -6375,6 +6382,57 @@ Type RESTORE to continue.`);
     );
   };
 
+  const loadAiUsageAdmin = async () => {
+    setAiUsageLoading(true);
+    setAiUsageError('');
+    try {
+      const response = await secureFetch(`/api/ai-usage?all=1&monthKey=${encodeURIComponent(aiUsageMonth)}&eventLimit=20`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not load AI usage.');
+      const rows = Array.isArray(payload.rows) ? payload.rows : [];
+      setAiUsageRows(rows);
+      setAiUsageLimitDrafts(Object.fromEntries(rows.map(row => [row.restaurantId, {
+        invoicePagesLimit: Number(row.invoicePagesLimit ?? 40),
+        menuPagesLimit: Number(row.menuPagesLimit ?? 10)
+      }])));
+    } catch (error) {
+      setAiUsageError(error?.message || 'Could not load AI usage.');
+    } finally {
+      setAiUsageLoading(false);
+    }
+  };
+
+  const saveAiUsageLimits = async (row) => {
+    const restaurantId = row?.restaurantId;
+    const draft = aiUsageLimitDrafts[restaurantId] || {};
+    if (!restaurantId) return;
+    setAiUsageSavingId(restaurantId);
+    try {
+      const response = await secureFetch('/api/ai-usage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId,
+          monthKey: aiUsageMonth,
+          invoicePagesLimit: Number(draft.invoicePagesLimit),
+          menuPagesLimit: Number(draft.menuPagesLimit)
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not save AI page limits.');
+      addToast('AI Limits Saved', `${row.restaurantName || restaurantId}: invoice ${draft.invoicePagesLimit}, menu ${draft.menuPagesLimit}.`);
+      await loadAiUsageAdmin();
+    } catch (error) {
+      addToast('AI Limit Error', error?.message || 'Could not save AI page limits.');
+    } finally {
+      setAiUsageSavingId('');
+    }
+  };
+
+  useEffect(() => {
+    if (subTab === 'ai-usage') loadAiUsageAdmin();
+  }, [subTab, aiUsageMonth]);
+
   const adminTabGroups = [
     {
       title:'Start Here',
@@ -6423,6 +6481,7 @@ Type RESTORE to continue.`);
       helper:'Use this when a customer says something is broken, alerts are not arriving, or you need a safe view into current sessions.',
       tabs:[
         {id:'support', label:'Support Diagnostics', short:'Support', intent:'Review crashes, API clues, auth/runtime state, rule blocks, and support diagnostics.'},
+        {id:'ai-usage', label:'AI Usage / Scan Limits', short:'AI Usage', intent:'Review monthly invoice and menu AI pages, failures, blocked scans, bypass logs, and workspace limits.'},
         {id:'push', label:'Push Control Center', short:'Push', intent:'Audit push tokens, stale devices, opt-in status, and test delivery.'},
         {id:'live', label:'Manual Presence Snapshot', short:'Presence', intent:'Take an on-demand low-cost live user/workspace snapshot.'}
       ]
@@ -6456,6 +6515,7 @@ Type RESTORE to continue.`);
     { label:'Check Backup Watchdog', tab:'forensics', keywords:'stale scheduled backup cron preview production' },
     { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password' },
     { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
+    { label:'Review AI Scan Page Usage', tab:'ai-usage', keywords:'invoice menu ai pages limits scans failures blocked bypass model provider' },
     { label:'Review App Check and MFA', tab:'security', keywords:'security app check mfa rules environment' },
     { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting manual' },
     { label:'Check Deployment Readiness', tab:'deployment', keywords:'deploy vercel firebase publish production readiness' },
@@ -6476,7 +6536,7 @@ Type RESTORE to continue.`);
     ...adminManualArticles.map((article, idx) => ({ type:'article', label:article.title, detail:`Manual • ${article.group}`, tab:'manual', manualId:`${idx}-${String(article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)}`, score:scoreAdminSearchText(`${article.title} ${article.group} ${article.keywords || ''} ${(article.body || []).join(' ')}`) }))
   ].filter(result => result.score > 0).sort((a,b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : [];
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
-  const mobilePrimaryTabs = ['overview', 'health', 'manual', 'forensics', 'security', 'admins', 'roles', 'tenants', 'users', 'support', 'push', 'live'];
+  const mobilePrimaryTabs = ['overview', 'health', 'manual', 'forensics', 'security', 'admins', 'roles', 'tenants', 'users', 'support', 'ai-usage', 'push', 'live'];
   const mobileQuickTabs = mobilePrimaryTabs.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
 
   const selectAdminTab = (target = 'overview', scroll = true) => {
@@ -7096,6 +7156,7 @@ Type RESTORE to continue.`);
                 <button type="button" onClick={() => selectAdminTab('tenants')} className="admin45-quick-tile"><Globe size={17}/><span>Workspaces</span></button>
                 <button type="button" onClick={() => selectAdminTab('users')} className="admin45-quick-tile"><Users size={17}/><span>People</span></button>
                 <button type="button" onClick={() => selectAdminTab('push')} className="admin45-quick-tile"><Bell size={17}/><span>Push</span></button>
+                <button type="button" onClick={() => selectAdminTab('ai-usage')} className="admin45-quick-tile"><Scale size={17}/><span>AI Usage</span></button>
                 <button type="button" onClick={() => selectAdminTab('forensics')} className="admin45-quick-tile"><ClipboardList size={17}/><span>Backups</span></button>
                 <button type="button" onClick={() => selectAdminTab('manual')} className="admin45-quick-tile"><BookOpen size={17}/><span>Manual</span></button>
               </div>
@@ -7169,6 +7230,82 @@ Type RESTORE to continue.`);
           </div>
         </div>
       )}
+
+      {subTab === 'ai-usage' && (() => {
+        const allEvents = aiUsageRows.flatMap(row => (row.events || []).map(event => ({ ...event, restaurantName: row.restaurantName || row.restaurantId })));
+        const totalInvoicePages = aiUsageRows.reduce((sum, row) => sum + Number(row.invoicePagesUsed || 0), 0);
+        const totalMenuPages = aiUsageRows.reduce((sum, row) => sum + Number(row.menuPagesUsed || 0), 0);
+        const failedScans = allEvents.filter(event => event.status === 'failed').length;
+        const blockedScans = allEvents.filter(event => event.status === 'blocked').length;
+        const bypassPages = aiUsageRows.reduce((sum, row) => sum + Number(row.exemptPagesProcessed || 0), 0);
+        return (
+          <div id="admin-ai-usage" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+            <section className="admin45-content-card p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                <div>
+                  <div className="admin46-eyebrow">Cost controls</div>
+                  <h3 className="text-lg font-black text-white mt-1">Monthly AI scan pages</h3>
+                  <p className="text-[11px] font-semibold text-slate-400 mt-1">Usage is reserved in a Firestore transaction before AI runs. Duplicate requests do not count twice.</p>
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Month<input type="month" value={aiUsageMonth} onChange={event => setAiUsageMonth(event.target.value)} className="admin46-input mt-1 block" /></label>
+                  <button type="button" onClick={loadAiUsageAdmin} disabled={aiUsageLoading} className="admin45-secondary-action">{aiUsageLoading ? 'Refreshing…' : 'Refresh'}</button>
+                </div>
+              </div>
+              {aiUsageError && <div className="mt-3 rounded-lg border border-red-900/50 bg-red-950/20 p-3 text-[11px] font-bold text-red-200">{aiUsageError}</div>}
+            </section>
+
+            <section className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+              <div className="admin45-number-card"><span>Invoice pages</span><strong>{totalInvoicePages}</strong><small>{aiUsageMonth}</small></div>
+              <div className="admin45-number-card"><span>Menu pages</span><strong>{totalMenuPages}</strong><small>{aiUsageMonth}</small></div>
+              <div className="admin45-number-card"><span>Testing bypass pages</span><strong>{bypassPages}</strong><small>Logged, not blocked</small></div>
+              <div className="admin45-number-card"><span>Failed scans</span><strong>{failedScans}</strong><small>AI was called</small></div>
+              <div className="admin45-number-card"><span>Blocked scans</span><strong>{blockedScans}</strong><small>AI was not called</small></div>
+            </section>
+
+            <section className="admin45-content-card overflow-hidden">
+              <div className="admin46-table-head grid grid-cols-[minmax(180px,1.3fr)_minmax(150px,.8fr)_minmax(150px,.8fr)_110px_110px_120px] gap-2 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                <div>Workspace</div><div>Invoice pages</div><div>Menu pages</div><div>Scans</div><div>Bypass</div><div>Action</div>
+              </div>
+              {aiUsageLoading && aiUsageRows.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">Loading AI usage…</div> : aiUsageRows.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">No workspace usage documents exist for this month yet.</div> : (
+                <div className="divide-y divide-[#2A353D] overflow-x-auto">
+                  {aiUsageRows.map(row => {
+                    const draft = aiUsageLimitDrafts[row.restaurantId] || { invoicePagesLimit: Number(row.invoicePagesLimit ?? 40), menuPagesLimit: Number(row.menuPagesLimit ?? 10) };
+                    const events = row.events || [];
+                    const latest = events[0] || {};
+                    const failures = events.filter(event => event.status === 'failed').length;
+                    const blocks = events.filter(event => event.status === 'blocked').length;
+                    return (
+                      <div key={row.restaurantId} className="min-w-[900px] px-3 py-3 grid grid-cols-[minmax(180px,1.3fr)_minmax(150px,.8fr)_minmax(150px,.8fr)_110px_110px_120px] gap-2 items-center text-[11px]">
+                        <div className="min-w-0"><div className="font-black text-white truncate">{row.restaurantName || row.restaurantId}</div><div className="text-[9px] font-bold text-slate-500 truncate">{row.restaurantId}</div>{latest.model && <div className="text-[9px] font-bold text-slate-500 truncate">Latest: {latest.provider || 'provider'} / {latest.model}</div>}</div>
+                        <div className="flex items-center gap-2"><strong className="text-white">{Number(row.invoicePagesUsed || 0)}</strong><span className="text-slate-600">/</span><input type="number" min="0" max="10000" value={draft.invoicePagesLimit} onChange={event => setAiUsageLimitDrafts(previous => ({ ...previous, [row.restaurantId]: { ...draft, invoicePagesLimit: event.target.value } }))} className="admin46-input w-20" /></div>
+                        <div className="flex items-center gap-2"><strong className="text-white">{Number(row.menuPagesUsed || 0)}</strong><span className="text-slate-600">/</span><input type="number" min="0" max="10000" value={draft.menuPagesLimit} onChange={event => setAiUsageLimitDrafts(previous => ({ ...previous, [row.restaurantId]: { ...draft, menuPagesLimit: event.target.value } }))} className="admin46-input w-20" /></div>
+                        <div><div className="font-black text-white">{Number(row.invoiceScansSubmitted || 0) + Number(row.menuScansSubmitted || 0)}</div><div className="text-[9px] text-slate-500">{failures} failed · {blocks} blocked</div></div>
+                        <div><div className="font-black text-blue-300">{Number(row.exemptPagesProcessed || 0)}</div><div className="text-[9px] text-slate-500">testing pages</div></div>
+                        <button type="button" onClick={() => saveAiUsageLimits(row)} disabled={aiUsageSavingId === row.restaurantId} className="admin45-primary-action px-3 py-2">{aiUsageSavingId === row.restaurantId ? 'Saving…' : 'Save limits'}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="admin45-content-card overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#2A353D]"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Recent scan events</div><div className="text-sm font-black text-white mt-1">Submitted, completed, failed, blocked, and testing-bypass records</div></div>
+              <div className="max-h-[520px] overflow-auto divide-y divide-[#2A353D]">
+                {allEvents.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">No scan events for this month.</div> : allEvents.sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 100).map((event, index) => (
+                  <div key={`${event.id || event.idempotencyKey || index}`} className="px-4 py-3 grid sm:grid-cols-[1.2fr_.55fr_.55fr_.7fr] gap-2 text-[10px]">
+                    <div><div className="font-black text-white">{event.restaurantName}</div><div className="font-bold text-slate-500 truncate">{event.userEmail || event.userId || 'Unknown user'}</div></div>
+                    <div><div className="font-black uppercase text-[#D4A381]">{event.scanType}</div><div className="text-slate-500">{event.pageCount || 0} page(s)</div></div>
+                    <div><div className={`font-black uppercase ${event.status === 'failed' || event.status === 'blocked' ? 'text-red-300' : event.status === 'completed' ? 'text-emerald-300' : 'text-amber-300'}`}>{event.status}</div><div className="text-slate-500">{event.usedBefore || 0} → {event.usedAfter || 0} / {event.limit || 0}</div></div>
+                    <div><div className="font-bold text-slate-300 truncate">{event.provider || '—'} {event.model ? `· ${event.model}` : ''}</div><div className="text-slate-500">{event.limitBypass ? 'Testing bypass' : event.wouldHaveExceededLimit ? 'Would exceed' : event.createdAt ? new Date(event.createdAt).toLocaleString() : ''}</div>{event.errorMessage && <div className="text-red-300 mt-1 break-words">{event.errorMessage}</div>}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        );
+      })()}
 
       {subTab === 'push' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
@@ -8916,6 +9053,7 @@ const HELP_ARTICLES = [
   { id:'new-15025', title:'What changed in version 15.0.25', group:'Release Notes', keywords:'new update 15.0.25 account repair verification debug mfa firebase auth firestore profile rescue link', body:['Account Security now shows Auth UID/email, browser Firebase project, Vercel API/Admin Firebase project, Firestore profile status, and MFA status in one debug panel.', 'If a Firebase Auth user is missing its Firestore users/{uid} profile, Account Security can repair the profile instead of leaving MFA setup in limbo.', 'If Firebase Console email delivery works but the app verification email does not arrive, Account Security can generate a verification rescue link for the signed-in user.'] },
   { id:'new-15022', title:'What changed in version 15.0.22', group:'Release Notes', keywords:'new update 15.0.22 account security email verification mfa two step login sms', body:['Account Security now includes Send Verification Email for accounts blocked by Firebase auth/unverified-email.', 'After clicking the Firebase inbox link, Refresh Email Status reloads the Firebase Auth user and lets SMS MFA setup continue.', '/api/account-security now reports emailVerified, so Vercel redeploy is required.'] },
   { id:'new-15021', title:'What changed in version 15.0.21', group:'Release Notes', keywords:'new update 15.0.21 account security settings mfa two step login tab mobile', body:['Account Security now has its own visible Settings tab instead of being buried below the Profile form.', 'Profile also includes an Open Account Security button so elevated users can get to MFA setup quickly on phone screens.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
+  { id:'new-15049', title:'What changed in version 15.0.49', group:'Release Notes', keywords:'new update 15.0.49 invoice menu AI page limits monthly usage non food review', body:['Invoice scanning now uses a monthly page allowance instead of a scan-count allowance. The default is 40 AI-processed invoice pages per restaurant each month.','Menu scanning uses a default allowance of 10 AI-processed pages per restaurant each month. The scanner shows current usage and warns when only a few pages remain.','PDFs count by their actual pages and images count as one page each. A failed upload before AI starts does not use pages; a scan that reaches the AI provider does use the submitted pages.','Invoice review is cleaner: obvious non-food supplies and invoice document rows are separated automatically, while uncertain purchased items remain available for review.'] },
   { id:'new-15048', title:'What changed in version 15.0.48', group:'Release Notes', keywords:'new update 15.0.48 invoice scanner skipped rows needs review distributor product recovery stock matcher', body:['Invoice Scanner now recovers purchased products when a distributor invoice puts the entire row into one dense text line.','Rows such as 1 CS 4/10 LB with a product code and description are moved into Stock Matcher instead of being treated as non-product audit rows.','Skipped Rows is now called Needs Review. Managers can move a genuine product into Stock Matcher manually before approval.','Taxes, totals, addresses, fees, credits, payments, and other document rows remain excluded from inventory.'] },
   { id:'new-15019', title:'What changed in version 15.0.19', group:'Release Notes', keywords:'new update 15.0.19 ai tools invoice scanner inventory shortcut invoices', body:['AI Tools now opens the Invoice Scanner directly on Inventory → Invoices instead of dropping users on the default Inventory view.', 'The button now says Open Invoice Scanner so it matches where it goes.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
   { id:'new-15018', title:'What changed in version 15.0.18', group:'Release Notes', keywords:'new update 15.0.18 owner setup onboarding prep voice invoice import mobile print export', body:['Mobile screens get safer touch targets, scrolling, modal sizing, and layout polish.', 'Invoice History and Invoice Details can now print or save as PDF.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },

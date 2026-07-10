@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -10,6 +10,8 @@ import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_AD
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
 import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
+import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
+import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const PREP_TASK_TEMPLATE_PACKS = {
@@ -579,6 +581,28 @@ const [searchTerm, setSearchTerm] = useState('');
   const [invoiceReviewTab, setInvoiceReviewTab] = useState('matched');
   const [csvImportReview, setCsvImportReview] = useState(null);
   const [isSavingCsvImport, setIsSavingCsvImport] = useState(false);
+  const [invoiceAiUsage, setInvoiceAiUsage] = useState({ invoicePagesUsed: 0, invoicePagesLimit: 40 });
+  const [invoiceAiUsageLoading, setInvoiceAiUsageLoading] = useState(false);
+  const [invoiceAiExempt, setInvoiceAiExempt] = useState(false);
+  const invoiceScanBusyRef = useRef(false);
+
+  const loadInvoiceAiUsage = async () => {
+    if (!appUser?.restaurantId) return;
+    setInvoiceAiUsageLoading(true);
+    try {
+      const response = await secureFetch(`/api/ai-usage?restaurantId=${encodeURIComponent(appUser.restaurantId)}&eventLimit=5`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not load AI page usage.');
+      setInvoiceAiUsage(payload.usage || { invoicePagesUsed: 0, invoicePagesLimit: 40 });
+      setInvoiceAiExempt(payload.isExempt === true);
+    } catch (error) {
+      console.warn('Invoice AI usage could not load:', error?.message || error);
+    } finally {
+      setInvoiceAiUsageLoading(false);
+    }
+  };
+
+  useEffect(() => { loadInvoiceAiUsage(); }, [appUser?.restaurantId]);
 
   // Master Permission Check for Inventory Tabs
   const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
@@ -1094,131 +1118,6 @@ const executeOrder = async (method) => {
     reader.readAsDataURL(file);
   });
 
-  const normalizeSku = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normalizeName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
-  const parseInvoiceAmount = (value) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const cleaned = String(value).replace(/[$,]/g, '').replace(/[()]/g, '-').trim();
-    const num = Number.parseFloat(cleaned);
-    return Number.isFinite(num) ? num : 0;
-  };
-
-  const hasInvoiceValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
-
-  const STOCK_ROW_TYPES = /^(item|product|line[_\s-]*item|detail|merchandise|stock|food|ingredient|inventory)$/i;
-  const NON_STOCK_ROW_TYPES = /^(header|footer|note|memo|terms|customer|contact|metadata|page|route|invoice|statement|subtotal|total|tax|freight|delivery|fee|deposit|discount|credit|payment|balance|signature)$/i;
-  const PURCHASE_UNITS = 'CS|CASE|CASES|EA|EACH|PK|PACK|BX|BOX|BAG|JUG|CTN|CARTON|DZ|DOZ|LB|LBS|OZ|GAL|QT|PT|PLST|TUB|PAIL|CAN|JAR|BTL|BOTTLE|TRAY|PAN|PC|PCS|KG|GM|ML|LTR|LITER|RL|ROLL|SLEEVE|SACK|DRUM|KEG';
-  const LEADING_PURCHASE_RE = new RegExp(`^[\\s>*•#-]*(\\d+(?:\\.\\d+)?)\\s*(${PURCHASE_UNITS})\\b`, 'i');
-  
-  const PACK_RE = new RegExp(`\\b\\d+\\s*\\/\\s*\\d+(?:\\.\\d+)?\\s*(?:${PURCHASE_UNITS}|CT|CNT)?\\b`, 'i');
-  const UNIT_RE = new RegExp(`\\b(?:${PURCHASE_UNITS})\\b`, 'i');
-
-  const invoiceRowText = (item = {}) => String(item.rawText || item.itemName || item.description || item.name || '').replace(/\s+/g, ' ').trim();
-
-  const isClearlyNonStockInvoiceLine = (item = {}, { ignoreRowType = false } = {}) => {
-    const rowType = String(item.rowType || item.lineType || item.type || '').trim();
-    const itemName = String(item.itemName || item.description || item.name || item.rawText || '').trim();
-    const combined = `${itemName} ${invoiceRowText(item)}`.toLowerCase();
-    if (!ignoreRowType && NON_STOCK_ROW_TYPES.test(rowType)) return true;
-    if (/\b(bill\s*to|ship\s*to|sold\s*to|remit\s*to|invoice\s*(number|date|total)?|account\s*(number|summary)?|purchase\s*order|payment\s*terms|page\s+\d+|subtotal|grand\s*total|total\s*due|amount\s*due|balance\s*due|sales\s*tax|freight\s*(charge)?|delivery\s*(charge|fee)?|fuel\s*surcharge|service\s*charge|deposit|discount|credit|payment|change\s*due|signature)\b/i.test(combined)) return true;
-    if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return true;
-    if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return true;
-    if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasInvoiceValue(item.quantity)) return true;
-    return false;
-  };
-
-  const findMixedInvoiceCode = (value = '') => {
-    const candidates = String(value || '').toUpperCase().match(/\b[A-Z0-9][A-Z0-9-]{2,}\b/g) || [];
-    return candidates.find(token => /[A-Z]/.test(token) && /\d/.test(token) && !/^(?:CS|EA|PK|BX|CTN|LB|LBS|OZ|GAL|QT|PT|REF)\d*$/i.test(token)) || '';
-  };
-
-  const inferInvoiceDescription = (value = '', productCode = '') => {
-    let result = String(value || '').replace(/\s+/g, ' ').trim();
-    result = result.replace(LEADING_PURCHASE_RE, '').trim();
-    result = result.replace(new RegExp(`^\\s*(?:\\d+\\s*\\/\\s*)?\\d+(?:\\.\\d+)?\\s*(?:${PURCHASE_UNITS}|CT|CNT)\\b`, 'i'), '').trim();
-    if (productCode) {
-      const codeIndex = result.toUpperCase().indexOf(String(productCode).toUpperCase());
-      if (codeIndex >= 0) result = result.slice(codeIndex + String(productCode).length).trim();
-    }
-    result = result
-      .replace(/\s+\bREF\b[\s\S]*$/i, '')
-      .replace(/\s+(?:-?\$?\d[\d,]*\.\d{2}\s*){1,3}$/i, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    return /[A-Za-z]{3}/.test(result) ? result : '';
-  };
-
-  const inferInvoiceProductFields = (item = {}) => {
-    const source = item && typeof item === 'object' ? item : { rawText: String(item || '') };
-    const rawText = invoiceRowText(source);
-    const leading = rawText.match(LEADING_PURCHASE_RE);
-    const productCode = source.productCode || source.sku || source.itemNumber || source.itemCode || source.code || source.pfgCode || findMixedInvoiceCode(rawText);
-    const prices = rawText.match(/-?\$?\d[\d,]*\.\d{2}\b/g) || [];
-    const inferredDescription = inferInvoiceDescription(rawText, productCode);
-    const currentName = String(source.itemName || source.description || source.name || '').trim();
-    const currentNameLooksRaw = !currentName || currentName === rawText || LEADING_PURCHASE_RE.test(currentName) || currentName.length > 105;
-    const packMatch = rawText.match(PACK_RE);
-    const inferred = {
-      ...source,
-      productCode,
-      quantity: hasInvoiceValue(source.quantity ?? source.qty ?? source.shippedQty ?? source.receivedQty ?? source.orderedQty)
-        ? (source.quantity ?? source.qty ?? source.shippedQty ?? source.receivedQty ?? source.orderedQty)
-        : (leading?.[1] || ''),
-      uom: source.uom || source.unitOfMeasure || leading?.[2] || '',
-      packSize: source.packSize || source.pack || source.size || packMatch?.[0] || leading?.[2] || '',
-      unitPrice: hasInvoiceValue(source.unitPrice ?? source.priceEach ?? source.casePrice)
-        ? (source.unitPrice ?? source.priceEach ?? source.casePrice)
-        : (prices.length >= 2 ? prices[prices.length - 2].replace('$', '') : ''),
-      totalPrice: hasInvoiceValue(source.totalPrice ?? source.extendedPrice ?? source.lineTotal)
-        ? (source.totalPrice ?? source.extendedPrice ?? source.lineTotal)
-        : (prices.length ? prices[prices.length - 1].replace('$', '') : ''),
-      rawText: source.rawText || rawText
-    };
-    if (currentNameLooksRaw && inferredDescription) {
-      inferred.itemName = inferredDescription;
-      inferred.description = inferredDescription;
-    }
-    return inferred;
-  };
-
-  const isPurchasedInvoiceLine = (input = {}) => {
-    const item = inferInvoiceProductFields(input);
-    const rowType = String(item.rowType || item.lineType || item.type || '').trim();
-    const itemName = String(item.itemName || item.description || item.name || item.rawText || '').trim();
-    const rawText = invoiceRowText(item);
-    if (!itemName || itemName.length < 2) return false;
-
-    const qty = parseInvoiceAmount(item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? item.orderedQty);
-    const unitPrice = parseInvoiceAmount(item.unitPrice ?? item.priceEach ?? item.casePrice);
-    const totalPrice = parseInvoiceAmount(item.totalPrice ?? item.extendedPrice ?? item.lineTotal);
-    const hasQuantity = qty > 0;
-    const hasPrice = unitPrice > 0 || totalPrice > 0;
-    const hasSku = hasInvoiceValue(item.productCode || item.sku || item.itemNumber || item.itemCode || item.code || item.pfgCode);
-    const hasPack = hasInvoiceValue(item.packSize || item.pack || item.size || item.uom || item.unitOfMeasure || item.weight || item.catchWeight);
-    const hasLeadingPurchase = LEADING_PURCHASE_RE.test(rawText);
-    const hasPackPattern = PACK_RE.test(rawText);
-    const hasUnit = UNIT_RE.test(rawText);
-    const explicitProductType = STOCK_ROW_TYPES.test(rowType);
-    const explicitNonStockType = NON_STOCK_ROW_TYPES.test(rowType);
-    const alphaWords = (rawText.match(/[A-Za-z]{3,}/g) || []).length;
-    const numericTokens = (rawText.match(/\b\d+(?:\.\d+)?\b/g) || []).length;
-    const densePurchaseSignature = hasLeadingPurchase && alphaWords >= 1 && (hasSku || hasPackPattern || hasPrice || numericTokens >= 2);
-
-    if (densePurchaseSignature && !isClearlyNonStockInvoiceLine(item, { ignoreRowType: true })) return true;
-    if (isClearlyNonStockInvoiceLine(item)) return false;
-    if (hasQuantity && (hasPrice || hasSku || hasPack)) return true;
-    if (!explicitNonStockType && explicitProductType && alphaWords >= 1 && (hasQuantity || hasSku || hasPack || hasUnit || hasPrice)) return true;
-    return false;
-  };
-
-  const invoiceProductKey = (item = {}) => {
-    const enriched = inferInvoiceProductFields(item);
-    const code = normalizeSku(enriched.productCode || '');
-    const name = normalizeName(enriched.itemName || enriched.description || enriched.rawText || '');
-    return code ? `code:${code}:${enriched.quantity || ''}` : `name:${name}:${enriched.quantity || ''}`;
-  };
-
 
   const updateInvoiceProgress = (percent, label, phase = 'working') => {
     const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
@@ -1273,9 +1172,29 @@ const executeOrder = async (method) => {
   };
 
   const handleScanInvoice = async (e) => {
+    if (invoiceScanBusyRef.current) return;
     const file = e.target.files?.[0];
     if (!file) return;
+    invoiceScanBusyRef.current = true;
 
+    let requestedPages = 0;
+    try {
+      requestedPages = await resolveClientScanPageCount(file);
+    } catch (pageError) {
+      addToast('Cannot Count PDF Pages', pageError.message || 'The page count could not be verified safely.');
+      invoiceScanBusyRef.current = false;
+      e.target.value = '';
+      return;
+    }
+    const currentUsage = normalizeAiUsage(invoiceAiUsage, 'invoice');
+    if (!invoiceAiExempt && requestedPages > currentUsage.remaining) {
+      addToast('Invoice AI Page Limit', aiPageLimitMessage('invoice', invoiceAiUsage, requestedPages));
+      invoiceScanBusyRef.current = false;
+      e.target.value = '';
+      return;
+    }
+
+    const idempotencyKey = createAiScanIdempotencyKey('invoice', appUser?.restaurantId);
     const maxBytes = 20 * 1024 * 1024;
     setIsScanningInvoice(true);
     setScannedInvoice(null);
@@ -1321,7 +1240,7 @@ const executeOrder = async (method) => {
       const response = await secureFetch('/api/scan-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, idempotencyKey }),
         signal: controller.signal
       });
 
@@ -1336,7 +1255,15 @@ const executeOrder = async (method) => {
 
       const data = await response.json();
       if (!response.ok) {
+        if (data.code === 'AI_PAGE_LIMIT_REACHED') {
+          setInvoiceAiUsage(previous => ({ ...previous, invoicePagesUsed: data.used, invoicePagesLimit: data.limit }));
+          throw new Error(`This restaurant has used all invoice AI pages for ${data.monthKey}. Used ${data.used} of ${data.limit}; ${data.remaining} remain.`);
+        }
+        if (data.code === 'AI_SCAN_ALREADY_SUBMITTED') throw new Error('This invoice scan was already submitted. Wait for the first request to finish before trying again.');
         throw new Error(data.error || data.details || 'Failed to scan invoice.');
+      }
+      if (data.aiUsage) {
+        setInvoiceAiUsage(previous => ({ ...previous, invoicePagesUsed: data.aiUsage.usedAfter, invoicePagesLimit: data.aiUsage.limit }));
       }
 
       const fullRows = Array.isArray(data.allExtractedRows) ? data.allExtractedRows : (Array.isArray(data.invoiceRows) ? data.invoiceRows : []);
@@ -1345,56 +1272,80 @@ const executeOrder = async (method) => {
 
       const prepareReviewRow = (sourceItem, rowIndex) => {
         const inferred = inferInvoiceProductFields(sourceItem);
+        const classification = classifyInvoiceRow(inferred);
         const itemName = inferred.itemName || inferred.description || inferred.name || inferred.rawText || `Invoice Row ${rowIndex + 1}`;
         const incomingCode = inferred.productCode || inferred.sku || inferred.itemNumber || inferred.pfgCode || inferred.code || inferred.itemCode || '';
         const skuKey = normalizeSku(incomingCode);
         const nameKey = normalizeName(itemName);
-        const rowType = String(inferred.rowType || inferred.lineType || inferred.type || 'item').toLowerCase();
-        const draftRow = {
+        const isInventoryLine = classification.kind === 'stock';
+        const matchByCode = isInventoryLine && skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
+        const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
+        const match = matchByCode || matchByName;
+        return {
           ...inferred,
+          ...classification.row,
           itemName,
           productCode: incomingCode,
           quantity: inferred.quantity ?? inferred.qty ?? inferred.shippedQty ?? inferred.receivedQty ?? '',
           packSize: inferred.packSize || inferred.pack || inferred.size || inferred.uom || '',
           unitPrice: inferred.unitPrice ?? inferred.priceEach ?? inferred.casePrice ?? '',
           totalPrice: inferred.totalPrice ?? inferred.extendedPrice ?? inferred.lineTotal ?? '',
-          rowType,
-          rawText: inferred.rawText || ''
-        };
-        const isInventoryLine = isPurchasedInvoiceLine(draftRow);
-        const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
-        const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
-        const match = matchByCode || matchByName;
-        return {
-          ...draftRow,
+          rowType: String(inferred.rowType || inferred.lineType || inferred.type || 'item').toLowerCase(),
+          rawText: inferred.rawText || '',
+          scannerClassification: classification.kind,
+          classificationCategory: classification.category,
+          classificationReason: classification.reason,
           isInventoryLine,
           matchedItemId: isInventoryLine && match ? match.id : '',
           matchId: isInventoryLine && match ? match.id : '',
           matchName: isInventoryLine && match ? match.name : '',
-          action: isInventoryLine ? (match ? 'update' : 'create') : 'record',
-          classificationReason: isInventoryLine && LEADING_PURCHASE_RE.test(invoiceRowText(draftRow))
-            ? 'Recovered from distributor invoice row'
-            : (inferred.classificationReason || '')
+          action: isInventoryLine ? (match ? 'update' : 'create') : 'record'
         };
       };
 
       const preparedRows = sourceRows.map(prepareReviewRow);
       const lineItemMap = new Map();
-      preparedRows.filter(isPurchasedInvoiceLine).forEach(row => {
+      preparedRows.filter(row => row.scannerClassification === 'stock').forEach(row => {
         const key = invoiceProductKey(row);
         const previous = lineItemMap.get(key) || {};
-        lineItemMap.set(key, { ...previous, ...row, isInventoryLine: true, rowType: 'product' });
+        lineItemMap.set(key, { ...previous, ...row, isInventoryLine: true, rowType: 'product', scannerClassification: 'stock' });
       });
       const normalizedLineItems = Array.from(lineItemMap.values());
       const productKeys = new Set(normalizedLineItems.map(invoiceProductKey));
       const normalizedFullRows = (fullRows.length ? fullRows : sourceRows).map(prepareReviewRow);
-      const skippedRows = normalizedFullRows.filter(row => !isPurchasedInvoiceLine(row) && !productKeys.has(invoiceProductKey(row)));
+
+      const nonFoodMap = new Map();
+      normalizedFullRows
+        .filter(row => row.scannerClassification === 'non_food' && !productKeys.has(invoiceProductKey(row)))
+        .forEach(row => nonFoodMap.set(invoiceProductKey(row), { ...row, isInventoryLine: false }));
+      const excludedNonFoodRows = Array.from(nonFoodMap.values());
+      const nonFoodKeys = new Set(excludedNonFoodRows.map(invoiceProductKey));
+
+      const reviewMap = new Map();
+      normalizedFullRows
+        .filter(row => row.scannerClassification === 'review')
+        .filter(row => !productKeys.has(invoiceProductKey(row)) && !nonFoodKeys.has(invoiceProductKey(row)))
+        .forEach(row => reviewMap.set(invoiceProductKey(row), { ...row, isInventoryLine: false }));
+      const skippedRows = Array.from(reviewMap.values());
+      const ignoredDocumentRowCount = normalizedFullRows.filter(row => row.scannerClassification === 'document').length;
 
       updateInvoiceProgress(100, 'Review ready.', 'done');
       setInvoiceReviewTab('matched');
-      setScannedInvoice({ ...data, lineItems: normalizedLineItems, skippedRows, allExtractedRows: normalizedFullRows, sourceFile: file.name, scanCompression: payload.compression || null, scanUploadedFileName: payload.uploadedFileName || '' });
-      const recoveredCount = normalizedLineItems.filter(row => row.classificationReason === 'Recovered from distributor invoice row').length;
-      addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased product rows${recoveredCount ? `, including ${recoveredCount} recovered from dense invoice text` : ''}. ${skippedRows.length ? `${skippedRows.length} document rows remain in review.` : 'No rows need skipped-row review.'}`);
+      setScannedInvoice({
+        ...data,
+        lineItems: normalizedLineItems,
+        skippedRows,
+        excludedNonFoodRows,
+        ignoredDocumentRowCount,
+        allExtractedRows: normalizedFullRows,
+        sourceFile: file.name,
+        scanCompression: payload.compression || null,
+        scanUploadedFileName: payload.uploadedFileName || ''
+      });
+      const recoveredCount = normalizedLineItems.filter(row => /recovered from distributor/i.test(row.classificationReason || '')).length;
+      const reviewText = skippedRows.length ? `${skippedRows.length} uncertain purchase row${skippedRows.length === 1 ? '' : 's'} need review.` : 'No uncertain rows need review.';
+      const filterText = excludedNonFoodRows.length ? ` ${excludedNonFoodRows.length} obvious non-food suppl${excludedNonFoodRows.length === 1 ? 'y was' : 'ies were'} filtered automatically.` : '';
+      addToast('Scan Complete', `Found ${normalizedLineItems.length} food/product rows${recoveredCount ? `, including ${recoveredCount} recovered from dense invoice text` : ''}. ${reviewText}${filterText}`);
     } catch (err) {
       if (aiPulseId) window.clearInterval(aiPulseId);
       if (timeoutId) window.clearTimeout(timeoutId);
@@ -1405,13 +1356,15 @@ const executeOrder = async (method) => {
       updateInvoiceProgress(100, message, 'error');
       addToast(/over|compress|split|large/i.test(message) ? 'Invoice Too Large' : 'Scan Error', message);
     } finally {
+      invoiceScanBusyRef.current = false;
       setIsScanningInvoice(false);
       e.target.value = '';
+      loadInvoiceAiUsage();
     }
   };
-  const promoteSkippedInvoiceRow = (row, skippedIndex) => {
+  const promoteInvoiceReviewRow = (row, rowIndex, sourceList = 'skippedRows') => {
     const inferred = inferInvoiceProductFields(row);
-    const itemName = inferred.itemName || inferred.description || inferred.name || inferred.rawText || `Recovered invoice row ${skippedIndex + 1}`;
+    const itemName = inferred.itemName || inferred.description || inferred.name || inferred.rawText || `Recovered invoice row ${rowIndex + 1}`;
     const incomingCode = inferred.productCode || inferred.sku || inferred.itemNumber || inferred.pfgCode || inferred.code || inferred.itemCode || '';
     const skuKey = normalizeSku(incomingCode);
     const nameKey = normalizeName(itemName);
@@ -1423,12 +1376,16 @@ const executeOrder = async (method) => {
       itemName,
       productCode: incomingCode,
       rowType: 'product',
+      scannerClassification: 'stock',
+      classificationCategory: 'Food or inventory product',
       isInventoryLine: true,
       matchedItemId: match?.id || '',
       matchId: match?.id || '',
       matchName: match?.name || '',
       action: match ? 'update' : 'create',
-      classificationReason: 'Manually moved from skipped-row review'
+      classificationReason: sourceList === 'excludedNonFoodRows'
+        ? 'Manually promoted from automatic non-food filtering'
+        : 'Manually promoted from Needs Review'
     };
 
     setScannedInvoice(previous => {
@@ -1436,15 +1393,43 @@ const executeOrder = async (method) => {
       const nextItems = [...(previous.lineItems || [])];
       const key = invoiceProductKey(promoted);
       if (!nextItems.some(item => invoiceProductKey(item) === key)) nextItems.push(promoted);
-      const nextSkipped = (previous.skippedRows || []).filter((_, index) => index !== skippedIndex);
-      return { ...previous, lineItems: nextItems, skippedRows: nextSkipped };
+      return {
+        ...previous,
+        lineItems: nextItems,
+        [sourceList]: (previous[sourceList] || []).filter((_, index) => index !== rowIndex)
+      };
     });
     setInvoiceReviewTab('matched');
     addToast('Moved to Stock Matcher', `${itemName} is ready to match or add as a new inventory item.`);
   };
 
+  const dismissInvoiceReviewRow = (row, rowIndex) => {
+    const dismissed = {
+      ...row,
+      scannerClassification: 'non_food',
+      classificationCategory: 'Manually excluded',
+      classificationReason: 'Marked as not food / not tracked by the reviewer',
+      isInventoryLine: false
+    };
+    setScannedInvoice(previous => {
+      if (!previous) return previous;
+      return {
+        ...previous,
+        skippedRows: (previous.skippedRows || []).filter((_, index) => index !== rowIndex),
+        excludedNonFoodRows: [...(previous.excludedNonFoodRows || []), dismissed]
+      };
+    });
+    addToast('Row Cleared', 'The row was marked as not food and will not update inventory.');
+  };
+
   const handleApproveInvoice = async () => {
-     const unresolvedProducts = (scannedInvoice?.lineItems || []).filter(item => item.isInventoryLine && isPurchasedInvoiceLine(item) && !item.matchedItemId);
+     const unresolvedReviewRows = scannedInvoice?.skippedRows || [];
+     if (unresolvedReviewRows.length) {
+       setInvoiceReviewTab('skipped');
+       addToast('Review Needed', `${unresolvedReviewRows.length} uncertain invoice row${unresolvedReviewRows.length === 1 ? '' : 's'} must be moved to Stock Matcher or marked “Not Food” before approval. Nothing was saved or changed.`);
+       return;
+     }
+     const unresolvedProducts = (scannedInvoice?.lineItems || []).filter(item => item.isInventoryLine && !item.matchedItemId);
      if (unresolvedProducts.length) {
        setInvoiceReviewTab('matched');
        addToast('Review Needed', `${unresolvedProducts.length} purchased product row${unresolvedProducts.length === 1 ? '' : 's'} still need an inventory match or “Add as New Item” selection. Nothing was saved or changed.`);
@@ -1576,6 +1561,9 @@ const groupedItems = inventoryItems
     openPrintableReport({ title: `Invoice ${invoice.invoiceNumber || ''}`.trim() || 'Invoice Detail', subtitle: `${invoice.vendorName || 'Unknown vendor'} • ${invoice.invoiceDate || ''}`, rows, filename: `86chaos-invoice-${invoice.invoiceNumber || getToday()}` });
   };
 
+  const invoiceUsageSummary = normalizeAiUsage(invoiceAiUsage, 'invoice');
+  const invoiceUsageWarning = aiPageLimitMessage('invoice', invoiceAiUsage);
+
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-24">
       
@@ -1624,11 +1612,12 @@ const groupedItems = inventoryItems
 <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || scannedInvoice.grandTotal || 0).toFixed(2)}</div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Product Rows</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Needs Review</div><div className="text-lg font-black text-white">{(scannedInvoice.skippedRows || []).length}</div></div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Food / Product</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Needs Review</div><div className={`text-lg font-black ${(scannedInvoice.skippedRows || []).length ? 'text-amber-300' : 'text-emerald-300'}`}>{(scannedInvoice.skippedRows || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Non-food Filtered</div><div className="text-lg font-black text-blue-300">{(scannedInvoice.excludedNonFoodRows || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Document Rows</div><div className="text-lg font-black text-slate-300">{Number(scannedInvoice.ignoredDocumentRowCount || 0)}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Confidence</div><div className="text-lg font-black text-[#D4A381]">{scannedInvoice.confidence || 'Review'}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Terms</div><div className="text-xs font-black text-white truncate">{scannedInvoice.paymentTerms || scannedInvoice.terms || '—'}</div></div>
             </div>
 
             {(scannedInvoice.extractionWarnings || scannedInvoice.extractionNotes || scannedInvoice.rawTranscription) && (
@@ -1641,13 +1630,18 @@ const groupedItems = inventoryItems
             )}
             
             {(scannedInvoice.skippedRows || []).length > 0 && (
+              <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-2 text-[10px] text-amber-100 font-bold leading-snug">
+                Only uncertain purchase-looking rows appear in Needs Review. Move a real food item to Stock Matcher or mark it Not Food before approval.
+              </div>
+            )}
+            {(scannedInvoice.excludedNonFoodRows || []).length > 0 && (
               <div className="bg-blue-900/10 border border-blue-500/30 rounded-xl p-2 text-[10px] text-blue-200 font-bold leading-snug">
-                These rows were not confidently identified as purchased products. Review them before approval. Use “Move to Stock Matcher” if a real product lands here.
+                Obvious supplies and non-food purchases were filtered automatically. They do not block approval. Open Non-food Filtered only if you intentionally track one in inventory.
               </div>
             )}
             
             <div className="flex flex-wrap gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-1">
-              {[['matched','Stock Matcher'], ['raw','Raw Rows'], ['skipped','Needs Review']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
+              {[['matched','Stock Matcher'], ['skipped',`Needs Review (${(scannedInvoice.skippedRows || []).length})`], ['nonfood',`Non-food (${(scannedInvoice.excludedNonFoodRows || []).length})`], ['raw','Raw Audit']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
             </div>
 
             {invoiceReviewTab === 'matched' && <div className="flex justify-between items-center mt-2 mb-1">
@@ -1691,7 +1685,7 @@ const groupedItems = inventoryItems
                     }}
                     className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
                   >
-                    <option value="">{item.isInventoryLine ? '-- Do Not Import / Skip --' : '-- Non-inventory row saved to invoice only --'}</option>
+                    <option value="">{item.isInventoryLine ? '-- Select an inventory match or Add as New --' : '-- Non-inventory row saved to invoice only --'}</option>
                     {item.isInventoryLine && <option value="CREATE_NEW">➕ Add as New Item</option>}
                     {inventoryItems.map(inv => (
                       <option key={inv.id} value={inv.id}>{inv.name}</option>
@@ -1708,17 +1702,37 @@ const groupedItems = inventoryItems
                 <div key={idx} className="p-3 bg-[#1A2126] flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm text-white font-black">{row.itemName || row.description || row.rawText || `Review row ${idx + 1}`}</div>
-                    <div className="text-[10px] text-slate-400 font-bold mt-1">{row.rowType || row.reason || 'Not confidently classified as stock'}</div>
+                    <div className="text-[10px] text-amber-200 font-bold mt-1">{row.classificationReason || 'Possible purchase row with incomplete evidence'}</div>
                     {row.rawText && row.rawText !== row.itemName && <div className="text-[9px] text-slate-500 font-bold mt-1 break-words">Raw: {row.rawText}</div>}
                   </div>
-                  <button type="button" onClick={() => promoteSkippedInvoiceRow(row, idx)} className="shrink-0 rounded-lg border border-[#D4A381]/50 bg-[#D4A381]/10 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#F4C8A8] hover:bg-[#D4A381]/20">
-                    Move to Stock Matcher
-                  </button>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <button type="button" onClick={() => dismissInvoiceReviewRow(row, idx)} className="rounded-lg border border-slate-600 bg-slate-900/40 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-white">
+                      Not Food
+                    </button>
+                    <button type="button" onClick={() => promoteInvoiceReviewRow(row, idx, 'skippedRows')} className="rounded-lg border border-[#D4A381]/50 bg-[#D4A381]/10 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#F4C8A8] hover:bg-[#D4A381]/20">
+                      Move to Stock Matcher
+                    </button>
+                  </div>
                 </div>
-              )) : <div className="p-6 text-center text-slate-500 font-bold">No rows need review.</div>}
+              )) : <div className="p-6 text-center text-emerald-300 font-bold">No uncertain rows need review.</div>}
             </div>}
 
-            <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Update Stock</button>
+            {invoiceReviewTab === 'nonfood' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {(scannedInvoice.excludedNonFoodRows || []).length ? scannedInvoice.excludedNonFoodRows.map((row, idx) => (
+                <div key={idx} className="p-3 bg-[#1A2126] flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-white font-black">{row.itemName || row.description || row.rawText || `Non-food row ${idx + 1}`}</div>
+                    <div className="text-[10px] text-blue-300 font-bold mt-1">{row.classificationCategory || 'Non-food supply'} · {row.classificationReason || 'Automatically filtered'}</div>
+                    {row.rawText && row.rawText !== row.itemName && <div className="text-[9px] text-slate-500 font-bold mt-1 break-words">Raw: {row.rawText}</div>}
+                  </div>
+                  <button type="button" onClick={() => promoteInvoiceReviewRow(row, idx, 'excludedNonFoodRows')} className="shrink-0 rounded-lg border border-blue-500/40 bg-blue-900/20 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-blue-200 hover:bg-blue-900/35">
+                    Track This Item
+                  </button>
+                </div>
+              )) : <div className="p-6 text-center text-slate-500 font-bold">No non-food supplies were detected.</div>}
+            </div>}
+
+            <button onClick={handleApproveInvoice} disabled={(scannedInvoice.skippedRows || []).length > 0 || (scannedInvoice.lineItems || []).some(item => item.isInventoryLine && !item.matchedItemId)} className={`w-full ${T.btn} py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>Approve & Update Stock</button>
           </div>
         )}
       </Modal>
@@ -1986,16 +2000,25 @@ const groupedItems = inventoryItems
           <div className="flex flex-col gap-3 mb-6">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
-            <div id="invoice-scanner-panel" className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-60 pointer-events-none' : ''}`}>
+            <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[11px] font-black text-white">Invoice AI pages used: {invoiceUsageSummary.used} / {invoiceUsageSummary.limit} this month</div>
+                <button type="button" onClick={loadInvoiceAiUsage} disabled={invoiceAiUsageLoading} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] disabled:opacity-50">{invoiceAiUsageLoading ? 'Refreshing…' : 'Refresh'}</button>
+              </div>
+              {invoiceAiExempt && <div className="mt-1 text-[10px] font-bold text-blue-300">Testing bypass active. This scan will be logged but not blocked.</div>}
+              {!invoiceAiExempt && invoiceUsageWarning && <div className={`mt-1 text-[10px] font-bold ${invoiceUsageSummary.reached ? 'text-red-300' : 'text-amber-300'}`}>{invoiceUsageWarning}</div>}
+            </div>
+            <div id="invoice-scanner-panel" className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${(isScanningInvoice || (!invoiceAiExempt && invoiceUsageSummary.reached)) ? 'opacity-60 pointer-events-none' : ''}`}>
                <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
                   {isScanningInvoice ? <span className="text-[11px] font-black tabular-nums">{invoiceScanProgress.percent}%</span> : <Camera size={24} />}
-                  <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+                  <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice || (!invoiceAiExempt && invoiceUsageSummary.reached)} />
                </label>
                <label className="flex-1 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381] font-black uppercase tracking-widest text-[11px] sm:text-xs" title="Upload Photo or PDF">
                   <span>{isScanningInvoice ? 'Scanning Invoice...' : '📄 Scan Invoice (PDF/Photo)'}</span>
-                  <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+                  <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice || (!invoiceAiExempt && invoiceUsageSummary.reached)} />
                </label>
             </div>
+            {!invoiceAiExempt && invoiceUsageSummary.reached && <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-3 text-[11px] font-bold text-red-200">This restaurant has used all invoice AI pages for this month.</div>}
             {(isScanningInvoice || invoiceScanProgress.phase === 'error') && (
               <div className={`bg-[#12161A] border rounded-xl p-3 shadow-sm ${invoiceScanProgress.phase === 'error' ? 'border-red-500/40' : 'border-[#2A353D]'}`}>
                 <div className="flex items-center justify-between gap-3 mb-2">

@@ -6,6 +6,7 @@ import { T, db, storage, secureFetch, useLiveCollection, formatClockDateTime, ge
 import { Modal, SmartEmptyState } from '../components/common';
 import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, formatScannerBytes } from '../core/fileCompression';
+import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { makeReminderDate, parseReminderCommand, toDateInputValue, toTimeInputValue } from '../core/reminderUtils';
 
 const getInitialReminderDate = () => {
@@ -323,11 +324,32 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const [deletingScanId, setDeletingScanId] = useState(null);
   const [deleteProgress, setDeleteProgress] = useState(null);
   const [progressTick, setProgressTick] = useState(Date.now());
+  const [menuAiUsage, setMenuAiUsage] = useState({ menuPagesUsed: 0, menuPagesLimit: 10 });
+  const [menuAiUsageLoading, setMenuAiUsageLoading] = useState(false);
+  const [menuAiExempt, setMenuAiExempt] = useState(false);
   const scanBusyRef = useRef(false);
   const approvingRef = useRef(false);
   const editSavingRef = useRef(false);
   const deleteBusyRef = useRef(false);
   const impacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
+
+  const loadMenuAiUsage = async () => {
+    if (!appUser?.restaurantId || !allowed) return;
+    setMenuAiUsageLoading(true);
+    try {
+      const response = await secureFetch(`/api/ai-usage?restaurantId=${encodeURIComponent(appUser.restaurantId)}&eventLimit=5`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not load AI page usage.');
+      setMenuAiUsage(payload.usage || { menuPagesUsed: 0, menuPagesLimit: 10 });
+      setMenuAiExempt(payload.isExempt === true);
+    } catch (error) {
+      console.warn('Menu AI usage could not load:', error?.message || error);
+    } finally {
+      setMenuAiUsageLoading(false);
+    }
+  };
+
+  useEffect(() => { loadMenuAiUsage(); }, [appUser?.restaurantId, allowed]);
 
   const isIngredientApproved = (ingredient = {}) => ingredient.reviewStatus !== 'rejected' && ingredient.approved !== false;
   const normalizeReviewResult = (result = {}) => ({
@@ -506,6 +528,21 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     if (scanBusyRef.current) return;
     if (!file) return addToast('Choose File', 'Upload a menu image or PDF first.');
     scanBusyRef.current = true;
+    let requestedPages = 0;
+    try {
+      requestedPages = await resolveClientScanPageCount(file);
+    } catch (pageError) {
+      addToast('Cannot Count PDF Pages', pageError.message || 'The page count could not be verified safely.');
+      scanBusyRef.current = false;
+      return;
+    }
+    const currentUsage = normalizeAiUsage(menuAiUsage, 'menu');
+    if (!menuAiExempt && requestedPages > currentUsage.remaining) {
+      addToast('Menu AI Page Limit', aiPageLimitMessage('menu', menuAiUsage, requestedPages));
+      scanBusyRef.current = false;
+      return;
+    }
+    const idempotencyKey = createAiScanIdempotencyKey('menu', appUser?.restaurantId);
     setBusy(true);
     const scanStartedAt = Date.now();
     setProgressTick(scanStartedAt);
@@ -568,12 +605,21 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
           storagePath: path,
           downloadUrl,
           compression: prepared.compression,
-          inventoryItems: inventoryItems.map(i => ({ id: i.id, name: i.name, category: i.category }))
+          inventoryItems: inventoryItems.map(i => ({ id: i.id, name: i.name, category: i.category })),
+          idempotencyKey
         })
       });
       setScanProgress({ label: 'Building review screen', detail: 'Loading the menu matches for approval.', percent: 90, startedAt: scanStartedAt });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Menu scan failed.');
+      if (!response.ok || result?.ok === false) {
+        if (result.code === 'AI_PAGE_LIMIT_REACHED') {
+          setMenuAiUsage(previous => ({ ...previous, menuPagesUsed: result.used, menuPagesLimit: result.limit }));
+          throw new Error(`This restaurant has used all menu AI pages for ${result.monthKey}. Used ${result.used} of ${result.limit}; ${result.remaining} remain.`);
+        }
+        if (result.code === 'AI_SCAN_ALREADY_SUBMITTED') throw new Error('This menu scan was already submitted. Wait for the first request to finish before trying again.');
+        throw new Error(result?.error || 'Menu scan failed.');
+      }
+      if (result.aiUsage) setMenuAiUsage(previous => ({ ...previous, menuPagesUsed: result.aiUsage.usedAfter, menuPagesLimit: result.aiUsage.limit }));
       setScanResult(normalizeReviewResult({ ...result, storagePath: path, downloadUrl, fileName: file.name, uploadedFileName: uploadFile.name, compression: prepared.compression }));
       setReviewOpen(true);
       setScanProgress({ label: 'Menu scan ready', detail: 'Review the AI matches before saving.', percent: 100, done: true, startedAt: scanStartedAt });
@@ -587,6 +633,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     } finally {
       scanBusyRef.current = false;
       setBusy(false);
+      loadMenuAiUsage();
     }
   };
 
@@ -826,6 +873,9 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     </div>
   );
 
+  const menuUsageSummary = normalizeAiUsage(menuAiUsage, 'menu');
+  const menuUsageWarning = aiPageLimitMessage('menu', menuAiUsage);
+
   return (
     <div className="max-w-6xl mx-auto space-y-4 pb-24">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
@@ -837,16 +887,25 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
 
       <div className="grid lg:grid-cols-[1fr_.9fr] gap-4">
         <div className={`${T.card} p-4 space-y-4`}>
+          <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[11px] font-black text-white">Menu AI pages used: {menuUsageSummary.used} / {menuUsageSummary.limit} this month</div>
+              <button type="button" onClick={loadMenuAiUsage} disabled={menuAiUsageLoading} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] disabled:opacity-50">{menuAiUsageLoading ? 'Refreshing…' : 'Refresh'}</button>
+            </div>
+            {menuAiExempt && <div className="mt-1 text-[10px] font-bold text-blue-300">Testing bypass active. This scan will be logged but not blocked.</div>}
+            {!menuAiExempt && menuUsageWarning && <div className={`mt-1 text-[10px] font-bold ${menuUsageSummary.reached ? 'text-red-300' : 'text-amber-300'}`}>{menuUsageWarning}</div>}
+          </div>
           <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center bg-[#12161A]">
             <Upload className="mx-auto text-[#D4A381] mb-3" size={30}/>
-            <label className={`${T.btnAlt} inline-flex items-center gap-2 cursor-pointer ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+            <label className={`${T.btnAlt} inline-flex items-center gap-2 cursor-pointer ${(busy || (!menuAiExempt && menuUsageSummary.reached)) ? 'opacity-50 pointer-events-none' : ''}`}>
               Choose Menu Image or PDF
-              <input type="file" accept="image/*,application/pdf" disabled={busy} onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
+              <input type="file" accept="image/*,application/pdf" disabled={busy || (!menuAiExempt && menuUsageSummary.reached)} onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
             </label>
             <div className="text-xs font-bold text-slate-400 mt-3">{file ? file.name : 'No file selected'}</div>
           </div>
           {scanProgress && <WorkProgressBar label={scanProgress.label} detail={scanProgress.detail} percent={displayedPercent(scanProgress, busy ? 96 : 100)} elapsedSeconds={progressElapsed(scanProgress)} />}
-          <button onClick={scanMenu} disabled={busy || !file} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{busy ? <Upload size={18}/> : <Sparkles size={18}/>} {busy ? 'Scanning Menu' : 'Scan Menu'}</button>
+          <button onClick={scanMenu} disabled={busy || !file || (!menuAiExempt && menuUsageSummary.reached)} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{busy ? <Upload size={18}/> : <Sparkles size={18}/>} {busy ? 'Scanning Menu' : 'Scan Menu'}</button>
+          {!menuAiExempt && menuUsageSummary.reached && <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-3 text-[11px] font-bold text-red-200">This restaurant has used all menu AI pages for this month.</div>}
           <div className="text-[10px] text-slate-500 font-bold leading-snug">AI results are not saved until you approve them. Regular staff cannot browse uploaded menu records unless the owner grants access.</div>
         </div>
 
