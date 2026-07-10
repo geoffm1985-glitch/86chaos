@@ -410,6 +410,14 @@ service cloud.firestore {
     }
 
     // ============================================================
+    // SERVER-ONLY RETENTION JOB LOCKS
+    // Firebase Admin SDK bypasses rules. Browser clients never need these.
+    // ============================================================
+    match /_retentionJobLocks/{docId} {
+      allow read, write: if false;
+    }
+
+    // ============================================================
     // STANDARD TENANT COLLECTIONS
     // ============================================================
     match /{collectionName}/{docId} {

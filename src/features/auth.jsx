@@ -481,7 +481,7 @@ const LoginScreen = ({ setAppUser }) => {
         <div className="space-y-4 text-xs font-medium text-slate-300 leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="text-center border-b border-[#2A353D] pb-3 mb-3">
             <h3 className="font-black text-white text-lg uppercase tracking-widest">Privacy Policy for 86chaos</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 6, 2026</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 9, 2026</p>
           </div>
           <p>Chilton App Works, LLC ("we," "us," or "our") operates the 86chaos restaurant operations web app, progressive web app, and related services (the "Service"). This policy explains what information may be collected, how it is used, and how restaurants and employees can request help with privacy questions.</p>
           <p>86chaos is built for restaurants and workplace operations. It is not directed to children under 13, and restaurant managers should not create accounts for children who are not legally authorized to use workplace systems.</p>
@@ -519,7 +519,7 @@ const LoginScreen = ({ setAppUser }) => {
           <p>86chaos is a business-to-business tool. Your restaurant/employer controls most workspace content and staff records. Employees who want to access, correct, export, or delete workplace records should contact restaurant management first. We can assist the restaurant with support requests when appropriate.</p>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">5. Data Retention</h4>
-          <p>Operational data is retained while the restaurant workspace is active and as needed for payroll, scheduling, compliance, support, backups, fraud prevention, and legitimate business records. Backup files may retain restored or historical data for a limited backup window. If a workspace or user is deleted, active records are removed according to the restaurant's instructions and our backup/maintenance practices.</p>
+          <p>86chaos uses scheduled retention jobs for specific categories of data. Prep-list records and 86-alert records are deleted after 30 days. Raw menu and invoice scan files are deleted from Cloud Storage after 30 days, while reviewed or parsed business records may remain in Firestore. Time-punch records and any separate location-log records are moved out of the active Firestore database after 365 days and retained in a restricted archive until the three-year mark, when they are deleted. A restaurant workspace marked for deletion is disabled immediately and permanently deleted after a 30-day recovery window unless an administrator restores it. Backups, legal holds, billing records, fraud-prevention records, or records required by law may follow a different documented retention period.</p>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">6. Security</h4>
           <p>We use authentication, optional two-step login for elevated accounts, role-based permissions, server-side admin routes, audit logs, secure hosting, Firebase security rules, and backup controls to protect data. No system is perfect, so restaurants should use strong passwords, limit administrator access, and promptly disable accounts that no longer need access.</p>

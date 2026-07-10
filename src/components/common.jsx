@@ -92,8 +92,21 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     { id: 'go-schedule-template', label: 'Schedule Templates', tab: 'published', keywords: 'schedule builder copy previous week template smart fill coverage' },
     { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' }
   ];
+  const menuSections = [
+    { label: 'Account', ids: ['team', 'reminders'] },
+    { label: 'Operations', ids: ['published', 'events', 'prep', 'inventory', 'recipes', 'ai-tools', 'menu-intelligence'] },
+    { label: 'Manager Tools', ids: ['today', 'ops'] },
+    { label: 'Management', ids: ['financials', 'messages', 'maintenance'] },
+    { label: 'System', ids: ['godmode', 'audit', 'help', 'settings'] }
+  ].map(section => ({ ...section, tabs: section.ids.map(id => tabs.find(tab => tab.id === id)).filter(Boolean) })).filter(section => section.tabs.length > 0);
+
   const q = menuSearch.trim().toLowerCase();
-  const visibleTabs = q ? tabs.filter(t => `${t.label} ${t.id}`.toLowerCase().includes(q)) : tabs;
+  const visibleSections = menuSections
+    .map(section => ({
+      ...section,
+      tabs: q ? section.tabs.filter(tab => `${tab.label} ${tab.id} ${section.label}`.toLowerCase().includes(q)) : section.tabs
+    }))
+    .filter(section => section.tabs.length > 0);
   const visibleActions = q ? menuActions.filter(a => `${a.label} ${a.keywords}`.toLowerCase().includes(q)).slice(0, 8) : [];
   const activeWorkspaceLabel = activeWorkspaceName || appUser?.restaurantName || appUser?.workspaceName || appUser?.businessName || 'Current Restaurant';
   const switchableWorkspaceCount = Array.isArray(availableWorkspaces) ? availableWorkspaces.filter(w => w?.isActive !== false).length : 0;
@@ -132,27 +145,34 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                </div>
                <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
             </div>
-            <div className="p-3 border-b border-[#2A353D]">
+            <div className="p-2 border-b border-[#2A353D]">
               <div className="relative">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-1">
-               {visibleTabs.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">No menu results. Try “schedule”, “punch”, “recipe”, or “help”.</div>}
-               {visibleTabs.map(tab => (
-                 <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
-                   <div className="flex items-center gap-3">
-                     <div className="relative">
-                       <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
-                       {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
-                     </div>
-                     {tab.label}
+            <div className="flex-1 overflow-y-auto px-3 py-2">
+               {visibleSections.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">No menu results. Try “schedule”, “punch”, “recipe”, or “help”.</div>}
+               {visibleSections.map(section => (
+                 <div key={section.label} className="mb-1.5 last:mb-0">
+                   <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
+                   <div className="space-y-0.5">
+                     {section.tabs.map(tab => (
+                       <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+                         <div className="flex items-center gap-2.5">
+                           <div className="relative flex items-center">
+                             <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
+                             {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
+                           </div>
+                           {tab.label}
+                         </div>
+                       </button>
+                     ))}
                    </div>
-                 </button>
+                 </div>
                ))}
-               {visibleActions.length > 0 && <div className="pt-3 mt-2 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-1">Suggested actions</div>{visibleActions.map(a => (
-                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full text-left px-3 py-2 rounded-xl font-bold text-xs text-slate-300 hover:bg-[#12161A] hover:text-[#D4A381] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
+               {visibleActions.length > 0 && <div className="pt-2 mt-1 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-0.5">Suggested actions</div>{visibleActions.map(a => (
+                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full text-left px-3 py-1.5 rounded-lg font-bold text-xs text-slate-300 hover:bg-[#12161A] hover:text-[#D4A381] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
                ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
@@ -1265,9 +1285,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>Voice 86 alerts now require a strict item match and confirmation, System Administrator can explain diagnostics with OpenAI, and the admin tool search works across sections and manual articles.</p>
+    <p>Old operational data now has automatic Firebase retention schedules, workspace deletion includes a 30-day recovery window, and the main menu is grouped into tighter, easier-to-scan sections.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Safer 86 alerts','OpenAI diagnostics','Admin search','Event Calendar title'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['30-day cleanup','Time-clock archive','Workspace recovery','Compact grouped menu'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>

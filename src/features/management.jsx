@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -3968,16 +3968,48 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
 
    const handleDeleteTenant = async (tenantId, tenantName) => {
-    if (prompt(`CRITICAL: Type "DELETE" to permanently remove the workspace registry for ${tenantName}. \n\nNOTE: You should use the 'Danger Zone' Nuke tool in the Manage menu first to wipe their underlying data.`) !== 'DELETE') {
+    if (prompt(`Type "DELETE" to schedule ${tenantName} for permanent deletion in 30 days.
+
+The workspace will be disabled now. The retention function will remove its data after the 30-day recovery window.`) !== 'DELETE') {
       return addToast('Aborted', 'Workspace deletion canceled.');
     }
 
-    addToast('Deleting', `Removing workspace ${tenantName}...`);
+    addToast('Scheduling Deletion', `Disabling ${tenantName} and starting the 30-day recovery window...`);
     try {
-      await deleteDoc(doc(db, "restaurants", tenantId));
-      addToast('Deleted', `${tenantName} has been permanently removed from the roster.`);
+      const deletedAt = Timestamp.now();
+      const deletionScheduledFor = Timestamp.fromMillis(deletedAt.toMillis() + (30 * 24 * 60 * 60 * 1000));
+      await updateDoc(doc(db, "restaurants", tenantId), {
+        isActive: false,
+        archived: true,
+        deleted_at: deletedAt,
+        deletionScheduledFor,
+        deletionStatus: 'scheduled',
+        deletedBy: appUser?.email || appUser?.id || 'system-administrator',
+        updatedAt: new Date().toISOString()
+      });
+      addToast('Deletion Scheduled', `${tenantName} is disabled and will be permanently deleted after 30 days unless restored.`);
     } catch (err) {
       addToast('Error', err.message);
+    }
+  };
+
+  const handleRestoreTenant = async (tenantId, tenantName) => {
+    if (!window.confirm(`Restore ${tenantName} and cancel its scheduled deletion?`)) return;
+    try {
+      await updateDoc(doc(db, "restaurants", tenantId), {
+        isActive: true,
+        archived: false,
+        deleted_at: deleteField(),
+        deletionScheduledFor: deleteField(),
+        deletionStatus: deleteField(),
+        deletedBy: deleteField(),
+        restoredAt: new Date().toISOString(),
+        restoredBy: appUser?.email || appUser?.id || 'system-administrator',
+        updatedAt: new Date().toISOString()
+      });
+      addToast('Workspace Restored', `${tenantName} is active again and will not be deleted.`);
+    } catch (err) {
+      addToast('Restore Failed', err.message);
     }
   };                 
 
@@ -4947,7 +4979,7 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.43 keeps the watchdog and Gemini completion guard, adds safer voice 86 confirmation, OpenAI diagnostics explanations, and System Administrator search.'
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.44 keeps the 15.0.43 safeguards and adds Firebase-hosted retention schedules plus the compact grouped app menu.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
@@ -5418,6 +5450,8 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.44 Automated Data Retention and Compact Menu', group: 'System Administrator', keywords: 'v15 15.0.44 retention cleanup prep 86 alerts ai uploads time punches archive workspace delete restore cloud functions menu sections compact drawer', body: ['15.0.44 adds Firebase Cloud Functions that run every day to clean up old operational data. Prep items and 86 alerts are removed after 30 days. Raw Menu Intelligence and Invoice Scanner files are removed from Storage after 30 days.', 'Time punches leave the active Firestore database after 365 days. The function writes a compressed, verified archive file before deleting the active records. Archive files are deleted at the three-year mark.', 'System Administrator workspace deletion now starts a 30-day recovery window instead of instantly deleting the restaurant record. The workspace is disabled immediately. Use Restore beside a scheduled workspace before the deadline to cancel deletion.', 'The Firebase Functions are separate from Vercel. Open DATA_RETENTION_SETUP_15_0_44.md in the ZIP and follow the testing-project steps before production. RETENTION_ARCHIVE_BUCKET must be configured or the time-clock archive job safely stops without deleting source records.', 'The main app drawer is grouped into Account, Operations, Manager Tools, Management, and System. Button spacing is tighter, but the existing copper color system and permission filtering are unchanged.'] },
+    { title: 'Retention job troubleshooting', group: 'System Administrator', keywords: 'retention function failed cloud scheduler archive bucket missing index prep alerts uploads time punch workspace hard delete logs', body: ['First confirm the Firebase project is the correct testing or production project. Retention functions deploy to Firebase, not Vercel.', 'If time-clock archival fails with RETENTION_ARCHIVE_BUCKET missing, create the separate archive bucket, add its bucket name to functions/.env.<project-id>, and redeploy functions. The function does not delete time punches unless the archive upload is verified.', 'If Firestore reports that an index is required, deploy firestore.indexes.json with firebase deploy --only firestore:indexes and wait for the index to finish building.', 'Use Firebase Console → Functions to confirm each retention function is deployed, then Cloud Scheduler to confirm the daily job exists. Open Logs for the exact collection, file prefix, scanned count, deleted count, or failure message.', 'A scheduled workspace can be restored from System Administrator → Workspaces before 30 days. The hard-delete function removes restaurant-scoped Firestore documents, Storage files, membership data, and workspace-only Firestore profiles. It intentionally does not automatically delete Firebase Authentication identities.'] },
     { title: 'Version 15.0.43 Safer Voice 86 and OpenAI Diagnostics', group: 'System Administrator', keywords: 'v15 15.0.43 voice 86 out of stock confirmation ambiguous item review openai diagnostics explain search event calendar', body: ['15.0.43 treats every voice 86 or out-of-stock command as a high-risk action. A strict inventory or Menu Intelligence match must be found, the user must confirm it, and the item is rechecked immediately before the alert is written.', 'Ambiguous voice matches now show a choose-item review instead of guessing. AI classification is never allowed to silently select an inventory record or send an 86 alert, and inventory quantities are never changed by an 86 command.', 'Health Dashboard now includes Explain with OpenAI for structured diagnostics repair guidance. The server route is Super Admin-only and redacts credentials, signed URLs, tokens, private keys, and personal contact fields before sending operational data.', 'System Administrator includes a desktop/mobile search for tools, sections, actions, and manual articles. The Event Calendar top heading now says Event Calendar instead of repeating the large month/date.'] },
     { title: 'Version 15.0.42 Gemini Manual Completion Guard', group: 'System Administrator', keywords: 'v15 15.0.42 gemini manual assistant cut off max tokens continue answer incomplete finish reason system administrator', body: ['15.0.42 improves the Gemini-powered System Administrator Manual assistant so long answers are less likely to stop mid-sentence.', 'The server route now uses a larger output token budget, checks Gemini finish reasons, detects dangling endings, and automatically asks Gemini to continue when it hits the output limit.', 'If Gemini still appears cut off, the Manual panel shows a warning and a Continue Gemini Answer button so the Super Admin can finish the answer without starting over.', 'The Gemini response metadata now shows finish reason and auto-continuation count, which helps troubleshoot model output limits without exposing secrets or signed URLs.'] },
     { title: 'Version 15.0.41 System Administrator Tool Reorganization', group: 'System Administrator', keywords: 'v15 15.0.41 system administrator reorganized categories recategorized navigation tool map left menu mobile groups', body: ['15.0.41 reorganizes the entire System Administrator into clearer tool neighborhoods: Start Here, Backup & Recovery, Security & Access, Workspaces & People, Support & Monitoring, Maintenance & Releases, and Platform Tools.', 'The left desktop rail, mobile picker, and overview Tool Map now use the same categories so the correct tools sit together instead of being scattered through one long command list.', 'Use Start Here for daily status and the AI Administrator Manual. Use Backup & Recovery before risky changes. Use Security & Access for lockouts, MFA, App Check, rules, and permission design. Use Workspaces & People for restaurants, clients, profiles, setup, and branding.', 'High-risk global tools now live under Platform Tools so they are easier to find when needed but less likely to be clicked while doing normal support work.'] },
@@ -7979,6 +8013,7 @@ Type RESTORE to continue.`);
                     <div className="font-black text-white text-lg flex items-center gap-2 flex-wrap">
                       <button type="button" onClick={() => setSelectedClient(r)} className="truncate text-left hover:text-[#D4A381] underline-offset-4 hover:underline">{r.name}</button>
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
+                      {r.deleted_at && <span className="bg-amber-900 text-amber-300 border border-amber-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Deletion Scheduled</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
                       {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Maintenance</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
                     </div>
@@ -8006,12 +8041,13 @@ Type RESTORE to continue.`);
                     </div>
 
                     <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{presenceSnapshot.fetchedAt ? `${onlineUsers.filter(u => u.restaurantId === r.id).length} snapshot` : 'snapshot not run'}</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    {r.deletionScheduledFor && <div className="mt-1.5 text-[9px] font-black uppercase tracking-widest text-amber-300">Permanent deletion after {r.deletionScheduledFor?.toDate ? r.deletionScheduledFor.toDate().toLocaleString() : new Date(r.deletionScheduledFor).toLocaleString()}</div>}
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
 <button onClick={() => setSelectedClient(r)} className="px-3 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40 transition-colors shadow-sm flex items-center gap-1"><Users size={14} /> Users</button>
 <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-[#D4A381] hover:border-[#D4A381]/50 transition-colors shadow-sm flex items-center gap-1"><Settings size={14} /> Manage</button>
                     <button onClick={() => { setGhostTenant({ id: r.id, name: r.name, mode: 'workspace' }); setActiveTab('published'); }} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
-                    <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
+                    {r.deleted_at ? <button onClick={() => handleRestoreTenant(r.id, r.name)} className="px-3 py-1.5 bg-emerald-900/20 border border-emerald-500/40 text-emerald-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-emerald-900/40 transition-colors shadow-sm">Restore</button> : <button onClick={() => handleDeleteTenant(r.id, r.name)} title="Schedule workspace deletion in 30 days" className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>}
                   </div>
                 </div>
               )})}
@@ -9115,6 +9151,8 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'new-15044', title:'What changed in version 15.0.44', group:'Release Notes', keywords:'new update 15.0.44 data retention cleanup menu organized compact workspace deletion recovery', body:['86 Chaos now removes short-lived prep and 86-alert records after 30 days and removes raw menu/invoice scan files after 30 days.', 'Time-clock records move out of the active database after one year and remain in a restricted archive until the three-year mark.', 'Restaurants scheduled for deletion now have a 30-day recovery window before permanent removal.', 'The main menu is grouped into clearer sections with tighter spacing while keeping the same colors and permissions.'] },
+  { id:'data-retention-basics', title:'How long 86 Chaos keeps common data', group:'Privacy & Account', keywords:'retention old data delete prep 86 alert invoice scan menu scan time punch workspace canceled restaurant', body:['Prep-list records and 86 alerts are kept for 30 days.', 'Raw menu and invoice scan files are kept for 30 days. Reviewed or parsed business records may remain in the app.', 'Time-punch and separate location-log records leave the active database after one year and are kept in a restricted archive until the three-year mark.', 'When a restaurant workspace is scheduled for deletion, it is disabled immediately and can be restored during a 30-day recovery window. After that window, its workspace data is permanently removed.', 'Some records may be kept longer when required for legal, billing, fraud-prevention, backup, or support reasons.'] },
   { id:'new-15034', title:'What changed in version 15.0.34', group:'Release Notes', keywords:'new update 15.0.34 master admin repair firestore users auth uid admin lockout', body:['Added a System Administrator self-repair tool for configured master-admin accounts whose Firebase Authentication account exists but Firestore users profile is missing.', 'The tool repairs only emails listed in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS and tells admins to log out and back in before publishing hardened Firebase rules.', 'Also added /api/master-admin-repair to the API checklist and updated diagnostics version metadata.'] },
   { id:'new-15033', title:'What changed in version 15.0.33', group:'Release Notes', keywords:'new update 15.0.33 deployment syntax hotfix vercel adjacent jsx elements manual', body:['Fixed the Vercel build failure from 15.0.32 caused by an unclosed JSX wrapper in System Administrator -> Manual.', 'Kept the 15.0.32 AI Support Manual, account deletion review, RECOVERY_CODE_SECRET guard, and production-hardening changes intact.', 'No Firebase rules, Storage rules, API routes, or Vercel environment variables changed in this hotfix.'] },
   { id:'new-15032', title:'What changed in version 15.0.32', group:'Release Notes', keywords:'new update 15.0.32 ai support manual security deletion recovery codes firebase rules', body:['System Administrator Manual now works like a support console: type a customer question and it returns likely causes, first checks, fix steps, warnings, escalation guidance, and relevant articles.', 'Security Center now includes account deletion request review so privacy requests can be marked reviewing, complete, or denied with admin notes and audit history.', 'MFA recovery codes now require a dedicated RECOVERY_CODE_SECRET in Vercel before codes can be generated or used.', 'Firebase rules no longer rely on personal-email fallbacks. Super Admin access for Firestore and Storage rules must come from a custom claim or Firestore profile flag.', 'This build requires a Vercel redeploy and testing-side Firebase rule publish before production rollout.'] },
