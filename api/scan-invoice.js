@@ -1,10 +1,16 @@
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+const {
+  inferInvoiceProductFields,
+  classifyInvoiceRow,
+  isPurchasedProductRow,
+  productRowKey
+} = require('./_invoice-classification');
 
 // 86chaos invoice scanner
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.48';
+const INVOICE_SCANNER_VERSION = '15.0.49';
 const DEFAULT_INVOICE_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 function cleanJsonText(text = '') {
@@ -154,16 +160,6 @@ function parseGeminiJson(text = '') {
   throw new Error('No valid JSON object could be extracted from Gemini response.');
 }
 
-function parseMoneyNumber(value) {
-  if (value === null || value === undefined || value === '') return 0;
-  const cleaned = String(value).replace(/[$,]/g, '').replace(/[()]/g, '-').trim();
-  const num = Number.parseFloat(cleaned);
-  return Number.isFinite(num) ? num : 0;
-}
-
-function hasValue(value) {
-  return value !== null && value !== undefined && String(value).trim() !== '';
-}
 
 function normalizeRow(row, index, data = {}) {
   const r = row && typeof row === 'object' ? row : { rawText: String(row || '') };
@@ -194,144 +190,6 @@ function normalizeRow(row, index, data = {}) {
   return normalized;
 }
 
-const STOCK_ROW_TYPES = /^(item|product|line[_\s-]*item|detail|merchandise|stock|food|ingredient|inventory)$/i;
-const NON_STOCK_ROW_TYPES = /^(header|footer|note|memo|terms|customer|contact|metadata|page|route|invoice|statement|subtotal|total|tax|freight|delivery|fee|deposit|discount|credit|payment|balance|signature)$/i;
-const PURCHASE_UNITS = 'CS|CASE|CASES|EA|EACH|PK|PACK|BX|BOX|BAG|JUG|CTN|CARTON|DZ|DOZ|LB|LBS|OZ|GAL|QT|PT|PLST|TUB|PAIL|CAN|JAR|BTL|BOTTLE|TRAY|PAN|PC|PCS|KG|GM|ML|LTR|LITER|RL|ROLL|SLEEVE|SACK|DRUM|KEG';
-const LEADING_PURCHASE_RE = new RegExp(`^[\\s>*•#-]*(\\d+(?:\\.\\d+)?)\\s*(${PURCHASE_UNITS})\\b`, 'i');
-
-const PACK_RE = new RegExp(`\\b\\d+\\s*\\/\\s*\\d+(?:\\.\\d+)?\\s*(?:${PURCHASE_UNITS}|CT|CNT)?\\b`, 'i');
-const UNIT_RE = new RegExp(`\\b(?:${PURCHASE_UNITS})\\b`, 'i');
-
-function invoiceRowText(row = {}) {
-  return String(row.rawText || row.itemName || row.description || row.name || '').replace(/\s+/g, ' ').trim();
-}
-
-function isClearlyNonStockInvoiceRow(row = {}, { ignoreRowType = false } = {}) {
-  const rowType = String(row.rowType || row.lineType || row.type || '').trim();
-  const itemName = String(row.itemName || row.description || row.name || row.rawText || '').trim();
-  const raw = invoiceRowText(row);
-  const combined = `${itemName} ${raw}`.toLowerCase();
-
-  if (!ignoreRowType && NON_STOCK_ROW_TYPES.test(rowType)) return true;
-  if (/\b(bill\s*to|ship\s*to|sold\s*to|remit\s*to|invoice\s*(number|date|total)?|account\s*(number|summary)?|purchase\s*order|payment\s*terms|page\s+\d+|subtotal|grand\s*total|total\s*due|amount\s*due|balance\s*due|sales\s*tax|freight\s*(charge)?|delivery\s*(charge|fee)?|fuel\s*surcharge|service\s*charge|deposit|discount|credit|payment|change\s*due|signature)\b/i.test(combined)) return true;
-  if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return true;
-  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return true;
-  if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasValue(row.quantity)) return true;
-  return false;
-}
-
-function findMixedProductCode(text = '') {
-  const candidates = String(text || '').toUpperCase().match(/\b[A-Z0-9][A-Z0-9-]{2,}\b/g) || [];
-  return candidates.find(token =>
-    /[A-Z]/.test(token) &&
-    /\d/.test(token) &&
-    !/^(?:CS|EA|PK|BX|CTN|LB|LBS|OZ|GAL|QT|PT|REF)\d*$/i.test(token)
-  ) || '';
-}
-
-function inferDescriptionFromInvoiceText(text = '', productCode = '') {
-  let value = String(text || '').replace(/\s+/g, ' ').trim();
-  value = value.replace(LEADING_PURCHASE_RE, '').trim();
-  value = value.replace(new RegExp(`^\\s*(?:\\d+\\s*\\/\\s*)?\\d+(?:\\.\\d+)?\\s*(?:${PURCHASE_UNITS}|CT|CNT)\\b`, 'i'), '').trim();
-
-  if (productCode) {
-    const codeIndex = value.toUpperCase().indexOf(String(productCode).toUpperCase());
-    if (codeIndex >= 0) value = value.slice(codeIndex + String(productCode).length).trim();
-  }
-
-  value = value
-    .replace(/\s+\bREF\b[\s\S]*$/i, '')
-    .replace(/\s+(?:-?\$?\d[\d,]*\.\d{2}\s*){1,3}$/i, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-
-  return /[A-Za-z]{3}/.test(value) ? value : '';
-}
-
-function inferInvoiceProductFields(row = {}) {
-  const original = row && typeof row === 'object' ? row : { rawText: String(row || '') };
-  const text = invoiceRowText(original);
-  const leading = text.match(LEADING_PURCHASE_RE);
-  const productCode = original.productCode || original.sku || original.itemNumber || original.itemCode || original.code || original.pfgCode || findMixedProductCode(text);
-  const priceMatches = text.match(/-?\$?\d[\d,]*\.\d{2}\b/g) || [];
-  const inferredDescription = inferDescriptionFromInvoiceText(text, productCode);
-  const currentName = String(original.itemName || original.description || original.name || '').trim();
-  const currentNameLooksRaw = !currentName || currentName === text || LEADING_PURCHASE_RE.test(currentName) || currentName.length > 105;
-  const packMatch = text.match(PACK_RE);
-
-  const inferred = {
-    ...original,
-    productCode,
-    quantity: hasValue(original.quantity ?? original.qty ?? original.shippedQty ?? original.receivedQty ?? original.orderedQty)
-      ? (original.quantity ?? original.qty ?? original.shippedQty ?? original.receivedQty ?? original.orderedQty)
-      : (leading?.[1] || ''),
-    uom: original.uom || original.unitOfMeasure || leading?.[2] || '',
-    packSize: original.packSize || original.pack || original.size || packMatch?.[0] || leading?.[2] || '',
-    unitPrice: hasValue(original.unitPrice ?? original.priceEach ?? original.casePrice)
-      ? (original.unitPrice ?? original.priceEach ?? original.casePrice)
-      : (priceMatches.length >= 2 ? priceMatches[priceMatches.length - 2].replace('$', '') : ''),
-    totalPrice: hasValue(original.totalPrice ?? original.extendedPrice ?? original.lineTotal)
-      ? (original.totalPrice ?? original.extendedPrice ?? original.lineTotal)
-      : (priceMatches.length ? priceMatches[priceMatches.length - 1].replace('$', '') : ''),
-    rawText: original.rawText || text
-  };
-
-  if (currentNameLooksRaw && inferredDescription) {
-    inferred.itemName = inferredDescription;
-    inferred.description = inferredDescription;
-  }
-
-  return inferred;
-}
-
-function isPurchasedProductRow(input = {}) {
-  const row = inferInvoiceProductFields(input);
-  const rowType = String(row.rowType || row.lineType || row.type || '').trim();
-  const itemName = String(row.itemName || row.description || row.name || row.rawText || '').trim();
-  const raw = invoiceRowText(row);
-
-  if (!itemName || itemName.length < 2) return false;
-
-  const qty = parseMoneyNumber(row.quantity ?? row.qty ?? row.shippedQty ?? row.receivedQty ?? row.orderedQty);
-  const unitPrice = parseMoneyNumber(row.unitPrice ?? row.priceEach ?? row.casePrice);
-  const totalPrice = parseMoneyNumber(row.totalPrice ?? row.extendedPrice ?? row.lineTotal);
-  const hasQuantity = qty > 0;
-  const hasPrice = unitPrice > 0 || totalPrice > 0;
-  const hasSku = hasValue(row.productCode || row.sku || row.itemNumber || row.itemCode || row.code || row.pfgCode);
-  const hasPack = hasValue(row.packSize || row.pack || row.size || row.uom || row.unitOfMeasure || row.weight || row.catchWeight);
-  const hasLeadingPurchase = LEADING_PURCHASE_RE.test(raw);
-  const hasPackPattern = PACK_RE.test(raw);
-  const hasUnit = UNIT_RE.test(raw);
-  const explicitProductType = STOCK_ROW_TYPES.test(rowType);
-  const explicitNonStockType = NON_STOCK_ROW_TYPES.test(rowType);
-  const alphaWords = (raw.match(/[A-Za-z]{3,}/g) || []).length;
-  const numericTokens = (raw.match(/\b\d+(?:\.\d+)?\b/g) || []).length;
-  const densePurchaseSignature = hasLeadingPurchase && alphaWords >= 1 && (hasSku || hasPackPattern || hasPrice || numericTokens >= 2);
-
-  // A strong distributor-style purchase signature wins over an incorrect AI rowType such as
-  // "note" or "header", but never over actual non-stock wording such as INVOICE TOTAL or SALES TAX.
-  if (densePurchaseSignature && !isClearlyNonStockInvoiceRow(row, { ignoreRowType: true })) return true;
-
-  if (isClearlyNonStockInvoiceRow(row)) return false;
-
-  // Normal structured rows.
-  if (hasQuantity && (hasPrice || hasSku || hasPack)) return true;
-
-  // Trust an explicit product/item classification only when the text still carries a
-  // purchasing signal. This prevents headers mislabeled by AI from reaching inventory.
-  if (!explicitNonStockType && explicitProductType && alphaWords >= 1 && (hasQuantity || hasSku || hasPack || hasUnit || hasPrice)) return true;
-
-  return false;
-}
-
-function productRowKey(row = {}) {
-  const enriched = inferInvoiceProductFields(row);
-  const code = String(enriched.productCode || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const name = String(enriched.itemName || enriched.description || enriched.rawText || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const qty = String(enriched.quantity || '');
-  return code ? `code:${code}:${qty}` : `name:${name}:${qty}`;
-}
-
 function normalizeInvoicePayload(parsed) {
   const data = parsed && typeof parsed === 'object' ? parsed : {};
   const modelLineItems = Array.isArray(data.lineItems) ? data.lineItems : [];
@@ -341,27 +199,58 @@ function normalizeInvoicePayload(parsed) {
       ? data.invoiceRows
       : modelLineItems;
 
-  const normalizedAllRows = allExtractedRows.map((row, index) => normalizeRow(inferInvoiceProductFields(row), index, data));
-  const normalizedModelLineItems = modelLineItems.map((row, index) => normalizeRow(inferInvoiceProductFields(row), index, data));
+  const annotateRow = (row, index) => {
+    const normalized = normalizeRow(inferInvoiceProductFields(row), index, data);
+    const classification = classifyInvoiceRow(normalized);
+    return {
+      ...normalized,
+      ...classification.row,
+      scannerClassification: classification.kind,
+      classificationReason: classification.reason,
+      classificationCategory: classification.category,
+      isInventoryLine: classification.kind === 'stock'
+    };
+  };
+
+  const normalizedAllRows = allExtractedRows.map(annotateRow);
+  const normalizedModelLineItems = modelLineItems.map(annotateRow);
 
   // Build Stock Matcher from BOTH model lineItems and every extracted row. Distributor
   // invoices often put valid products only in allExtractedRows when the model struggles
-  // with a dense line format. Deduplicate after recovery.
+  // with a dense line format. Deterministic classification wins over the model label.
   const productMap = new Map();
   [...normalizedModelLineItems, ...normalizedAllRows]
-    .map(inferInvoiceProductFields)
-    .filter(isPurchasedProductRow)
+    .filter(row => row.scannerClassification === 'stock')
     .forEach(row => {
       const key = productRowKey(row);
       const existing = productMap.get(key) || {};
-      productMap.set(key, { ...existing, ...row, isInventoryLine: true, rowType: 'product' });
+      productMap.set(key, {
+        ...existing,
+        ...row,
+        isInventoryLine: true,
+        rowType: 'product',
+        scannerClassification: 'stock'
+      });
     });
   const productRows = Array.from(productMap.values());
   const productKeys = new Set(productRows.map(productRowKey));
 
-  const skippedRows = normalizedAllRows
-    .filter(row => !isPurchasedProductRow(row) && !productKeys.has(productRowKey(row)))
-    .map(row => ({ ...row, isInventoryLine: false }));
+  const nonFoodMap = new Map();
+  normalizedAllRows
+    .filter(row => row.scannerClassification === 'non_food' && !productKeys.has(productRowKey(row)))
+    .forEach(row => nonFoodMap.set(productRowKey(row), { ...row, isInventoryLine: false }));
+  const excludedNonFoodRows = Array.from(nonFoodMap.values());
+  const nonFoodKeys = new Set(excludedNonFoodRows.map(productRowKey));
+
+  // Needs Review contains only purchase-like rows that lack enough evidence. Headers,
+  // addresses, totals, tax, fees, and obvious non-food supplies never inflate this list.
+  const reviewMap = new Map();
+  normalizedAllRows
+    .filter(row => row.scannerClassification === 'review')
+    .filter(row => !productKeys.has(productRowKey(row)) && !nonFoodKeys.has(productRowKey(row)))
+    .forEach(row => reviewMap.set(productRowKey(row), { ...row, isInventoryLine: false }));
+  const skippedRows = Array.from(reviewMap.values());
+  const ignoredDocumentRowCount = normalizedAllRows.filter(row => row.scannerClassification === 'document').length;
 
   return {
     vendorName: data.vendorName || data.vendor || data.supplierName || '',
@@ -392,6 +281,8 @@ function normalizeInvoicePayload(parsed) {
     lineItems: productRows,
     allExtractedRows: normalizedAllRows,
     skippedRows,
+    excludedNonFoodRows,
+    ignoredDocumentRowCount,
     rawTranscription: data.rawTranscription || data.fullText || '',
     extractionNotes: data.extractionNotes || [],
     extractionWarnings: data.extractionWarnings || [],
@@ -402,9 +293,19 @@ function normalizeInvoicePayload(parsed) {
 
 const admin = require('firebase-admin');
 const { getAdminAppForRequest, verifyRequestToken, downloadFirebaseStorageUrl } = require('./_firebase-project-admin');
+const {
+  getIdempotencyKey,
+  resolveScanPageCount,
+  authorizeAiScanWorkspace,
+  checkAndReserveAiScanPages,
+  completeAiScanUsageEvent,
+  cancelAiScanReservation,
+  buildLimitResponse,
+  buildDuplicateResponse
+} = require('./_ai-usage');
 
 function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: false });
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 function appCheckEnforced() {
   return ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
@@ -623,11 +524,12 @@ Rules:
 - Return ONLY valid JSON. No markdown.
 - Do not summarize.
 - Do not skip tiny rows, handwritten notes, fees, credits, taxes, deposits, totals, PO numbers, terms, route numbers, vendor/customer info, page numbers, or footer notes.
-- lineItems MUST contain ONLY physical products purchased/delivered that should be eligible to update inventory stock.
+- lineItems MUST contain ONLY food, beverage, and ingredient products purchased/delivered that should be eligible to update restaurant food inventory stock.
 - Distributor rows may be one dense OCR string. A row beginning with a purchased quantity and unit such as "1 CS", "2 EA", or "3 PK" is normally a product row when it also contains a pack size, SKU/product code, description, or price.
 - Parse dense product strings into quantity, UOM, packSize, productCode, itemName, unitPrice, and totalPrice instead of putting the whole row in skipped/non-product output.
 - A row with a strong purchase signature such as quantity + case/unit + pack/SKU/description is a product even if OCR or an earlier classifier mislabeled its rowType as note, header, or metadata.
-- Do not classify chicken, meat, dairy, produce, sauces, dressings, beverages, paper goods, or other physical restaurant supplies as notes merely because their row formatting is unusual.
+- Do not classify chicken, meat, dairy, produce, sauces, dressings, or beverages as notes merely because their row formatting is unusual.
+- Obvious non-food supplies must NOT be placed in lineItems. Examples: napkins, paper towels, gloves, chemicals, sanitizer, foil, plastic wrap, disposable cups/lids/straws/cutlery, takeout containers, trash bags, cleaning tools, office supplies, maintenance parts, and reusable equipment. Keep these rows in allExtractedRows and mark rowType as non_food_supply, cleaning_supply, packaging_supply, disposable_supply, equipment, or maintenance_supply.
 - Do NOT put email addresses, From/To/Subject lines, vendor contact info, customer/bill-to/ship-to fields, headers, footers, page numbers, terms, totals, taxes, freight, deposits, fees, discounts, credits, payments, balances, notes, signatures, or account metadata in lineItems.
 - Preserve every visible line/row in allExtractedRows, even if it is not an inventory item.
 - If a value is unclear, include it as bestGuess and add a warning.
@@ -635,6 +537,7 @@ Rules:
 - rawTranscription may be a compact readable summary of the whole document; do not let rawTranscription make the JSON too large.
 - For inventory/product rows only, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
 - Mark non-product rows in allExtractedRows with rowType such as tax, freight, deposit, subtotal, total, discount, credit, payment, note, header, footer, contact, customer, metadata.
+- Mark obvious purchased non-food supplies with a specific non-food rowType. They are preserved for audit but excluded from food stock matching unless a human deliberately promotes them.
 - For catch-weight foods like chicken, beef, fish, cheese, and produce, include weight and weightPerCaseLbs when visible or strongly implied by pack size.
 - For longer multipage invoices, keep going until every visible product row is represented in lineItems and every visible row is represented in allExtractedRows.
 ${compactRules}
@@ -813,23 +716,49 @@ async function handler(req, res) {
 
   let scanSource = null;
   let geminiFile = null;
+  let usageReservation = null;
+  let usageDb = null;
+  let providerCallStarted = false;
+  let usedModel = '';
   try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const restaurantId = String(body.restaurantId || '').trim();
+    if (!restaurantId) return res.status(400).json({ error: 'restaurantId is required.' });
+
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY in Vercel.' });
 
-    const authContext = await verifyRequestToken(req, { requireProjectCredentials: false });
+    const authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
     const adminApp = authContext.app || initAdmin(req);
+    const access = await authorizeAiScanWorkspace({ app: adminApp, decoded: authContext.decoded, restaurantId, scanType: 'invoice' });
+    usageDb = access.db;
     const appCheck = await requireAppCheckIfEnforced(adminApp, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ error: appCheck.error });
     const scanLimit = Number(process.env.SCAN_INVOICE_RATE_LIMIT || 10);
-    if (adminApp) {
-      const invoiceRate = await enforceRateLimit({ db: adminApp.firestore(), req, decoded: authContext.decoded, routeName: 'scan-invoice', limit: scanLimit, windowMs: 60 * 1000 });
-      if (!invoiceRate.ok) return sendRateLimited(res, invoiceRate);
-    } else if (!allowInvoiceScanWithoutDb(authContext.decoded, scanLimit, 60 * 1000)) {
-      return res.status(429).json({ error: 'Too many invoice scans. Wait a minute and try again.' });
-    }
-    scanSource = await readScanSource(req.body || {}, req, adminApp, authContext);
+    const invoiceRate = await enforceRateLimit({ db: usageDb, req, decoded: authContext.decoded, routeName: 'scan-invoice', limit: scanLimit, windowMs: 60 * 1000 });
+    if (!invoiceRate.ok) return sendRateLimited(res, invoiceRate);
+
+    scanSource = await readScanSource(body, req, adminApp, authContext);
     const { mimeType = 'image/jpeg', fileName = 'invoice' } = scanSource;
+    const pageBuffer = scanSource.fileBuffer || (scanSource.fileBase64 ? Buffer.from(scanSource.fileBase64, 'base64') : null);
+    const pageCount = await resolveScanPageCount({ mimeType, buffer: pageBuffer });
+    const modelCandidates = getInvoiceModelCandidates();
+    const idempotencyKey = getIdempotencyKey(req, body);
+
+    usageReservation = await checkAndReserveAiScanPages({
+      db: usageDb,
+      restaurantId,
+      scanType: 'invoice',
+      pageCount,
+      decoded: authContext.decoded,
+      idempotencyKey,
+      provider: 'google_gemini',
+      model: modelCandidates[0] || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      sourceRoute: '/api/scan-invoice'
+    });
+    if (usageReservation.blocked) return res.status(429).json(buildLimitResponse(usageReservation));
+    if (usageReservation.duplicate) return res.status(409).json(buildDuplicateResponse(usageReservation));
+
     const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     const inputMode = String(process.env.INVOICE_SCAN_INPUT_MODE || 'files').toLowerCase();
     const useGeminiFiles = inputMode !== 'inline' && scanSource.source === 'firebase-storage' && Buffer.isBuffer(scanSource.fileBuffer);
@@ -838,6 +767,7 @@ async function handler(req, res) {
     let scanInputMethod = 'inline-base64';
 
     if (useGeminiFiles) {
+      providerCallStarted = true;
       geminiFile = await uploadToGeminiFiles(apiKey, scanSource);
       filePart = { fileData: { mimeType, fileUri: geminiFile.uri } };
       scanInputMethod = 'gemini-files-api';
@@ -848,13 +778,13 @@ async function handler(req, res) {
     }
 
     const timeoutMs = parseInt(process.env.INVOICE_SCAN_TIMEOUT_MS || '285000', 10);
-    const modelCandidates = getInvoiceModelCandidates();
     let parsed = null;
-    let usedModel = '';
     let usedAttempt = '';
     let finishReason = '';
     let repairModel = '';
     let lastFailure = null;
+    let estimatedInputTokens = null;
+    let estimatedOutputTokens = null;
 
     for (const candidateModel of modelCandidates) {
       const attempts = [
@@ -865,10 +795,13 @@ async function handler(req, res) {
       for (const attempt of attempts) {
         try {
           const prompt = buildInvoicePrompt({ compact: attempt.compact });
-          const body = createGenerationBody(prompt, filePart, { compact: attempt.compact });
-          const gemini = await callGeminiGenerate({ apiKey, model: candidateModel, body, timeoutMs });
+          const generationBody = createGenerationBody(prompt, filePart, { compact: attempt.compact });
+          providerCallStarted = true;
+          const gemini = await callGeminiGenerate({ apiKey, model: candidateModel, body: generationBody, timeoutMs });
           const text = getGeminiCandidateText(gemini);
           finishReason = getGeminiFinishReason(gemini);
+          estimatedInputTokens = gemini?.usageMetadata?.promptTokenCount ?? estimatedInputTokens;
+          estimatedOutputTokens = gemini?.usageMetadata?.candidatesTokenCount ?? estimatedOutputTokens;
           if (!text) throw new Error('Gemini returned no invoice text.');
 
           try {
@@ -876,10 +809,7 @@ async function handler(req, res) {
           } catch (parseErr) {
             lastFailure = parseErr;
             const wasTruncated = /MAX_TOKENS|LENGTH/i.test(finishReason) || !extractBalancedJson(text);
-            if (!attempt.compact && wasTruncated) {
-              // A cut-off first pass should be rescanned in compact mode instead of trying to save a half invoice.
-              continue;
-            }
+            if (!attempt.compact && wasTruncated) continue;
             try {
               const repaired = await repairGeminiJsonWithModel({ apiKey, model: candidateModel, badText: text, scanInputMethod });
               parsed = repaired.parsed;
@@ -907,15 +837,9 @@ async function handler(req, res) {
     }
 
     if (!parsed) {
-      return res.status(502).json({
-        error: 'Gemini returned invalid JSON after repair attempts.',
-        details: lastFailure?.message || 'Could not parse invoice scan response.',
-        scanInputMethod,
-        scanSource: scanSource?.source || 'unknown',
-        fileName: scanSource?.fileName || fileName,
-        originalBytes: scanSource?.originalBytes || null,
-        scannerVersion: INVOICE_SCANNER_VERSION
-      });
+      const parseError = new Error(lastFailure?.message || 'Gemini returned invalid JSON after repair attempts.');
+      parseError.statusCode = 502;
+      throw parseError;
     }
 
     const normalized = normalizeInvoicePayload(parsed);
@@ -934,18 +858,51 @@ async function handler(req, res) {
     normalized.scanFinishReason = finishReason || '';
     normalized.scanRepairModel = repairModel || '';
     normalized.firebaseProject = authContext.projectId;
-    normalized.storageReadMode = adminApp ? 'firebase-admin' : 'validated-download-url';
+    normalized.storageReadMode = 'firebase-admin';
+    normalized.pageCount = pageCount;
+    normalized.aiUsage = {
+      monthKey: usageReservation.monthKey,
+      pageCount,
+      usedBefore: usageReservation.usedBefore,
+      usedAfter: usageReservation.usedAfter,
+      limit: usageReservation.limit,
+      remaining: usageReservation.remaining,
+      limitBypass: usageReservation.limitBypass,
+      bypassReason: usageReservation.bypassReason,
+      wouldHaveExceededLimit: usageReservation.wouldHaveExceededLimit
+    };
 
+    await completeAiScanUsageEvent({
+      db: usageDb,
+      reservation: usageReservation,
+      status: 'completed',
+      provider: 'google_gemini',
+      model: usedModel || model,
+      estimatedInputTokens,
+      estimatedOutputTokens
+    });
     if (geminiFile) deleteGeminiFileQuietly(apiKey, geminiFile);
     return res.status(200).json(normalized);
   } catch (err) {
+    if (usageReservation && usageDb) {
+      try {
+        if (providerCallStarted) {
+          await completeAiScanUsageEvent({ db: usageDb, reservation: usageReservation, status: 'failed', errorMessage: err.message, provider: 'google_gemini', model: usedModel });
+        } else {
+          await cancelAiScanReservation({ db: usageDb, reservation: usageReservation });
+        }
+      } catch (usageError) {
+        console.error('Invoice AI usage finalization failed:', usageError?.message || usageError);
+      }
+    }
     const isTimeout = err?.name === 'AbortError';
     const message = isTimeout
       ? 'Invoice scanner needed more time while AI was reading the file. Try again once, or scan fewer pages if this keeps happening.'
       : (err.message || 'Invoice scanner failed.');
-    const status = err?.statusCode || (isTimeout ? 504 : (/authorization|token|permission|login/i.test(message) ? 401 : 500));
+    const status = err?.statusCode || (err?.code === 'AI_PDF_PAGE_COUNT_REQUIRED' ? 400 : (isTimeout ? 504 : (/authorization|token|permission|login/i.test(message) ? 401 : 500)));
     return res.status(status).json({
       error: message,
+      code: err?.code || undefined,
       hint: message.toLowerCase().includes('payload')
         ? 'Upload the invoice through Firebase Storage mode instead of sending it through Vercel.'
         : undefined,
@@ -954,10 +911,10 @@ async function handler(req, res) {
     });
   }
 }
-
 module.exports = handler;
 module.exports.__test = {
   inferInvoiceProductFields,
+  classifyInvoiceRow,
   isPurchasedProductRow,
   normalizeInvoicePayload,
   productRowKey
