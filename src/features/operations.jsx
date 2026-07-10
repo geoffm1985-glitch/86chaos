@@ -1167,8 +1167,10 @@ const executeOrder = async (method) => {
       );
     });
 
+    const downloadUrl = await getDownloadURL(fileRef);
     return {
       storagePath,
+      downloadUrl,
       mimeType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
       fileName: originalFile?.name || file.name,
       uploadedFileName: file.name,

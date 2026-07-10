@@ -133,7 +133,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     setIsNuking(false);
   };
 
-  // --- 2. SYSTEM OPERATIONS & FORGE ---
+  // --- SYSTEM OPERATIONS ---
   const handleMegaphone = async (e) => {
     e.preventDefault(); 
     if(!broadcastMsg.trim()) return; 

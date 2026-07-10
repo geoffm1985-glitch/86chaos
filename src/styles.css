@@ -1531,3 +1531,172 @@ select {
 .admin46-shell #admin-content-start .text-xs {
   font-size: 9px !important;
 }
+
+/* 15.0.47 readable dark-slate System Administrator theme */
+.admin46-shell {
+  --admin-bg: #111923;
+  --admin-panel: #18232e;
+  --admin-panel-soft: #202d39;
+  --admin-ink: #eef5fb;
+  --admin-muted: #a9b8c6;
+  --admin-line: #344653;
+  --admin-blue: #75b7e4;
+  --admin-blue-dark: #4d91c1;
+  --admin-blue-soft: #20394b;
+  --admin-green: #63c69f;
+  --admin-red: #f08b93;
+  --admin-amber: #e7b66f;
+  color: var(--admin-ink);
+}
+
+.admin46-shell * {
+  scrollbar-color: #536b7c #111923;
+}
+
+.admin46-topbar {
+  border-color: #3a4d5b;
+  background: linear-gradient(135deg, #182530 0%, #121b24 100%);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .24);
+}
+
+.admin46-topbar h1,
+.admin46-pagebar h2,
+.admin46-manual-heading h2,
+.admin46-status-chip strong {
+  color: var(--admin-ink) !important;
+}
+
+.admin46-topbar p,
+.admin46-pagebar p,
+.admin46-manual-heading p {
+  color: var(--admin-muted) !important;
+}
+
+.admin46-status-chip {
+  border-color: #3b4e5c;
+  background: rgba(28, 42, 54, .94);
+}
+
+.admin46-status-chip:hover {
+  border-color: #6ba7ce;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .2);
+}
+
+.admin46-status-chip span,
+.admin46-status-chip small,
+.admin46-field label,
+.admin46-index-label {
+  color: #9db0bf;
+}
+
+.admin46-topbar input,
+.admin46-topbar select,
+.admin46-shell #admin-content-start input,
+.admin46-shell #admin-content-start select,
+.admin46-shell #admin-content-start textarea {
+  border-color: #405462 !important;
+  background: #0f171f !important;
+  color: #f5f9fc !important;
+}
+
+.admin46-topbar input::placeholder,
+.admin46-shell #admin-content-start input::placeholder,
+.admin46-shell #admin-content-start textarea::placeholder {
+  color: #748897 !important;
+}
+
+.admin46-content,
+.admin46-manual {
+  border-color: #344653;
+  background: var(--admin-bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .22);
+}
+
+.admin46-pagebar,
+.admin46-manual-heading {
+  border-color: #344653;
+}
+
+.admin46-manual-heading,
+.admin46-manual-index,
+.admin46-article-reader {
+  background: #15212b;
+}
+
+.admin46-manual-workbench {
+  background: #111923;
+}
+
+.admin46-manual-index {
+  border-right-color: #344653;
+}
+
+.admin46-article-reader {
+  border-left-color: #344653;
+}
+
+.admin46-manual-stats span,
+.admin46-back-button,
+.admin46-secondary {
+  border-color: #415766;
+  background: #1c2a35;
+  color: #d4e0e8;
+}
+
+.admin46-back-button:hover,
+.admin46-secondary:hover {
+  border-color: #78b5dc;
+  color: #ffffff;
+}
+
+.admin46-shell #admin-content-start [class*="bg-[#0B0E11]"],
+.admin46-shell #admin-content-start [class*="bg-[#101418]"],
+.admin46-shell #admin-content-start [class*="bg-[#12161A]"],
+.admin46-shell #admin-content-start [class*="bg-[#151B20]"],
+.admin46-shell #admin-content-start [class*="bg-[#161C21]"],
+.admin46-shell #admin-content-start [class*="bg-[#1A2126]"],
+.admin46-shell #admin-content-start [class*="bg-white"],
+.admin46-shell #admin-content-start [class*="bg-slate-50"],
+.admin46-shell #admin-content-start [class*="bg-slate-100"] {
+  background: var(--admin-panel) !important;
+  background-image: none !important;
+}
+
+.admin46-shell #admin-content-start [class*="text-white"],
+.admin46-shell #admin-content-start [class*="text-slate-900"],
+.admin46-shell #admin-content-start [class*="text-slate-800"],
+.admin46-shell #admin-content-start [class*="text-slate-700"] {
+  color: var(--admin-ink) !important;
+}
+
+.admin46-shell #admin-content-start [class*="text-slate-300"],
+.admin46-shell #admin-content-start [class*="text-slate-400"],
+.admin46-shell #admin-content-start [class*="text-slate-500"],
+.admin46-shell #admin-content-start [class*="text-slate-600"] {
+  color: #a8b8c5 !important;
+}
+
+.admin46-shell #admin-content-start .cockpit-panel,
+.admin46-shell #admin-content-start .cockpit-grid {
+  border-color: #344653 !important;
+  background: var(--admin-panel) !important;
+}
+
+.admin46-shell #admin-content-start th {
+  background: #22323f !important;
+  color: #d6e3eb !important;
+}
+
+.admin46-shell #admin-content-start td,
+.admin46-shell #admin-content-start th {
+  border-color: #344653 !important;
+}
+
+.admin46-shell #admin-content-start a {
+  color: #8ec7eb;
+}
+
+.admin46-shell #admin-content-start pre,
+.admin46-shell #admin-content-start code {
+  color: #dbe8f0;
+}
