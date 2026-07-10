@@ -3487,10 +3487,7 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
 ];
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
-  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return window.matchMedia('(min-width: 1024px)').matches;
-  });
+  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(false);
   const [isAdminNavOpen, setIsAdminNavOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(min-width: 1024px)').matches;
@@ -3828,10 +3825,10 @@ const LEGACY_JULY_2026_SCHEDULE = [
     addToast('Deploying', 'Pushing banner to selected workspace(s)...');
     try {
       if (bannerTarget === 'ALL') {
-        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: bannerText.trim() }));
+        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: bannerText.trim(), systemBannerUpdatedAt: new Date().toISOString() }));
         await Promise.all(promises);
       } else {
-        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: bannerText.trim() });
+        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: bannerText.trim(), systemBannerUpdatedAt: new Date().toISOString() });
       }
       addToast('Success', 'Banner deployed successfully.');
       setBannerText('');
@@ -3843,10 +3840,10 @@ const LEGACY_JULY_2026_SCHEDULE = [
     addToast('Clearing', 'Removing banners...');
     try {
       if (bannerTarget === 'ALL') {
-        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: null }));
+        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: null, systemBannerUpdatedAt: null }));
         await Promise.all(promises);
       } else {
-        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: null });
+        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: null, systemBannerUpdatedAt: null });
       }
       addToast('Success', 'Banner(s) cleared.');
     } catch(err) { addToast('Error', err.message); }
@@ -4979,7 +4976,7 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.44 keeps the 15.0.43 safeguards and adds Firebase-hosted retention schedules plus the compact grouped app menu.'
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.45 keeps the retention system and adds remembered alerts plus the calmer Admin Workspace.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
@@ -5451,6 +5448,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
   const adminManualArticles = [
     { title: 'Version 15.0.44 Automated Data Retention and Compact Menu', group: 'System Administrator', keywords: 'v15 15.0.44 retention cleanup prep 86 alerts ai uploads time punches archive workspace delete restore cloud functions menu sections compact drawer', body: ['15.0.44 adds Firebase Cloud Functions that run every day to clean up old operational data. Prep items and 86 alerts are removed after 30 days. Raw Menu Intelligence and Invoice Scanner files are removed from Storage after 30 days.', 'Time punches leave the active Firestore database after 365 days. The function writes a compressed, verified archive file before deleting the active records. Archive files are deleted at the three-year mark.', 'System Administrator workspace deletion now starts a 30-day recovery window instead of instantly deleting the restaurant record. The workspace is disabled immediately. Use Restore beside a scheduled workspace before the deadline to cancel deletion.', 'The Firebase Functions are separate from Vercel. Open DATA_RETENTION_SETUP_15_0_44.md in the ZIP and follow the testing-project steps before production. RETENTION_ARCHIVE_BUCKET must be configured or the time-clock archive job safely stops without deleting source records.', 'The main app drawer is grouped into Account, Operations, Manager Tools, Management, and System. Button spacing is tighter, but the existing copper color system and permission filtering are unchanged.'] },
+    { title: 'Version 15.0.45 Remembered Alerts, Calm Admin Workspace, and Gemini Auth Repair', group: 'System Administrator', keywords: 'v15 15.0.45 alert dismissal seen alerts persistent banner warning admin redesign calm workspace organized gemini invalid audience chaos test production privacy policy', body: ['Dismissible warnings now save a seen-state for the signed-in user and active workspace. The app hides the exact alert after it is dismissed, including after refresh or sign-in.', 'Each alert has a fingerprint based on its real content or pending action set. A changed announcement, a new update version, a new push-repair state, or a changed set of time-off requests appears again automatically.', 'The pending time-off warning now has a clear close button. Workspace broadcasts, update notices, and push-repair notices use the same remembered-alert system.', 'System Administrator is now the Admin Workspace. The old always-visible cockpit board is gone. Start at the short priority list, use the six quick actions, or choose a section from the calmer left rail or mobile selector.', 'Gemini Manual now accepts a cryptographically verified Master Admin token from either chaos-test-d1601 or cheers-34b8d. This narrow fallback is only used for Gemini Manual and does not let testing requests operate production admin tools.', 'The Privacy Policy now documents AI processing, the automated retention schedule, legal holds, provider deletion delays, privacy requests, and restaurant responsibilities.', 'All existing tools remain available, including Gemini Manual continuation, OpenAI diagnostics guidance, backups, Security Center, Workspaces, People, Push, Support, retention controls, and Danger Zone confirmations.'] },
     { title: 'Retention job troubleshooting', group: 'System Administrator', keywords: 'retention function failed cloud scheduler archive bucket missing index prep alerts uploads time punch workspace hard delete logs', body: ['First confirm the Firebase project is the correct testing or production project. Retention functions deploy to Firebase, not Vercel.', 'If time-clock archival fails with RETENTION_ARCHIVE_BUCKET missing, create the separate archive bucket, add its bucket name to functions/.env.<project-id>, and redeploy functions. The function does not delete time punches unless the archive upload is verified.', 'If Firestore reports that an index is required, deploy firestore.indexes.json with firebase deploy --only firestore:indexes and wait for the index to finish building.', 'Use Firebase Console → Functions to confirm each retention function is deployed, then Cloud Scheduler to confirm the daily job exists. Open Logs for the exact collection, file prefix, scanned count, deleted count, or failure message.', 'A scheduled workspace can be restored from System Administrator → Workspaces before 30 days. The hard-delete function removes restaurant-scoped Firestore documents, Storage files, membership data, and workspace-only Firestore profiles. It intentionally does not automatically delete Firebase Authentication identities.'] },
     { title: 'Version 15.0.43 Safer Voice 86 and OpenAI Diagnostics', group: 'System Administrator', keywords: 'v15 15.0.43 voice 86 out of stock confirmation ambiguous item review openai diagnostics explain search event calendar', body: ['15.0.43 treats every voice 86 or out-of-stock command as a high-risk action. A strict inventory or Menu Intelligence match must be found, the user must confirm it, and the item is rechecked immediately before the alert is written.', 'Ambiguous voice matches now show a choose-item review instead of guessing. AI classification is never allowed to silently select an inventory record or send an 86 alert, and inventory quantities are never changed by an 86 command.', 'Health Dashboard now includes Explain with OpenAI for structured diagnostics repair guidance. The server route is Super Admin-only and redacts credentials, signed URLs, tokens, private keys, and personal contact fields before sending operational data.', 'System Administrator includes a desktop/mobile search for tools, sections, actions, and manual articles. The Event Calendar top heading now says Event Calendar instead of repeating the large month/date.'] },
     { title: 'Version 15.0.42 Gemini Manual Completion Guard', group: 'System Administrator', keywords: 'v15 15.0.42 gemini manual assistant cut off max tokens continue answer incomplete finish reason system administrator', body: ['15.0.42 improves the Gemini-powered System Administrator Manual assistant so long answers are less likely to stop mid-sentence.', 'The server route now uses a larger output token budget, checks Gemini finish reasons, detects dangling endings, and automatically asks Gemini to continue when it hits the output limit.', 'If Gemini still appears cut off, the Manual panel shows a warning and a Continue Gemini Answer button so the Super Admin can finish the answer without starting over.', 'The Gemini response metadata now shows finish reason and auto-continuation count, which helps troubleshoot model output limits without exposing secrets or signed URLs.'] },
@@ -5531,7 +5529,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not an Elite-only plan feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
     { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Regular staff and store managers do not see online status in Team. Only the Super Admin can press Refresh Snapshot in System Administrator.', 'Each user browser saves a low-frequency app-open presence check-in. The snapshot button reads livePresence once and shows check-ins from the recent window.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
-    { title: 'Dashboard / Command Deck: what the numbers mean', group: 'Admin Tab Guide', keywords: 'dashboard command deck metrics backup countdown action queue mrr crashes stale clients push adoption', body: ['Manual Presence counts recent app check-ins only after the Super Admin presses Refresh Snapshot; it does not run in the background.', 'Crashes shows recent crash reports and should be used with Support before editing code or rules.', 'Backup info shows the last backup and the countdown to the next automatic backup.', 'MRR, trial, stale client, push opt-in, and sticky-rate cards are operating signals, not accounting books. Use them to spot accounts that need attention.', 'The Administrator Action Queue is the shortest path to urgent problems. Click a card to jump to the relevant admin section.'] },
+    { title: 'Admin Workspace home: what the numbers mean', group: 'Admin Tab Guide', keywords: 'admin workspace home priority list quick actions metrics backup mrr crashes people workspaces', body: ['The Admin Workspace home intentionally shows only a short priority list, six quick actions, and four core numbers.', 'The priority list is the shortest path to urgent problems. Click a row to open the correct section.', 'Active workspaces, People, Crashes today, and Estimated MRR are operating signals, not accounting records.', 'Backup and Security summaries live in the three small cards at the top. Open their full sections for details.', 'Manual Presence still counts recent app check-ins only after the Super Admin presses Refresh Snapshot; it does not run in the background.'] },
     { title: 'Workspaces: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Workspaces to manage restaurant/customer environments, not individual shifts or menu work.', 'The workspace drawer shows users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/status state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
     { title: 'People: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
     { title: 'Support: what each support tool means', group: 'Admin Tab Guide', keywords: 'support crashes permission denied raw inspector broadcast banner diagnostics user action telemetry', body: ['Crash reports show errors collected from the app and may include screen size, user agent, breadcrumbs, and stack details.', 'Permission-denied clues usually point to Firestore or Storage rule blocks. Check rules before assuming the UI is broken.', 'Raw Database Inspector lets a platform admin view a specific document by collection and document ID. Use it carefully and copy diagnostics before edits.', 'Broadcast Message sends a one-time message-style alert. Top-of-App Banner pins persistent text below the main header for selected workspaces or all workspaces.', 'Support should be used to diagnose and confirm before making risky changes in Operations or Forensics.'] },
@@ -5541,9 +5539,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → People or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Workspaces', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Workspaces and click the workspace name or People button.', 'The workspace drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and status state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that workspace or user sees.'] },
-    { title: 'Admin/Settings command-center upgrade', group: 'System Administrator', keywords: 'admin overview command center roles permissions push live presence setup wizard deployment readiness audit settings history import export maintenance branding danger zone', body: ['System Administrator is organized into Overview, Customer Operations, Support & Safety, Platform Settings, and Reference.', 'Command Center shows system status, active users, backup status, push health, recent admin actions, and deployment readiness on one landing page.', 'Permission & Role Manager is the platform guide for who should be able to edit staff, schedules, financials, inventory, recipes, diagnostics, and forensics. The Full Permissions Preview shows allowed screens, blocked screens, and sensitive-access flags for a selected user.', 'Push Control Center is where you troubleshoot tokens, browser permission, token freshness, per-user test pushes, repair flags, and push diagnostic exports.', 'Deployment Readiness should be run before production deploys. It gives READY TO DEPLOY or DO NOT DEPLOY YET with exact reasons.'] },
+    { title: 'Using the calm Admin Workspace', group: 'System Administrator', keywords: 'admin workspace overview priority list quick actions sections search mobile navigation organized calm', body: ['System Administrator now opens as the Admin Workspace. The home page shows only the short priority list, six common actions, four core numbers, and the organized admin areas.', 'Use the left rail on desktop or the section selector on mobile. Each page has a plain title, purpose statement, and Back to admin home button.', 'Search at the top finds tools, actions, customers, and Administrator Manual articles without exposing unauthorized sections.', 'The old always-visible Command Deck and dense signal board were removed. Detailed information still lives inside Health, Security, Backups, People, Workspaces, Push, and Support.', 'Danger Zone remains separated at the bottom of Platform Tools and still requires confirmations.'] },
     { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings keep the app name locked as 86 Chaos, store restaurant/group display name, customer logo URL/display preference, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record. Customer logo uploads use a secure server route first, with Firebase Storage rules as fallback protection. The customer logo can appear beside 86 Chaos, but cannot replace or hide it.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
-    { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
+    { title: 'Backup status in Admin Workspace', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Backup summary at the top of Admin Workspace reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click the Backup summary, Run backup on Admin Home, or open Backup Center & Audit Trail to inspect status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics & Backups.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents. If restored schedule data mixes with old/current schedule records, run the Emergency Schedule Rescue for that month so the month is hard-replaced.'] },
@@ -6307,7 +6305,7 @@ Type RESTORE to continue.`);
   const handleClearAllBanners = async () => {
     if (!window.confirm('Clear system banners from every workspace?')) return;
     try {
-      await Promise.all(restaurants.map(r => updateDoc(doc(db, 'restaurants', r.id), { systemBanner: null })));
+      await Promise.all(restaurants.map(r => updateDoc(doc(db, 'restaurants', r.id), { systemBanner: null, systemBannerUpdatedAt: null })));
       addToast('Banners Cleared', 'All workspace banners were removed.');
     } catch (err) { addToast('Error', err.message); }
   };
@@ -6635,208 +6633,77 @@ Type RESTORE to continue.`);
           <button type="button" onClick={() => setAdminHelpModal(null)} className={T.btn}>Got it</button>
         </div>}
       </Modal>
-      {/* ADMIN TOP BAR */}
-      <div className="cockpit-panel rounded-2xl p-3 sm:p-4 overflow-hidden relative">
-        <div className="absolute inset-0 cockpit-grid opacity-35 pointer-events-none"></div>
-        <div className="relative flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <SignalPip tone="emerald" label="PLATFORM LIVE" hot />
-              <SignalPip tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} label={platformStatus} hot={platformStatus === 'Needs Attention'} />
-              <SignalPip tone="blue" label="FIREBASE" />
-              <SignalPip tone="purple" label="GHOST READY" />
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">System Administrator</h1>
-            <p className="text-[11px] sm:text-xs text-slate-400 font-bold mt-1 leading-snug">Organized control center for health, backups, security, people, support, releases, and high-risk platform tools.</p>
-          </div>
-          <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="w-full lg:w-auto bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] rounded-xl px-3 py-3 sm:py-2 text-[10px] font-black uppercase tracking-widest">
-            {isCommandDeckOpen ? 'Hide Info Board' : 'Show Info Board'}
-          </button>
-        </div>
-
-        {/* ADMIN NAVIGATION MOVED TO LEFT RAIL */}
-        <div className="relative bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* 15.0.45 ADMIN WORKSPACE SHELL */}
+      <section className="admin45-header rounded-[26px] border border-[#2A353D] bg-[#101418] p-4 sm:p-6 shadow-2xl">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
           <div className="min-w-0">
-            <div className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">Current Tool</div>
-            <div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div>
-            <div className="text-[10px] font-bold text-slate-500 truncate">{activeAdminTab.group} • {activeAdminTab.groupSummary}</div>
+            <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#D4A381]">86 Chaos Control Room</div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Admin Workspace</h1>
+            <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">Pick the job you need, handle it, and get out. The noisy cockpit has been replaced with a quieter task-first workspace.</p>
           </div>
-          <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="lg:hidden bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest min-h-[46px]">
-            {isAdminNavOpen ? 'Hide Menu' : 'Show Menu'}
-          </button>
+          <div className="grid grid-cols-3 gap-2 w-full xl:w-auto xl:min-w-[420px]">
+            <button type="button" onClick={() => selectAdminTab('overview')} className="admin45-status-card text-left">
+              <span>Platform</span><strong className={platformStatus === 'Needs Attention' ? 'text-red-300' : platformStatus === 'Monitoring' ? 'text-amber-300' : 'text-emerald-300'}>{platformStatus}</strong><small>{adminRiskQueue.length} item{adminRiskQueue.length === 1 ? '' : 's'}</small>
+            </button>
+            <button type="button" onClick={() => selectAdminTab('forensics')} className="admin45-status-card text-left">
+              <span>Backup</span><strong className={backupIsStale ? 'text-amber-300' : 'text-emerald-300'}>{backupStatusLabel}</strong><small>{nextBackupCountdown}</small>
+            </button>
+            <button type="button" onClick={() => selectAdminTab('security')} className="admin45-status-card text-left">
+              <span>Security</span><strong className={(securityReport?.riskyUsers || []).length ? 'text-amber-300' : 'text-slate-100'}>{(securityReport?.riskyUsers || []).length} flagged</strong><small>Review center</small>
+            </button>
+          </div>
         </div>
 
-        <div className="relative mt-3" id="admin-tool-search">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className={`${T.input} pl-10 pr-10 min-h-[46px]`} placeholder="Search System Administrator tools, actions, and manual articles..." aria-label="Search System Administrator" />
-            {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={16}/></button>}
-          </div>
+        <div className="relative mt-5" id="admin-tool-search">
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className="w-full min-h-[52px] rounded-2xl border border-[#303B43] bg-[#0B0E11] pl-12 pr-12 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-[#D4A381]" placeholder="Find a tool, action, customer, or help article..." aria-label="Search System Administrator" />
+          {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={17}/></button>}
           {normalizedAdminToolSearch && <div className="absolute z-50 left-0 right-0 mt-2 bg-[#0B0E11] border border-[#D4A381]/40 rounded-2xl p-2 shadow-2xl max-h-[52vh] overflow-y-auto custom-scrollbar">
-            {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No authorized System Administrator tool or article matched that search.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#12161A] border border-transparent hover:border-[#2A353D] transition-colors">
+            {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No authorized admin tool or article matched that search.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#161C21] border border-transparent hover:border-[#2A353D] transition-colors">
               <div className="flex items-center justify-between gap-2"><span className="text-xs font-black text-white">{result.label}</span><span className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">{result.type}</span></div>
               <div className="text-[10px] font-bold text-slate-500 mt-1 leading-snug">{result.detail}</div>
             </button>)}
           </div>}
         </div>
 
-        <div className="relative lg:hidden mt-3 space-y-3" id="admin-mobile-command-strip">
-          <div className="grid grid-cols-3 gap-2">
-            <button type="button" onClick={() => jumpToAdminIssue(platformStatus === 'Needs Attention' ? 'overview' : 'health')} className={`bg-[#0B0E11] border rounded-xl p-2 text-left min-h-[64px] ${platformStatus === 'Needs Attention' ? 'border-red-900/50' : 'border-[#2A353D]'}`}>
-              <div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Status</div>
-              <div className={`text-xs font-black truncate ${platformStatus === 'Needs Attention' ? 'text-red-300' : platformStatus === 'Monitoring' ? 'text-amber-300' : 'text-emerald-300'}`}>{platformStatus}</div>
-              <div className="text-[9px] text-slate-500 font-bold mt-0.5 truncate">{adminRiskQueue.length} issue(s)</div>
-            </button>
-            <button type="button" onClick={() => jumpToAdminIssue('forensics')} className={`bg-[#0B0E11] border rounded-xl p-2 text-left min-h-[64px] ${backupIsStale ? 'border-amber-900/50' : 'border-[#2A353D]'}`}>
-              <div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Backup</div>
-              <div className={`text-xs font-black truncate ${backupIsStale ? 'text-amber-300' : 'text-emerald-300'}`}>{backupStatusLabel}</div>
-              <div className="text-[9px] text-slate-500 font-bold mt-0.5 truncate">{nextBackupCountdown}</div>
-            </button>
-            <button type="button" onClick={() => jumpToAdminIssue('security')} className={`bg-[#0B0E11] border rounded-xl p-2 text-left min-h-[64px] ${(securityReport?.security?.mfa?.status === 'action-needed' || (securityReport?.riskyUsers || []).length) ? 'border-amber-900/50' : 'border-[#2A353D]'}`}>
-              <div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Security</div>
-              <div className="text-xs font-black text-white truncate">{(securityReport?.riskyUsers || []).length} risky</div>
-              <div className="text-[9px] text-slate-500 font-bold mt-0.5 truncate">Tap to review</div>
-            </button>
-          </div>
-
-          <div className="bg-[#0B0E11]/80 border border-[#2A353D] rounded-2xl p-2 space-y-2">
-            <div className="flex items-center gap-2">
-              <select value={subTab} onChange={event => selectAdminTab(event.target.value)} className="flex-1 bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-3 text-sm font-black text-white outline-none focus:border-[#D4A381]">
-                {adminTabGroups.map(group => (
-                  <optgroup key={group.title} label={group.title}>
-                    {group.tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-              <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-3 py-3 text-[10px] font-black uppercase tracking-widest min-h-[46px]">
-                {isAdminNavOpen ? 'Close' : 'All'}
-              </button>
-            </div>
-            <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 -mx-1 px-1 admin-mobile-chip-row" aria-label="System Administrator quick sections">
-              {mobileQuickTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => selectAdminTab(tab.id)}
-                  className={`flex-shrink-0 min-w-[92px] px-3 py-3 rounded-xl border text-[9px] font-black uppercase tracking-widest ${subTab === tab.id ? 'bg-red-600 text-white border-red-500 shadow-lg' : 'bg-[#12161A] text-slate-300 border-[#2A353D]'}`}
-                >
-                  {tab.short || tab.label}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="bg-[#12161A] border border-[#2A353D] rounded-xl px-2 py-3 text-[9px] font-black uppercase tracking-widest text-slate-300">{isCommandDeckOpen ? 'Hide Board' : 'Info Board'}</button>
-              <button type="button" onClick={() => selectAdminTab('manual')} className="bg-blue-900/15 border border-blue-900/50 rounded-xl px-2 py-3 text-[9px] font-black uppercase tracking-widest text-blue-300">Manual</button>
-              <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="bg-cyan-900/15 border border-cyan-900/50 rounded-xl px-2 py-3 text-[9px] font-black uppercase tracking-widest text-cyan-300 disabled:opacity-50">{isDiagnosticsRunning ? 'Running' : 'Diag'}</button>
-            </div>
-          </div>
+        <div className="lg:hidden mt-3 flex gap-2">
+          <select value={subTab} onChange={event => selectAdminTab(event.target.value)} className="flex-1 min-h-[48px] rounded-xl border border-[#303B43] bg-[#0B0E11] px-3 text-sm font-black text-white outline-none focus:border-[#D4A381]">
+            {adminTabGroups.map(group => <optgroup key={group.title} label={group.title}>{group.tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</optgroup>)}
+          </select>
+          <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="min-h-[48px] rounded-xl border border-[#303B43] bg-[#161C21] px-4 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{isAdminNavOpen ? 'Close' : 'Menu'}</button>
         </div>
-      </div>
-      <div className="grid gap-3 lg:gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-        {isCommandDeckOpen && (
-          <aside className="max-lg:order-2 lg:col-start-2 lg:row-start-1 h-max space-y-3 max-lg:max-h-[62vh] max-lg:overflow-y-auto max-lg:pr-1 custom-scrollbar" id="admin-command-deck">
-            <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative max-lg:border-[#D4A381]/40 max-lg:shadow-2xl">
-              <div className="absolute inset-0 cockpit-grid opacity-40 pointer-events-none"></div>
-              <div className="relative flex items-center justify-between gap-2 mb-3">
-                <div>
-                  <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Command Deck</div>
-                  <div className="text-sm font-black text-white">Clickable Signal Board</div>
-                </div>
-                <button type="button" onClick={() => setIsCommandDeckOpen(false)} className="text-slate-500 hover:text-white border border-[#2A353D] rounded-lg px-2 py-1 text-[9px] font-black uppercase">Hide</button>
-              </div>
-              <div className="relative grid sm:grid-cols-2 xl:grid-cols-4 gap-2">
-                <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} action item(s)`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} onClick={() => jumpToAdminIssue('overview')} />
-                <CockpitMetric label="Health" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Check'} detail={`Integrity: ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}`} tone={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : healthSnapshot?.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} onClick={() => jumpToAdminIssue('health')} />
-                <CockpitMetric label="Admin Access" value={adminAccessSourceLabel} detail={adminAccessDetail} tone={adminAccessSourceLabel === 'Unknown' ? 'amber' : 'emerald'} help="Explains why this account can open System Administrator. Good sources are MASTER_ADMIN_EMAIL(S) in Vercel server env, REACT_APP_MASTER_ADMIN_EMAIL for frontend menu visibility, Firebase custom claim superAdmin, or Firestore isSuperAdmin/systemAccess.superAdmin. If an account is locked out, check the deployment environment scope first." />
-                <CockpitMetric label="Manual Presence" value={presenceSnapshot.fetchedAt ? onlineUsers.length : '—'} detail={presenceSnapshot.fetchedAt ? `${onlineRestaurants.length} workspaces` : 'Press refresh'} tone={presenceSnapshot.fetchedAt ? 'emerald' : 'blue'} onClick={() => jumpToAdminIssue('live')} />
-                <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" onClick={() => jumpToAdminIssue('tenants')} />
-                <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
-                <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('users')} />
-                <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('tenants')} />
-                <CockpitMetric label="Last Backup" value={backupStatusLabel} detail={backupCommandDeckDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} onClick={() => jumpToAdminIssue('forensics')} />
-                <div role="button" tabIndex={0} onClick={() => jumpToAdminIssue('forensics')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); jumpToAdminIssue('forensics'); } }} className="w-full text-left bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381]/50 rounded-xl p-3 transition-colors cursor-pointer">
-                  <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Next Automatic Backup</span><div className="flex items-center gap-2"><AdminInfoButton title="Next Automatic Backup" body={backupTroubleshootingSummary} /><SignalPip tone={backupRunning ? 'blue' : backupMissedDailyWindow ? 'amber' : 'emerald'} label={backupRunning ? 'RUNNING' : backupMissedDailyWindow ? 'CHECK' : 'COUNTDOWN'} hot={backupRunning || backupMissedDailyWindow} /></div></div>
-                  <div className="text-xl font-black text-white mt-2">{nextBackupCountdown}</div>
-                  <div className="text-[10px] font-bold text-slate-400 mt-1">Scheduled for {nextBackupLocalTime}</div>
-                  {backupMissedDailyWindow && <div className="mt-2 bg-amber-900/15 border border-amber-500/30 rounded-lg p-2 text-[10px] font-bold text-amber-200 leading-snug">{backupTroubleshootingSummary}</div>}
-                </div>
-                <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white transition-colors flex items-center justify-center gap-2">
-                  {(isBackupRunning || backupRunning) ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
-                  {(isBackupRunning || backupRunning) ? 'Backup Running' : 'Run Backup Now'}
-                </button>
-              </div>
-            </div>
+      </section>
 
-            <div className="cockpit-panel rounded-2xl p-3 space-y-2">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Action Queue</div>
-              {adminRiskQueue.length === 0 && <button type="button" onClick={() => jumpToAdminIssue('overview')} className="w-full text-left bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3"><SignalPip tone="emerald" label="CLEAN"/><div className="text-xs font-bold text-slate-300 mt-2">No urgent platform issues.</div></button>}
-              {adminRiskQueue.map((item, idx) => (
-                <button key={`${item.title}-${idx}`} type="button" onClick={() => jumpToAdminIssue(item.jump)} className="w-full text-left bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381]/50 rounded-xl p-3 transition-colors">
-                  <SignalPip tone={item.tone} label={item.title} hot={item.tone === 'red'} />
-                  <div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{item.detail}</div>
-                </button>
-              ))}
+      <div className="admin45-layout grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
+        <aside className={`${isAdminNavOpen ? 'block' : 'hidden lg:block'} lg:sticky lg:top-4 h-max`} id="admin-left-nav">
+          <nav className="admin45-nav rounded-[22px] border border-[#2A353D] bg-[#101418] p-3 shadow-xl">
+            <div className="flex items-center justify-between gap-2 px-2 py-2 border-b border-[#252E35] mb-2">
+              <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#D4A381]">Sections</div><div className="text-xs font-bold text-slate-500 mt-1">Choose one job</div></div>
+              <button type="button" onClick={() => setIsAdminNavOpen(false)} className="lg:hidden rounded-lg border border-[#303B43] p-2 text-slate-400"><X size={15}/></button>
             </div>
-
-            <div className="cockpit-panel rounded-2xl p-3">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Quick Controls</div>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={handleCopyPlatformSnapshot} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Copy Snapshot</button>
-                <button type="button" onClick={handleClearAllBanners} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-red-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clear Banners</button>
-                <button type="button" onClick={() => jumpToAdminIssue('live')} className="bg-emerald-900/15 border border-emerald-900/50 text-emerald-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Live Radar</button>
-                <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-purple-900/15 border border-purple-900/50 text-purple-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clients</button>
-                <button type="button" onClick={handleDownloadForensicBundle} className="bg-blue-900/15 border border-blue-900/50 text-blue-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Forensics JSON</button>
-                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="bg-cyan-900/15 border border-cyan-900/50 text-cyan-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest disabled:opacity-50">Full Diag</button>
-                <button type="button" onClick={handleDownloadClientDirectory} className="bg-amber-900/15 border border-amber-900/50 text-amber-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Client CSV</button>
-              </div>
-            </div>
-
-            <div className="cockpit-panel rounded-2xl p-3 grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Trials</div><div className="text-xl font-black text-white">{trialWorkspaces.length}</div></button>
-              <button type="button" onClick={() => jumpToAdminIssue('users')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Inactive Users</div><div className="text-xl font-black text-white">{inactiveUsers.length}</div></button>
-              <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Modules Live</div><div className="text-xl font-black text-white">{featureAdoption.filter(f => f.count > 0).length}/{moduleList.length}</div></button>
-              <button type="button" onClick={() => jumpToAdminIssue('manual')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Version</div><div className="text-sm font-black text-white truncate">{CURRENT_VERSION}</div></button>
-            </div>
-          </aside>
-        )}
-
-        <aside className={`max-lg:order-1 lg:col-start-1 lg:row-start-1 lg:sticky lg:top-4 h-max ${isAdminNavOpen ? 'block' : 'hidden lg:block'}`} id="admin-left-nav">
-          <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative max-lg:border-[#D4A381]/40 max-lg:shadow-2xl">
-            <div className="absolute inset-0 cockpit-grid opacity-30 pointer-events-none"></div>
-            <div className="relative flex items-center justify-between gap-2 mb-3">
-              <div className="min-w-0">
-                <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Admin Menu</div>
-                <div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div>
-              </div>
-              <button type="button" onClick={() => setIsAdminNavOpen(false)} className="lg:hidden text-slate-500 hover:text-white border border-[#2A353D] rounded-lg px-2 py-1 text-[9px] font-black uppercase">Hide</button>
-            </div>
-            <div className="relative space-y-2 max-lg:max-h-[66vh] max-lg:overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-3 max-lg:max-h-[68vh] max-lg:overflow-y-auto custom-scrollbar pr-1">
               {adminTabGroups.map(group => (
-                <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
-                  <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-0.5">{group.title}</div>
-                  <div className="text-[9px] font-bold text-slate-600 px-1.5 pb-1.5 leading-snug">{group.summary}</div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-1.5">
-                    {group.tabs.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => selectAdminTab(t.id)}
-                        className={`px-2.5 py-3 lg:px-3 lg:py-2.5 text-left text-[9px] lg:text-[10px] font-black rounded-xl uppercase tracking-widest transition-all border min-h-[46px] ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}
-                      >
-                        <span className="lg:hidden">{t.short || t.label}</span><span className="hidden lg:inline">{t.label}</span>
+                <div key={group.title}>
+                  <div className={`px-2 pb-1 text-[9px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-slate-500'}`}>{group.title}</div>
+                  <div className="space-y-1">
+                    {group.tabs.map(tab => (
+                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`admin45-nav-button ${subTab === tab.id ? 'is-active' : ''} ${group.danger ? 'is-danger' : ''}`}>
+                        <span>{tab.label}</span>
+                        {subTab === tab.id && <ChevronRight size={14}/>} 
                       </button>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+            <div className="mt-3 pt-3 border-t border-[#252E35] grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => selectAdminTab('manual')} className="admin45-mini-action">Manual</button>
+              <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="admin45-mini-action disabled:opacity-50">{isDiagnosticsRunning ? 'Running' : 'Diagnostics'}</button>
+            </div>
+          </nav>
         </aside>
 
-        <div id="admin-content-start" className={`max-lg:order-3 min-w-0 space-y-4 sm:space-y-6 lg:col-start-2 ${isCommandDeckOpen ? 'lg:row-start-2' : 'lg:row-start-1'}`}>
-          {!isCommandDeckOpen && (
-            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Open Info Board</button>
-          )}
+        <div id="admin-content-start" className="min-w-0 space-y-4 sm:space-y-6">
 <Modal isOpen={!!editingGlobalUser} onClose={() => { setEditingGlobalUser(null); setSupportUserForm({}); }} title={`Support Edit User: ${editingGlobalUser?.name || editingGlobalUser?.email || ''}`}>
         {editingGlobalUser && (
           <form onSubmit={handleSupportUserUpdate} className="space-y-4 max-h-[72vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -7174,214 +7041,97 @@ Type RESTORE to continue.`);
         </form>
       </Modal>
 
+      {subTab !== 'overview' && (
+        <section className="admin45-content-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#D4A381]">{activeAdminTab.group}</div>
+            <h2 className="text-xl sm:text-2xl font-black text-white mt-1">{activeAdminTab.label}</h2>
+            <p className="text-xs font-semibold text-slate-500 mt-1 leading-relaxed">{activeAdminTab.intent}</p>
+          </div>
+          <button type="button" onClick={() => selectAdminTab('overview')} className="admin45-secondary-action flex-shrink-0">Back to admin home</button>
+        </section>
+      )}
+
 {/* --- TAB: OVERVIEW --- */}
       {subTab === 'overview' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {commandWidgets.map(widget => (
-              <button key={widget.title} type="button" onClick={() => selectAdminTab(widget.jump)} className={`text-left ${T.card} p-4 border ${widget.tone === 'red' ? 'border-red-900/50' : widget.tone === 'amber' ? 'border-amber-900/50' : widget.tone === 'blue' ? 'border-blue-900/50' : 'border-emerald-900/30'} hover:bg-[#12161A] transition-colors`}>
-                <div className="flex items-center justify-between gap-2 mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{widget.title}</div><SignalPip tone={widget.tone} label={widget.tone === 'red' ? 'CHECK' : 'LIVE'} hot={widget.tone === 'red' || widget.tone === 'amber'} /></div>
-                <div className="text-2xl font-black text-white">{widget.value}</div>
-                <div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{widget.detail}</div>
-              </button>
-            ))}
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <section className="admin45-content-card p-4 sm:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4A381]">Start here</div>
+                <h2 className="text-2xl font-black text-white mt-1">What needs your attention?</h2>
+                <p className="text-sm text-slate-400 font-semibold mt-2">Only the important things are shown here. Everything else stays tucked inside its section.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="admin45-primary-action">{isDiagnosticsRunning ? 'Running diagnostics…' : 'Run diagnostics'}</button>
+                <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="admin45-secondary-action">{isBackupRunning || backupRunning ? 'Backup running…' : 'Run backup'}</button>
+              </div>
+            </div>
+          </section>
+
+          <div className="grid lg:grid-cols-[1.25fr_.75fr] gap-4">
+            <section className="admin45-content-card p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Priority list</div><div className="text-lg font-black text-white mt-1">Next actions</div></div>
+                <span className="rounded-full border border-[#303B43] bg-[#0B0E11] px-3 py-1 text-[10px] font-black text-slate-400">{adminRiskQueue.length}</span>
+              </div>
+              {adminRiskQueue.length === 0 ? (
+                <div className="rounded-2xl border border-emerald-900/40 bg-emerald-950/10 p-5">
+                  <div className="text-sm font-black text-emerald-300">Nothing urgent</div>
+                  <div className="text-xs font-semibold text-slate-400 mt-1">The platform has no red or amber items waiting right now.</div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {adminRiskQueue.slice(0, 5).map((item, idx) => (
+                    <button key={`${item.title}-${idx}`} type="button" onClick={() => selectAdminTab(item.jump)} className="admin45-task-row">
+                      <span className={`admin45-task-dot ${item.tone === 'red' ? 'is-red' : 'is-amber'}`}></span>
+                      <span className="min-w-0 flex-1"><strong>{item.title}</strong><small>{item.detail}</small></span>
+                      <ChevronRight size={16}/>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="admin45-content-card p-4 sm:p-5">
+              <div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Quick work</div>
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <button type="button" onClick={() => selectAdminTab('health')} className="admin45-quick-tile"><Shield size={17}/><span>Health</span></button>
+                <button type="button" onClick={() => selectAdminTab('tenants')} className="admin45-quick-tile"><Globe size={17}/><span>Workspaces</span></button>
+                <button type="button" onClick={() => selectAdminTab('users')} className="admin45-quick-tile"><Users size={17}/><span>People</span></button>
+                <button type="button" onClick={() => selectAdminTab('push')} className="admin45-quick-tile"><Bell size={17}/><span>Push</span></button>
+                <button type="button" onClick={() => selectAdminTab('forensics')} className="admin45-quick-tile"><ClipboardList size={17}/><span>Backups</span></button>
+                <button type="button" onClick={() => selectAdminTab('manual')} className="admin45-quick-tile"><BookOpen size={17}/><span>Manual</span></button>
+              </div>
+            </section>
           </div>
 
-          <div className={`${T.card} p-4 cockpit-grid`}>
-            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 mb-4">
-              <div>
-                <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">System Administrator Tool Map</div>
-                <h2 className="text-xl font-black text-white mt-1">Grouped by the job you are trying to do</h2>
-                <p className="text-xs text-slate-400 font-bold mt-1 max-w-3xl leading-relaxed">The left menu is now organized into tool neighborhoods. Start with health or the AI manual, then move into the matching category instead of hunting through one long list.</p>
-              </div>
-              <button type="button" onClick={() => setIsAdminNavOpen(true)} className="lg:hidden bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest">Open Full Menu</button>
+          <section className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            <button type="button" onClick={() => selectAdminTab('tenants')} className="admin45-number-card"><span>Active workspaces</span><strong>{restaurants.filter(r => r.isActive).length}</strong><small>{paidWorkspaces} paid</small></button>
+            <button type="button" onClick={() => selectAdminTab('users')} className="admin45-number-card"><span>People</span><strong>{allUsers.length}</strong><small>{inactiveUsers.length} inactive</small></button>
+            <button type="button" onClick={() => selectAdminTab('support')} className="admin45-number-card"><span>Crashes today</span><strong>{crashes24h}</strong><small>{permissionDeniedLogs.length} permission clues</small></button>
+            <button type="button" onClick={() => selectAdminTab('tenants')} className="admin45-number-card"><span>Estimated MRR</span><strong>${mrr.toLocaleString()}</strong><small>ARPA ${arpa}</small></button>
+          </section>
+
+          <section className="admin45-content-card p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Browse</div><h3 className="text-lg font-black text-white mt-1">Admin areas</h3></div>
+              <div className="text-[10px] font-bold text-slate-500">Everything is still here, just quieter.</div>
             </div>
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="grid md:grid-cols-2 gap-3">
               {adminTabGroups.map(group => (
-                <div key={group.title} className={`bg-[#0B0E11]/80 border rounded-2xl p-3 ${group.danger ? 'border-red-900/50' : 'border-[#2A353D]'}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className={`text-[10px] font-black uppercase tracking-widest ${group.danger ? 'text-red-300' : 'text-[#D4A381]'}`}>{group.title}</div>
-                      <p className="text-[10px] text-slate-500 font-bold leading-snug mt-1">{group.helper || group.summary}</p>
-                    </div>
-                    <SignalPip tone={group.danger ? 'red' : group.title === 'Start Here' ? 'emerald' : 'blue'} label={group.danger ? 'CARE' : 'GROUP'} hot={!!group.danger} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-3">
+                <div key={group.title} className={`rounded-2xl border p-3 ${group.danger ? 'border-red-900/40 bg-red-950/5' : 'border-[#2A353D] bg-[#0B0E11]/60'}`}>
+                  <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-[#D4A381]'}`}>{group.title}</div>
+                  <div className="text-[11px] font-semibold text-slate-500 mt-1 leading-relaxed">{group.summary}</div>
+                  <div className="mt-3 space-y-1">
                     {group.tabs.map(tab => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => selectAdminTab(tab.id)}
-                        className={`text-left rounded-xl border px-3 py-2.5 min-h-[58px] transition-colors ${subTab === tab.id ? 'bg-red-600 text-white border-red-500 shadow-lg' : 'bg-[#12161A] border-[#2A353D] text-slate-300 hover:border-[#D4A381]/60 hover:text-white'}`}
-                      >
-                        <div className="text-[9px] font-black uppercase tracking-widest">{tab.short || tab.label}</div>
-                        <div className={`text-[9px] font-bold leading-snug mt-1 ${subTab === tab.id ? 'text-white/80' : 'text-slate-500'}`}>{tab.intent}</div>
-                      </button>
+                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin45-area-link"><span>{tab.label}</span><ChevronRight size={14}/></button>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* PRIMARY REVENUE ROW */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr.toLocaleString()}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-            {appUser?.isSuperAdmin === true && (
-              <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
-            )}          
-          </div>
-
-{/* SECONDARY ENGAGEMENT & PIPELINE ROW */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid Workspaces</div><div className="text-2xl lg:text-3xl font-black text-white">{paidWorkspaces} <span className="text-[10px] text-slate-300 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded">ARPA: ${arpa}</span></div></div>
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-blue-900/30`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Active Trials</div><div className="text-2xl lg:text-3xl font-black text-white">{activeTrials} <span className="text-[10px] text-blue-400 tracking-widest uppercase align-middle bg-blue-900/20 border border-blue-900/50 px-1.5 py-0.5 rounded">Pipe: ${trialPipelineValue}</span></div></div>
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-1">Daily Active (DAU)</div><div className="text-2xl lg:text-3xl font-black text-white">{dau} <span className="text-[10px] text-orange-500 tracking-widest uppercase align-middle bg-orange-900/20 border border-orange-900/50 px-1.5 py-0.5 rounded">Today</span></div></div>
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">App Sticky Rate</div><div className={`text-2xl lg:text-3xl font-black ${stickyRate < 30 ? 'text-red-400' : 'text-emerald-400'}`}>{stickyRate}% <span className="text-[10px] text-slate-500 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded text-white">Adoption</span></div></div>
-          </div>
-
-          {/* PRICING & MRR CONFIG */}
-          {/* ... (Your pricing and stale account code remains exactly the same here) ... */}
-
-          <div className={`${T.card} p-4`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-              <div>
-                <h3 className="font-black text-white text-sm flex items-center gap-2"><Shield size={18} className={T.copper}/> Administrator Action Queue</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Only the important warnings. Less disco ball, more control tower.</p>
-              </div>
-              <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${platformStatus === 'Clean' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : platformStatus === 'Monitoring' ? 'bg-amber-900/20 text-amber-400 border-amber-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>{platformStatus}</span>
-            </div>
-            {adminRiskQueue.length === 0 ? (
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4 text-sm font-bold text-emerald-400">No urgent admin issues detected.</div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                {adminRiskQueue.slice(0, 6).map((item, idx) => (
-                  <button key={idx} type="button" onClick={() => selectAdminTab(item.jump)} className={`text-left bg-[#12161A] border rounded-xl p-3 hover:bg-[#0B0E11] transition-colors ${item.tone === 'red' ? 'border-red-900/50' : item.tone === 'amber' ? 'border-amber-900/50' : 'border-[#2A353D]'}`}>
-                    <div className={`text-[10px] font-black uppercase tracking-widest mb-1 ${item.tone === 'red' ? 'text-red-400' : item.tone === 'amber' ? 'text-amber-400' : 'text-emerald-400'}`}>{item.title}</div>
-                    <div className="text-xs text-slate-300 font-bold leading-snug">{item.detail}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className={`${T.card} p-4 border ${currentAdminProfileMissing ? 'border-red-900/60 bg-red-950/10' : 'border-[#2A353D]'}`}>
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div>
-                <h3 className="font-black text-white text-sm flex items-center gap-2"><Shield size={18} className={currentAdminProfileMissing ? 'text-red-400' : T.copper}/> Master Admin Self-Repair</h3>
-                <p className="text-[10px] text-slate-400 font-bold leading-snug mt-1">Recreates missing Firestore <span className="font-mono">users/{'{authUid}'}</span> documents for emails listed in Vercel <span className="font-mono">MASTER_ADMIN_EMAIL(S)</span>. Use this before publishing hardened Firestore rules so your admin keys are not sitting outside the database.</p>
-              </div>
-              <button type="button" onClick={handleMasterAdminRepair} disabled={isMasterAdminRepairing} className={`${T.btn} flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50`}>
-                {isMasterAdminRepairing ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
-                {isMasterAdminRepairing ? 'Repairing...' : 'Repair Master Admins'}
-              </button>
-            </div>
-            <div className="grid sm:grid-cols-3 gap-2 mt-3">
-              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Email</div><div className="text-[10px] font-mono text-white break-all">{appUser?.email || 'Unknown'}</div></div>
-              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Firestore Profile</div><div className={`text-xs font-black ${currentAdminProfile ? 'text-emerald-400' : currentAdminProfileMissing ? 'text-red-400' : 'text-slate-400'}`}>{currentAdminProfile ? 'Found' : currentAdminProfileMissing ? 'Missing' : 'Unknown'}</div></div>
-              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Server Env</div><div className={`text-xs font-black ${appUser?.serverAdminCheck?.masterAdminEnvConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>{appUser?.serverAdminCheck?.masterAdminEnvConfigured ? `${appUser.serverAdminCheck.masterAdminEmailCount || 1} email(s)` : 'Not confirmed'}</div></div>
-            </div>
-            {masterAdminRepairResult && (
-              <div className={`mt-3 rounded-xl p-3 border ${masterAdminRepairResult.ok === false ? 'bg-red-900/10 border-red-900/50' : 'bg-emerald-900/10 border-emerald-900/40'}`}>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Last repair result</div>
-                  <div className="text-[9px] font-mono text-slate-400 break-all">Project: {masterAdminRepairResult.runtime?.firebaseProjectId || 'unknown'} • Verified: {masterAdminRepairResult.successCount ?? (masterAdminRepairResult.results || []).filter(r => r.firestoreWriteVerified).length}/{(masterAdminRepairResult.results || []).length}</div>
-                </div>
-                {masterAdminRepairResult.error && <div className="text-xs font-bold text-red-300 mb-2">{masterAdminRepairResult.error}</div>}
-                {(masterAdminRepairResult.skippedMasterAdminEmails || []).length > 0 && (
-                  <div className="bg-amber-900/10 border border-amber-900/40 rounded-lg p-2 text-[10px] text-amber-200 font-bold mb-2">Skipped invalid/placeholder master admin env value(s): {(masterAdminRepairResult.skippedMasterAdminEmails || []).map(row => row.value).join(', ')}</div>
-                )}
-                <div className="space-y-1">
-                  {(masterAdminRepairResult.results || []).map((row) => {
-                    const good = (row.status === 'created' || row.status === 'updated') && row.firestoreWriteVerified !== false;
-                    return (
-                      <div key={row.email} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-300 flex flex-col gap-1">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                          <span className="font-mono break-all">{row.email}</span>
-                          <span className={good ? 'text-emerald-400' : 'text-red-300'}>{row.status}{row.uid ? ` • ${row.uid}` : ''}</span>
-                        </div>
-                        <div className="grid sm:grid-cols-2 gap-1 text-[9px] text-slate-500 font-mono break-all">
-                          <span>Doc: {row.firestoreDocPath || row.firestoreProfileId || 'not written'}</span>
-                          <span>Verified: {row.firestoreWriteVerified === true ? 'yes' : row.firestoreWriteVerified === false ? 'no' : 'n/a'}</span>
-                          <span>Restaurant: {row.restaurantId || 'unknown'}</span>
-                          <span>Workspace member: {row.workspaceMemberRepair?.status || 'n/a'}</span>
-                        </div>
-                        {row.error && <div className="text-[10px] text-red-300">{row.error}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-                {masterAdminRepairResult.serverCheckAfterRepair && (
-                  <div className="mt-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-[10px] font-bold text-slate-300">
-                    Token refresh check: <span className={masterAdminRepairResult.serverCheckAfterRepair.superAdmin ? 'text-emerald-400' : 'text-amber-300'}>{masterAdminRepairResult.serverCheckAfterRepair.superAdmin ? 'Super Admin recognized' : 'Log out and back in still needed'}</span>
-                  </div>
-                )}
-                {masterAdminRepairResult.reloginRecommended && <p className="text-[10px] text-amber-200 font-bold mt-2 leading-snug">Custom claims were updated. Log out and back in before publishing hardened Firebase rules.</p>}
-                {masterAdminRepairResult.runtime?.firebaseProjectId && <p className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">Make sure you are viewing the same Firebase project shown above. If the API project is production while you are checking the testing database, the repair wrote to the other kitchen drawer.</p>}
-              </div>
-            )}
-          </div>
-
-          {/* --- GLOBAL INFRASTRUCTURE & HEALTH MATRIX --- */}
-          <div className={`${T.card} overflow-hidden border-slate-700/50`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className="font-black text-lg text-white flex items-center gap-2"><Globe className="text-blue-500" size={18}/> Infrastructure Health Matrix</h3>
-              <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">Version {CURRENT_VERSION}</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#2A353D]">
-              
-              {/* Shard Status */}
-              <div className="p-5 flex items-center justify-between hover:bg-[#12161A]/50 transition-colors">
-                <div>
-                  <div className="font-black text-white text-sm">Core Database Shards</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Firebase Firestore DB</div>
-                </div>
-                <div className="flex items-center gap-2 bg-emerald-900/20 border border-emerald-900/50 px-3 py-1.5 rounded-lg">
-                  <span className="cockpit-light quiet bg-emerald-400 text-emerald-400"></span>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Operational</span>
-                </div>
-              </div>
-
-              {/* Stability Status */}
-              <div className="p-5 flex items-center justify-between hover:bg-[#12161A]/50 transition-colors">
-                <div>
-                  <div className="font-black text-white text-sm">Application Stability</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{crashes24h} Crashes (Last 24h)</div>
-                </div>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${crashes24h > 10 ? 'bg-red-900/20 border-red-900/50 text-red-400 animate-pulse' : crashes24h > 0 ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
-                  {crashes24h > 10 ? <Bug size={14}/> : <Check size={14}/>}
-                  <span className="text-[10px] font-black uppercase tracking-widest">{crashes24h > 10 ? 'Degraded' : crashes24h > 0 ? 'Monitoring' : 'Stable'}</span>
-                </div>
-              </div>
-
-              {/* Push Relay Status */}
-              <div className="p-5 flex items-center justify-between border-t border-[#2A353D] hover:bg-[#12161A]/50 transition-colors">
-                <div>
-                  <div className="font-black text-white text-sm">Push Notification Relay</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{pushOptInRate}% Global Opt-In Rate</div>
-                </div>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${pushOptInRate < 30 ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
-                  <Bell size={14}/>
-                  <span className="text-[10px] font-black uppercase tracking-widest">{pushOptInRate < 30 ? 'Low Adoption' : 'Active'}</span>
-                </div>
-              </div>
-
-              {/* API Webhooks Status */}
-              <div className="p-5 flex items-center justify-between border-t border-[#2A353D] hover:bg-[#12161A]/50 transition-colors">
-                <div>
-                  <div className="font-black text-white text-sm">External API Webhooks</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">POS & Payroll Sync</div>
-                </div>
-                <div className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-3 py-1.5 rounded-lg">
-                  <Repeat size={14} className="text-blue-400"/>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">{apiConnectedCount} Endpoints Live</span>
-                </div>
-              </div>
-
-            </div>
-          </div>
+          </section>
         </div>
       )}
 
@@ -8599,7 +8349,7 @@ another@email.com"></textarea>
                       </div>
                       <button type="button" onClick={async () => {
                         if(!window.confirm(`Clear banner for ${r.name}?`)) return;
-                        await updateDoc(doc(db, "restaurants", r.id), { systemBanner: null });
+                        await updateDoc(doc(db, "restaurants", r.id), { systemBanner: null, systemBannerUpdatedAt: null });
                         addToast('Cleared', `Banner removed from ${r.name}.`);
                       }} className="text-slate-400 hover:text-red-500 p-2 flex-shrink-0 transition-colors bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
                     </div>
@@ -9152,6 +8902,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 
 const HELP_ARTICLES = [
   { id:'new-15044', title:'What changed in version 15.0.44', group:'Release Notes', keywords:'new update 15.0.44 data retention cleanup menu organized compact workspace deletion recovery', body:['86 Chaos now removes short-lived prep and 86-alert records after 30 days and removes raw menu/invoice scan files after 30 days.', 'Time-clock records move out of the active database after one year and remain in a restricted archive until the three-year mark.', 'Restaurants scheduled for deletion now have a 30-day recovery window before permanent removal.', 'The main menu is grouped into clearer sections with tighter spacing while keeping the same colors and permissions.'] },
+  { id:'new-15045', title:'What changed in version 15.0.45', group:'Release Notes', keywords:'new update 15.0.45 remembered alerts dismiss banner warning system administrator redesign calm organized gemini audience privacy retention', body:['Dismissed alerts now stay dismissed for the signed-in user and workspace until the alert content or action set changes.', 'The pending time-off warning, workspace announcements, update notice, and push-repair notice all use the new seen-alert memory.', 'System Administrator has a completely different, calmer task-first layout with a short priority list, quick actions, compact section navigation, and simpler mobile controls.', 'Gemini Manual now works when the testing app token comes from chaos-test-d1601 while preserving strict Master Admin verification.', 'The Privacy Policy now clearly covers AI processing, retention and deletion timing, legal holds, privacy requests, and employer responsibilities.', 'All existing admin capabilities remain available, including backups, security, diagnostics, Gemini Manual continuation, OpenAI repair guidance, and retention tools.'] },
   { id:'data-retention-basics', title:'How long 86 Chaos keeps common data', group:'Privacy & Account', keywords:'retention old data delete prep 86 alert invoice scan menu scan time punch workspace canceled restaurant', body:['Prep-list records and 86 alerts are kept for 30 days.', 'Raw menu and invoice scan files are kept for 30 days. Reviewed or parsed business records may remain in the app.', 'Time-punch and separate location-log records leave the active database after one year and are kept in a restricted archive until the three-year mark.', 'When a restaurant workspace is scheduled for deletion, it is disabled immediately and can be restored during a 30-day recovery window. After that window, its workspace data is permanently removed.', 'Some records may be kept longer when required for legal, billing, fraud-prevention, backup, or support reasons.'] },
   { id:'new-15034', title:'What changed in version 15.0.34', group:'Release Notes', keywords:'new update 15.0.34 master admin repair firestore users auth uid admin lockout', body:['Added a System Administrator self-repair tool for configured master-admin accounts whose Firebase Authentication account exists but Firestore users profile is missing.', 'The tool repairs only emails listed in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS and tells admins to log out and back in before publishing hardened Firebase rules.', 'Also added /api/master-admin-repair to the API checklist and updated diagnostics version metadata.'] },
   { id:'new-15033', title:'What changed in version 15.0.33', group:'Release Notes', keywords:'new update 15.0.33 deployment syntax hotfix vercel adjacent jsx elements manual', body:['Fixed the Vercel build failure from 15.0.32 caused by an unclosed JSX wrapper in System Administrator -> Manual.', 'Kept the 15.0.32 AI Support Manual, account deletion review, RECOVERY_CODE_SECRET guard, and production-hardening changes intact.', 'No Firebase rules, Storage rules, API routes, or Vercel environment variables changed in this hotfix.'] },
@@ -9235,8 +8986,8 @@ const HELP_ARTICLES = [
   { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Kitchen Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Manager Brief and Kitchen Command Center.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
-  { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
-  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Manual Presence opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
+  { id:'admin-mobile-layout', title:'Using Admin Workspace on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker menu search calm workspace', body:['Admin Workspace uses one section selector under the search box on phones.', 'Choose the exact section from the selector, or tap Menu to open the full grouped list.', 'Every non-home page shows its title, purpose, and a Back to admin home button.', 'The old Signals and Command Deck panels were removed so the mobile page stays shorter and easier to scan.'] },
+  { id:'admin-command-deck', title:'Where the old Command Deck went', group:'System Administrator', keywords:'admin command deck removed new admin workspace priority list quick actions', body:['Version 15.0.45 removed the always-visible Command Deck and dense signal board.', 'The most useful signals are now split between the three top summaries, the Admin Home priority list, and the four core numbers.', 'Open Health, Backups, Security, Workspaces, People, Push, or Support when you need the detailed data.', 'Nothing was deleted. The presentation changed so the admin area is less overwhelming.'] },
   { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations menu intelligence workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, Integrations, and Menu Intelligence access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
   { id:'owner-wage-staff-permissions', title:'Owner staff and wage permissions', group:'Permissions', keywords:'owner wages payroll hourly rate add employee staff roster wage view edit permission denied', body:['Account owners and Super Admin can add staff from Staff Roster and edit hourly wages, including their own wage.', 'Only account owners and Super Admin should choose who can see or edit wages. Use Staff Roster permission switches or Settings → Workspace → Global Config → Wage Visibility & Edit Access.', 'View Wages lets a trusted person see wage labels and labor cost calculations. Edit Wages lets them change wage values from Staff Roster and automatically implies view access.', 'Managers/admins without wage permission can still manage staff basics if allowed, but wage fields stay hidden and Firestore rules reject wage-access changes.', 'If a save shows Missing or insufficient permissions, confirm the user is the restaurant owner or has the right wage-edit permission and publish the matching Firestore rules to the same Firebase project.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },

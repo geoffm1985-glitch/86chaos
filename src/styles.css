@@ -200,3 +200,292 @@ select {
     backdrop-filter: blur(12px);
   }
 }
+
+/* 15.0.45 calm System Administrator workspace */
+.admin45-header,
+.admin45-nav,
+.admin45-content-card,
+.admin45-status-card,
+.admin45-number-card {
+  background-image: none !important;
+  box-shadow: none;
+}
+
+.admin45-status-card {
+  min-width: 0;
+  border: 1px solid #303b43;
+  background: #0b0e11;
+  border-radius: 16px;
+  padding: 12px;
+  transition: border-color .18s ease, background-color .18s ease, transform .18s ease;
+}
+
+.admin45-status-card:hover,
+.admin45-number-card:hover {
+  border-color: rgba(212, 163, 129, .7);
+  background: #141a1f;
+  transform: translateY(-1px);
+}
+
+.admin45-status-card span,
+.admin45-number-card span {
+  display: block;
+  color: #7f8a93;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.admin45-status-card strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin45-status-card small,
+.admin45-number-card small {
+  display: block;
+  margin-top: 4px;
+  color: #66717a;
+  font-size: 10px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin45-nav-button {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: #aab3ba;
+  padding: 9px 10px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 800;
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease;
+}
+
+.admin45-nav-button:hover {
+  background: #171d22;
+  color: #fff;
+}
+
+.admin45-nav-button.is-active {
+  background: rgba(212, 163, 129, .12);
+  border-color: rgba(212, 163, 129, .42);
+  color: #f3d1ba;
+  box-shadow: inset 3px 0 0 #d4a381;
+}
+
+.admin45-nav-button.is-danger:not(.is-active) {
+  color: #d69a9a;
+}
+
+.admin45-mini-action,
+.admin45-primary-action,
+.admin45-secondary-action {
+  border-radius: 12px;
+  min-height: 40px;
+  padding: 9px 13px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease;
+}
+
+.admin45-mini-action,
+.admin45-secondary-action {
+  border: 1px solid #303b43;
+  background: #151b20;
+  color: #c5cbd0;
+}
+
+.admin45-mini-action:hover,
+.admin45-secondary-action:hover {
+  border-color: rgba(212, 163, 129, .65);
+  color: #fff;
+}
+
+.admin45-primary-action {
+  border: 1px solid #c59373;
+  background: #d4a381;
+  color: #12161a;
+}
+
+.admin45-primary-action:hover {
+  background: #e3b595;
+}
+
+.admin45-content-card {
+  border: 1px solid #2a353d;
+  border-radius: 22px;
+  background: #101418;
+}
+
+.admin45-task-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #2a353d;
+  border-radius: 14px;
+  background: #0b0e11;
+  color: #8d98a0;
+  padding: 12px;
+  text-align: left;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+
+.admin45-task-row:hover {
+  border-color: rgba(212, 163, 129, .55);
+  background: #151b20;
+}
+
+.admin45-task-row strong {
+  display: block;
+  color: #f7f7f7;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin45-task-row small {
+  display: block;
+  margin-top: 3px;
+  color: #78838b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.admin45-task-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, .1);
+}
+
+.admin45-task-dot.is-red {
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, .1);
+}
+
+.admin45-quick-tile {
+  min-height: 74px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #2a353d;
+  border-radius: 15px;
+  background: #0b0e11;
+  color: #d4a381;
+  padding: 12px;
+  font-size: 11px;
+  font-weight: 900;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+
+.admin45-quick-tile:hover {
+  border-color: rgba(212, 163, 129, .6);
+  background: #151b20;
+  color: #fff;
+}
+
+.admin45-number-card {
+  min-height: 112px;
+  border: 1px solid #2a353d;
+  border-radius: 18px;
+  background: #101418;
+  padding: 15px;
+  text-align: left;
+  transition: border-color .16s ease, background-color .16s ease, transform .16s ease;
+}
+
+.admin45-number-card strong {
+  display: block;
+  margin-top: 9px;
+  color: #fff;
+  font-size: clamp(24px, 4vw, 34px);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.admin45-area-link {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 10px;
+  color: #aab3ba;
+  padding: 8px 9px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.admin45-area-link:hover {
+  background: #171d22;
+  color: #fff;
+}
+
+@media (max-width: 1023px) {
+  .admin45-layout {
+    display: block;
+  }
+
+  #admin-left-nav {
+    margin-bottom: 1rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin45-header {
+    border-radius: 18px !important;
+    padding: 14px !important;
+  }
+
+  .admin45-status-card {
+    padding: 9px;
+  }
+
+  .admin45-status-card strong {
+    font-size: 11px;
+  }
+
+  .admin45-content-card {
+    border-radius: 17px;
+  }
+}
+
+/* Flatten legacy cockpit decoration only inside the redesigned admin workspace. */
+#admin-content-start .cockpit-grid {
+  background-image: none !important;
+}
+
+#admin-content-start .cockpit-panel {
+  box-shadow: none !important;
+}
+
+#admin-content-start .cockpit-light,
+#admin-content-start .animate-pulse {
+  animation-duration: 2.4s;
+}

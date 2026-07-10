@@ -1,5 +1,6 @@
 const admin = require('firebase-admin');
 const zlib = require('zlib');
+const crypto = require('crypto');
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
@@ -75,6 +76,106 @@ function initAdmin() {
   return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
 }
 
+
+let secureTokenCertCache = { expiresAt: 0, certs: {} };
+
+function decodeJwtPart(value = '') {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4 || 4)) % 4);
+  return Buffer.from(padded, 'base64');
+}
+
+function decodeJwtJson(value = '') {
+  return JSON.parse(decodeJwtPart(value).toString('utf8'));
+}
+
+function trustedFirebaseAuthProjects() {
+  const configured = [
+    process.env.FIREBASE_TRUSTED_AUTH_PROJECT_IDS,
+    process.env.FIREBASE_ALLOWED_PROJECT_IDS,
+    process.env.FIREBASE_PROJECT_ID,
+    process.env.REACT_APP_FIREBASE_PROJECT_ID
+  ]
+    .filter(Boolean)
+    .flatMap(value => String(value).split(/[\s,;]+/))
+    .map(clean)
+    .filter(Boolean);
+  return [...new Set([...configured, 'chaos-test-d1601', 'cheers-34b8d'])];
+}
+
+async function loadSecureTokenCertificates() {
+  if (secureTokenCertCache.expiresAt > Date.now() && Object.keys(secureTokenCertCache.certs).length) {
+    return secureTokenCertCache.certs;
+  }
+  const response = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com');
+  if (!response.ok) throw new Error(`Could not load Firebase token certificates (${response.status}).`);
+  const certs = await response.json();
+  const cacheControl = String(response.headers.get('cache-control') || '');
+  const maxAgeMatch = cacheControl.match(/max-age=(\d+)/i);
+  const maxAgeSeconds = maxAgeMatch ? Number(maxAgeMatch[1]) : 3600;
+  secureTokenCertCache = {
+    certs,
+    expiresAt: Date.now() + Math.max(300, Math.min(maxAgeSeconds, 21600)) * 1000
+  };
+  return certs;
+}
+
+async function verifyTrustedFirebaseIdToken(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) throw new Error('Malformed Firebase ID token.');
+  const header = decodeJwtJson(parts[0]);
+  const payload = decodeJwtJson(parts[1]);
+  const projectId = clean(payload.aud);
+  if (header.alg !== 'RS256' || !header.kid) throw new Error('Firebase ID token has an unsupported signature.');
+  if (!trustedFirebaseAuthProjects().includes(projectId)) throw new Error(`Firebase project ${projectId || 'unknown'} is not trusted by this deployment.`);
+  if (payload.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('Firebase ID token issuer is invalid.');
+  if (!payload.sub || String(payload.sub).length > 128) throw new Error('Firebase ID token subject is invalid.');
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(Number(payload.exp)) || Number(payload.exp) <= now) throw new Error('Firebase ID token has expired.');
+  if (!Number.isFinite(Number(payload.iat)) || Number(payload.iat) > now + 300) throw new Error('Firebase ID token issued-at time is invalid.');
+  if (payload.auth_time && Number(payload.auth_time) > now + 300) throw new Error('Firebase authentication time is invalid.');
+  const certs = await loadSecureTokenCertificates();
+  const certificate = certs[header.kid];
+  if (!certificate) throw new Error('Firebase ID token signing certificate is unavailable. Refresh and try again.');
+  const verifier = crypto.createVerify('RSA-SHA256');
+  verifier.update(`${parts[0]}.${parts[1]}`);
+  verifier.end();
+  if (!verifier.verify(certificate, decodeJwtPart(parts[2]))) throw new Error('Firebase ID token signature is invalid.');
+  return { ...payload, uid: payload.sub, authProjectId: projectId };
+}
+
+async function authorizeCrossProjectMaster(req) {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
+  try {
+    const decoded = await verifyTrustedFirebaseIdToken(token);
+    const email = norm(decoded.email);
+    if (!email || decoded.email_verified === false || !masterEmails().includes(email)) {
+      return { ok: false, status: 403, error: 'This cross-project request is not authorized for System Administrator access.' };
+    }
+    const mfa = requireMfaIfEnforced(decoded, { role: 'system administrator', isSuperAdmin: true }, true);
+    if (!mfa.ok) return mfa;
+    return {
+      ok: true,
+      decoded,
+      uid: decoded.uid,
+      userDocId: decoded.uid,
+      email: decoded.email || '',
+      user: { id: decoded.uid, email: decoded.email || '', name: decoded.name || decoded.email || 'System Administrator', isSuperAdmin: true },
+      accountUser: {},
+      workspaceMember: null,
+      isSuperAdmin: true,
+      restaurantId: '',
+      permissions: {},
+      mfa,
+      crossProjectAuth: true,
+      authProjectId: decoded.authProjectId
+    };
+  } catch (error) {
+    return { ok: false, status: 401, error: `Invalid authorization token: ${error.message}` };
+  }
+}
+
 function boolEnv(name) { return ['true', '1', 'yes', 'enforce'].includes(String(process.env[name] || '').toLowerCase().trim()); }
 function mfaEnforcementEnabled() { return boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES'); }
 function decodedHasMfa(decoded = {}) { const fb = decoded.firebase || {}; return Boolean(fb.sign_in_second_factor || fb.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true); }
@@ -110,7 +211,7 @@ async function readBody(req) {
   if (typeof req.body === 'object') return req.body;
   try { return JSON.parse(req.body); } catch (_) { return {}; }
 }
-async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantId = '' } = {}) {
+async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantId = '', allowCrossProjectMaster = false } = {}) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
   try {
@@ -135,6 +236,9 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
     if (!mfa.ok) return mfa;
     return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions, mfa };
   } catch (err) {
+    if (allowCrossProjectMaster && /audience|aud\b|project/i.test(String(err?.message || ''))) {
+      return authorizeCrossProjectMaster(req);
+    }
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }
 }
@@ -160,4 +264,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, readBody, authorize, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };
+module.exports = { admin, initAdmin, readBody, authorize, authorizeCrossProjectMaster, verifyTrustedFirebaseIdToken, trustedFirebaseAuthProjects, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };

@@ -481,55 +481,80 @@ const LoginScreen = ({ setAppUser }) => {
         <div className="space-y-4 text-xs font-medium text-slate-300 leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="text-center border-b border-[#2A353D] pb-3 mb-3">
             <h3 className="font-black text-white text-lg uppercase tracking-widest">Privacy Policy for 86chaos</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 9, 2026</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 10, 2026</p>
           </div>
-          <p>Chilton App Works, LLC ("we," "us," or "our") operates the 86chaos restaurant operations web app, progressive web app, and related services (the "Service"). This policy explains what information may be collected, how it is used, and how restaurants and employees can request help with privacy questions.</p>
-          <p>86chaos is built for restaurants and workplace operations. It is not directed to children under 13, and restaurant managers should not create accounts for children who are not legally authorized to use workplace systems.</p>
+          <p>Chilton App Works, LLC ("86 Chaos," "we," "us," or "our") operates the 86 Chaos restaurant operations web app, progressive web app, application programming interfaces, and related services (the "Service"). This policy explains what information the Service processes, why it is used, how long it is kept, and how privacy requests are handled.</p>
+          <p>86 Chaos is a business-to-business workplace tool. The restaurant or other organization that creates a workspace generally decides what employee and operational information is entered and how the Service is used. In that setting, the restaurant is normally the business or data controller and 86 Chaos acts as its service provider or data processor. This policy does not replace an employer's own employee privacy notice, payroll obligations, recordkeeping duties, or consent requirements.</p>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">1. Information We Collect</h4>
-          <p>Depending on what your restaurant enables, we may collect:</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">1. Information We Process</h4>
+          <p>Depending on the features your restaurant enables, the Service may process:</p>
           <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
-            <li><strong className="text-white">Account and Staff Information:</strong> name, email/login label, phone number, profile photo, job role, permissions, workspace/restaurant ID, and account status.</li>
-            <li><strong className="text-white">Scheduling and Labor Information:</strong> shifts, time punches, time-off requests, trade requests, wage labels entered by management, tips, approvals, punch corrections, and manager notes.</li>
-            <li><strong className="text-white">Location Information:</strong> precise GPS location may be requested only when a clock-in or clock-out location rule is enabled. Location is used to compare the punch against the restaurant's required work area. 86chaos does not run background location tracking.</li>
-            <li><strong className="text-white">Operational Content:</strong> prep lists, inventory records, recipes, invoices, vendor information, maintenance logs, sales/ledger entries, message board posts, likes, alerts, and uploaded attachments.</li>
-            <li><strong className="text-white">Camera, Files, and Photos:</strong> with permission, the app can use camera/file access for invoice scanning, profile photos, message attachments, maintenance photos, and similar restaurant workflows.</li>
-            <li><strong className="text-white">Device, Security, and Diagnostic Data:</strong> browser/device type, screen size, active tab, notification permission status, push token status, service worker support, IndexedDB support, error logs, audit logs, MFA enrollment status/masked factor metadata, and recent app actions attached to crash reports.</li>
+            <li><strong className="text-white">Account and Staff Information:</strong> name, email or login label, phone number, profile photo, job role, permissions, workspace identifiers, account status, and security settings.</li>
+            <li><strong className="text-white">Scheduling, Payroll-Support, and Labor Information:</strong> shifts, time punches, time-off and trade requests, wage labels entered by management, tips, approvals, punch corrections, and manager notes. 86 Chaos is not the employer or payroll processor of record unless a separate written agreement says otherwise.</li>
+            <li><strong className="text-white">Location Information:</strong> precise GPS coordinates may be requested when a restaurant enables location-based punch verification. The location is compared with the restaurant's configured work area. 86 Chaos does not intentionally run continuous background location tracking.</li>
+            <li><strong className="text-white">Restaurant Operations Content:</strong> prep lists, 86 alerts, inventory, recipes, invoices, vendor details, menu data, maintenance records, sales or ledger entries, messages, reminders, attachments, and administrative records.</li>
+            <li><strong className="text-white">Camera, Files, and Photos:</strong> files submitted for menu or invoice scanning, profile photos, message attachments, maintenance photos, logos, and similar workflows.</li>
+            <li><strong className="text-white">Device, Security, and Diagnostic Data:</strong> browser or device type, screen size, active app section, notification status, push-token status, service-worker and IndexedDB support, audit events, error reports, MFA status, App Check results, and recent app actions associated with troubleshooting.</li>
           </ul>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">2. How We Use Information</h4>
           <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
-            <li>Provide restaurant operations tools, including scheduling, time clock, staff management, inventory, prep, message board, financial/labor views, maintenance, backups, and support tools.</li>
-            <li>Verify location-based punches when the restaurant enables geofence rules and mark punches for manager review when needed.</li>
-            <li>Send notifications about schedules, shift changes, messages, trade requests, time-off updates, manager alerts, and system notices.</li>
-            <li>Scan vendor invoices with AI document parsing so managers can review purchased product rows before updating inventory.</li>
-            <li>Secure the app, troubleshoot bugs, investigate support issues, maintain audit trails, prevent unauthorized access, and restore data from backups.</li>
+            <li>Provide scheduling, time clock, staff, inventory, prep, menu, maintenance, messaging, reminders, financial/labor, backup, and support functions.</li>
+            <li>Verify location-based punches when enabled and flag exceptions for authorized managers.</li>
+            <li>Deliver schedule, message, reminder, security, and operational notifications.</li>
+            <li>Secure accounts, enforce permissions, investigate abuse, diagnose failures, maintain audit trails, and restore data.</li>
+            <li>Comply with law, enforce agreements, protect users and the Service, and establish or defend legal claims.</li>
           </ul>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">3. Sharing and Service Providers</h4>
-          <p>We do not sell personal information. We share information only as needed to operate the Service, support your restaurant, comply with legal requirements, or protect the app and users.</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">3. AI-Assisted Features</h4>
+          <p>Menu and invoice scans may be sent to an AI provider for extraction or classification. The Gemini Administrator Manual may receive a Super Admin's question, matched help articles, and redacted system context. OpenAI diagnostics may receive redacted health information for structured repair guidance. The Service is designed to remove credentials, tokens, signed URLs, and similar secrets before diagnostics are sent, but administrators must not intentionally paste private keys, passwords, full employee files, or other unnecessary personal information into AI prompts.</p>
+          <p>AI output may be incomplete or incorrect and must be reviewed by an authorized person. 86 Chaos does not use AI output by itself to make hiring, firing, discipline, wage, scheduling, or other legally significant employment decisions.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">4. Sharing and Service Providers</h4>
+          <p>We do not sell personal information, and we do not share personal information for cross-context behavioral advertising. Information may be disclosed only as reasonably necessary to operate the Service, follow workspace instructions, comply with law, complete a business transaction, or protect rights and safety.</p>
           <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
-            <li><strong className="text-white">Cloud hosting, database, authentication, push, and storage:</strong> Google Cloud/Firebase services.</li>
-            <li><strong className="text-white">Web hosting and serverless routes:</strong> Vercel.</li>
-            <li><strong className="text-white">AI document processing:</strong> AI providers used only for document parsing workflows such as invoice scanning, not for facial recognition or biometric identification.</li>
-            <li><strong className="text-white">Optional integrations:</strong> POS, payroll, accounting, notification, or other providers connected by your restaurant.</li>
+            <li><strong className="text-white">Google Cloud and Firebase:</strong> authentication, database, Cloud Storage, push notifications, App Check, scheduled functions, logs, and related infrastructure.</li>
+            <li><strong className="text-white">Vercel:</strong> web hosting, deployments, and serverless API routes.</li>
+            <li><strong className="text-white">AI providers:</strong> limited content required for an enabled scan, administrator-manual, or diagnostics workflow.</li>
+            <li><strong className="text-white">Customer-selected integrations:</strong> payroll, accounting, POS, notification, or other providers connected by the restaurant.</li>
+            <li><strong className="text-white">Legal and safety disclosures:</strong> government authorities, courts, advisers, insurers, or affected parties when reasonably necessary and legally permitted.</li>
           </ul>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">4. Restaurant / Employer Control</h4>
-          <p>86chaos is a business-to-business tool. Your restaurant/employer controls most workspace content and staff records. Employees who want to access, correct, export, or delete workplace records should contact restaurant management first. We can assist the restaurant with support requests when appropriate.</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">5. Restaurant and Employer Responsibilities</h4>
+          <p>Restaurants control most workspace records and determine who may access them. Restaurants are responsible for giving legally required employee notices, obtaining any required consent for location or monitoring features, configuring permissions, reviewing AI output, responding to employment-record requests, and selecting retention periods that satisfy their own legal obligations. Employees should normally contact their restaurant first to access or correct workplace records.</p>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">5. Data Retention</h4>
-          <p>86chaos uses scheduled retention jobs for specific categories of data. Prep-list records and 86-alert records are deleted after 30 days. Raw menu and invoice scan files are deleted from Cloud Storage after 30 days, while reviewed or parsed business records may remain in Firestore. Time-punch records and any separate location-log records are moved out of the active Firestore database after 365 days and retained in a restricted archive until the three-year mark, when they are deleted. A restaurant workspace marked for deletion is disabled immediately and permanently deleted after a 30-day recovery window unless an administrator restores it. Backups, legal holds, billing records, fraud-prevention records, or records required by law may follow a different documented retention period.</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">6. Data Retention and Deletion</h4>
+          <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
+            <li><strong className="text-white">Prep lists and 86 alerts:</strong> scheduled for permanent deletion after 30 days.</li>
+            <li><strong className="text-white">Raw AI upload files:</strong> menu and invoice image files under the AI-upload storage paths are scheduled for deletion after 30 days. Parsed or manager-approved business records may remain separately in Firestore.</li>
+            <li><strong className="text-white">Time punches and location logs:</strong> removed from active Firestore after 365 days, written to a restricted archive, and retained until the three-year mark measured from the record date.</li>
+            <li><strong className="text-white">Deleted workspaces:</strong> disabled when marked deleted and permanently removed after a 30-day recovery period unless restored.</li>
+            <li><strong className="text-white">Other records:</strong> kept only as long as reasonably needed for the Service, customer instructions, security, billing, dispute resolution, backups, fraud prevention, or legal obligations.</li>
+          </ul>
+          <p>Scheduled deletion normally occurs during the next cleanup run and may take up to approximately 24 hours after a stated deadline. Provider-level backups, disaster-recovery copies, or soft-deleted objects may remain inaccessible for a limited additional period before automatic expiration. Legal holds, active investigations, disputes, and mandatory recordkeeping obligations may pause deletion. When a hold ends, the applicable retention schedule resumes.</p>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">6. Security</h4>
-          <p>We use authentication, optional two-step login for elevated accounts, role-based permissions, server-side admin routes, audit logs, secure hosting, Firebase security rules, and backup controls to protect data. No system is perfect, so restaurants should use strong passwords, limit administrator access, and promptly disable accounts that no longer need access.</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">7. Privacy Rights and Requests</h4>
+          <p>Depending on where you live, you may have the right to request access, correction, deletion, restriction, objection, or a portable copy of personal information. You may also have the right to appeal a denied request. Because workplace information is usually controlled by the restaurant, we may forward a request to the appropriate workspace administrator. We may verify identity and authority before acting, and an authorized agent may be required to provide proof of authority.</p>
+          <p>Some information cannot be deleted immediately when retention is required for payroll, tax, safety, fraud prevention, legal claims, or another lawful purpose. We will not discriminate against a person for making a legally protected privacy request.</p>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">7. Choices and Permissions</h4>
-          <p>You can deny browser permissions such as notifications, camera, or location, but some features may be limited. Location permission is only requested for location-based punch verification. Push notification preferences may be controlled inside the app or through the browser/device settings.</p>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">8. Location, Notifications, and Device Permissions</h4>
+          <p>Browser permissions for location, camera, files, and notifications can be denied or revoked through device settings, but related features may stop working. Location is requested only for enabled punch-verification workflows. Push-notification tokens identify an app installation for delivery and are not used for advertising.</p>
 
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">8. Contact Us</h4>
-          <p>If you have questions about this Privacy Policy or need help with a privacy request, contact:</p>
-          <p className="text-white font-bold mt-1">Email: support@86chaos.com<br/>Company: Chilton App Works, LLC</p>        </div>
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">9. Security and Incident Response</h4>
+          <p>We use authentication, role-based access, server-side authorization, Firebase security rules, optional MFA, App Check, audit logs, encryption provided by hosting vendors, diagnostics redaction, backups, and administrative controls. No security system is guaranteed. Restaurants must use strong credentials, limit elevated access, remove former workers promptly, and report suspected unauthorized access. We will investigate confirmed security incidents and provide notices when required by applicable law.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">10. United States Processing and Business Transfers</h4>
+          <p>86 Chaos is operated from the United States, and information may be processed in the United States or other locations where our service providers operate. If ownership of the Service changes through a merger, financing, reorganization, or sale, information may transfer as part of that transaction subject to applicable law and continued protection under an applicable privacy notice.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">11. Children</h4>
+          <p>The Service is not directed to children under 13, and we do not knowingly collect personal information directly from children under 13. Restaurants must not create accounts for anyone who is not legally authorized to use their workplace systems. Contact us if you believe a child's information was submitted improperly.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">12. Policy Changes</h4>
+          <p>We may update this policy as the Service, providers, or legal requirements change. The updated date will be shown above. Material changes may also be announced in the app or through the workspace administrator. Continued use after the effective date is subject to the updated policy, except where additional notice or consent is legally required.</p>
+
+          <h4 className="font-black text-[#D4A381] text-sm mt-4">13. Contact and Privacy Requests</h4>
+          <p>Questions, privacy requests, suspected security incidents, and requests to appeal a privacy decision may be sent to:</p>
+          <p className="text-white font-bold mt-1">Email: support@86chaos.com<br/>Company: Chilton App Works, LLC<br/>Product: 86 Chaos</p>        </div>
       </Modal>
     </div>
   );

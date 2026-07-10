@@ -1,6 +1,6 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 
-const APP_VERSION = '15.0.44';
+const APP_VERSION = '15.0.45';
 const DEFAULT_MODEL = 'gemini-3.5-flash';
 const MAX_QUESTION_CHARS = 1600;
 const MAX_CONTEXT_CHARS = 26000;
@@ -302,7 +302,7 @@ module.exports = async function handler(req, res) {
     const app = initAdmin();
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
-    const ctx = await authorize(req, app, { allowTenantAdmin: false });
+    const ctx = await authorize(req, app, { allowTenantAdmin: false, allowCrossProjectMaster: true });
     if (!ctx.ok || !ctx.isSuperAdmin) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'Super admin required.' });
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -359,8 +359,10 @@ module.exports = async function handler(req, res) {
       };
     }
 
-    const db = app.firestore();
-    await writeAudit(db, ctx, body.continueFrom ? 'GEMINI_ADMIN_MANUAL_CONTINUE' : 'GEMINI_ADMIN_MANUAL_QUERY', 'system-administrator/manual', `Manual answer generated with ${result.api}. Question: ${question.slice(0, 160)}`, ctx.restaurantId || 'platform');
+    if (!ctx.crossProjectAuth) {
+      const db = app.firestore();
+      await writeAudit(db, ctx, body.continueFrom ? 'GEMINI_ADMIN_MANUAL_CONTINUE' : 'GEMINI_ADMIN_MANUAL_QUERY', 'system-administrator/manual', `Manual answer generated with ${result.api}. Question: ${question.slice(0, 160)}`, ctx.restaurantId || 'platform');
+    }
 
     return res.status(200).json({
       ok: true,
@@ -381,6 +383,8 @@ module.exports = async function handler(req, res) {
       incompleteReason: result.incompleteReason || '',
       canContinue: Boolean(result.answerIncomplete && !fallbackUsed),
       continuation: Boolean(result.continuation),
+      authProjectId: ctx.authProjectId || process.env.FIREBASE_PROJECT_ID || '',
+      crossProjectAuth: Boolean(ctx.crossProjectAuth),
       answerShape: ['What this probably means', 'Go here in System Administrator', 'Do this in order', 'How to know it worked', 'What not to touch yet', 'Deploy/publish separately', 'Escalate if']
     });
   } catch (err) {

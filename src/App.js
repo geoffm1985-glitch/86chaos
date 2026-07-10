@@ -4,6 +4,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue } from './core/appCore';
+import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools } from './features';
 
@@ -96,6 +97,7 @@ export default function App() {
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [availableVersion, setAvailableVersion] = useState('');
   const helpReleaseBriefDisabled = ['15.0.5', '15.0.6', '15.0.7', '15.0.8', '15.0.9'].includes(CURRENT_VERSION);
   const [hasHelpUpdate, setHasHelpUpdate] = useState(() => !helpReleaseBriefDisabled && localStorage.getItem(`helpBriefSeen_${CURRENT_VERSION}`) !== 'true');
   const [tourMode, setTourMode] = useState(null);
@@ -108,7 +110,11 @@ export default function App() {
         if (response.ok) {
           const data = await response.json();
           if (data.version !== CURRENT_VERSION) {
+            setAvailableVersion(data.version || 'new-version');
             setShowUpdateBanner(true);
+          } else {
+            setAvailableVersion('');
+            setShowUpdateBanner(false);
           }
         }
       } catch (error) {
@@ -1191,6 +1197,31 @@ What I clicked / expected:
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
+  const updateAlertMemory = useRememberedAlert({
+    user: liveAppUser,
+    workspaceId: rId,
+    alertId: 'system-update-available',
+    fingerprint: buildAlertFingerprint(CURRENT_VERSION, availableVersion || 'unknown')
+  });
+  const broadcastAlertMemory = useRememberedAlert({
+    user: liveAppUser,
+    workspaceId: rId,
+    alertId: 'workspace-system-banner',
+    fingerprint: buildAlertFingerprint(displayClientData?.systemBanner || '', displayClientData?.systemBannerUpdatedAt || '')
+  });
+  const pushRepairAlertMemory = useRememberedAlert({
+    user: liveAppUser,
+    workspaceId: rId,
+    alertId: 'push-repair-needed',
+    fingerprint: buildAlertFingerprint(
+      liveAppUser?.pushNeedsRepair === true,
+      liveAppUser?.pushForceServiceWorkerRefresh === true,
+      liveAppUser?.lastPushFailureCode || '',
+      liveAppUser?.pushRepairStatus || '',
+      typeof window !== 'undefined' ? window.location.hostname : ''
+    )
+  });
+
   const prevDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setCurrentDate(formatDate(d)); };
   const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
@@ -1396,22 +1427,25 @@ return (
       `}</style>
 
       {/* UPDATE ALERT BANNER */}
-      {showUpdateBanner && (
+      {showUpdateBanner && !updateAlertMemory.isDismissed && (
         <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
           <div className="flex items-center gap-2 min-w-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 animate-pulse text-white"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
             <span className="truncate">System update available. Refresh to prevent database desync.</span>
           </div>
-          <button 
-            onClick={() => window.location.reload(true)} 
-            className="bg-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3"
-          >
-            REFRESH NOW
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+            <button 
+              onClick={() => window.location.reload(true)} 
+              className="bg-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest"
+            >
+              REFRESH NOW
+            </button>
+            <button type="button" onClick={updateAlertMemory.dismiss} className="p-1.5 rounded-lg bg-red-700/70 hover:bg-red-800 text-white" title="Dismiss this update notice"><X size={14}/></button>
+          </div>
         </div>
       )}
 
-      {pushRepairRequested && !pushRepairDismissed && (
+      {pushRepairRequested && !pushRepairDismissed && !pushRepairAlertMemory.isDismissed && (
         <div className="bg-amber-500 text-slate-950 text-[11px] sm:text-xs font-black px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sticky top-0 z-[9998] shadow-2xl uppercase tracking-wider border-b border-amber-300">
           <div className="flex items-center gap-2 min-w-0">
             <Bell size={15} className="flex-shrink-0" />
@@ -1419,7 +1453,7 @@ return (
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={() => repairPushOnThisDevice('manual')} disabled={isPushRepairing} className="bg-slate-950 text-amber-200 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md disabled:opacity-60">{isPushRepairing ? 'FIXING...' : 'FIX NOW'}</button>
-            <button onClick={() => setPushRepairDismissed(true)} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">LATER</button>
+            <button onClick={() => { setPushRepairDismissed(true); pushRepairAlertMemory.dismiss(); }} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">DON'T SHOW AGAIN</button>
           </div>
         </div>
       )}
@@ -1452,12 +1486,13 @@ return (
       </header>
 
       {/* SYSTEM BROADCAST BANNER */}
-      {displayClientData?.systemBanner && (
+      {displayClientData?.systemBanner && !broadcastAlertMemory.isDismissed && (
         <div className="bg-blue-600 border-b border-blue-800 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-center shadow-lg uppercase tracking-wider w-full relative z-30 animate-[slideIn_0.2s_ease-out]">
-          <div className="flex items-center gap-2 text-center">
+          <div className="flex items-center gap-2 text-center pr-10">
             <Bell size={14} className="animate-pulse flex-shrink-0" />
             <span>{displayClientData.systemBanner}</span>
           </div>
+          <button type="button" onClick={broadcastAlertMemory.dismiss} className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-blue-700/70 hover:bg-blue-800 text-white" title="Dismiss this announcement"><X size={14}/></button>
         </div>
       )}
 

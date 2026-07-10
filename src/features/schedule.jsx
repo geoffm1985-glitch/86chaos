@@ -7,6 +7,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
+import { buildAlertFingerprint, useRememberedAlert } from '../core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -1508,21 +1509,36 @@ const handleExportTimesheets = () => {
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
 
+  const pendingTimeOffAlertRequests = timeOffRequests.filter(r => r.status === 'pending' && r.date >= schedulePeriodBounds.start && r.date <= schedulePeriodBounds.end);
+  const pendingTimeOffAlertMemory = useRememberedAlert({
+    user: appUser,
+    workspaceId: clientData?.id || clientData?.restaurantId || appUser?.restaurantId,
+    alertId: 'pending-time-off-manager-warning',
+    fingerprint: buildAlertFingerprint(
+      schedulePeriodBounds.start,
+      schedulePeriodBounds.end,
+      pendingTimeOffAlertRequests
+        .map(request => `${request.id || ''}:${request.date || ''}:${request.updatedAt || request.createdAt || ''}`)
+        .sort()
+    )
+  });
+
   return (
     <div className="space-y-4 pb-12 w-full">
 
 {/* MANAGER EXPLANATION BANNER */}
-      {timeOffRequests.filter(r => r.status === 'pending' && r.date >= schedulePeriodBounds.start && r.date <= schedulePeriodBounds.end).length > 0 && (
+      {pendingTimeOffAlertRequests.length > 0 && !pendingTimeOffAlertMemory.isDismissed && (
         <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center justify-between gap-4 shadow-lg animate-[slideIn_0.2s_ease-out]">
-          <div className="flex items-center gap-3">
-            <Shield className="text-red-500 flex-shrink-0 animate-pulse" size={24} />
-            <div>
-              <h3 className="text-red-400 font-black text-sm uppercase tracking-widest">Action Required</h3>
+          <div className="flex items-center gap-3 min-w-0">
+            <Shield className="text-red-500 flex-shrink-0" size={24} />
+            <div className="min-w-0">
+              <h3 className="text-red-400 font-black text-sm uppercase tracking-widest">Time-Off Requests Waiting</h3>
               <p className="text-xs text-red-200/80 font-medium mt-0.5">
-                You have pending time-off requests this month. Go to <strong className="text-white">My Shift {'->'} Request Off</strong> to approve them in the Master Override Log.
+                {pendingTimeOffAlertRequests.length} request{pendingTimeOffAlertRequests.length === 1 ? '' : 's'} need review. Go to <strong className="text-white">My Shift {'->'} Request Off</strong> when you are ready.
               </p>
             </div>
           </div>
+          <button type="button" onClick={pendingTimeOffAlertMemory.dismiss} className="flex-shrink-0 rounded-xl border border-red-500/40 bg-red-950/50 p-2 text-red-200 hover:bg-red-900/60 hover:text-white" title="Dismiss this warning"><X size={18}/></button>
         </div>
       )}
 

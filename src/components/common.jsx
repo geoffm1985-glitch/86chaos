@@ -1285,9 +1285,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>Old operational data now has automatic Firebase retention schedules, workspace deletion includes a 30-day recovery window, and the main menu is grouped into tighter, easier-to-scan sections.</p>
+    <p>Alerts you dismiss now stay dismissed for your user and workspace until the alert actually changes. System Administrator has also been rebuilt as a calmer, task-first workspace instead of a wall of controls.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['30-day cleanup','Time-clock archive','Workspace recovery','Compact grouped menu'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Remembered alerts','New alert fingerprints','Calm admin home','Task-first navigation'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>
