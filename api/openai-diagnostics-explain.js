@@ -91,7 +91,7 @@ function extractOutputText(data = {}) {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
 

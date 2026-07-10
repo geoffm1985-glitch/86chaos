@@ -1,4 +1,5 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced } = require('./_chaos-admin');
+const { projectCredentialStatus } = require('./_firebase-project-admin');
 
 const ROUTE_CHECKS = [
   { route: '/api/account-security', file: 'account-security.js', method: 'GET/POST', auth: 'signed-in-user', notes: 'MFA enrollment/status/recovery route.' },
@@ -95,7 +96,7 @@ const safeRequire = (file) => {
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Use GET.' });
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
     const ctx = await authorize(req, app, { allowTenantAdmin: false });
@@ -113,9 +114,14 @@ module.exports = async function handler(req, res) {
         destructive: /(delete|restore|backup|import)/i.test(check.route)
       };
     });
+    const runtimeProjectId = ctx.app?.options?.projectId || ctx.decoded?.aud || app.options?.projectId || 'unknown';
+    const runtimeCredential = projectCredentialStatus(runtimeProjectId);
     const env = {
-      firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
-      firebaseStorageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
+      firebaseProjectId: runtimeProjectId,
+      firebaseTokenProjectId: ctx.decoded?.aud || runtimeProjectId,
+      firebaseStorageBucket: ctx.app?.options?.storageBucket || app.options?.storageBucket || `${runtimeProjectId}.firebasestorage.app`,
+      firebaseCredentialConfigured: runtimeCredential.configured,
+      firebaseCredentialSource: runtimeCredential.source || runtimeCredential.recommendedEnv || runtimeCredential.error || 'missing',
       vercelEnv: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
       cronSecretConfigured: hasEnv('CRON_SECRET'),
       geminiConfigured: hasEnv('GEMINI_API_KEY') || hasEnv('GOOGLE_API_KEY') || hasEnv('GOOGLE_GENERATIVE_AI_API_KEY'),

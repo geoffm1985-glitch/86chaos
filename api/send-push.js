@@ -1,27 +1,10 @@
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-import { getAuth } from 'firebase-admin/auth';
+import projectAdmin from './_firebase-project-admin.js';
 
-function loadServiceAccount() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
-  if (raw) {
-    try { return JSON.parse(raw); }
-    catch (_) { throw new Error('Firebase service account JSON is invalid. Set FIREBASE_SERVICE_ACCOUNT_KEY in Vercel.'); }
-  }
-  return {
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-  };
-}
+const { verifyRequestToken } = projectAdmin;
 
-if (!getApps().length) {
-  initializeApp({ credential: cert(loadServiceAccount()) });
-}
-const db = getFirestore();
-
-async function requireAppCheckIfEnforced(req, res) {
+async function requireAppCheckIfEnforced(req, res, app) {
   const enforced = ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
   if (!enforced) return true;
   const token = String(req.headers['x-firebase-appcheck'] || req.headers['X-Firebase-AppCheck'] || '').trim();
@@ -31,7 +14,7 @@ async function requireAppCheckIfEnforced(req, res) {
   }
   try {
     const { getAppCheck } = await import('firebase-admin/app-check');
-    await getAppCheck().verifyToken(token);
+    await getAppCheck(app).verifyToken(token);
     return true;
   } catch (err) {
     res.status(401).json({ error: `App Check verification failed: ${err.message}` });
@@ -41,7 +24,7 @@ async function requireAppCheckIfEnforced(req, res) {
 
 
 
-async function enforceRouteRateLimit(req, res, decoded, routeName, limit = 30, windowMs = 60 * 1000) {
+async function enforceRouteRateLimit(db, req, res, decoded, routeName, limit = 30, windowMs = 60 * 1000) {
   const now = Date.now();
   const windowStart = Math.floor(now / windowMs) * windowMs;
   const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
@@ -81,7 +64,7 @@ function userHasWorkspace(user, restaurantId) {
   );
 }
 
-async function getCaller(decoded) {
+async function getCaller(db, decoded) {
   const direct = await db.collection('users').doc(decoded.uid).get();
   if (direct.exists) return { id: direct.id, ...direct.data() };
   const email = norm(decoded.email);
@@ -91,7 +74,7 @@ async function getCaller(decoded) {
   return { id: decoded.uid, email };
 }
 
-async function readWorkspaceMember(uid, email, restaurantId) {
+async function readWorkspaceMember(db, uid, email, restaurantId) {
   if (!restaurantId) return null;
   const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
   if (direct.exists && direct.data()?.isActive !== false) return { id: direct.id, ...direct.data() };
@@ -106,7 +89,7 @@ async function readWorkspaceMember(uid, email, restaurantId) {
   return null;
 }
 
-async function loadPushUsersForRestaurant(restaurantId) {
+async function loadPushUsersForRestaurant(db, restaurantId) {
   const pushUserMap = new Map();
   const usersSnap = await db.collection('users').where('restaurantId', '==', restaurantId).get();
   usersSnap.forEach(doc => pushUserMap.set(doc.id, { id: doc.id, ...doc.data() }));
@@ -151,40 +134,33 @@ function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
-  if (!await requireAppCheckIfEnforced(req, res)) return;
 
-  // --- THE BOUNCER: VERIFY FIREBASE AUTH TOKEN ---
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Bots get bounced.' });
-  }
-
-  const authToken = authHeader.split('Bearer ')[1];
-  let decoded = null;
-
+  let authContext;
   try {
-    // This checks with Google's servers to guarantee the user is actually logged into 86chaos
-    decoded = await getAuth().verifyIdToken(authToken);
-    // The user is verified. The velvet rope opens.
+    authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
   } catch (error) {
-    return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
+    return res.status(403).json({ error: `Push authorization failed: ${error.message}` });
   }
-  // --- END OF BOUNCER ---
-  if (!await enforceRouteRateLimit(req, res, decoded, 'send-push', Number(process.env.PUSH_ROUTE_RATE_LIMIT || 40), 60 * 1000)) return;
+
+  const { app, decoded, projectId } = authContext;
+  const db = getFirestore(app);
+  const messaging = getMessaging(app);
+  if (!await requireAppCheckIfEnforced(req, res, app)) return;
+  if (!await enforceRouteRateLimit(db, req, res, decoded, 'send-push', Number(process.env.PUSH_ROUTE_RATE_LIMIT || 40), 60 * 1000)) return;
 
   try {
     const { restaurantId, targetUserId, targetUserIds, title, body, type, authorName, isCritical, textContent } = req.body;
     if (!restaurantId) return res.status(400).json({ error: 'Missing restaurant ID' });
 
-    const caller = await getCaller(decoded);
-    const member = await readWorkspaceMember(decoded.uid, decoded.email || caller.email, restaurantId);
+    const caller = await getCaller(db, decoded);
+    const member = await readWorkspaceMember(db, decoded.uid, decoded.email || caller.email, restaurantId);
     const canSendForRestaurant = callerCanSendForRestaurant(caller, decoded, member, restaurantId);
 
     if (!canSendForRestaurant) {
       return res.status(403).json({ error: 'Forbidden: You can only send notifications for your own workspace.' });
     }
 
-    const allPushUsers = await loadPushUsersForRestaurant(restaurantId);
+    const allPushUsers = await loadPushUsersForRestaurant(db, restaurantId);
     const targetSet = new Set([...(Array.isArray(targetUserIds) ? targetUserIds : []), targetUserId].filter(Boolean));
     
     // Grab today's shifts to calculate "Smart Mute: Days Off"
@@ -269,7 +245,7 @@ export default async function handler(req, res) {
       tokens: tokenRecords.map(t => t.token),
     };
 
-    const response = await getMessaging().sendEachForMulticast(messagePayload);
+    const response = await messaging.sendEachForMulticast(messagePayload);
     const staleCodes = new Set([
       'messaging/registration-token-not-registered',
       'messaging/invalid-registration-token',
@@ -297,6 +273,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Push Error:', error);
-    return res.status(500).json({ error: 'Failed to send notifications' });
+    return res.status(500).json({ error: error.message || 'Failed to send notifications', firebaseProject: projectId });
   }
 }

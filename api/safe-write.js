@@ -17,7 +17,7 @@ function canWrite(ctx, collectionName, restaurantId) {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const db = app.firestore();
     const body = await readBody(req);
     const collectionName = clean(body.collectionName || '');

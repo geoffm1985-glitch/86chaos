@@ -11,7 +11,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
   const started = Date.now();
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const body = await readBody(req);
     const targetRestaurantId = clean(body.restaurantId || '');
     const repair = body.repair === true;

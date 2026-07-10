@@ -1,18 +1,15 @@
 const admin = require('firebase-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 
-function initAdmin() {
-  if (admin.apps.length) return admin;
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (raw) return admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) }), admin;
-  admin.initializeApp({ credential: admin.credential.cert({ projectId: process.env.FIREBASE_PROJECT_ID, clientEmail: process.env.FIREBASE_CLIENT_EMAIL, privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n') }) });
-  return admin;
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 async function verifySuperAdmin(req) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) throw new Error('Missing Firebase ID token.');
-  const app = initAdmin();
+  const app = initAdmin(req);
   const decoded = await app.auth().verifyIdToken(token);
   const db = app.firestore();
   const email = String(decoded.email || '').toLowerCase().trim();
@@ -33,7 +30,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
     const caller = await verifySuperAdmin(req);
-    const app = initAdmin();
+    const app = initAdmin(req);
     const { targetUid } = req.body || {};
     if (!targetUid) return res.status(400).json({ error: 'targetUid is required.' });
     if (targetUid === caller.uid) return res.status(400).json({ error: 'Refusing to delete the signed-in admin account.' });

@@ -1,6 +1,7 @@
-const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
+const { authorizeCrossProjectMaster, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 
-const APP_VERSION = '15.0.46';
+const APP_VERSION = '15.0.47';
 const DEFAULT_MODEL = 'gemini-3.5-flash';
 const MAX_QUESTION_CHARS = 1600;
 const MAX_CONTEXT_CHARS = 26000;
@@ -299,10 +300,10 @@ async function generateCompleteAnswer({ prompt, manualContext, apiKey, model }) 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
   try {
-    const app = initAdmin();
+    const app = getAdminAppForRequest(req, { requireCredentials: false });
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
-    const ctx = await authorize(req, app, { allowTenantAdmin: false, allowCrossProjectMaster: true });
+    const ctx = await authorizeCrossProjectMaster(req);
     if (!ctx.ok || !ctx.isSuperAdmin) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'Super admin required.' });
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;

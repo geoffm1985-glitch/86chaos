@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 
 function loadServiceAccount() {
@@ -14,16 +15,8 @@ function loadServiceAccount() {
   };
 }
 
-function initAdmin() {
-  if (admin.apps.length) return admin.app();
-  const serviceAccount = loadServiceAccount();
-  const projectId = serviceAccount.project_id || serviceAccount.projectId;
-  if (!projectId) throw new Error('Missing Firebase service account project id.');
-  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
-  return admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    storageBucket
-  });
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 async function authorize(req, adminApp) {
@@ -57,7 +50,7 @@ function parseDateFromName(name) {
 async function handler(req, res) {
   try {
     if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Use GET.' });
-    const adminApp = initAdmin();
+    const adminApp = initAdmin(req);
     const auth = await authorize(req, adminApp);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
 

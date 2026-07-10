@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
@@ -13,10 +14,8 @@ function loadServiceAccount() {
   };
 }
 
-function initAdmin() {
-  if (admin.apps.length) return admin;
-  admin.initializeApp({ credential: admin.credential.cert(loadServiceAccount()) });
-  return admin;
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 function safeString(value, fallback = '') {
@@ -57,7 +56,7 @@ module.exports = async function handler(req, res) {
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase login token.' });
 
-    const app = initAdmin();
+    const app = initAdmin(req);
     const decoded = await app.auth().verifyIdToken(token);
     const db = app.firestore();
     const uid = decoded.uid;
@@ -134,7 +133,7 @@ module.exports = async function handler(req, res) {
       state,
       sessionId,
       mode: 'presence-check-in',
-      projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount()?.project_id || loadServiceAccount()?.projectId || '',
+      projectId: app.options?.projectId || process.env.FIREBASE_PROJECT_ID || '',
       written: ['livePresence']
     });
   } catch (err) {

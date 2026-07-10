@@ -13,7 +13,7 @@ async function verifyUser(req, app) {
 
 module.exports = async (req, res) => {
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const authz = await verifyUser(req, app);
     if (!authz.ok) return res.status(authz.status).json({ ok: false, error: authz.error });
     const db = app.firestore();

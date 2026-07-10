@@ -4,7 +4,7 @@ const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.10';
+const INVOICE_SCANNER_VERSION = '15.0.47';
 const DEFAULT_INVOICE_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 function cleanJsonText(text = '') {
@@ -288,27 +288,10 @@ function normalizeInvoicePayload(parsed) {
 }
 
 const admin = require('firebase-admin');
+const { getAdminAppForRequest, verifyRequestToken, downloadFirebaseStorageUrl } = require('./_firebase-project-admin');
 
-function loadServiceAccount() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (raw) {
-    try { return JSON.parse(raw); }
-    catch (err) { throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is not valid JSON.'); }
-  }
-  return {
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-  };
-}
-
-function initAdmin() {
-  if (admin.apps.length) return admin.app();
-  const serviceAccount = loadServiceAccount();
-  const projectId = serviceAccount.project_id || serviceAccount.projectId;
-  if (!projectId) throw new Error('Missing Firebase service account project id. Set FIREBASE_SERVICE_ACCOUNT_KEY in Vercel.');
-  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
-  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: false });
 }
 function appCheckEnforced() {
   return ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
@@ -327,12 +310,6 @@ async function requireAppCheckIfEnforced(adminApp, req) {
   }
 }
 
-async function verifySignedIn(req, adminApp) {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-  if (!token) throw new Error('Missing authorization token. Please log in again.');
-  return adminApp.auth().verifyIdToken(token);
-}
 
 function sanitizeStoragePath(path = '') {
   const clean = String(path || '').replace(/^\/+/, '');
@@ -350,7 +327,7 @@ function detectMimeType(fileName = '', providedMime = '') {
   return 'image/jpeg';
 }
 
-async function readScanSource(reqBody, req, adminApp) {
+async function readScanSource(reqBody, req, adminApp, authContext) {
   const body = reqBody || {};
   const fileName = body.fileName || 'invoice';
   const mimeType = detectMimeType(fileName, body.mimeType || '');
@@ -359,43 +336,52 @@ async function readScanSource(reqBody, req, adminApp) {
   // Preferred production path: browser uploads file directly to Firebase Storage,
   // then sends only the small storage path to Vercel. This avoids Vercel request limits.
   if (body.storagePath) {
-    const decoded = await verifySignedIn(req, adminApp);
     const storagePath = sanitizeStoragePath(body.storagePath);
     const expectedRest = String(body.restaurantId || '').trim();
     if (expectedRest && !storagePath.startsWith(`${expectedRest}/`)) {
       throw new Error('Scan file path does not match the selected workspace.');
     }
-    const bucket = adminApp.storage().bucket();
-    const scanFile = bucket.file(storagePath);
-    const [metadata] = await scanFile.getMetadata().catch(() => ([{}]));
-    const storageMimeType = metadata?.contentType && metadata.contentType !== 'application/octet-stream' ? metadata.contentType : '';
-    const uploadPurpose = metadata?.metadata?.purpose || '';
-    if (uploadPurpose && uploadPurpose !== 'invoice-scan') {
-      const err = new Error('This uploaded file is not marked as an invoice scan. Upload it again from Invoice Scanner.');
-      err.statusCode = 400;
-      throw err;
+    let metadata = {};
+    let storageMimeType = '';
+    let buffer;
+    const preliminaryMimeType = detectMimeType(fileName, mimeType);
+    const pdfLike = preliminaryMimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
+    const maxBytes = pdfLike
+      ? parseInt(process.env.INVOICE_SCAN_MAX_PDF_BYTES || String(DEFAULT_INVOICE_SCAN_MAX_BYTES), 10)
+      : parseInt(process.env.INVOICE_SCAN_MAX_IMAGE_BYTES || String(DEFAULT_INVOICE_SCAN_MAX_BYTES), 10);
+
+    if (adminApp) {
+      const bucket = adminApp.storage().bucket();
+      const scanFile = bucket.file(storagePath);
+      [metadata] = await scanFile.getMetadata().catch(() => ([{}]));
+      storageMimeType = metadata?.contentType && metadata.contentType !== 'application/octet-stream' ? metadata.contentType : '';
+      const uploadPurpose = metadata?.metadata?.purpose || '';
+      if (uploadPurpose && uploadPurpose !== 'invoice-scan') {
+        const err = new Error('This uploaded file is not marked as an invoice scan. Upload it again from Invoice Scanner.');
+        err.statusCode = 400;
+        throw err;
+      }
+      const reportedBytes = Number(metadata?.size || 0);
+      if (reportedBytes && reportedBytes > maxBytes) {
+        const err = new Error(`Invoice file is over the current ${Math.round(maxBytes / 1048576)}MB scanner limit.`);
+        err.statusCode = 413;
+        throw err;
+      }
+      [buffer] = await scanFile.download();
+    } else {
+      const downloaded = await downloadFirebaseStorageUrl(body.downloadUrl, authContext.projectId, storagePath, maxBytes);
+      buffer = downloaded.buffer;
+      storageMimeType = downloaded.contentType || '';
     }
+
     const effectiveMimeType = detectMimeType(fileName, storageMimeType || mimeType);
     if (!/^image\//i.test(effectiveMimeType) && effectiveMimeType !== 'application/pdf') {
       const err = new Error('Invoice scans must be an image or PDF.');
       err.statusCode = 415;
       throw err;
     }
-    const pdfLike = effectiveMimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
-    const maxBytes = pdfLike
-      ? parseInt(process.env.INVOICE_SCAN_MAX_PDF_BYTES || String(DEFAULT_INVOICE_SCAN_MAX_BYTES), 10)
-      : parseInt(process.env.INVOICE_SCAN_MAX_IMAGE_BYTES || String(DEFAULT_INVOICE_SCAN_MAX_BYTES), 10);
-    const reportedBytes = Number(metadata?.size || 0);
-    if (reportedBytes && reportedBytes > maxBytes) {
-      const mb = Math.round(maxBytes / (1024 * 1024));
-      const err = new Error(`Invoice file is over the current ${mb}MB scanner limit. Split it into smaller files, compress the PDF, or scan fewer pages at once.`);
-      err.statusCode = 413;
-      throw err;
-    }
-    const [buffer] = await scanFile.download();
     if (buffer.length > maxBytes) {
-      const mb = Math.round(maxBytes / (1024 * 1024));
-      const err = new Error(`Invoice file is over the current ${mb}MB scanner limit. Split it into smaller files, compress the PDF, or scan fewer pages at once.`);
+      const err = new Error(`Invoice file is over the current ${Math.round(maxBytes / 1048576)}MB scanner limit.`);
       err.statusCode = 413;
       throw err;
     }
@@ -404,9 +390,9 @@ async function readScanSource(reqBody, req, adminApp) {
       fileBuffer: buffer,
       mimeType: effectiveMimeType,
       fileName,
-      source: 'firebase-storage',
+      source: adminApp ? 'firebase-storage' : 'firebase-download-url',
       storagePath,
-      decodedUid: decoded.uid,
+      decodedUid: authContext.decoded.uid,
       originalBytes: buffer.length,
       compression
     };
@@ -694,6 +680,17 @@ function createGenerationBody(prompt, filePart, { compact = false } = {}) {
   };
 }
 
+const invoiceScanMemoryRate = new Map();
+function allowInvoiceScanWithoutDb(decoded, limit = 10, windowMs = 60 * 1000) {
+  const key = String(decoded?.uid || decoded?.email || 'unknown');
+  const now = Date.now();
+  const row = invoiceScanMemoryRate.get(key) || { startedAt: now, count: 0 };
+  if (now - row.startedAt >= windowMs) { row.startedAt = now; row.count = 0; }
+  row.count += 1;
+  invoiceScanMemoryRate.set(key, row);
+  return row.count <= limit;
+}
+
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -703,14 +700,18 @@ async function handler(req, res) {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY in Vercel.' });
 
-    const adminApp = initAdmin();
+    const authContext = await verifyRequestToken(req, { requireProjectCredentials: false });
+    const adminApp = authContext.app || initAdmin(req);
     const appCheck = await requireAppCheckIfEnforced(adminApp, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ error: appCheck.error });
-    const tokenForRate = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-    const decodedForRate = tokenForRate ? await adminApp.auth().verifyIdToken(tokenForRate).catch(() => null) : null;
-    const invoiceRate = await enforceRateLimit({ db: adminApp.firestore(), req, decoded: decodedForRate, routeName: 'scan-invoice', limit: Number(process.env.SCAN_INVOICE_RATE_LIMIT || 10), windowMs: 60 * 1000 });
-    if (!invoiceRate.ok) return sendRateLimited(res, invoiceRate);
-    scanSource = await readScanSource(req.body || {}, req, adminApp);
+    const scanLimit = Number(process.env.SCAN_INVOICE_RATE_LIMIT || 10);
+    if (adminApp) {
+      const invoiceRate = await enforceRateLimit({ db: adminApp.firestore(), req, decoded: authContext.decoded, routeName: 'scan-invoice', limit: scanLimit, windowMs: 60 * 1000 });
+      if (!invoiceRate.ok) return sendRateLimited(res, invoiceRate);
+    } else if (!allowInvoiceScanWithoutDb(authContext.decoded, scanLimit, 60 * 1000)) {
+      return res.status(429).json({ error: 'Too many invoice scans. Wait a minute and try again.' });
+    }
+    scanSource = await readScanSource(req.body || {}, req, adminApp, authContext);
     const { mimeType = 'image/jpeg', fileName = 'invoice' } = scanSource;
     const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     const inputMode = String(process.env.INVOICE_SCAN_INPUT_MODE || 'files').toLowerCase();
@@ -815,6 +816,8 @@ async function handler(req, res) {
     normalized.scanAttempt = usedAttempt || 'full-json';
     normalized.scanFinishReason = finishReason || '';
     normalized.scanRepairModel = repairModel || '';
+    normalized.firebaseProject = authContext.projectId;
+    normalized.storageReadMode = adminApp ? 'firebase-admin' : 'validated-download-url';
 
     if (geminiFile) deleteGeminiFileQuietly(apiKey, geminiFile);
     return res.status(200).json(normalized);

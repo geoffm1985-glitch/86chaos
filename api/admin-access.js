@@ -1,28 +1,15 @@
 const admin = require('firebase-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { requireMfaIfEnforced } = require('./_chaos-admin');
 
-function initAdmin() {
-  if (admin.apps.length) return admin;
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (raw) {
-    const serviceAccount = JSON.parse(raw);
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-    return admin;
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-    })
-  });
-  return admin;
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 async function verifySuperAdmin(req) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) throw new Error('Missing Firebase ID token.');
-  const app = initAdmin();
+  const app = initAdmin(req);
   const decoded = await app.auth().verifyIdToken(token);
   const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
   const masterEmails = Array.from(new Set([process.env.MASTER_ADMIN_EMAIL, ...(process.env.MASTER_ADMIN_EMAILS || '').split(',')].map(normalizeEmail).filter(Boolean)));
@@ -41,7 +28,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
     const caller = await verifySuperAdmin(req);
-    const app = initAdmin();
+    const app = initAdmin(req);
     const { action, email } = req.body || {};
     const targetEmail = (email || '').toLowerCase().trim();
     if (!['grant', 'revoke'].includes(action)) return res.status(400).json({ error: 'Use action grant or revoke.' });

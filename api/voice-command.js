@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
   try {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     try {
-      const app = initAdmin();
+      const app = initAdmin(req);
       const appCheck = await requireAppCheckIfEnforced(app, req);
       if (!appCheck.ok) return res.status(appCheck.status || 401).json({ intent: 'unknown', error: appCheck.error });
       const db = app.firestore();

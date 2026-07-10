@@ -1,9 +1,10 @@
-const { initAdmin, readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace, requireAppCheckIfEnforced } = require('./_chaos-admin');
+const { readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace, requireAppCheckIfEnforced } = require('./_chaos-admin');
+const { verifyRequestToken, downloadFirebaseStorageUrl } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 
-const MENU_SCANNER_VERSION = '15.0.10';
+const MENU_SCANNER_VERSION = '15.0.47';
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -204,25 +205,48 @@ async function canScanMenu(app, ctx, restaurantId) {
   );
 }
 
+
+const menuScanMemoryRate = new Map();
+function allowMenuScanWithoutDb(decoded, limit = 8, windowMs = 60 * 1000) {
+  const key = String(decoded?.uid || decoded?.email || 'unknown');
+  const now = Date.now();
+  const row = menuScanMemoryRate.get(key) || { startedAt: now, count: 0 };
+  if (now - row.startedAt >= windowMs) {
+    row.startedAt = now;
+    row.count = 0;
+  }
+  row.count += 1;
+  menuScanMemoryRate.set(key, row);
+  return row.count <= limit;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   try {
-    const app = initAdmin();
-    const appCheck = await requireAppCheckIfEnforced(app, req);
-    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
-    const db = app.firestore();
     const body = await readBody(req);
     const restaurantId = String(body.restaurantId || '').trim();
     if (!restaurantId) return res.status(400).json({ ok: false, error: 'restaurantId is required.' });
 
-    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-    if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase authorization token.' });
-    const decoded = await app.auth().verifyIdToken(token);
-    const rate = await enforceRateLimit({ db, req, decoded, routeName: 'scan-menu', limit: Number(process.env.SCAN_MENU_RATE_LIMIT || 8), windowMs: 60 * 1000 });
-    if (!rate.ok) return sendRateLimited(res, rate);
-    const caller = await loadCaller(app, decoded, restaurantId);
-    const ctx = { ...caller, decoded, uid: decoded.uid, email: decoded.email || '', user: caller.accountUser, restaurantId };
-    if (!(await canScanMenu(app, ctx, restaurantId))) return res.status(403).json({ ok: false, error: 'Menu Intelligence access is required.' });
+    const authContext = await verifyRequestToken(req, { requireProjectCredentials: false });
+    const { app, decoded, projectId } = authContext;
+    const db = app ? app.firestore() : null;
+    const appCheck = await requireAppCheckIfEnforced(app, req);
+    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
+
+    const scanLimit = Number(process.env.SCAN_MENU_RATE_LIMIT || 8);
+    if (db) {
+      const rate = await enforceRateLimit({ db, req, decoded, routeName: 'scan-menu', limit: scanLimit, windowMs: 60 * 1000 });
+      if (!rate.ok) return sendRateLimited(res, rate);
+    } else if (!allowMenuScanWithoutDb(decoded, scanLimit, 60 * 1000)) {
+      return res.status(429).json({ ok: false, error: 'Too many menu scans. Wait a minute and try again.' });
+    }
+
+    let ctx = { decoded, uid: decoded.uid, email: decoded.email || '', user: {}, accountUser: {}, restaurantId };
+    if (app) {
+      const caller = await loadCaller(app, decoded, restaurantId);
+      ctx = { ...ctx, ...caller, user: caller.accountUser };
+      if (!(await canScanMenu(app, ctx, restaurantId))) return res.status(403).json({ ok: false, error: 'Menu Intelligence access is required.' });
+    }
 
     const storagePath = String(body.storagePath || '').trim();
     if (!storagePath) return res.status(400).json({ ok: false, error: 'storagePath is required.' });
@@ -231,23 +255,25 @@ module.exports = async function handler(req, res) {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing GEMINI_API_KEY in Vercel environment variables.' });
 
-    const menuFile = app.storage().bucket().file(storagePath);
-    const [metadata] = await menuFile.getMetadata().catch(() => ([{}]));
-    const contentType = body.contentType || metadata?.contentType || 'application/octet-stream';
-    const purpose = metadata?.metadata?.purpose || '';
-    if (purpose && purpose !== 'menu-scan') return res.status(400).json({ ok: false, error: 'This uploaded file is not marked as a menu scan. Upload it again from Menu Intelligence.' });
-    if (!/^image\//i.test(contentType) && contentType !== 'application/pdf') return res.status(415).json({ ok: false, error: 'Menu scans must be an image or PDF.' });
     const maxBytes = parseInt(process.env.MENU_SCAN_MAX_BYTES || String(DEFAULT_MENU_SCAN_MAX_BYTES), 10);
-    const reportedBytes = Number(metadata?.size || 0);
-    if (reportedBytes && reportedBytes > maxBytes) {
-      const mb = Math.round(maxBytes / (1024 * 1024));
-      return res.status(413).json({ ok: false, error: `Menu file is over the current ${mb}MB scanner limit. Compress it, split the PDF, or upload fewer pages.` });
+    let contentType = body.contentType || 'application/octet-stream';
+    let buffer;
+    if (app) {
+      const menuFile = app.storage().bucket().file(storagePath);
+      const [metadata] = await menuFile.getMetadata().catch(() => ([{}]));
+      contentType = body.contentType || metadata?.contentType || contentType;
+      const purpose = metadata?.metadata?.purpose || '';
+      if (purpose && purpose !== 'menu-scan') return res.status(400).json({ ok: false, error: 'This uploaded file is not marked as a menu scan. Upload it again from Menu Intelligence.' });
+      const reportedBytes = Number(metadata?.size || 0);
+      if (reportedBytes && reportedBytes > maxBytes) return res.status(413).json({ ok: false, error: `Menu file is over the current ${Math.round(maxBytes / 1048576)}MB scanner limit.` });
+      [buffer] = await menuFile.download();
+    } else {
+      const downloaded = await downloadFirebaseStorageUrl(body.downloadUrl, projectId, storagePath, maxBytes);
+      buffer = downloaded.buffer;
+      if (!body.contentType && downloaded.contentType) contentType = downloaded.contentType;
     }
-    const [buffer] = await menuFile.download();
-    if (buffer.length > maxBytes) {
-      const mb = Math.round(maxBytes / (1024 * 1024));
-      return res.status(413).json({ ok: false, error: `Menu file is over the current ${mb}MB scanner limit. Compress it, split the PDF, or upload fewer pages.` });
-    }
+    if (!/^image\//i.test(contentType) && contentType !== 'application/pdf') return res.status(415).json({ ok: false, error: 'Menu scans must be an image or PDF.' });
+    if (buffer.length > maxBytes) return res.status(413).json({ ok: false, error: `Menu file is over the current ${Math.round(maxBytes / 1048576)}MB scanner limit.` });
     const inventoryItems = Array.isArray(body.inventoryItems) ? body.inventoryItems : [];
     const prompt = [
       'You are helping a restaurant build menu-to-inventory dependency records.',
@@ -263,7 +289,7 @@ module.exports = async function handler(req, res) {
     const parsed = parseGeminiJson(text || '{}');
     const menuItems = normalizeMenuPayload(parsed, inventoryItems);
 
-    await writeAudit(db, ctx, 'MENU_SCAN_REVIEW_CREATED', body.fileName || storagePath, `${menuItems.length} menu items returned for review with ${model}.`, restaurantId);
+    if (db) await writeAudit(db, ctx, 'MENU_SCAN_REVIEW_CREATED', body.fileName || storagePath, `${menuItems.length} menu items returned for review with ${model}.`, restaurantId);
     return res.status(200).json({
       ok: true,
       menuItems,
@@ -274,7 +300,9 @@ module.exports = async function handler(req, res) {
       model,
       scannerVersion: MENU_SCANNER_VERSION,
       compression: body.compression || null,
-      uploadedFileName: body.uploadedFileName || ''
+      uploadedFileName: body.uploadedFileName || '',
+      firebaseProject: projectId,
+      storageReadMode: app ? 'firebase-admin' : 'validated-download-url'
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message || 'Menu scan failed.', scannerVersion: MENU_SCANNER_VERSION });

@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
 const {
   stableShiftDocId,
@@ -17,12 +18,8 @@ function loadServiceAccount() {
   };
 }
 
-function initAdmin() {
-  if (admin.apps.length) return admin.app();
-  const serviceAccount = loadServiceAccount();
-  const projectId = serviceAccount.project_id || serviceAccount.projectId;
-  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || (projectId ? `${projectId}.firebasestorage.app` : undefined);
-  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 async function authorize(req, app) {
@@ -98,7 +95,7 @@ function uniqueSorted(values) {
 module.exports = async function handler(req, res) {
   try {
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
-    const app = initAdmin();
+    const app = initAdmin(req);
     const auth = await authorize(req, app);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
     const body = parseBody(req);

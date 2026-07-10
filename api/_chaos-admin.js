@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
+const { getAdminAppForRequest, getAdminAppForProject, getRequestedProjectId, verifyTrustedFirebaseIdToken: verifyTrustedFirebaseTokenShared } = require('./_firebase-project-admin');
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
@@ -87,13 +88,17 @@ function loadServiceAccount() {
     privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
   };
 }
-function initAdmin() {
-  if (admin.apps.length) return admin.app();
-  const serviceAccount = loadServiceAccount();
-  const projectId = serviceAccount.project_id || serviceAccount.projectId || process.env.FIREBASE_PROJECT_ID;
-  if (!projectId) throw new Error('Missing Firebase service account project id.');
-  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
-  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
+function initAdmin(reqOrProject = null) {
+  if (typeof reqOrProject === 'string' && reqOrProject.trim()) {
+    return getAdminAppForProject(reqOrProject.trim());
+  }
+  if (reqOrProject && typeof reqOrProject === 'object' && reqOrProject.headers) {
+    return getAdminAppForRequest(reqOrProject);
+  }
+  const fallbackProjectId = String(process.env.VERCEL_ENV || '').toLowerCase() === 'preview'
+    ? 'chaos-test-d1601'
+    : (process.env.FIREBASE_PROJECT_ID || 'cheers-34b8d');
+  return getAdminAppForProject(fallbackProjectId);
 }
 
 
@@ -141,27 +146,7 @@ async function loadSecureTokenCertificates() {
 }
 
 async function verifyTrustedFirebaseIdToken(token) {
-  const parts = String(token || '').split('.');
-  if (parts.length !== 3) throw new Error('Malformed Firebase ID token.');
-  const header = decodeJwtJson(parts[0]);
-  const payload = decodeJwtJson(parts[1]);
-  const projectId = clean(payload.aud);
-  if (header.alg !== 'RS256' || !header.kid) throw new Error('Firebase ID token has an unsupported signature.');
-  if (!trustedFirebaseAuthProjects().includes(projectId)) throw new Error(`Firebase project ${projectId || 'unknown'} is not trusted by this deployment.`);
-  if (payload.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('Firebase ID token issuer is invalid.');
-  if (!payload.sub || String(payload.sub).length > 128) throw new Error('Firebase ID token subject is invalid.');
-  const now = Math.floor(Date.now() / 1000);
-  if (!Number.isFinite(Number(payload.exp)) || Number(payload.exp) <= now) throw new Error('Firebase ID token has expired.');
-  if (!Number.isFinite(Number(payload.iat)) || Number(payload.iat) > now + 300) throw new Error('Firebase ID token issued-at time is invalid.');
-  if (payload.auth_time && Number(payload.auth_time) > now + 300) throw new Error('Firebase authentication time is invalid.');
-  const certs = await loadSecureTokenCertificates();
-  const certificate = certs[header.kid];
-  if (!certificate) throw new Error('Firebase ID token signing certificate is unavailable. Refresh and try again.');
-  const verifier = crypto.createVerify('RSA-SHA256');
-  verifier.update(`${parts[0]}.${parts[1]}`);
-  verifier.end();
-  if (!verifier.verify(certificate, decodeJwtPart(parts[2]))) throw new Error('Firebase ID token signature is invalid.');
-  return { ...payload, uid: payload.sub, authProjectId: projectId };
+  return verifyTrustedFirebaseTokenShared(token);
 }
 
 async function authorizeCrossProjectMaster(req) {
@@ -241,8 +226,12 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
   try {
-    const decoded = await app.auth().verifyIdToken(token);
-    const db = app.firestore();
+    const tokenProjectId = getRequestedProjectId(req);
+    const activeApp = (!app || app.options?.projectId !== tokenProjectId)
+      ? getAdminAppForProject(tokenProjectId)
+      : app;
+    const decoded = await activeApp.auth().verifyIdToken(token);
+    const db = activeApp.firestore();
     const email = norm(decoded.email);
     let userSnap = await db.collection('users').doc(decoded.uid).get();
     let userDocId = decoded.uid;
@@ -260,7 +249,7 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
     if (!isSuperAdmin && !tenantAdmin) return { ok: false, status: 403, error: 'System Administrator access is required for this tool.' };
     const mfa = requireMfaIfEnforced(decoded, workspaceUser || user || {}, isSuperAdmin);
     if (!mfa.ok) return mfa;
-    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions, mfa };
+    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions, mfa, app: activeApp, db };
   } catch (err) {
     if (allowCrossProjectMaster && /audience|aud\b|project/i.test(String(err?.message || ''))) {
       return authorizeCrossProjectMaster(req);
@@ -290,4 +279,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, readBody, authorize, authorizeCrossProjectMaster, verifyTrustedFirebaseIdToken, trustedFirebaseAuthProjects, crossProjectMasterEmails, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };
+module.exports = { admin, initAdmin, getAdminAppForRequest, getAdminAppForProject, readBody, authorize, authorizeCrossProjectMaster, verifyTrustedFirebaseIdToken, trustedFirebaseAuthProjects, crossProjectMasterEmails, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };

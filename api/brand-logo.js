@@ -1,18 +1,9 @@
 const admin = require('firebase-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const crypto = require('crypto');
 
-function initAdmin() {
-  if (admin.apps.length) return admin;
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
-  const serviceAccount = raw ? JSON.parse(raw) : {
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-  };
-  const projectId = serviceAccount.project_id || serviceAccount.projectId || process.env.FIREBASE_PROJECT_ID;
-  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || (projectId ? `${projectId}.firebasestorage.app` : undefined);
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
-  return admin;
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
@@ -146,7 +137,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const db = app.firestore();
     const auth = app.auth();
     const ctx = await verifyCaller(req, db, auth);

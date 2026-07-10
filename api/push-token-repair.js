@@ -1,24 +1,9 @@
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
+import projectAdmin from './_firebase-project-admin.js';
 
-function loadServiceAccount() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
-  if (raw) {
-    try { return JSON.parse(raw); }
-    catch (_) { throw new Error('Firebase service account JSON is invalid. Set FIREBASE_SERVICE_ACCOUNT_KEY in Vercel.'); }
-  }
-  return {
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-  };
-}
+const { verifyRequestToken } = projectAdmin;
 
-if (!getApps().length) initializeApp({ credential: cert(loadServiceAccount()) });
-const db = getFirestore();
-
-async function requireAppCheckIfEnforced(req, res) {
+async function requireAppCheckIfEnforced(req, res, app) {
   const enforced = ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
   if (!enforced) return true;
   const token = String(req.headers['x-firebase-appcheck'] || req.headers['X-Firebase-AppCheck'] || '').trim();
@@ -28,7 +13,7 @@ async function requireAppCheckIfEnforced(req, res) {
   }
   try {
     const { getAppCheck } = await import('firebase-admin/app-check');
-    await getAppCheck().verifyToken(token);
+    await getAppCheck(app).verifyToken(token);
     return true;
   } catch (err) {
     res.status(401).json({ error: `App Check verification failed: ${err.message}` });
@@ -45,7 +30,7 @@ if (process.env.MASTER_ADMIN_EMAILS) {
 }
 
 
-async function enforceRouteRateLimit(req, res, decoded, routeName, limit = 30, windowMs = 60 * 1000) {
+async function enforceRouteRateLimit(db, req, res, decoded, routeName, limit = 30, windowMs = 60 * 1000) {
   const now = Date.now();
   const windowStart = Math.floor(now / windowMs) * windowMs;
   const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
@@ -80,7 +65,7 @@ function userHasWorkspace(user, restaurantId) {
   );
 }
 
-async function readWorkspaceMember(uid, email, restaurantId) {
+async function readWorkspaceMember(db, uid, email, restaurantId) {
   if (!restaurantId) return null;
   const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
   if (direct.exists && direct.data()?.isActive !== false) return { id: direct.id, ...direct.data() };
@@ -110,7 +95,7 @@ const parseTimeMs = (value) => {
   return 0;
 };
 
-async function getCaller(decoded) {
+async function getCaller(db, decoded) {
   const direct = await db.collection('users').doc(decoded.uid).get();
   if (direct.exists) return { id: direct.id, ...direct.data() };
   const email = (decoded.email || '').toLowerCase().trim();
@@ -120,12 +105,12 @@ async function getCaller(decoded) {
   return { id: decoded.uid, email };
 }
 
-async function callerCanRepair(caller, decoded, restaurantId) {
+async function callerCanRepair(db, caller, decoded, restaurantId) {
   const email = (decoded.email || caller.email || '').toLowerCase().trim();
   if (decoded.superAdmin === true || caller.isSuperAdmin === true || caller.systemAccess?.superAdmin === true || MASTER_EMAILS.has(email)) return true;
   if (!restaurantId) return false;
   const memberships = caller.memberships || {};
-  const member = memberships?.[restaurantId] || await readWorkspaceMember(decoded.uid, email, restaurantId);
+  const member = memberships?.[restaurantId] || await readWorkspaceMember(db, decoded.uid, email, restaurantId);
   const legacyWorkspace = userHasWorkspace(caller, restaurantId);
   const permissions = { ...((legacyWorkspace && caller.permissions) || {}), ...(member?.permissions || {}) };
   return Boolean(
@@ -134,7 +119,7 @@ async function callerCanRepair(caller, decoded, restaurantId) {
   );
 }
 
-async function loadUsersForRestaurant(restaurantId) {
+async function loadUsersForRestaurant(db, restaurantId) {
   const userMap = new Map();
   const usersSnap = await db.collection('users').where('restaurantId', '==', restaurantId).get();
   usersSnap.forEach(doc => userMap.set(doc.id, { id: doc.id, ...doc.data() }));
@@ -183,7 +168,7 @@ function repairPayload({ mode = 'repair', clearToken = false, requestedBy = '', 
   return payload;
 }
 
-async function writeAudit({ caller, action, target, restaurantId, details }) {
+async function writeAudit(db, { caller, action, target, restaurantId, details }) {
   return db.collection('auditLogs').add({
     restaurantId: restaurantId || 'platform',
     action,
@@ -198,17 +183,21 @@ async function writeAudit({ caller, action, target, restaurantId, details }) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
-  if (!await requireAppCheckIfEnforced(req, res)) return;
-  const authHeader = req.headers.authorization || '';
-  if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized: Missing Firebase ID token.' });
 
-  let decoded;
-  try { decoded = await getAuth().verifyIdToken(authHeader.slice('Bearer '.length)); }
-  catch (err) { return res.status(403).json({ error: 'Forbidden: Invalid or expired Firebase ID token.' }); }
-  if (!await enforceRouteRateLimit(req, res, decoded, 'push-token-repair', Number(process.env.PUSH_REPAIR_RATE_LIMIT || 25), 60 * 1000)) return;
+  let authContext;
+  try {
+    authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
+  } catch (error) {
+    return res.status(403).json({ error: `Push repair authorization failed: ${error.message}` });
+  }
+
+  const { app, decoded, projectId } = authContext;
+  const db = getFirestore(app);
+  if (!await requireAppCheckIfEnforced(req, res, app)) return;
+  if (!await enforceRouteRateLimit(db, req, res, decoded, 'push-token-repair', Number(process.env.PUSH_REPAIR_RATE_LIMIT || 25), 60 * 1000)) return;
 
   try {
-    const caller = await getCaller(decoded);
+    const caller = await getCaller(db, decoded);
     const { action = 'request-repair', restaurantId = '', targetUserId = '', targetUserIds = [], maxAgeDays = 30, repairLink = '' } = req.body || {};
     const requestedBy = caller.email || decoded.email || caller.name || 'System Administrator';
     const ids = [...new Set([targetUserId, ...(Array.isArray(targetUserIds) ? targetUserIds : [])].filter(Boolean))];
@@ -220,7 +209,7 @@ export default async function handler(req, res) {
       if (!targets.length) return res.status(404).json({ error: 'Target user not found.' });
       for (const target of targets) {
         const targetRestaurantId = restaurantId || target.restaurantId || target.activeRestaurantId || '';
-        if (!await callerCanRepair(caller, decoded, targetRestaurantId)) {
+        if (!await callerCanRepair(db, caller, decoded, targetRestaurantId)) {
           return res.status(403).json({ error: `Forbidden: no push repair access for ${targetRestaurantId || target.id}.` });
         }
       }
@@ -228,16 +217,16 @@ export default async function handler(req, res) {
       const clearToken = action === 'clear-token' || action === 'force-refresh';
       const writes = targets.map(target => db.collection('users').doc(target.id).set(repairPayload({ mode, clearToken, requestedBy, repairLink }), { merge: true }));
       await Promise.all(writes);
-      await writeAudit({ caller, action: `PUSH_${action.replace(/-/g, '_').toUpperCase()}`, target: ids.join(','), restaurantId: restaurantId || targets[0]?.restaurantId || 'platform', details: `${targets.length} user(s) marked for push repair. clearToken=${clearToken}` });
+      await writeAudit(db, { caller, action: `PUSH_${action.replace(/-/g, '_').toUpperCase()}`, target: ids.join(','), restaurantId: restaurantId || targets[0]?.restaurantId || 'platform', details: `${targets.length} user(s) marked for push repair. clearToken=${clearToken}` });
       return res.status(200).json({ ok: true, action, updated: targets.length, users: targets.map(t => ({ id: t.id, email: t.email || '', restaurantId: t.restaurantId || '' })) });
     }
 
     if (action === 'prune-stale') {
-      if (restaurantId && !await callerCanRepair(caller, decoded, restaurantId)) return res.status(403).json({ error: 'Forbidden: no push repair access for this workspace.' });
-      if (!restaurantId && !await callerCanRepair(caller, decoded, '')) return res.status(403).json({ error: 'Forbidden: global stale-token pruning is Super Admin only.' });
+      if (restaurantId && !await callerCanRepair(db, caller, decoded, restaurantId)) return res.status(403).json({ error: 'Forbidden: no push repair access for this workspace.' });
+      if (!restaurantId && !await callerCanRepair(db, caller, decoded, '')) return res.status(403).json({ error: 'Forbidden: global stale-token pruning is Super Admin only.' });
       const maxAgeMs = Math.max(1, Number(maxAgeDays) || 30) * 86400000;
       const users = restaurantId
-        ? await loadUsersForRestaurant(restaurantId)
+        ? await loadUsersForRestaurant(db, restaurantId)
         : (await db.collection('users').limit(1000).get()).docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const stale = [];
       users.forEach(u => {
@@ -250,7 +239,7 @@ export default async function handler(req, res) {
         batch.set(db.collection('users').doc(u.id), repairPayload({ mode: 'force-refresh', clearToken: true, requestedBy, repairLink }), { merge: true });
       });
       if (stale.length) await batch.commit();
-      await writeAudit({ caller, action: 'PUSH_PRUNE_STALE_TOKENS', target: restaurantId || 'global', restaurantId: restaurantId || 'platform', details: `${Math.min(stale.length, 450)} stale token(s) cleared and marked for repair. maxAgeDays=${maxAgeDays}` });
+      await writeAudit(db, { caller, action: 'PUSH_PRUNE_STALE_TOKENS', target: restaurantId || 'global', restaurantId: restaurantId || 'platform', details: `${Math.min(stale.length, 450)} stale token(s) cleared and marked for repair. maxAgeDays=${maxAgeDays}` });
       return res.status(200).json({ ok: true, action, pruned: Math.min(stale.length, 450), found: stale.length, maxAgeDays });
     }
 
@@ -260,7 +249,7 @@ export default async function handler(req, res) {
       const targets = snaps.filter(s => s.exists).map(s => ({ id: s.id, ...s.data() }));
       for (const target of targets) {
         const targetRestaurantId = restaurantId || target.restaurantId || target.activeRestaurantId || '';
-        if (!await callerCanRepair(caller, decoded, targetRestaurantId)) return res.status(403).json({ error: `Forbidden: no push repair access for ${targetRestaurantId || target.id}.` });
+        if (!await callerCanRepair(db, caller, decoded, targetRestaurantId)) return res.status(403).json({ error: `Forbidden: no push repair access for ${targetRestaurantId || target.id}.` });
       }
       await Promise.all(targets.map(target => db.collection('users').doc(target.id).set({
         pushNeedsRepair: false,
@@ -270,13 +259,13 @@ export default async function handler(req, res) {
         pushRepairClearedBy: requestedBy,
         lastPushRepairError: null
       }, { merge: true })));
-      await writeAudit({ caller, action: 'PUSH_CLEAR_REPAIR_FLAG', target: ids.join(','), restaurantId: restaurantId || targets[0]?.restaurantId || 'platform', details: `${targets.length} user repair flag(s) cleared without changing token.` });
+      await writeAudit(db, { caller, action: 'PUSH_CLEAR_REPAIR_FLAG', target: ids.join(','), restaurantId: restaurantId || targets[0]?.restaurantId || 'platform', details: `${targets.length} user repair flag(s) cleared without changing token.` });
       return res.status(200).json({ ok: true, action, updated: targets.length });
     }
 
     return res.status(400).json({ error: `Unknown action: ${action}` });
   } catch (error) {
     console.error('push-token-repair error:', error);
-    return res.status(500).json({ error: error.message || 'Push token repair failed.' });
+    return res.status(500).json({ error: error.message || 'Push token repair failed.', firebaseProject: projectId });
   }
 }

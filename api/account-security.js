@@ -1,26 +1,12 @@
 const admin = require('firebase-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const crypto = require('crypto');
 
 
 function norm(value = '') { return String(value || '').toLowerCase().trim(); }
 
-function initAdmin() {
-  if (admin.apps.length) return admin;
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
-  if (raw) {
-    const serviceAccount = JSON.parse(raw);
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket: process.env.FIREBASE_STORAGE_BUCKET || undefined });
-    return admin;
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-    }),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || undefined
-  });
-  return admin;
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 function boolEnv(name) {
@@ -290,7 +276,7 @@ module.exports = async function handler(req, res) {
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase ID token.' });
 
-    const app = initAdmin();
+    const app = initAdmin(req);
     const decoded = await app.auth().verifyIdToken(token);
     let authUser = await app.auth().getUser(decoded.uid);
     const db = app.firestore();

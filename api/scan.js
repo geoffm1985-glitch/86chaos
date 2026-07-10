@@ -1,4 +1,6 @@
-import admin from 'firebase-admin';
+import projectAdmin from './_firebase-project-admin.js';
+
+const { verifyRequestToken } = projectAdmin;
 
 export const config = {
   regions: ['iad1'],
@@ -10,43 +12,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  // --- THE BOUNCER: DYNAMIC TOKEN VERIFICATION ---
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token.' });
-  }
-
-  const authToken = authHeader.split('Bearer ')[1];
-
+  // Verify against the Firebase project named by the signed token. Recipe scanning
+  // does not read or write Firestore, so it can use Google's public signing keys
+  // when a matching server service account is not required.
   try {
-    // Dynamically initialize the app based on the token so it works in both dev and prod
-    if (!admin.apps.length) {
-      // Decode token without verifying signature just to read which database you are using
-      const decodedUnverified = JSON.parse(Buffer.from(authToken.split('.')[1], 'base64').toString());
-      const projectId = decodedUnverified.aud; 
-
-      if (process.env.FIREBASE_PRIVATE_KEY) {
-        const cleanKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '');
-        admin.initializeApp({
-          credential: admin.credential.cert({
-            projectId: projectId,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: cleanKey,
-          }),
-        });
-      } else {
-        admin.initializeApp({ projectId: projectId });
-      }
-    }
-
-    // Actually verify the token securely now that the app is initialized
-    await admin.auth().verifyIdToken(authToken);
-
+    await verifyRequestToken(req, { requireProjectCredentials: false });
   } catch (error) {
-    console.error("Auth Error:", error);
-    return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
+    console.error('Recipe scan authentication error:', error);
+    return res.status(403).json({ error: `Authorization failed: ${error.message}` });
   }
-  // --- END OF BOUNCER ---
 
   // ... (Keep your existing try/catch Gemini fetch logic below here exactly as it is) ...
   try {
