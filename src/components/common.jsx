@@ -7,7 +7,7 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, isLikelyPrepCommand, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
-import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
+import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveStrictEightySixMatch } from '../core/menuIntelligence';
 import { parseReminderCommand } from '../core/reminderUtils';
 
 const CheersLogo = ({ clientData }) => {
@@ -763,27 +763,44 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       const liveContext = await getVoiceEightySixContext();
       const voiceInventoryItems = liveContext.inventoryItems || inventoryItems || [];
       const voiceMenuDependencies = liveContext.menuDependencies || menuDependencies || [];
-      const resolved = resolveEightySixInventoryMatch(cleaned, voiceInventoryItems, voiceMenuDependencies);
-      const item = resolved?.item || findVoiceMatch(voiceInventoryItems, cleaned);
-      const requestedItemName = cleaned || item?.name || 'Item';
-      const itemName = item?.name || requestedItemName;
-      const displayName = requestedItemName || itemName;
-      const impactPreview = item ? buildEightySixAlertDetails({ requestedName: displayName, inventoryItem: item, menuDependencies: voiceMenuDependencies, matchMethod: resolved?.method, matchedMenuItemName: resolved?.matchedMenuItemName }).impactText : '';
-      const matchNote = item?.name && normalizeVoiceText(item.name) !== normalizeVoiceText(displayName)
-        ? ` Matched inventory item: ${item.name}${resolved?.method === 'menuIntelligence' ? ' through Menu Intelligence' : ''}.`
+      const resolved = resolveStrictEightySixMatch(cleaned, voiceInventoryItems, voiceMenuDependencies);
+      const requestedItemName = cleaned || 'Item';
+
+      if (resolved.status !== 'strong' || !resolved.item?.id) {
+        return {
+          intent:'eighty_six_review',
+          label:`Review 86 item: ${requestedItemName}`,
+          requestedItemName,
+          candidates: resolved.candidates || [],
+          resolvedMenuDependencies: voiceMenuDependencies,
+          summary: resolved.candidates?.length
+            ? `I could not safely choose one inventory item for “${requestedItemName}.” Select the correct item below. Nothing will be sent or changed until you choose an item and confirm the alert.`
+            : `I could not find a safe inventory match for “${requestedItemName}.” No alert was sent and inventory was not changed. Check the item name in Inventory and try again.`,
+          highRisk:true,
+          needsConfirmation:true
+        };
+      }
+
+      const item = resolved.item;
+      const impactPreview = buildEightySixAlertDetails({ requestedName: requestedItemName, inventoryItem: item, menuDependencies: voiceMenuDependencies, matchMethod: resolved.method, matchedMenuItemName: resolved.matchedMenuItemName }).impactText;
+      const matchNote = normalizeVoiceText(item.name) !== normalizeVoiceText(requestedItemName)
+        ? ` Matched inventory item: ${item.name}${resolved.method === 'menuIntelligence' ? ' through Menu Intelligence' : ''}.`
         : '';
       return {
         intent:'eighty_six_alert',
-        label:`Send 86 alert: ${displayName}`,
+        label:`Confirm 86 alert: ${item.name}`,
         item,
-        itemName,
-        requestedItemName: displayName,
-        menuMatchMethod: resolved?.method || (item ? 'inventory' : 'none'),
-        matchedMenuItemName: resolved?.matchedMenuItemName || '',
-        matchedIngredientName: resolved?.matchedIngredientName || '',
+        itemName:item.name,
+        requestedItemName,
+        menuMatchMethod: resolved.method,
+        matchedMenuItemName: resolved.matchedMenuItemName || '',
+        matchedIngredientName: resolved.matchedIngredientName || '',
+        matchConfidence: resolved.confidence || 0,
+        matchVerified:true,
         resolvedMenuDependencies: voiceMenuDependencies,
-        summary:`Post an important 86 alert for ${displayName}.${matchNote}${impactPreview ? ` ${impactPreview}.` : ''} Inventory stock will not be changed.`,
-        needsConfirmation:false
+        summary:`Confirm the important 86 alert for ${item.name}.${matchNote}${impactPreview ? ` ${impactPreview}.` : ''} Inventory stock will not be changed.`,
+        highRisk:true,
+        needsConfirmation:true
       };
     }
 
@@ -860,6 +877,17 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       });
       if (res.ok) {
         const ai = await res.json();
+        if (ai?.intent === 'eighty_six_alert') {
+          return {
+            intent:'eighty_six_review',
+            label:'Review 86 item',
+            requestedItemName: cleanVoiceItemName(ai.itemName || ai.requestedItemName || raw),
+            candidates:[],
+            summary:'AI recognized a possible 86 command, but AI is not allowed to select or send a risky 86 alert. Use the exact inventory item name and try again.',
+            highRisk:true,
+            needsConfirmation:true
+          };
+        }
         if (ai?.intent && ai.intent !== 'unknown') return { ...ai, summary: ai.summary || `AI understood: ${ai.intent}`, needsConfirmation: true };
       }
     } catch(e) {}
@@ -872,9 +900,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     setPending(action);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'create_personal_reminder', 'create_task', 'eighty_six_alert'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'create_personal_reminder', 'create_task'];
     if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
-      await executeAction(action, text, true);
+      await executeAction(action, text, true, false);
     }
   };
 
@@ -901,7 +929,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     }
   };
 
-  const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true) => {
+  const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true, confirmedByUser = false) => {
     if (!actionToRun || !appUser?.restaurantId) return;
     try {
       if (['navigate', 'navigate_schedule', 'help_search', 'open_recipe'].includes(actionToRun.intent)) {
@@ -928,13 +956,38 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         return;
       }
       if (appUser?.isDemo) return addToast('Demo Mode', 'Demo mode is read-only. Nothing was saved.');
+      if (actionToRun.intent === 'eighty_six_review') {
+        addToast('86 Review Required', 'Choose a specific inventory item before an 86 alert can be confirmed.');
+        return;
+      }
       if (actionToRun.intent === 'eighty_six_alert') {
-        const requestedName = String(actionToRun.requestedItemName || actionToRun.itemName || actionToRun.item?.name || 'Item').trim();
+        if (!confirmedByUser || actionToRun.matchVerified !== true || !actionToRun.item?.id) {
+          addToast('86 Alert Blocked', 'This high-risk alert needs a verified inventory match and your confirmation. Nothing was sent.');
+          return;
+        }
+        const freshContext = await fetchVoiceEightySixContext(appUser?.restaurantId, inventoryItems, menuDependencies);
+        eightySixContextRef.current = { restaurantId: appUser?.restaurantId || '', loadedAt: Date.now(), ...freshContext };
+        const liveItem = (freshContext.inventoryItems || []).find(item => item.id === actionToRun.item.id);
+        if (!liveItem) {
+          setPending({
+            intent:'eighty_six_review',
+            label:'Review 86 item again',
+            requestedItemName: actionToRun.requestedItemName || actionToRun.itemName || '',
+            candidates:[],
+            summary:'The matched inventory item changed or is no longer available. No alert was sent. Search Inventory and try the command again.',
+            highRisk:true,
+            needsConfirmation:true
+          });
+          addToast('86 Match Changed', 'The inventory match could not be re-verified. Nothing was sent.');
+          return;
+        }
+        const requestedPhrase = String(actionToRun.requestedItemName || liveItem.name || 'Item').trim();
+        const requestedName = String(liveItem.name || requestedPhrase).trim();
         const alertTitle = `86 ${requestedName}`;
-        const alertMenuDependencies = actionToRun.resolvedMenuDependencies || menuDependencies;
+        const alertMenuDependencies = freshContext.menuDependencies || actionToRun.resolvedMenuDependencies || menuDependencies;
         const { inventoryName, impactText, impactedItems, matchText, details } = buildEightySixAlertDetails({
-          requestedName,
-          inventoryItem: actionToRun.item,
+          requestedName: requestedPhrase,
+          inventoryItem: liveItem,
           menuDependencies: alertMenuDependencies,
           matchMethod: actionToRun.menuMatchMethod,
           matchedMenuItemName: actionToRun.matchedMenuItemName
@@ -953,6 +1006,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }],
           voiceCommand: sourceText,
           createdAt:new Date().toISOString(),
+          confirmedAt:new Date().toISOString(),
+          confirmedBy:appUser.id || appUser.email || '',
           source:'86_voice_alert',
           inventoryNotModified:true,
           commandCenterAlert:true,
@@ -960,9 +1015,11 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           kitchenCommandCenterAlert:true,
           menuImpact: impactText,
           menuImpactItems: impactedItems,
-          menuImpactItemId: actionToRun.item?.id || '',
+          menuImpactItemId: liveItem.id,
           inventoryItemName: inventoryName,
-          requestedItemName: requestedName,
+          requestedItemName: requestedPhrase,
+          voiceMatchStatus: actionToRun.selectionConfirmed ? 'user_selected' : 'strict_match_confirmed',
+          voiceMatchConfidence: Number(actionToRun.matchConfidence || 0),
           menuMatchMethod: actionToRun.menuMatchMethod || ''
         });
         await secureFetch('/api/send-push', {
@@ -1126,7 +1183,30 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     }
   };
 
-  const executePending = () => executeAction(pending, heardText, true);
+  const selectEightySixCandidate = (candidate = {}) => {
+    if (!candidate?.item?.id) return;
+    const item = candidate.item;
+    const requestedItemName = pending?.requestedItemName || item.name || 'Item';
+    setPending({
+      intent:'eighty_six_alert',
+      label:`Confirm 86 alert: ${item.name}`,
+      item,
+      itemName:item.name,
+      requestedItemName,
+      menuMatchMethod:candidate.method || 'userSelection',
+      matchedMenuItemName:candidate.matchedMenuItemName || '',
+      matchedIngredientName:candidate.matchedIngredientName || item.name || '',
+      matchConfidence:Number(candidate.confidence || 0),
+      matchVerified:true,
+      selectionConfirmed:true,
+      resolvedMenuDependencies:pending?.resolvedMenuDependencies || menuDependencies,
+      summary:`You selected ${item.name}. Confirm once more to send the 86 alert. Inventory stock will not be changed.`,
+      highRisk:true,
+      needsConfirmation:true
+    });
+  };
+
+  const executePending = () => executeAction(pending, heardText, true, true);
 
   return <div className="fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
     {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
@@ -1142,10 +1222,20 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
         {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
-          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Suggested Action</div>
+          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{pending.highRisk ? 'High-Risk Review' : 'Suggested Action'}</div>
           <div className="text-sm font-black text-white mt-1">{pending.label || pending.intent}</div>
           <div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{pending.summary}</div>
-          <div className="flex gap-2 mt-3"><button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button><button onClick={() => setPending(null)} className={T.btnAlt}>Cancel</button></div>
+          {pending.intent === 'eighty_six_review' && pending.candidates?.length > 0 && <div className="space-y-2 mt-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Choose the exact inventory item</div>
+            {pending.candidates.map((candidate, idx) => <button key={`${candidate.item?.id || candidate.item?.name || 'candidate'}-${idx}`} type="button" onClick={() => selectEightySixCandidate(candidate)} className="w-full text-left bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 rounded-xl px-3 py-2 transition-colors">
+              <div className="text-xs font-black text-white">{candidate.item?.name || 'Unnamed item'}</div>
+              <div className="text-[9px] font-bold text-slate-500 mt-0.5">{candidate.item?.category || 'Inventory'} • {candidate.method === 'menuIntelligence' ? 'Menu Intelligence match' : 'Inventory match'}</div>
+            </button>)}
+          </div>}
+          <div className="flex gap-2 mt-3">
+            {pending.intent !== 'eighty_six_review' && <button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button>}
+            <button onClick={() => setPending(null)} className={`${T.btnAlt} ${pending.intent === 'eighty_six_review' ? 'w-full' : ''}`}>Cancel</button>
+          </div>
         </div>}
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
@@ -1175,9 +1265,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>My Schedule now rolls forward automatically after a scheduled shift ends, so an ended shift does not stay pinned as the next shift.</p>
+    <p>Voice 86 alerts now require a strict item match and confirmation, System Administrator can explain diagnostics with OpenAI, and the admin tool search works across sections and manual articles.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Next shift fixed','Auto refresh','No manual reload','Time clock safer'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Safer 86 alerts','OpenAI diagnostics','Admin search','Event Calendar title'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>

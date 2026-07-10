@@ -1,39 +1,53 @@
 # 86 Chaos
 
-Current Version: 15.0.42 - Gemini Manual Completion Guard
+Current Version: 15.0.43 - Safer Voice and OpenAI Diagnostics
 
-## 15.0.42 focus
+## 15.0.43 focus
 
-This release fixes the System Administrator Manual assistant issue where Gemini answers could stop mid-sentence on longer troubleshooting responses.
+This release builds on the stable 15.0.42 base without changing the app shell or adopting the discarded 16.0.x redesign.
 
-### Included fixes
-- Increased the Gemini Manual assistant output budget on the server route.
-- Added Gemini finish-reason tracking so `MAX_TOKENS` cutoffs are visible in the UI.
-- Added server-side incomplete-answer detection for dangling endings such as answers ending with “if”, “because”, commas, or unfinished section headers.
-- Added automatic continuation attempts so the server asks Gemini to finish the answer before returning it to the app.
-- Added a `Continue Gemini Answer` button when Gemini still appears incomplete after automatic retries.
-- Updated Gemini instructions so it favors shorter complete instructions over long answers that cut off.
-- Added response metadata in the Manual panel showing finish reason and auto-continuation count.
-- Updated Administrator Manual release documentation for the Gemini completion guard.
+### Included changes
+- Voice commands such as `86 salmon` and `we're out of chicken` are treated as high-risk alert requests, never inventory edits.
+- Exact or very strong 86 matches require confirmation before an alert is written or a push is sent.
+- Weak or ambiguous 86 matches show a choose-item review. No candidate means no alert.
+- The selected inventory item is fetched and verified again immediately before the confirmed alert is created.
+- Existing smart prep behavior remains: multiple prep items are supported and matching prep tasks have their quantities adjusted instead of being duplicated.
+- Added Super Admin-only `/api/openai-diagnostics-explain` using OpenAI for structured diagnostics repair guidance.
+- Diagnostics are redacted in the frontend and again on the server before being sent to OpenAI.
+- Added System Administrator search across tools, sections, common actions, and Administrator Manual articles on desktop and mobile.
+- Changed the large Event Calendar top heading from the current month/date to `Event Calendar`; the existing month controls remain.
+- Preserved the Gemini Administrator Manual assistant, finish-reason tracking, auto-continuation, dangling-ending detection, and Continue Gemini Answer behavior from 15.0.42.
+
+### Environment variables
+Required for OpenAI diagnostics:
+- `OPENAI_API_KEY`
+
+Recommended:
+- `OPENAI_DIAGNOSTICS_MODEL=gpt-5-mini`
+
+Existing Gemini Manual variables remain:
+- `GEMINI_API_KEY`
+- Optional `GEMINI_MODEL`
+
+When `OPENAI_API_KEY` is missing, the Health Dashboard shows a configuration message and the app remains usable.
 
 ### Separate deployment / publishing
-- Vercel redeploy required because frontend code, `/api/gemini-admin-manual`, and version metadata changed.
-- No `vercel.json` changes.
+- Vercel redeploy required because frontend code, API routes, function configuration, and version metadata changed.
+- Add `OPENAI_API_KEY` and optionally `OPENAI_DIAGNOSTICS_MODEL` separately to Preview and Production Vercel environments.
 - No Firestore rules changes.
 - No Storage rules changes.
-- No new env vars required.
-- Optional tuning env var: `GEMINI_MANUAL_MAX_OUTPUT_TOKENS` or `MANUAL_GEMINI_MAX_OUTPUT_TOKENS`. Default is `4096`, capped at `8192`.
+- No Firebase Console change is required for this release.
 
 ### Quick validation
-1. Deploy to Vercel preview/testing first.
-2. Confirm `/version.json` reports `15.0.42`.
-3. Open System Administrator → Manual.
-4. Ask a longer Gemini question, such as “Users schedule has disappeared and backup is stale, what do I check?”
-5. Confirm the answer does not stop mid-sentence.
-6. Confirm metadata shows model, API, duration, finish reason, and auto-continuation count when used.
-7. If a warning appears, tap `Continue Gemini Answer` and confirm the answer appends instead of replacing the existing response.
+1. Deploy to the testing branch and confirm `/version.json` reports `15.0.43`.
+2. Test exact, strong, ambiguous, and unknown voice 86 phrases. Confirm none edit inventory.
+3. Open System Administrator > Health Dashboard and run health/full diagnostics.
+4. Select `Explain with OpenAI`; confirm structured guidance appears or a clear missing-key message appears.
+5. Search System Administrator for `backup`, `MFA`, `OpenAI`, and a manual article on desktop and mobile.
+6. Open Event Calendar and confirm the large heading reads `Event Calendar` while month navigation still works.
+7. Ask the Gemini Administrator Manual a long troubleshooting question and verify continuation protection still works.
 
 ## Notes
 - 86 Chaos branding remains mandatory and cannot be hidden or replaced.
 - Customer restaurant logos may appear beside 86 Chaos branding, but not instead of it.
-- Keep Help Center public-facing and generic. Keep System Administrator security details inside the Administrator Manual.
+- Help Center remains public-facing and generic. Security and System Administrator internals remain in the Administrator Manual.

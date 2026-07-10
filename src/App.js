@@ -1507,7 +1507,7 @@ return (
               
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381] pointer-events-auto">
-                  {activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+                  {activeTabState === 'events' ? 'Event Calendar' : activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
                 </h2>
               </div>
 

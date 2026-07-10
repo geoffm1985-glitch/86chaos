@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
     const { text = '' } = req.body || {};
     if (!apiKey || !String(text).trim()) return res.status(200).json({ intent: 'unknown' });
 
-    const prompt = `You are a safe command parser for a restaurant management app. Parse the user's voice command into JSON only. Supported intents: eighty_six_alert, create_prep, post_message, maintenance, burn_log, navigate, navigate_schedule, help, unknown. The phrase “86 item” or “we are out of item” must be eighty_six_alert, never an inventory edit. Never execute actions. Include summary and needsConfirmation. User command: ${JSON.stringify(text)}`;
+    const prompt = `You are a safe command parser for a restaurant management app. Parse the user's voice command into JSON only. Supported intents: eighty_six_alert, create_prep, post_message, maintenance, burn_log, navigate, navigate_schedule, help, unknown. The phrase “86 item” or “we are out of item” must be eighty_six_alert, never an inventory edit. Treat eighty_six_alert as high risk: never choose an inventory record, never claim a match, never execute it, and always set needsConfirmation true and highRisk true. Include only the spoken item phrase as requestedItemName. Never execute actions. Include summary and needsConfirmation. User command: ${JSON.stringify(text)}`;
     let data = null;
     for (const model of voiceModelCandidates()) {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`, {
@@ -52,6 +52,16 @@ module.exports = async function handler(req, res) {
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     let parsed = {};
     try { parsed = JSON.parse(raw); } catch (e) { parsed = { intent: 'unknown' }; }
+    if (parsed?.intent === 'eighty_six_alert') {
+      parsed = {
+        intent: 'eighty_six_alert',
+        requestedItemName: String(parsed.requestedItemName || parsed.itemName || '').trim(),
+        summary: parsed.summary || 'Possible 86 command requires strict local inventory review.',
+        needsConfirmation: true,
+        highRisk: true,
+        aiMayNotSelectItem: true
+      };
+    }
     return res.status(200).json(parsed || { intent: 'unknown' });
   } catch (err) {
     return res.status(200).json({ intent: 'unknown', error: err.message });

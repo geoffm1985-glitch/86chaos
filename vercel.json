@@ -80,6 +80,10 @@
     "api/health-checks.js": {
       "maxDuration": 60,
       "memory": 512
+    },
+    "api/openai-diagnostics-explain.js": {
+      "maxDuration": 60,
+      "memory": 512
     }
   }
 }

@@ -165,6 +165,113 @@ export const buildEightySixAlertDetails = ({ requestedName = '', inventoryItem =
   return { inventoryName, impactText, impactedItems, matchText, details };
 };
 
+
+
+const serializeEightySixCandidate = (row = {}) => ({
+  item: row.item || null,
+  confidence: Number(row.score || 0),
+  method: row.method || 'inventory',
+  matchedMenuItemName: row.menuName || '',
+  matchedIngredientName: row.ingredientName || row.item?.name || ''
+});
+
+export const resolveStrictEightySixMatch = (spoken = '', inventoryItems = [], menuDependencies = []) => {
+  const q = normalize(spoken);
+  if (!q) return { status: 'review', item: null, confidence: 0, method: 'empty', requestedName: '', candidates: [] };
+  const aliasTokens = aliasTokensFor(q);
+  const rankedByItem = new Map();
+
+  const keepBest = (row) => {
+    if (!row?.item) return;
+    const key = row.item.id || normalize(row.item.name || row.item.title || '');
+    if (!key) return;
+    const current = rankedByItem.get(key);
+    if (!current || Number(row.score || 0) > Number(current.score || 0)) rankedByItem.set(key, row);
+  };
+
+  const inventoryEvidence = (inventoryItems || []).map(item => {
+    const itemName = normalize(item.name || item.title || '');
+    let score = scoreInventoryItemForSpoken(item, q);
+    if (itemName === q) score += 260;
+    else if (itemName && (itemName.startsWith(q) || q.startsWith(itemName))) score += 45;
+    return { item, score, method: 'inventory', exact: itemName === q };
+  });
+  inventoryEvidence.forEach(keepBest);
+
+  (menuDependencies || []).forEach(dep => {
+    const menuName = dep.menuItemName || dep.recipeName || dep.dishName || dep.name || '';
+    const ingredientName = dep.inventoryItemName || dep.ingredientName || dep.itemName || '';
+    const inventoryItem = findInventoryByDependency(dep, inventoryItems);
+    if (!inventoryItem) return;
+    const menuScore = scoreTextMatch(menuName, q);
+    const ingredientScore = scoreTextMatch(ingredientName, q);
+    let score = menuScore + Math.round(ingredientScore * 0.9) + Math.round(scoreInventoryItemForSpoken(inventoryItem, q) * 0.9);
+    if (normalize(menuName) === q) score += 220;
+    if (normalize(ingredientName) === q) score += 200;
+    if (menuScore >= 55) score += 30;
+    const menuKey = normalize(menuName);
+    const ingredientKey = normalize(`${ingredientName} ${inventoryItem.name || ''}`);
+    aliasTokens.forEach(alias => {
+      if (menuKey.includes(alias)) score += 10;
+      if (ingredientKey.includes(alias)) score += 26;
+      score += tokenize(alias).filter(w => w.length > 2 && ingredientKey.includes(w)).length * 9;
+    });
+    score += 8;
+    keepBest({
+      item: inventoryItem,
+      score,
+      method: 'menuIntelligence',
+      dep,
+      menuName,
+      ingredientName,
+      exact: normalize(menuName) === q || normalize(ingredientName) === q || normalize(inventoryItem.name || '') === q
+    });
+  });
+
+  const ranked = Array.from(rankedByItem.values()).sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+  const best = ranked[0];
+  const second = ranked[1];
+  const exactRows = ranked.filter(row => row.exact === true);
+  const margin = Number(best?.score || 0) - Number(second?.score || 0);
+  const uniquelyExact = exactRows.length === 1 && exactRows[0]?.item?.id === best?.item?.id;
+  const bestDirectScore = Math.max(0, ...inventoryEvidence.map(row => Number(row.score || 0)));
+  const plausibleDirectMatches = inventoryEvidence.filter(row => Number(row.score || 0) >= 70 && Number(row.score || 0) >= bestDirectScore - 30);
+  const hasExactInventoryName = inventoryEvidence.some(row => row.exact === true);
+  const broadInventoryAmbiguity = !hasExactInventoryName && plausibleDirectMatches.length > 1;
+  const veryStrong = Number(best?.score || 0) >= 185 && (ranked.length === 1 || margin >= 35);
+  const strong = Boolean(best?.item && !broadInventoryAmbiguity && (uniquelyExact || veryStrong));
+  const candidates = ranked
+    .filter(row => Number(row.score || 0) >= 38)
+    .slice(0, 5)
+    .map(serializeEightySixCandidate);
+
+  if (!strong) {
+    return {
+      status: 'review',
+      item: null,
+      confidence: Number(best?.score || 0),
+      method: best?.method || 'none',
+      requestedName: spoken,
+      candidates,
+      ambiguityMargin: margin,
+      matchedMenuItemName: best?.menuName || '',
+      matchedIngredientName: best?.ingredientName || ''
+    };
+  }
+
+  return {
+    status: 'strong',
+    item: best.item,
+    confidence: Number(best.score || 0),
+    method: best.method,
+    requestedName: spoken,
+    candidates: [serializeEightySixCandidate(best)],
+    ambiguityMargin: margin,
+    matchedMenuItemName: best.menuName || '',
+    matchedIngredientName: best.ingredientName || best.item?.name || ''
+  };
+};
+
 export const resolveEightySixInventoryMatch = (spoken = '', inventoryItems = [], menuDependencies = []) => {
   const q = normalize(spoken);
   if (!q) return { item: null, confidence: 0, method: 'empty', requestedName: '' };

@@ -1,143 +1,201 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
+const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
-const APP_VERSION = '16.0.4';
-const DEFAULT_MODEL = process.env.OPENAI_DIAGNOSTICS_MODEL || process.env.OPENAI_MODEL || 'gpt-5-mini';
-const MAX_REPORT_CHARS = 42000;
+const MAX_INPUT_BYTES = 70000;
+const MAX_ARRAY_ITEMS = 80;
+const MAX_STRING_LENGTH = 5000;
 
-function cleanText(value = '', max = 4000) {
-  return String(value || '')
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max);
+const SECRET_KEY_PATTERN = /(authorization|cookie|secret|private.?key|api.?key|access.?token|refresh.?token|id.?token|bearer|password|credential|signed.?url|download.?url|client.?secret)/i;
+const PERSONAL_KEY_PATTERN = /(^|_)(email|phone|address|owneremail|useremail|clientemail|employeeemail|displayname|fullname)($|_)/i;
+const SIGNED_URL_PATTERN = /(X-Goog-Signature|GoogleAccessId|X-Amz-Signature|Signature)=/i;
+const JWT_PATTERN = /\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g;
+const OPENAI_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
+const GOOGLE_KEY_PATTERN = /\bAIza[A-Za-z0-9_-]{20,}\b/g;
+const BEARER_PATTERN = /Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi;
+const PRIVATE_KEY_PATTERN = /-----BEGIN(?: RSA)? PRIVATE KEY-----[\s\S]*?-----END(?: RSA)? PRIVATE KEY-----/gi;
+
+function redactString(value = '') {
+  let text = String(value || '');
+  if (SIGNED_URL_PATTERN.test(text)) return '[redacted signed URL]';
+  text = text
+    .replace(PRIVATE_KEY_PATTERN, '[redacted private key]')
+    .replace(BEARER_PATTERN, 'Bearer [redacted]')
+    .replace(JWT_PATTERN, '[redacted token]')
+    .replace(OPENAI_KEY_PATTERN, '[redacted API key]')
+    .replace(GOOGLE_KEY_PATTERN, '[redacted API key]');
+  return text.length > MAX_STRING_LENGTH ? `${text.slice(0, MAX_STRING_LENGTH)}…[truncated]` : text;
 }
 
-function redact(value, max = MAX_REPORT_CHARS) {
-  let text = typeof value === 'string' ? value : JSON.stringify(value || {}, null, 2);
-  return cleanText(text, max)
-    .replace(/https:\/\/storage\.googleapis\.com\/[^\s)"']+/gi, '[signed-storage-url-redacted]')
-    .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, 'Bearer [redacted]')
-    .replace(/AIza[0-9A-Za-z_\-]{20,}/g, '[google-api-key-redacted]')
-    .replace(/sk-[A-Za-z0-9_\-]{20,}/g, '[openai-key-redacted]')
-    .replace(/-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----/g, '[private-key-redacted]')
-    .slice(0, max);
+function sanitizeDiagnostics(value, depth = 0) {
+  if (depth > 9) return '[truncated depth]';
+  if (value === undefined) return undefined;
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
+  if (typeof value === 'string') return redactString(value);
+  if (Array.isArray(value)) return value.slice(0, MAX_ARRAY_ITEMS).map(item => sanitizeDiagnostics(item, depth + 1));
+  if (typeof value === 'object') {
+    const cleaned = {};
+    Object.entries(value).slice(0, 250).forEach(([key, item]) => {
+      if (SECRET_KEY_PATTERN.test(key)) {
+        cleaned[key] = typeof item === 'boolean' ? item : '[redacted credential]';
+      } else if (PERSONAL_KEY_PATTERN.test(String(key || '').toLowerCase())) {
+        cleaned[key] = '[redacted personal data]';
+      } else {
+        cleaned[key] = sanitizeDiagnostics(item, depth + 1);
+      }
+    });
+    return cleaned;
+  }
+  return redactString(value);
 }
 
-function buildLocalFallback(report = {}) {
-  const backupStatus = report?.backupIntegrity?.status || report?.checks?.firestoreStatus?.value?.lastIntegrityStatus || 'unknown';
-  const apiChecks = report?.clientHealth?.apiChecks || [];
-  const failedApis = apiChecks.filter(c => c && c.ok === false).map(c => c.label || c.url).slice(0, 8);
-  return {
-    summary: 'OpenAI was unavailable, so 86 Chaos generated a local structured triage summary from the diagnostics report.',
-    severity: failedApis.length || backupStatus === 'failed' ? 'high' : backupStatus === 'verified' ? 'low' : 'medium',
-    likelyCause: failedApis.length ? 'One or more API or route checks reported attention and should be checked in Vercel logs.' : 'No single fatal error was obvious from the local fallback. Review backup freshness, API checks, and Security Center.',
-    goTo: ['System Administrator -> Health Dashboard', 'System Administrator -> Security Center', 'System Administrator -> Backup Center & Audit Trail'],
-    steps: [
-      'Run Refresh Health and Full System Diagnostics again after the latest deploy finishes.',
-      failedApis.length ? `Open Vercel logs for: ${failedApis.join(', ')}.` : 'Confirm API Routes shows ready or ok for the live deployment.',
-      'Check Backup Integrity and Last Successful Sync before changing data.',
-      'If rules or env vars were changed, verify the correct Firebase project and Vercel environment.'
-    ],
-    verification: ['Health Dashboard shows ok/ready checks.', 'Backup Integrity is verified or clearly explained.', 'The affected customer action works on the same deployment URL.'],
-    doNotTouchYet: ['Do not restore a backup until you verify the current backup is good.', 'Do not publish hardened Firebase rules while admin access or user profile routing is uncertain.'],
-    deployOrPublish: ['Redeploy Vercel only if API routes, vercel.json, frontend code, or env vars changed.', 'Publish Firestore or Storage rules only if the rules files changed and were tested against the correct Firebase project.'],
-    escalateIf: ['The same route fails after redeploy.', 'Multiple workspaces are affected.', 'Backups are stale or failed and data changes are needed.'],
-    confidence: 0.45,
-    source: 'local-fallback'
-  };
-}
-
-function normalizeExplanation(parsed, fallback) {
-  const obj = parsed && typeof parsed === 'object' ? parsed : fallback;
-  const arr = (v) => Array.isArray(v) ? v.map(x => cleanText(x, 700)).filter(Boolean).slice(0, 10) : [];
-  return {
-    summary: cleanText(obj.summary || fallback.summary, 1200),
-    severity: ['low', 'medium', 'high', 'critical'].includes(String(obj.severity || '').toLowerCase()) ? String(obj.severity).toLowerCase() : fallback.severity,
-    likelyCause: cleanText(obj.likelyCause || fallback.likelyCause, 1500),
-    goTo: arr(obj.goTo).length ? arr(obj.goTo) : fallback.goTo,
-    steps: arr(obj.steps).length ? arr(obj.steps) : fallback.steps,
-    verification: arr(obj.verification).length ? arr(obj.verification) : fallback.verification,
-    doNotTouchYet: arr(obj.doNotTouchYet).length ? arr(obj.doNotTouchYet) : fallback.doNotTouchYet,
-    deployOrPublish: arr(obj.deployOrPublish).length ? arr(obj.deployOrPublish) : fallback.deployOrPublish,
-    escalateIf: arr(obj.escalateIf).length ? arr(obj.escalateIf) : fallback.escalateIf,
-    confidence: Math.max(0, Math.min(1, Number(obj.confidence || fallback.confidence || 0.6))),
-    source: obj.source || 'openai-structured'
-  };
-}
-
-async function callOpenAI({ apiKey, model, reportContext }) {
-  const schema = {
-    name: 'diagnostics_repair_steps',
-    strict: true,
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        summary: { type: 'string' },
-        severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-        likelyCause: { type: 'string' },
-        goTo: { type: 'array', items: { type: 'string' } },
-        steps: { type: 'array', items: { type: 'string' } },
-        verification: { type: 'array', items: { type: 'string' } },
-        doNotTouchYet: { type: 'array', items: { type: 'string' } },
-        deployOrPublish: { type: 'array', items: { type: 'string' } },
-        escalateIf: { type: 'array', items: { type: 'string' } },
-        confidence: { type: 'number' },
-        source: { type: 'string' }
-      },
-      required: ['summary', 'severity', 'likelyCause', 'goTo', 'steps', 'verification', 'doNotTouchYet', 'deployOrPublish', 'escalateIf', 'confidence', 'source']
+const guidanceSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['summary', 'overallSeverity', 'noIssuesFound', 'issues'],
+  properties: {
+    summary: { type: 'string' },
+    overallSeverity: { type: 'string', enum: ['info', 'low', 'medium', 'high', 'critical'] },
+    noIssuesFound: { type: 'boolean' },
+    issues: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['issue', 'severity', 'whatItMeans', 'likelyCause', 'repairSteps', 'whereToClick', 'deployPublishEnvNotes', 'verificationSteps', 'whenToEscalate'],
+        properties: {
+          issue: { type: 'string' },
+          severity: { type: 'string', enum: ['info', 'low', 'medium', 'high', 'critical'] },
+          whatItMeans: { type: 'string' },
+          likelyCause: { type: 'string' },
+          repairSteps: { type: 'array', items: { type: 'string' } },
+          whereToClick: { type: 'array', items: { type: 'string' } },
+          deployPublishEnvNotes: { type: 'array', items: { type: 'string' } },
+          verificationSteps: { type: 'array', items: { type: 'string' } },
+          whenToEscalate: { type: 'string' }
+        }
+      }
     }
-  };
-  const messages = [
-    { role: 'system', content: 'You are the 86 Chaos diagnostics repair planner. Return only JSON that matches the schema. Be specific to System Administrator screens. Never expose secrets, signed URLs, tokens, service account values, or private customer/employee details.' },
-    { role: 'user', content: `Analyze this 86 Chaos diagnostics data and create structured repair steps. Explain exactly where to go in System Administrator, what to do first, how to verify success, and what needs separate Vercel/Firebase deployment. Diagnostics JSON:\n${reportContext}` }
-  ];
-  const body = {
-    model,
-    messages,
-    temperature: 0.1,
-    response_format: { type: 'json_schema', json_schema: schema }
-  };
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(body)
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.error?.message || `OpenAI HTTP ${response.status}`);
-  const content = data?.choices?.[0]?.message?.content || '{}';
-  return { raw: JSON.parse(content), model: data?.model || model, finishReason: data?.choices?.[0]?.finish_reason || '' };
+  }
+};
+
+function extractOutputText(data = {}) {
+  if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+  for (const item of data.output || []) {
+    for (const content of item.content || []) {
+      if (content.type === 'output_text' && typeof content.text === 'string') return content.text.trim();
+    }
+  }
+  return '';
 }
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
-  const started = Date.now();
   try {
     const app = initAdmin();
     const appCheck = await requireAppCheckIfEnforced(app, req);
-    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error, version: APP_VERSION });
+    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
+
     const ctx = await authorize(req, app, { allowTenantAdmin: false });
-    if (!ctx.ok || !ctx.isSuperAdmin) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'Super admin required.', version: APP_VERSION });
-    const body = await readBody(req);
-    const report = body.report || body.diagnostics || {};
-    const fallback = buildLocalFallback(report);
-    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_DIAGNOSTICS_API_KEY;
-    if (!apiKey) return res.status(400).json({ ok: false, version: APP_VERSION, error: 'OpenAI diagnostics explanation is not configured. Add OPENAI_API_KEY in Vercel and redeploy.', fallback: normalizeExplanation(fallback, fallback) });
-    const model = cleanText(process.env.OPENAI_DIAGNOSTICS_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL, 120) || DEFAULT_MODEL;
-    const reportContext = redact({ report, currentUrl: body.currentUrl || '', appVersion: body.appVersion || APP_VERSION }, MAX_REPORT_CHARS);
-    let explanation;
-    let meta = {};
-    try {
-      const openai = await callOpenAI({ apiKey, model, reportContext });
-      explanation = normalizeExplanation(openai.raw, fallback);
-      meta = { model: openai.model, finishReason: openai.finishReason, source: 'openai-structured' };
-    } catch (err) {
-      explanation = normalizeExplanation({ ...fallback, summary: `${fallback.summary} OpenAI error: ${cleanText(err.message, 500)}`, source: 'local-fallback-after-openai-error' }, fallback);
-      meta = { model, source: 'local-fallback-after-openai-error', error: err.message || 'OpenAI diagnostics explanation failed.' };
+    if (!ctx.ok || !ctx.isSuperAdmin) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'Super Admin access is required.' });
+
+    const db = app.firestore();
+    const rate = await enforceRateLimit({
+      db,
+      req,
+      decoded: ctx.decoded,
+      routeName: 'openai-diagnostics-explain',
+      limit: Number(process.env.OPENAI_DIAGNOSTICS_RATE_LIMIT || 8),
+      windowMs: 60 * 1000
+    });
+    if (!rate.ok) return sendRateLimited(res, rate);
+
+    const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+    if (!apiKey) {
+      return res.status(503).json({
+        ok: false,
+        configured: false,
+        code: 'OPENAI_NOT_CONFIGURED',
+        error: 'OpenAI diagnostics is not configured. Add OPENAI_API_KEY in Vercel Environment Variables, redeploy, and try again.'
+      });
     }
-    await writeAudit(app.firestore(), ctx, 'OPENAI_DIAGNOSTICS_EXPLAIN', 'system/fullSystemDiagnostics', `Diagnostics explanation generated. Severity: ${explanation.severity}. Source: ${meta.source}.`, ctx.restaurantId || 'platform');
-    return res.status(200).json({ ok: true, version: APP_VERSION, explanation, meta, durationMs: Date.now() - started, generatedAt: new Date().toISOString() });
-  } catch (err) {
-    return res.status(500).json({ ok: false, version: APP_VERSION, error: err.message || 'OpenAI diagnostics explanation failed.' });
+
+    const body = await readBody(req);
+    if (!body?.diagnostics && !body?.health && !body?.context) {
+      return res.status(400).json({ ok: false, error: 'Diagnostics or health data is required.' });
+    }
+
+    const sanitized = sanitizeDiagnostics({
+      diagnostics: body.diagnostics || null,
+      health: body.health || null,
+      context: body.context || null
+    });
+    const serialized = JSON.stringify(sanitized);
+    if (Buffer.byteLength(serialized, 'utf8') > MAX_INPUT_BYTES) {
+      return res.status(413).json({ ok: false, error: 'Diagnostics payload is too large. Run a fresh focused diagnostic report and try again.' });
+    }
+
+    const model = String(process.env.OPENAI_DIAGNOSTICS_MODEL || 'gpt-5-mini').trim();
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        store: false,
+        max_output_tokens: 5000,
+        instructions: [
+          'You are the 86 Chaos diagnostics repair assistant for a React, Firebase Auth/Firestore/Storage, and Vercel application.',
+          'Analyze only the supplied redacted operational data. Never invent a failed check, secret value, customer record, click path, or deployment result.',
+          'Give practical repair guidance that a System Administrator can follow. Prefer exact in-app paths such as System Administrator > Health Dashboard, Security Center, Backup Center, Support Diagnostics, or Deployment Readiness.',
+          'Distinguish changes that require a Vercel redeploy, Firebase rules publish, Storage rules publish, Firebase Console action, environment variable update, or no deployment.',
+          'If evidence is incomplete, say what must be checked next and lower the severity. Do not recommend disabling security controls as a shortcut.',
+          'Return valid JSON matching the provided schema.'
+        ].join('\n'),
+        input: `Explain this redacted 86 Chaos diagnostics payload and produce repair guidance:\n${serialized}`,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'diagnostics_repair_guidance',
+            strict: true,
+            schema: guidanceSchema
+          }
+        }
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const safeCode = String(data?.error?.code || data?.error?.type || 'OPENAI_REQUEST_FAILED');
+      const safeMessage = response.status === 401
+        ? 'OpenAI rejected the API key. Replace OPENAI_API_KEY in Vercel and redeploy.'
+        : response.status === 429
+          ? 'OpenAI rate or usage limits were reached. Check the OpenAI project limits and try again.'
+          : `OpenAI diagnostics request failed (${safeCode}). Check the Vercel function logs and OpenAI project configuration.`;
+      return res.status(502).json({ ok: false, configured: true, code: safeCode, error: safeMessage });
+    }
+
+    const outputText = extractOutputText(data);
+    if (!outputText) return res.status(502).json({ ok: false, configured: true, error: 'OpenAI returned no diagnostics explanation.' });
+
+    let guidance;
+    try { guidance = JSON.parse(outputText); }
+    catch (_) { return res.status(502).json({ ok: false, configured: true, error: 'OpenAI returned an unreadable diagnostics explanation.' }); }
+
+    await writeAudit(db, ctx, 'OPENAI_DIAGNOSTICS_EXPLAIN', model, `Generated ${Array.isArray(guidance.issues) ? guidance.issues.length : 0} structured issue(s) from redacted diagnostics.`);
+    return res.status(200).json({
+      ok: true,
+      configured: true,
+      model,
+      generatedAt: new Date().toISOString(),
+      guidance
+    });
+  } catch (_) {
+    return res.status(500).json({
+      ok: false,
+      configured: Boolean(process.env.OPENAI_API_KEY),
+      error: 'OpenAI diagnostics explanation failed. Check the Vercel function logs for the server-side error.'
+    });
   }
 };

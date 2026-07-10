@@ -65,24 +65,32 @@ const sanitizeForFirestore = (value) => {
 const redactDiagnosticSecrets = (value) => {
   if (value === undefined) return undefined;
   if (value === null) return null;
-  if (Array.isArray(value)) return value.map(redactDiagnosticSecrets);
+  if (Array.isArray(value)) return value.slice(0, 100).map(redactDiagnosticSecrets);
   if (value && typeof value === 'object') {
     const cleaned = {};
-    Object.entries(value).forEach(([key, item]) => {
+    Object.entries(value).slice(0, 300).forEach(([key, item]) => {
       const lower = String(key || '').toLowerCase();
-      if (lower.includes('signedurl') || lower === 'signed_url' || lower === 'downloadurl') {
+      if (/signed.?url|download.?url/.test(lower)) {
         cleaned[key] = '[redacted signed URL]';
-      } else if (lower.includes('secret') || lower.includes('privatekey') || lower.includes('token') || lower.includes('apikey')) {
-        cleaned[key] = typeof item === 'boolean' ? item : '[redacted]';
-      } else if (typeof item === 'string' && /X-Goog-Signature=|GoogleAccessId=|Signature=/i.test(item)) {
-        cleaned[key] = '[redacted signed URL]';
+      } else if (/authorization|cookie|secret|private.?key|token|api.?key|bearer|password|credential|client.?secret/.test(lower)) {
+        cleaned[key] = typeof item === 'boolean' ? item : '[redacted credential]';
+      } else if (/(^|_)(email|phone|address|owneremail|useremail|clientemail|employeeemail)($|_)/.test(lower)) {
+        cleaned[key] = '[redacted personal data]';
       } else {
         cleaned[key] = redactDiagnosticSecrets(item);
       }
     });
     return cleaned;
   }
-  if (typeof value === 'string' && /X-Goog-Signature=|GoogleAccessId=|Signature=/i.test(value)) return '[redacted signed URL]';
+  if (typeof value === 'string') {
+    if (/X-Goog-Signature=|GoogleAccessId=|X-Amz-Signature=|Signature=/i.test(value)) return '[redacted signed URL]';
+    return value
+      .replace(/-----BEGIN(?: RSA)? PRIVATE KEY-----[\s\S]*?-----END(?: RSA)? PRIVATE KEY-----/gi, '[redacted private key]')
+      .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+      .replace(/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g, '[redacted token]')
+      .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[redacted API key]')
+      .replace(/\bAIza[A-Za-z0-9_-]{20,}\b/g, '[redacted API key]');
+  }
   return value;
 };
 
@@ -3511,6 +3519,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [healthError, setHealthError] = useState('');
   const [isDiagnosticsRunning, setIsDiagnosticsRunning] = useState(false);
   const [lastDiagnosticsReport, setLastDiagnosticsReport] = useState(null);
+  const [openAiDiagnosticsResult, setOpenAiDiagnosticsResult] = useState(null);
+  const [openAiDiagnosticsError, setOpenAiDiagnosticsError] = useState('');
+  const [isOpenAiDiagnosticsLoading, setIsOpenAiDiagnosticsLoading] = useState(false);
   const [isScheduleReinjecting, setIsScheduleReinjecting] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [createdWorkspaceLogin, setCreatedWorkspaceLogin] = useState(null);
@@ -3519,6 +3530,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const defaultDemoFeatures = { published:true, schedule:true, events:true, ops:true, messages:true, prep:true, recipes:true, inventory:true, financials:true, team:true, maintenance:true, help:true };
   const [demoFeatures, setDemoFeatures] = useState(defaultDemoFeatures);
   const [adminManualSearch, setAdminManualSearch] = useState('');
+  const [adminToolSearch, setAdminToolSearch] = useState('');
   const [adminManualQuestion, setAdminManualQuestion] = useState('');
   const [adminManualCategory, setAdminManualCategory] = useState('All');
   const [selectedAdminArticleId, setSelectedAdminArticleId] = useState('');
@@ -4935,7 +4947,7 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.42 keeps the watchdog check and adds Gemini answer completion protection.'
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.43 keeps the watchdog and Gemini completion guard, adds safer voice 86 confirmation, OpenAI diagnostics explanations, and System Administrator search.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
@@ -5406,6 +5418,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.43 Safer Voice 86 and OpenAI Diagnostics', group: 'System Administrator', keywords: 'v15 15.0.43 voice 86 out of stock confirmation ambiguous item review openai diagnostics explain search event calendar', body: ['15.0.43 treats every voice 86 or out-of-stock command as a high-risk action. A strict inventory or Menu Intelligence match must be found, the user must confirm it, and the item is rechecked immediately before the alert is written.', 'Ambiguous voice matches now show a choose-item review instead of guessing. AI classification is never allowed to silently select an inventory record or send an 86 alert, and inventory quantities are never changed by an 86 command.', 'Health Dashboard now includes Explain with OpenAI for structured diagnostics repair guidance. The server route is Super Admin-only and redacts credentials, signed URLs, tokens, private keys, and personal contact fields before sending operational data.', 'System Administrator includes a desktop/mobile search for tools, sections, actions, and manual articles. The Event Calendar top heading now says Event Calendar instead of repeating the large month/date.'] },
     { title: 'Version 15.0.42 Gemini Manual Completion Guard', group: 'System Administrator', keywords: 'v15 15.0.42 gemini manual assistant cut off max tokens continue answer incomplete finish reason system administrator', body: ['15.0.42 improves the Gemini-powered System Administrator Manual assistant so long answers are less likely to stop mid-sentence.', 'The server route now uses a larger output token budget, checks Gemini finish reasons, detects dangling endings, and automatically asks Gemini to continue when it hits the output limit.', 'If Gemini still appears cut off, the Manual panel shows a warning and a Continue Gemini Answer button so the Super Admin can finish the answer without starting over.', 'The Gemini response metadata now shows finish reason and auto-continuation count, which helps troubleshoot model output limits without exposing secrets or signed URLs.'] },
     { title: 'Version 15.0.41 System Administrator Tool Reorganization', group: 'System Administrator', keywords: 'v15 15.0.41 system administrator reorganized categories recategorized navigation tool map left menu mobile groups', body: ['15.0.41 reorganizes the entire System Administrator into clearer tool neighborhoods: Start Here, Backup & Recovery, Security & Access, Workspaces & People, Support & Monitoring, Maintenance & Releases, and Platform Tools.', 'The left desktop rail, mobile picker, and overview Tool Map now use the same categories so the correct tools sit together instead of being scattered through one long command list.', 'Use Start Here for daily status and the AI Administrator Manual. Use Backup & Recovery before risky changes. Use Security & Access for lockouts, MFA, App Check, rules, and permission design. Use Workspaces & People for restaurants, clients, profiles, setup, and branding.', 'High-risk global tools now live under Platform Tools so they are easier to find when needed but less likely to be clicked while doing normal support work.'] },
     { title: 'Version 15.0.40 System Administrator Mobile Usability', group: 'System Administrator', keywords: 'v15 15.0.40 mobile phone system administrator menu quick jump sticky nav touch friendly command deck', body: ['15.0.40 makes System Administrator easier to operate from a phone by adding a mobile command strip with critical status, section picker, and quick-jump chips for the most common admin tools.', 'The left Admin Menu still lives on the left side on desktop, but on phones it opens immediately under the System Administrator header instead of getting buried below the Command Deck.', 'Mobile admin buttons now have larger touch targets, shorter labels, and a two-column menu layout where space allows. The active section is easier to see and switching sections automatically closes the mobile menu.', 'The Command Deck stays available, but it no longer has to be the first thing you fight through on a mobile device. Use Show Info Board only when you need the full signal board.'] },
@@ -6094,6 +6107,43 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     }
   };
 
+  const handleExplainDiagnosticsWithOpenAI = async () => {
+    if (isOpenAiDiagnosticsLoading) return;
+    setIsOpenAiDiagnosticsLoading(true);
+    setOpenAiDiagnosticsError('');
+    try {
+      const currentHealth = healthSnapshot || await refreshHealthDashboard({ silent: true });
+      if (!currentHealth && !lastDiagnosticsReport) throw new Error('Run Health Dashboard or Full System Diagnostics first so OpenAI has a report to explain.');
+      const response = await secureFetch('/api/openai-diagnostics-explain', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          diagnostics: redactDiagnosticSecrets(lastDiagnosticsReport || null),
+          health: redactDiagnosticSecrets(currentHealth || null),
+          context: redactDiagnosticSecrets({
+            version: CURRENT_VERSION,
+            activeAdminSection: subTab,
+            platformStatus,
+            backupStatus: backupStatusLabel,
+            backupIsStale,
+            deploymentReady,
+            environment: envReport?.host || 'unknown'
+          })
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `OpenAI diagnostics failed with status ${response.status}`);
+      setOpenAiDiagnosticsResult(result);
+      addToast('OpenAI Explanation Ready', `${result.guidance?.issues?.length || 0} structured issue(s) explained.`);
+    } catch (err) {
+      const message = err.message || 'OpenAI diagnostics explanation failed.';
+      setOpenAiDiagnosticsError(message);
+      addToast('OpenAI Diagnostics', message);
+    } finally {
+      setIsOpenAiDiagnosticsLoading(false);
+    }
+  };
+
   const handleRunBackupNow = async () => {
     if (isBackupRunning) return;
     const ok = window.confirm('Run a full Firestore JSON backup now? This can take a minute on large databases.');
@@ -6382,6 +6432,32 @@ Type RESTORE to continue.`);
     }
   ];
   const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
+  const adminSearchActions = [
+    { label:'Run Full System Diagnostics', tab:'health', keywords:'diagnostics deployment report health api routes' },
+    { label:'Explain Diagnostics with OpenAI', tab:'health', keywords:'openai repair guidance explain errors health' },
+    { label:'Run Backup Now', tab:'forensics', keywords:'backup manual storage restore watchdog' },
+    { label:'Check Backup Watchdog', tab:'forensics', keywords:'stale scheduled backup cron preview production' },
+    { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password' },
+    { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
+    { label:'Review App Check and MFA', tab:'security', keywords:'security app check mfa rules environment' },
+    { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting manual' },
+    { label:'Check Deployment Readiness', tab:'deployment', keywords:'deploy vercel firebase publish production readiness' },
+    { label:'Create a Workspace', tab:'setup', keywords:'client restaurant owner onboarding setup' }
+  ];
+  const normalizedAdminToolSearch = adminToolSearch.trim().toLowerCase();
+  const scoreAdminSearchText = (text = '') => {
+    if (!normalizedAdminToolSearch) return 0;
+    const haystack = String(text || '').toLowerCase();
+    const tokens = normalizedAdminToolSearch.split(/\s+/).filter(Boolean);
+    let score = haystack.includes(normalizedAdminToolSearch) ? 20 : 0;
+    tokens.forEach(token => { if (haystack.includes(token)) score += 4; });
+    return score;
+  };
+  const adminSearchResults = normalizedAdminToolSearch ? [
+    ...adminTabs.map(tab => ({ type:'tool', label:tab.label, detail:`${tab.group} • ${tab.intent}`, tab:tab.id, score:scoreAdminSearchText(`${tab.label} ${tab.short || ''} ${tab.group} ${tab.groupSummary} ${tab.intent}`) })),
+    ...adminSearchActions.map(action => ({ type:'action', label:action.label, detail:`Action • ${action.keywords}`, tab:action.tab, score:scoreAdminSearchText(`${action.label} ${action.keywords}`) })),
+    ...adminManualArticles.map((article, idx) => ({ type:'article', label:article.title, detail:`Manual • ${article.group}`, tab:'manual', manualId:`${idx}-${String(article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)}`, score:scoreAdminSearchText(`${article.title} ${article.group} ${article.keywords || ''} ${(article.body || []).join(' ')}`) }))
+  ].filter(result => result.score > 0).sort((a,b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : [];
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
   const mobilePrimaryTabs = ['overview', 'health', 'manual', 'forensics', 'security', 'admins', 'roles', 'tenants', 'users', 'support', 'push', 'live'];
   const mobileQuickTabs = mobilePrimaryTabs.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
@@ -6398,6 +6474,17 @@ Type RESTORE to continue.`);
         anchor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 60);
     }
+  };
+
+  const selectAdminSearchResult = (result) => {
+    if (!result) return;
+    if (result.type === 'article') {
+      setAdminManualCategory('All');
+      setAdminManualSearch(result.label);
+      setSelectedAdminArticleId(result.manualId || '');
+    }
+    selectAdminTab(result.tab || 'overview');
+    setAdminToolSearch('');
   };
 
   const jumpToAdminIssue = (target) => selectAdminTab(target || 'overview');
@@ -6543,6 +6630,20 @@ Type RESTORE to continue.`);
           <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="lg:hidden bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest min-h-[46px]">
             {isAdminNavOpen ? 'Hide Menu' : 'Show Menu'}
           </button>
+        </div>
+
+        <div className="relative mt-3" id="admin-tool-search">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className={`${T.input} pl-10 pr-10 min-h-[46px]`} placeholder="Search System Administrator tools, actions, and manual articles..." aria-label="Search System Administrator" />
+            {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={16}/></button>}
+          </div>
+          {normalizedAdminToolSearch && <div className="absolute z-50 left-0 right-0 mt-2 bg-[#0B0E11] border border-[#D4A381]/40 rounded-2xl p-2 shadow-2xl max-h-[52vh] overflow-y-auto custom-scrollbar">
+            {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No authorized System Administrator tool or article matched that search.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#12161A] border border-transparent hover:border-[#2A353D] transition-colors">
+              <div className="flex items-center justify-between gap-2"><span className="text-xs font-black text-white">{result.label}</span><span className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">{result.type}</span></div>
+              <div className="text-[10px] font-bold text-slate-500 mt-1 leading-snug">{result.detail}</div>
+            </button>)}
+          </div>}
         </div>
 
         <div className="relative lg:hidden mt-3 space-y-3" id="admin-mobile-command-strip">
@@ -7484,11 +7585,33 @@ Type RESTORE to continue.`);
               </div>
               <div className={`${T.card} p-4`}>
                 <h3 className="font-black text-white text-sm flex items-center gap-2"><Wrench size={16} className="text-blue-300"/> Deployment Diagnostics</h3>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 leading-snug">Run this before pushing production changes. It downloads a JSON report with server checks and client health, then writes a system audit record.</p>
-                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="mt-3 w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 disabled:opacity-50 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
-                  {isDiagnosticsRunning ? <Loader2 size={14} className="animate-spin"/> : <Wrench size={14}/>} Run Full System Diagnostics
-                </button>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 leading-snug">Run diagnostics, then ask OpenAI for structured repair steps. Operational data is redacted again on the server before it leaves 86 Chaos.</p>
+                <div className="grid sm:grid-cols-2 gap-2 mt-3">
+                  <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 disabled:opacity-50 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                    {isDiagnosticsRunning ? <Loader2 size={14} className="animate-spin"/> : <Wrench size={14}/>} Run Full Diagnostics
+                  </button>
+                  <button type="button" onClick={handleExplainDiagnosticsWithOpenAI} disabled={isOpenAiDiagnosticsLoading} className="w-full bg-purple-900/20 text-purple-300 border border-purple-900/50 hover:bg-purple-900/40 disabled:opacity-50 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                    {isOpenAiDiagnosticsLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>} Explain with OpenAI
+                  </button>
+                </div>
                 {lastDiagnosticsReport && <div className="mt-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-bold text-slate-400">Last report: {formatBackupTimestamp(lastDiagnosticsReport.generatedAt)} • Duration {lastDiagnosticsReport.durationMs || 0}ms • Integrity {lastDiagnosticsReport.backupIntegrity?.status || 'unknown'}</div>}
+                {openAiDiagnosticsError && <div className="mt-3 bg-amber-900/15 border border-amber-500/30 rounded-xl p-3 text-[10px] font-bold text-amber-200 leading-snug">{openAiDiagnosticsError}</div>}
+                {openAiDiagnosticsResult?.guidance && <div className="mt-3 space-y-3">
+                  <div className="bg-[#0B0E11] border border-purple-900/40 rounded-xl p-3">
+                    <div className="flex items-center justify-between gap-2"><div className="text-[9px] font-black uppercase tracking-widest text-purple-300">OpenAI Repair Guidance</div><span className="text-[8px] font-black uppercase tracking-widest text-slate-500">{openAiDiagnosticsResult.model}</span></div>
+                    <div className="text-xs font-bold text-slate-300 mt-2 leading-relaxed">{openAiDiagnosticsResult.guidance.summary}</div>
+                  </div>
+                  {(openAiDiagnosticsResult.guidance.issues || []).map((issue, idx) => {
+                    const severityClass = issue.severity === 'critical' || issue.severity === 'high' ? 'text-red-300 border-red-900/50 bg-red-950/10' : issue.severity === 'medium' ? 'text-amber-300 border-amber-900/50 bg-amber-950/10' : 'text-blue-300 border-blue-900/50 bg-blue-950/10';
+                    return <div key={`${issue.issue}-${idx}`} className={`border rounded-xl p-3 ${severityClass}`}>
+                      <div className="flex items-start justify-between gap-2"><div className="text-sm font-black text-white">{issue.issue}</div><span className="text-[8px] font-black uppercase tracking-widest">{issue.severity}</span></div>
+                      <div className="mt-2 text-[10px] font-bold text-slate-300 leading-relaxed"><span className="text-slate-500 uppercase tracking-widest">What it means:</span> {issue.whatItMeans}</div>
+                      <div className="mt-2 text-[10px] font-bold text-slate-300 leading-relaxed"><span className="text-slate-500 uppercase tracking-widest">Likely cause:</span> {issue.likelyCause}</div>
+                      {[['Exact repair steps', issue.repairSteps], ['Where to click', issue.whereToClick], ['Deploy / publish / env notes', issue.deployPublishEnvNotes], ['Verify it worked', issue.verificationSteps]].map(([title, rows]) => Array.isArray(rows) && rows.length > 0 ? <div key={title} className="mt-3"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{title}</div><div className="space-y-1 mt-1">{rows.map((row, rowIdx) => <div key={rowIdx} className="text-[10px] font-bold text-slate-300 leading-relaxed">{rowIdx + 1}. {row}</div>)}</div></div> : null)}
+                      <div className="mt-3 text-[10px] font-bold text-slate-300 leading-relaxed"><span className="text-slate-500 uppercase tracking-widest">Escalate:</span> {issue.whenToEscalate}</div>
+                    </div>;
+                  })}
+                </div>}
               </div>
             </div>
           </div>
