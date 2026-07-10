@@ -22,7 +22,7 @@ const roleNeedsMfa = (user = {}) => {
 };
 const userHasMfaFlag = (user = {}) => Boolean(user.mfaEnabled || user.multiFactorEnabled || user.security?.mfaEnabled || user.accountSecurity?.mfaEnabled);
 const boolEnv = (name) => /^(1|true|yes|enforce)$/i.test(String(process.env[name] || '').trim());
-const SECURITY_BUILD_VERSION = '15.0.43';
+const SECURITY_BUILD_VERSION = '16.0.3';
 const mfaEnforcementEnabled = () => boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES');
 const decodedHasMfa = (decoded = {}) => Boolean(decoded.firebase?.sign_in_second_factor || decoded.firebase?.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true);
 const authUserHasMfa = async (app, user) => {
@@ -97,7 +97,7 @@ module.exports = async function handler(req, res) {
       .map(row => ({ routeName: row.routeName || '', count: row.count || 0, limit: row.limit || 0, updatedAt: row.updatedAt || '', windowStart: row.windowStart || '' }));
 
     const envVars = [
-      'CRON_SECRET', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'FIREBASE_SERVICE_ACCOUNT_KEY',
+      'CRON_SECRET', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'OPENAI_API_KEY', 'OPENAI_DIAGNOSTICS_API_KEY', 'OPENAI_DIAGNOSTICS_MODEL', 'FIREBASE_SERVICE_ACCOUNT_KEY',
       'FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY', 'FIREBASE_STORAGE_BUCKET',
       'MASTER_ADMIN_EMAIL', 'MASTER_ADMIN_EMAILS', 'APP_CHECK_ENFORCE', 'FIREBASE_APP_CHECK_ENFORCE',
       'MFA_ENFORCE_ELEVATED_ROLES', 'FIREBASE_MFA_ENFORCE_ELEVATED_ROLES', 'RECOVERY_CODE_SECRET',

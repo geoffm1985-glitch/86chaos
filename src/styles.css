@@ -202,7 +202,7 @@ select {
 }
 
 
-/* 16.0.2: 86 Chaos command-center design-system layer */
+/* 16.0.3: stable shell plus organized menu, admin search, safer 86 Voice, OpenAI diagnostics */
 :root {
   --chaos-orange: #ff7a1a;
   --chaos-orange-soft: #ffb15e;
@@ -220,65 +220,50 @@ body {
     linear-gradient(180deg, var(--chaos-ink) 0%, var(--chaos-ink-2) 50%, var(--chaos-ink) 100%) !important;
 }
 
-.chaos-command-theme,
-.ui-v16-command-center {
+.chaos-command-theme {
   min-height: 100vh;
 }
 
 .chaos-command-theme .rounded-xl,
 .chaos-command-theme .rounded-2xl,
-.chaos-command-theme .rounded-3xl,
-.ui-v16-command-center .rounded-xl,
-.ui-v16-command-center .rounded-2xl,
-.ui-v16-command-center .rounded-3xl {
+.chaos-command-theme .rounded-3xl {
   overflow-wrap: anywhere;
 }
 
 .chaos-command-theme .shadow-lg,
 .chaos-command-theme .shadow-xl,
-.chaos-command-theme .shadow-2xl,
-.ui-v16-command-center .shadow-lg,
-.ui-v16-command-center .shadow-xl,
-.ui-v16-command-center .shadow-2xl {
+.chaos-command-theme .shadow-2xl {
   box-shadow: 0 18px 45px rgba(0,0,0,.28) !important;
 }
 
-.chaos-command-theme table,
-.ui-v16-command-center table {
+.chaos-command-theme table {
   border-color: rgba(43,65,80,.85) !important;
 }
 
-.chaos-command-theme th,
-.ui-v16-command-center th {
+.chaos-command-theme th {
   background: rgba(5,9,13,.88) !important;
   color: var(--chaos-orange-soft) !important;
   border-color: rgba(43,65,80,.95) !important;
 }
 
-.chaos-command-theme td,
-.ui-v16-command-center td {
+.chaos-command-theme td {
   border-color: rgba(43,65,80,.72) !important;
 }
 
-.chaos-command-theme a,
-.ui-v16-command-center a {
+.chaos-command-theme a {
   text-underline-offset: 3px;
 }
 
-.chaos-command-theme .custom-scrollbar::-webkit-scrollbar-thumb,
-.ui-v16-command-center .custom-scrollbar::-webkit-scrollbar-thumb {
+.chaos-command-theme .custom-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(255,122,26,.45);
 }
 
-.chaos-command-theme .custom-scrollbar::-webkit-scrollbar-track,
-.ui-v16-command-center .custom-scrollbar::-webkit-scrollbar-track {
+.chaos-command-theme .custom-scrollbar::-webkit-scrollbar-track {
   background: rgba(5,9,13,.55);
 }
 
 .chaos-command-theme .fixed.bottom-5.left-4,
-.chaos-command-theme .fixed.bottom-5.right-4,
-.ui-v16-command-center .fixed.bottom-5.left-4,
-.ui-v16-command-center .fixed.bottom-5.right-4 {
+.chaos-command-theme .fixed.bottom-5.right-4 {
   filter: drop-shadow(0 18px 30px rgba(0,0,0,.46));
 }
 
@@ -291,38 +276,30 @@ body {
 }
 
 @media (min-width: 900px) {
-  .chaos-command-theme main,
-  .ui-v16-command-center main {
+  .chaos-command-theme main {
     padding-top: 1.65rem !important;
   }
 }
 
 @media (max-width: 720px) {
-  .chaos-command-theme > header,
-  .ui-v16-command-center > header {
+  .chaos-command-theme > header {
     height: 64px !important;
     padding-left: .75rem !important;
     padding-right: .75rem !important;
   }
-  .chaos-command-theme .brand-logo-stack,
-  .ui-v16-command-center .brand-logo-stack {
+  .chaos-command-theme .brand-logo-stack {
     padding: .28rem .42rem !important;
     border-radius: 14px !important;
   }
-  .chaos-command-theme main,
-  .ui-v16-command-center main {
+  .chaos-command-theme main {
     padding-inline: .85rem !important;
   }
-  .chaos-command-theme button:not(.no-compact),
-  .ui-v16-command-center button:not(.no-compact) {
+  .chaos-command-theme button:not(.no-compact) {
     min-height: 40px !important;
   }
   .chaos-command-theme input,
   .chaos-command-theme textarea,
-  .chaos-command-theme select,
-  .ui-v16-command-center input,
-  .ui-v16-command-center textarea,
-  .ui-v16-command-center select {
+  .chaos-command-theme select {
     font-size: 16px !important;
   }
 }
