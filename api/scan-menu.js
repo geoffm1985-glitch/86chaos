@@ -4,7 +4,7 @@ const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 
-const MENU_SCANNER_VERSION = '15.0.47';
+const MENU_SCANNER_VERSION = '15.0.48';
 
 function cleanJsonText(text = '') {
   return String(text || '')

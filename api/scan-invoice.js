@@ -4,7 +4,7 @@ const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.47';
+const INVOICE_SCANNER_VERSION = '15.0.48';
 const DEFAULT_INVOICE_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 function cleanJsonText(text = '') {
@@ -194,20 +194,103 @@ function normalizeRow(row, index, data = {}) {
   return normalized;
 }
 
-function isPurchasedProductRow(row = {}) {
-  const rowType = String(row.rowType || row.lineType || row.type || '').toLowerCase();
+const STOCK_ROW_TYPES = /^(item|product|line[_\s-]*item|detail|merchandise|stock|food|ingredient|inventory)$/i;
+const NON_STOCK_ROW_TYPES = /^(header|footer|note|memo|terms|customer|contact|metadata|page|route|invoice|statement|subtotal|total|tax|freight|delivery|fee|deposit|discount|credit|payment|balance|signature)$/i;
+const PURCHASE_UNITS = 'CS|CASE|CASES|EA|EACH|PK|PACK|BX|BOX|BAG|JUG|CTN|CARTON|DZ|DOZ|LB|LBS|OZ|GAL|QT|PT|PLST|TUB|PAIL|CAN|JAR|BTL|BOTTLE|TRAY|PAN|PC|PCS|KG|GM|ML|LTR|LITER|RL|ROLL|SLEEVE|SACK|DRUM|KEG';
+const LEADING_PURCHASE_RE = new RegExp(`^[\\s>*•#-]*(\\d+(?:\\.\\d+)?)\\s*(${PURCHASE_UNITS})\\b`, 'i');
+
+const PACK_RE = new RegExp(`\\b\\d+\\s*\\/\\s*\\d+(?:\\.\\d+)?\\s*(?:${PURCHASE_UNITS}|CT|CNT)?\\b`, 'i');
+const UNIT_RE = new RegExp(`\\b(?:${PURCHASE_UNITS})\\b`, 'i');
+
+function invoiceRowText(row = {}) {
+  return String(row.rawText || row.itemName || row.description || row.name || '').replace(/\s+/g, ' ').trim();
+}
+
+function isClearlyNonStockInvoiceRow(row = {}, { ignoreRowType = false } = {}) {
+  const rowType = String(row.rowType || row.lineType || row.type || '').trim();
   const itemName = String(row.itemName || row.description || row.name || row.rawText || '').trim();
-  const raw = String(row.rawText || '').trim();
-  const combined = `${rowType} ${itemName} ${raw}`.toLowerCase();
+  const raw = invoiceRowText(row);
+  const combined = `${itemName} ${raw}`.toLowerCase();
+
+  if (!ignoreRowType && NON_STOCK_ROW_TYPES.test(rowType)) return true;
+  if (/\b(bill\s*to|ship\s*to|sold\s*to|remit\s*to|invoice\s*(number|date|total)?|account\s*(number|summary)?|purchase\s*order|payment\s*terms|page\s+\d+|subtotal|grand\s*total|total\s*due|amount\s*due|balance\s*due|sales\s*tax|freight\s*(charge)?|delivery\s*(charge|fee)?|fuel\s*surcharge|service\s*charge|deposit|discount|credit|payment|change\s*due|signature)\b/i.test(combined)) return true;
+  if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return true;
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return true;
+  if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasValue(row.quantity)) return true;
+  return false;
+}
+
+function findMixedProductCode(text = '') {
+  const candidates = String(text || '').toUpperCase().match(/\b[A-Z0-9][A-Z0-9-]{2,}\b/g) || [];
+  return candidates.find(token =>
+    /[A-Z]/.test(token) &&
+    /\d/.test(token) &&
+    !/^(?:CS|EA|PK|BX|CTN|LB|LBS|OZ|GAL|QT|PT|REF)\d*$/i.test(token)
+  ) || '';
+}
+
+function inferDescriptionFromInvoiceText(text = '', productCode = '') {
+  let value = String(text || '').replace(/\s+/g, ' ').trim();
+  value = value.replace(LEADING_PURCHASE_RE, '').trim();
+  value = value.replace(new RegExp(`^\\s*(?:\\d+\\s*\\/\\s*)?\\d+(?:\\.\\d+)?\\s*(?:${PURCHASE_UNITS}|CT|CNT)\\b`, 'i'), '').trim();
+
+  if (productCode) {
+    const codeIndex = value.toUpperCase().indexOf(String(productCode).toUpperCase());
+    if (codeIndex >= 0) value = value.slice(codeIndex + String(productCode).length).trim();
+  }
+
+  value = value
+    .replace(/\s+\bREF\b[\s\S]*$/i, '')
+    .replace(/\s+(?:-?\$?\d[\d,]*\.\d{2}\s*){1,3}$/i, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  return /[A-Za-z]{3}/.test(value) ? value : '';
+}
+
+function inferInvoiceProductFields(row = {}) {
+  const original = row && typeof row === 'object' ? row : { rawText: String(row || '') };
+  const text = invoiceRowText(original);
+  const leading = text.match(LEADING_PURCHASE_RE);
+  const productCode = original.productCode || original.sku || original.itemNumber || original.itemCode || original.code || original.pfgCode || findMixedProductCode(text);
+  const priceMatches = text.match(/-?\$?\d[\d,]*\.\d{2}\b/g) || [];
+  const inferredDescription = inferDescriptionFromInvoiceText(text, productCode);
+  const currentName = String(original.itemName || original.description || original.name || '').trim();
+  const currentNameLooksRaw = !currentName || currentName === text || LEADING_PURCHASE_RE.test(currentName) || currentName.length > 105;
+  const packMatch = text.match(PACK_RE);
+
+  const inferred = {
+    ...original,
+    productCode,
+    quantity: hasValue(original.quantity ?? original.qty ?? original.shippedQty ?? original.receivedQty ?? original.orderedQty)
+      ? (original.quantity ?? original.qty ?? original.shippedQty ?? original.receivedQty ?? original.orderedQty)
+      : (leading?.[1] || ''),
+    uom: original.uom || original.unitOfMeasure || leading?.[2] || '',
+    packSize: original.packSize || original.pack || original.size || packMatch?.[0] || leading?.[2] || '',
+    unitPrice: hasValue(original.unitPrice ?? original.priceEach ?? original.casePrice)
+      ? (original.unitPrice ?? original.priceEach ?? original.casePrice)
+      : (priceMatches.length >= 2 ? priceMatches[priceMatches.length - 2].replace('$', '') : ''),
+    totalPrice: hasValue(original.totalPrice ?? original.extendedPrice ?? original.lineTotal)
+      ? (original.totalPrice ?? original.extendedPrice ?? original.lineTotal)
+      : (priceMatches.length ? priceMatches[priceMatches.length - 1].replace('$', '') : ''),
+    rawText: original.rawText || text
+  };
+
+  if (currentNameLooksRaw && inferredDescription) {
+    inferred.itemName = inferredDescription;
+    inferred.description = inferredDescription;
+  }
+
+  return inferred;
+}
+
+function isPurchasedProductRow(input = {}) {
+  const row = inferInvoiceProductFields(input);
+  const rowType = String(row.rowType || row.lineType || row.type || '').trim();
+  const itemName = String(row.itemName || row.description || row.name || row.rawText || '').trim();
+  const raw = invoiceRowText(row);
 
   if (!itemName || itemName.length < 2) return false;
-
-  // Explicit non-stock document/admin rows. These should be saved in allExtractedRows only,
-  // never pushed into Stock Matcher or inventory updates.
-  if (/(header|footer|note|memo|terms|customer|bill\s*to|ship\s*to|sold\s*to|remit|address|phone|email|metadata|page|route|invoice\s*(number|date)?|statement|subtotal|grand\s*total|total\s*due|balance|tax|freight|delivery|fuel|service\s*charge|fee|charge|deposit|discount|credit|payment|amount\s*due|change\s*due|signature)/i.test(combined)) return false;
-  if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return false;
-  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return false;
-  if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasValue(row.quantity)) return false;
 
   const qty = parseMoneyNumber(row.quantity ?? row.qty ?? row.shippedQty ?? row.receivedQty ?? row.orderedQty);
   const unitPrice = parseMoneyNumber(row.unitPrice ?? row.priceEach ?? row.casePrice);
@@ -216,16 +299,37 @@ function isPurchasedProductRow(row = {}) {
   const hasPrice = unitPrice > 0 || totalPrice > 0;
   const hasSku = hasValue(row.productCode || row.sku || row.itemNumber || row.itemCode || row.code || row.pfgCode);
   const hasPack = hasValue(row.packSize || row.pack || row.size || row.uom || row.unitOfMeasure || row.weight || row.catchWeight);
+  const hasLeadingPurchase = LEADING_PURCHASE_RE.test(raw);
+  const hasPackPattern = PACK_RE.test(raw);
+  const hasUnit = UNIT_RE.test(raw);
+  const explicitProductType = STOCK_ROW_TYPES.test(rowType);
+  const explicitNonStockType = NON_STOCK_ROW_TYPES.test(rowType);
+  const alphaWords = (raw.match(/[A-Za-z]{3,}/g) || []).length;
+  const numericTokens = (raw.match(/\b\d+(?:\.\d+)?\b/g) || []).length;
+  const densePurchaseSignature = hasLeadingPurchase && alphaWords >= 1 && (hasSku || hasPackPattern || hasPrice || numericTokens >= 2);
 
-  // Product rows on restaurant invoices almost always have a quantity plus at least
-  // one purchasing signal: SKU/code, pack/UOM, unit price, or line total.
-  if (!hasQuantity) return false;
-  if (!(hasPrice || hasSku || hasPack)) return false;
+  // A strong distributor-style purchase signature wins over an incorrect AI rowType such as
+  // "note" or "header", but never over actual non-stock wording such as INVOICE TOTAL or SALES TAX.
+  if (densePurchaseSignature && !isClearlyNonStockInvoiceRow(row, { ignoreRowType: true })) return true;
 
-  // A $0 row with no SKU and no pack is almost always a header/contact artifact.
-  if (!hasPrice && !hasSku && !hasPack) return false;
+  if (isClearlyNonStockInvoiceRow(row)) return false;
 
-  return true;
+  // Normal structured rows.
+  if (hasQuantity && (hasPrice || hasSku || hasPack)) return true;
+
+  // Trust an explicit product/item classification only when the text still carries a
+  // purchasing signal. This prevents headers mislabeled by AI from reaching inventory.
+  if (!explicitNonStockType && explicitProductType && alphaWords >= 1 && (hasQuantity || hasSku || hasPack || hasUnit || hasPrice)) return true;
+
+  return false;
+}
+
+function productRowKey(row = {}) {
+  const enriched = inferInvoiceProductFields(row);
+  const code = String(enriched.productCode || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const name = String(enriched.itemName || enriched.description || enriched.rawText || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const qty = String(enriched.quantity || '');
+  return code ? `code:${code}:${qty}` : `name:${name}:${qty}`;
 }
 
 function normalizeInvoicePayload(parsed) {
@@ -237,17 +341,26 @@ function normalizeInvoicePayload(parsed) {
       ? data.invoiceRows
       : modelLineItems;
 
-  const normalizedAllRows = allExtractedRows.map((row, index) => normalizeRow(row, index, data));
-  const normalizedModelLineItems = modelLineItems.map((row, index) => normalizeRow(row, index, data));
+  const normalizedAllRows = allExtractedRows.map((row, index) => normalizeRow(inferInvoiceProductFields(row), index, data));
+  const normalizedModelLineItems = modelLineItems.map((row, index) => normalizeRow(inferInvoiceProductFields(row), index, data));
 
-  // Stock Matcher must only receive physical products that were purchased/delivered.
-  // Keep the rest in allExtractedRows/raw audit so invoice history remains complete.
-  const productRows = (normalizedModelLineItems.length ? normalizedModelLineItems : normalizedAllRows)
+  // Build Stock Matcher from BOTH model lineItems and every extracted row. Distributor
+  // invoices often put valid products only in allExtractedRows when the model struggles
+  // with a dense line format. Deduplicate after recovery.
+  const productMap = new Map();
+  [...normalizedModelLineItems, ...normalizedAllRows]
+    .map(inferInvoiceProductFields)
     .filter(isPurchasedProductRow)
-    .map(row => ({ ...row, isInventoryLine: true }));
+    .forEach(row => {
+      const key = productRowKey(row);
+      const existing = productMap.get(key) || {};
+      productMap.set(key, { ...existing, ...row, isInventoryLine: true, rowType: 'product' });
+    });
+  const productRows = Array.from(productMap.values());
+  const productKeys = new Set(productRows.map(productRowKey));
 
   const skippedRows = normalizedAllRows
-    .filter(row => !isPurchasedProductRow(row))
+    .filter(row => !isPurchasedProductRow(row) && !productKeys.has(productRowKey(row)))
     .map(row => ({ ...row, isInventoryLine: false }));
 
   return {
@@ -511,6 +624,10 @@ Rules:
 - Do not summarize.
 - Do not skip tiny rows, handwritten notes, fees, credits, taxes, deposits, totals, PO numbers, terms, route numbers, vendor/customer info, page numbers, or footer notes.
 - lineItems MUST contain ONLY physical products purchased/delivered that should be eligible to update inventory stock.
+- Distributor rows may be one dense OCR string. A row beginning with a purchased quantity and unit such as "1 CS", "2 EA", or "3 PK" is normally a product row when it also contains a pack size, SKU/product code, description, or price.
+- Parse dense product strings into quantity, UOM, packSize, productCode, itemName, unitPrice, and totalPrice instead of putting the whole row in skipped/non-product output.
+- A row with a strong purchase signature such as quantity + case/unit + pack/SKU/description is a product even if OCR or an earlier classifier mislabeled its rowType as note, header, or metadata.
+- Do not classify chicken, meat, dairy, produce, sauces, dressings, beverages, paper goods, or other physical restaurant supplies as notes merely because their row formatting is unusual.
 - Do NOT put email addresses, From/To/Subject lines, vendor contact info, customer/bill-to/ship-to fields, headers, footers, page numbers, terms, totals, taxes, freight, deposits, fees, discounts, credits, payments, balances, notes, signatures, or account metadata in lineItems.
 - Preserve every visible line/row in allExtractedRows, even if it is not an inventory item.
 - If a value is unclear, include it as bestGuess and add a warning.
@@ -839,6 +956,12 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
+module.exports.__test = {
+  inferInvoiceProductFields,
+  isPurchasedProductRow,
+  normalizeInvoicePayload,
+  productRowKey
+};
 module.exports.config = {
   maxDuration: 300,
   memory: 1024

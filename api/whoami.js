@@ -59,7 +59,7 @@ module.exports = async function handler(req, res) {
 
     res.status(200).json({
       ok: true,
-      version: '15.0.47',
+      version: '15.0.48',
       runtime: {
         firebaseProjectId: getRuntimeProjectId(app),
         firebaseStorageBucket: clean(app?.options?.storageBucket || process.env.FIREBASE_STORAGE_BUCKET || ''),
@@ -80,5 +80,5 @@ module.exports = async function handler(req, res) {
       firestoreRestaurantId: firestoreProfile?.restaurantId || '',
       claims: decoded
     });
-  } catch (err) { res.status(401).json({ ok: false, version: '15.0.47', error: err.message }); }
+  } catch (err) { res.status(401).json({ ok: false, version: '15.0.48', error: err.message }); }
 };

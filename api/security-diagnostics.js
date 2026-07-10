@@ -19,7 +19,7 @@ const roleNeedsMfa = (user = {}) => {
 };
 const userHasMfaFlag = (user = {}) => Boolean(user.mfaEnabled || user.multiFactorEnabled || user.security?.mfaEnabled || user.accountSecurity?.mfaEnabled);
 const boolEnv = (name) => /^(1|true|yes|enforce)$/i.test(String(process.env[name] || '').trim());
-const SECURITY_BUILD_VERSION = '15.0.47';
+const SECURITY_BUILD_VERSION = '15.0.48';
 const mfaEnforcementEnabled = () => boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES');
 const decodedHasMfa = (decoded = {}) => Boolean(decoded.firebase?.sign_in_second_factor || decoded.firebase?.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true);
 const authUserHasMfa = async (app, user) => {
@@ -128,7 +128,7 @@ module.exports = async function handler(req, res) {
           credentialConfigured: runtimeCredential.configured,
           credentialSource: runtimeCredential.source || runtimeCredential.recommendedEnv || runtimeCredential.error || 'missing',
           storageBucket: app.options?.storageBucket || process.env.FIREBASE_STORAGE_BUCKET || `${runtimeProjectId}.firebasestorage.app`,
-          note: '15.0.47 selects Firebase Admin credentials from the signed token project. Preview should use FIREBASE_TEST_SERVICE_ACCOUNT_KEY; Production should use FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY. The older FIREBASE_SERVICE_ACCOUNT_KEY still works when it belongs to the same project.'
+          note: '15.0.48 selects Firebase Admin credentials from the signed token project. Preview should use FIREBASE_TEST_SERVICE_ACCOUNT_KEY; Production should use FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY. The older FIREBASE_SERVICE_ACCOUNT_KEY still works when it belongs to the same project.'
         }
       },
       app: { version: SECURITY_BUILD_VERSION, latestVersion: SECURITY_BUILD_VERSION, checkedAt: new Date().toISOString() },
