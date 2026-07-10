@@ -3764,7 +3764,6 @@ const [editingRest, setEditingRest] = useState(null);
   const emailWorkspaceLogin = (login) => { window.location.href = `mailto:${login.email}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${login.restaurantName}`)}&body=${encodeURIComponent(buildWorkspaceLoginText(login))}`; };
   const textWorkspaceLogin = (login) => { if (!login.phone) return addToast('No Phone', 'No owner phone number was entered.'); const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?'; window.location.href = `sms:${login.phone}${smsChar}body=${encodeURIComponent(buildWorkspaceLoginText(login))}`; };
   const startDemoMode = (client, role = demoRole) => { if (!client?.id) return; setGhostTenant({ id: client.id, name: client.name, mode: 'demo', demoMode: { plan: demoPlan, role, features: demoFeatures } }); setSelectedClient(null); setActiveTab('published'); addToast('Demo Mode', `${role === 'employee' ? 'Employee' : 'Manager'} demo started. Use the banner to exit.`); };
-  const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
   const [bulkDeleteEmails, setBulkDeleteEmails] = useState('');
   const [selectedBulkDeleteUserIds, setSelectedBulkDeleteUserIds] = useState([]);
@@ -4771,24 +4770,6 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     setBroadcastMsg('');
   };
 
- const handleForgePush = async (e, type) => {
-    e.preventDefault(); 
-    if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
-    
-    addToast('Deploying', `Pushing ${type} to all shards...`);
-    let success = 0; let failed = 0;
-
-    for (const r of restaurants) {
-      try {
-        if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
-        success++;
-      } catch (err) { failed++; }
-    }
-    
-    if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
-    else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
-    setForgeEventTitle('');
-  };
 
                const handleTestPush = async () => {
     if (!window.confirm("Send a plain test notification to all opted-in devices in your workspace?")) return;
@@ -4976,7 +4957,7 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.45 keeps the retention system and adds remembered alerts plus the calmer Admin Workspace.'
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.46 keeps the retention system and adds the professional Admin Console plus the Gemini authorization repair.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
@@ -5448,6 +5429,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
 
   const adminManualArticles = [
     { title: 'Version 15.0.44 Automated Data Retention and Compact Menu', group: 'System Administrator', keywords: 'v15 15.0.44 retention cleanup prep 86 alerts ai uploads time punches archive workspace delete restore cloud functions menu sections compact drawer', body: ['15.0.44 adds Firebase Cloud Functions that run every day to clean up old operational data. Prep items and 86 alerts are removed after 30 days. Raw Menu Intelligence and Invoice Scanner files are removed from Storage after 30 days.', 'Time punches leave the active Firestore database after 365 days. The function writes a compressed, verified archive file before deleting the active records. Archive files are deleted at the three-year mark.', 'System Administrator workspace deletion now starts a 30-day recovery window instead of instantly deleting the restaurant record. The workspace is disabled immediately. Use Restore beside a scheduled workspace before the deadline to cancel deletion.', 'The Firebase Functions are separate from Vercel. Open DATA_RETENTION_SETUP_15_0_44.md in the ZIP and follow the testing-project steps before production. RETENTION_ARCHIVE_BUCKET must be configured or the time-clock archive job safely stops without deleting source records.', 'The main app drawer is grouped into Account, Operations, Manager Tools, Management, and System. Button spacing is tighter, but the existing copper color system and permission filtering are unchanged.'] },
+    { title: 'Version 15.0.46 Professional Admin Console and Gemini Authorization Repair', group: 'System Administrator', keywords: 'v15 15.0.46 professional admin console complete redesign manual knowledge desk gemini cross project authorization global calendar injection removed compact', body: ['System Administrator was rebuilt again as a compact professional console. Every admin page now uses the same flat light-surface design, smaller controls, tighter tables, restrained status colors, and clearer page framing.', 'The Administrator Manual is now a three-column Knowledge Desk with search and article navigation on the left, Gemini guidance and repair playbooks in the center, and the selected article on the right.', 'Gemini Manual cross-project verification now accepts the cryptographically verified 86 Chaos owner bootstrap identity when Preview environment variables are missing, while still limiting the exception to trusted Firebase projects and the Gemini Manual route.', 'The former global calendar injection tool and its Forge page were removed completely. Platform broadcasts and other protected operations remain in their existing sections.', 'No Firestore rules, Storage rules, indexes, or Firebase Functions need publishing for this visual/API repair. Redeploy Vercel to activate it.'] },
     { title: 'Version 15.0.45 Remembered Alerts, Calm Admin Workspace, and Gemini Auth Repair', group: 'System Administrator', keywords: 'v15 15.0.45 alert dismissal seen alerts persistent banner warning admin redesign calm workspace organized gemini invalid audience chaos test production privacy policy', body: ['Dismissible warnings now save a seen-state for the signed-in user and active workspace. The app hides the exact alert after it is dismissed, including after refresh or sign-in.', 'Each alert has a fingerprint based on its real content or pending action set. A changed announcement, a new update version, a new push-repair state, or a changed set of time-off requests appears again automatically.', 'The pending time-off warning now has a clear close button. Workspace broadcasts, update notices, and push-repair notices use the same remembered-alert system.', 'System Administrator is now the Admin Workspace. The old always-visible cockpit board is gone. Start at the short priority list, use the six quick actions, or choose a section from the calmer left rail or mobile selector.', 'Gemini Manual now accepts a cryptographically verified Master Admin token from either chaos-test-d1601 or cheers-34b8d. This narrow fallback is only used for Gemini Manual and does not let testing requests operate production admin tools.', 'The Privacy Policy now documents AI processing, the automated retention schedule, legal holds, provider deletion delays, privacy requests, and restaurant responsibilities.', 'All existing tools remain available, including Gemini Manual continuation, OpenAI diagnostics guidance, backups, Security Center, Workspaces, People, Push, Support, retention controls, and Danger Zone confirmations.'] },
     { title: 'Retention job troubleshooting', group: 'System Administrator', keywords: 'retention function failed cloud scheduler archive bucket missing index prep alerts uploads time punch workspace hard delete logs', body: ['First confirm the Firebase project is the correct testing or production project. Retention functions deploy to Firebase, not Vercel.', 'If time-clock archival fails with RETENTION_ARCHIVE_BUCKET missing, create the separate archive bucket, add its bucket name to functions/.env.<project-id>, and redeploy functions. The function does not delete time punches unless the archive upload is verified.', 'If Firestore reports that an index is required, deploy firestore.indexes.json with firebase deploy --only firestore:indexes and wait for the index to finish building.', 'Use Firebase Console → Functions to confirm each retention function is deployed, then Cloud Scheduler to confirm the daily job exists. Open Logs for the exact collection, file prefix, scanned count, deleted count, or failure message.', 'A scheduled workspace can be restored from System Administrator → Workspaces before 30 days. The hard-delete function removes restaurant-scoped Firestore documents, Storage files, membership data, and workspace-only Firestore profiles. It intentionally does not automatically delete Firebase Authentication identities.'] },
     { title: 'Version 15.0.43 Safer Voice 86 and OpenAI Diagnostics', group: 'System Administrator', keywords: 'v15 15.0.43 voice 86 out of stock confirmation ambiguous item review openai diagnostics explain search event calendar', body: ['15.0.43 treats every voice 86 or out-of-stock command as a high-risk action. A strict inventory or Menu Intelligence match must be found, the user must confirm it, and the item is rechecked immediately before the alert is written.', 'Ambiguous voice matches now show a choose-item review instead of guessing. AI classification is never allowed to silently select an inventory record or send an 86 alert, and inventory quantities are never changed by an 86 command.', 'Health Dashboard now includes Explain with OpenAI for structured diagnostics repair guidance. The server route is Super Admin-only and redacts credentials, signed URLs, tokens, private keys, and personal contact fields before sending operational data.', 'System Administrator includes a desktop/mobile search for tools, sections, actions, and manual articles. The Event Calendar top heading now says Event Calendar instead of repeating the large month/date.'] },
@@ -6458,7 +6440,6 @@ Type RESTORE to continue.`);
       danger:true,
       tabs:[
         {id:'ops', label:'Platform Operations', short:'Ops', intent:'Send platform banners, global alerts, demo workspaces, and operational broadcasts.'},
-        {id:'forge', label:'Global Event Injection', short:'Forge', intent:'Push one event to every client calendar when intentionally needed.'},
         {id:'danger', label:'Danger Zone', short:'Danger', intent:'High-risk destructive or global operations with extra confirmation.'}
       ]
     }
@@ -6614,7 +6595,7 @@ Type RESTORE to continue.`);
 
 
   return (
-    <div className="max-w-7xl mx-auto space-y-3 sm:space-y-4 pb-28 px-2 sm:px-4 lg:px-0 animate-[slideIn_0.2s_ease-out]">
+    <div className="admin46-shell max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
         {createdWorkspaceLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -6633,22 +6614,22 @@ Type RESTORE to continue.`);
           <button type="button" onClick={() => setAdminHelpModal(null)} className={T.btn}>Got it</button>
         </div>}
       </Modal>
-      {/* 15.0.45 ADMIN WORKSPACE SHELL */}
-      <section className="admin45-header rounded-[26px] border border-[#2A353D] bg-[#101418] p-4 sm:p-6 shadow-2xl">
+      {/* 15.0.46 PROFESSIONAL ADMIN CONSOLE */}
+      <section className="admin46-topbar">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
           <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#D4A381]">86 Chaos Control Room</div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Admin Workspace</h1>
-            <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">Pick the job you need, handle it, and get out. The noisy cockpit has been replaced with a quieter task-first workspace.</p>
+            <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#D4A381]">System Administration</div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Operations Console</h1>
+            <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">A compact workspace for platform health, access, customers, recovery, and support.</p>
           </div>
           <div className="grid grid-cols-3 gap-2 w-full xl:w-auto xl:min-w-[420px]">
-            <button type="button" onClick={() => selectAdminTab('overview')} className="admin45-status-card text-left">
+            <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-status-chip text-left">
               <span>Platform</span><strong className={platformStatus === 'Needs Attention' ? 'text-red-300' : platformStatus === 'Monitoring' ? 'text-amber-300' : 'text-emerald-300'}>{platformStatus}</strong><small>{adminRiskQueue.length} item{adminRiskQueue.length === 1 ? '' : 's'}</small>
             </button>
-            <button type="button" onClick={() => selectAdminTab('forensics')} className="admin45-status-card text-left">
+            <button type="button" onClick={() => selectAdminTab('forensics')} className="admin46-status-chip text-left">
               <span>Backup</span><strong className={backupIsStale ? 'text-amber-300' : 'text-emerald-300'}>{backupStatusLabel}</strong><small>{nextBackupCountdown}</small>
             </button>
-            <button type="button" onClick={() => selectAdminTab('security')} className="admin45-status-card text-left">
+            <button type="button" onClick={() => selectAdminTab('security')} className="admin46-status-chip text-left">
               <span>Security</span><strong className={(securityReport?.riskyUsers || []).length ? 'text-amber-300' : 'text-slate-100'}>{(securityReport?.riskyUsers || []).length} flagged</strong><small>Review center</small>
             </button>
           </div>
@@ -6656,10 +6637,10 @@ Type RESTORE to continue.`);
 
         <div className="relative mt-5" id="admin-tool-search">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className="w-full min-h-[52px] rounded-2xl border border-[#303B43] bg-[#0B0E11] pl-12 pr-12 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-[#D4A381]" placeholder="Find a tool, action, customer, or help article..." aria-label="Search System Administrator" />
+          <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className="w-full min-h-[52px] rounded-2xl border border-[#303B43] bg-[#0B0E11] pl-12 pr-12 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-[#D4A381]" placeholder="Search tools, users, workspaces, or manual..." aria-label="Search System Administrator" />
           {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={17}/></button>}
           {normalizedAdminToolSearch && <div className="absolute z-50 left-0 right-0 mt-2 bg-[#0B0E11] border border-[#D4A381]/40 rounded-2xl p-2 shadow-2xl max-h-[52vh] overflow-y-auto custom-scrollbar">
-            {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No authorized admin tool or article matched that search.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#161C21] border border-transparent hover:border-[#2A353D] transition-colors">
+            {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No matching authorized result.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#161C21] border border-transparent hover:border-[#2A353D] transition-colors">
               <div className="flex items-center justify-between gap-2"><span className="text-xs font-black text-white">{result.label}</span><span className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">{result.type}</span></div>
               <div className="text-[10px] font-bold text-slate-500 mt-1 leading-snug">{result.detail}</div>
             </button>)}
@@ -6674,9 +6655,9 @@ Type RESTORE to continue.`);
         </div>
       </section>
 
-      <div className="admin45-layout grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
+      <div className="admin46-layout grid gap-3 lg:grid-cols-[218px_minmax(0,1fr)] lg:items-start">
         <aside className={`${isAdminNavOpen ? 'block' : 'hidden lg:block'} lg:sticky lg:top-4 h-max`} id="admin-left-nav">
-          <nav className="admin45-nav rounded-[22px] border border-[#2A353D] bg-[#101418] p-3 shadow-xl">
+          <nav className="admin46-nav">
             <div className="flex items-center justify-between gap-2 px-2 py-2 border-b border-[#252E35] mb-2">
               <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#D4A381]">Sections</div><div className="text-xs font-bold text-slate-500 mt-1">Choose one job</div></div>
               <button type="button" onClick={() => setIsAdminNavOpen(false)} className="lg:hidden rounded-lg border border-[#303B43] p-2 text-slate-400"><X size={15}/></button>
@@ -6687,7 +6668,7 @@ Type RESTORE to continue.`);
                   <div className={`px-2 pb-1 text-[9px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-slate-500'}`}>{group.title}</div>
                   <div className="space-y-1">
                     {group.tabs.map(tab => (
-                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`admin45-nav-button ${subTab === tab.id ? 'is-active' : ''} ${group.danger ? 'is-danger' : ''}`}>
+                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`admin46-nav-button ${subTab === tab.id ? 'is-active' : ''} ${group.danger ? 'is-danger' : ''}`}>
                         <span>{tab.label}</span>
                         {subTab === tab.id && <ChevronRight size={14}/>} 
                       </button>
@@ -6697,13 +6678,13 @@ Type RESTORE to continue.`);
               ))}
             </div>
             <div className="mt-3 pt-3 border-t border-[#252E35] grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => selectAdminTab('manual')} className="admin45-mini-action">Manual</button>
-              <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="admin45-mini-action disabled:opacity-50">{isDiagnosticsRunning ? 'Running' : 'Diagnostics'}</button>
+              <button type="button" onClick={() => selectAdminTab('manual')} className="admin46-mini-action">Manual</button>
+              <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="admin46-mini-action disabled:opacity-50">{isDiagnosticsRunning ? 'Running' : 'Diagnostics'}</button>
             </div>
           </nav>
         </aside>
 
-        <div id="admin-content-start" className="min-w-0 space-y-4 sm:space-y-6">
+        <div id="admin-content-start" className="admin46-content min-w-0 space-y-3">
 <Modal isOpen={!!editingGlobalUser} onClose={() => { setEditingGlobalUser(null); setSupportUserForm({}); }} title={`Support Edit User: ${editingGlobalUser?.name || editingGlobalUser?.email || ''}`}>
         {editingGlobalUser && (
           <form onSubmit={handleSupportUserUpdate} className="space-y-4 max-h-[72vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -7053,6 +7034,17 @@ Type RESTORE to continue.`);
       )}
 
 {/* --- TAB: OVERVIEW --- */}
+      {subTab !== 'overview' && (
+        <div className="admin46-pagebar">
+          <div className="min-w-0">
+            <div className="admin46-eyebrow">{activeAdminTab.group}</div>
+            <h2>{activeAdminTab.label}</h2>
+            <p>{activeAdminTab.intent}</p>
+          </div>
+          <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
+        </div>
+      )}
+
       {subTab === 'overview' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <section className="admin45-content-card p-4 sm:p-6">
@@ -7930,15 +7922,7 @@ another@email.com"></textarea>
         </div>
       )}
 
-{/* --- TAB: THE FORGE --- */}
-      {subTab === 'forge' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <form onSubmit={(e) => handleForgePush(e, 'Event')} className={`${T.card} p-5`}>
-            <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={18}/> Global Event Injection</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Force an event onto every client's calendar simultaneously.</p></div>
-            <div className="flex flex-col sm:flex-row gap-3"><input type="date" value={forgeEventDate} onChange={e=>setForgeEventDate(e.target.value)} className={`${T.input} sm:w-48`} required /><input type="text" placeholder="Event Title (e.g. Mother's Day)" value={forgeEventTitle} onChange={e=>setForgeEventTitle(e.target.value)} className={T.input} required /><button type="submit" className={`${T.btn} px-8 whitespace-nowrap`}>Push Event</button></div>
-          </form>
-        </div>
-      )}
+
 
       {/* --- TAB: SUPPORT & CRASHES --- */}
       {subTab === 'support' && (
@@ -8427,154 +8411,168 @@ another@email.com"></textarea>
       )}
 
       {subTab === 'manual' && (
-        <div id="admin-manual" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className={`${T.card} p-5 cockpit-grid`}>
-            <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">AI support interface</div>
-                <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><HelpCircle size={24} className="text-[#D4A381]"/> System Administrator Support Console</h2>
-                <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Type the customer's question and get a practical admin answer: where to go, what to check, what to click, how to prove it worked, and what needs separate deployment.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={handleAskGeminiAdminManual} disabled={isGeminiManualLoading} className="px-4 py-3 bg-blue-900/30 text-blue-200 border border-blue-500/40 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-50 flex items-center justify-center gap-2">{isGeminiManualLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>} Ask Gemini</button>
-                <button type="button" onClick={copyAdminSupportAnswer} className="px-4 py-3 bg-[#D4A381] text-slate-950 rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 flex items-center justify-center gap-2"><ClipboardList size={14}/> Copy Support Answer</button>
-              </div>
+        <div id="admin-manual" className="admin46-manual">
+          <div className="admin46-manual-heading">
+            <div>
+              <div className="admin46-eyebrow">Internal knowledge system</div>
+              <h2>Administrator Manual</h2>
+              <p>Search documented procedures, ask Gemini for a repair plan, and keep the selected article visible while you work.</p>
             </div>
-            <div className="mt-4 grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3">
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Customer question or symptom</label>
-                <textarea value={adminManualQuestion} onChange={e => setAdminManualQuestion(e.target.value)} rows={4} placeholder="Example: customer says the menu scan failed with invalid JSON, or employee cannot see the schedule tab..." className="mt-2 w-full bg-[#12161A] border border-[#2A353D] rounded-xl px-4 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381] resize-none" />
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {sampleAdminQuestions.map(sample => <button key={sample} type="button" onClick={() => setAdminManualQuestion(sample)} className="px-3 py-1.5 bg-[#0B0E11] border border-[#2A353D] rounded-full text-[10px] font-black uppercase tracking-widest text-slate-300 hover:border-[#D4A381]">{sample}</button>)}
+            <div className="admin46-manual-stats">
+              <span><strong>{adminManualArticles.length}</strong> articles</span>
+              <span><strong>{adminSupportPlaybooks.length}</strong> playbooks</span>
+              <span><strong>{CURRENT_VERSION}</strong> build</span>
+            </div>
+          </div>
+
+          <div className="admin46-manual-grid">
+            <aside className="admin46-manual-index">
+              <div className="admin46-field">
+                <label>Search documentation</label>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                  <input
+                    value={adminManualSearch}
+                    onChange={event => setAdminManualSearch(event.target.value)}
+                    placeholder="backup, MFA, push, permissions..."
+                    className="admin46-input pl-9"
+                  />
                 </div>
               </div>
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Article filter</label>
-                <div className="relative mt-2">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input value={adminManualSearch} onChange={e => setAdminManualSearch(e.target.value)} placeholder="Optional keyword filter..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-10 pr-3 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381]" />
-                </div>
-                <select value={adminManualCategory} onChange={e => setAdminManualCategory(e.target.value)} className="mt-2 w-full bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-3 text-xs font-black uppercase tracking-widest text-slate-300 outline-none focus:border-[#D4A381]">
-                  {adminManualCategories.map(group => <option key={group} value={group}>{group}</option>)}
+              <div className="admin46-field">
+                <label>Category</label>
+                <select value={adminManualCategory} onChange={event => setAdminManualCategory(event.target.value)} className="admin46-input">
+                  {adminManualCategories.map(category => <option key={category} value={category}>{category}</option>)}
                 </select>
               </div>
-            </div>
-          </div>
 
-          <div className="grid xl:grid-cols-[320px_minmax(0,1fr)] gap-4">
-            <div className="space-y-4">
-            <div className={`${T.card} p-4 h-max`}>
-              <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-3">Fast support routine</div>
-              {[
-                'Get the exact email, workspace, URL, device, and screenshot.',
-                'Search the user and workspace before editing.',
-                'Confirm restaurantId, permissions, and current version.',
-                'Copy diagnostics before risky changes.',
-                'Fix the smallest thing that explains the symptom.',
-                'Verify as the user, then exit Ghost Mode.'
-              ].map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 mb-2"><span className="w-5 h-5 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}
-            </div>
-
-              <div className={`${T.card} overflow-hidden max-h-[44vh] overflow-y-auto custom-scrollbar`}>
-                <div className={T.th}>Related Playbooks</div>
-                {[primarySupportPlaybook, ...relatedSupportPlaybooks].filter(Boolean).map((playbook, idx) => (
-                  <div key={playbook.title} className={`${T.row} ${idx === 0 ? 'bg-[#D4A381]/10' : ''}`}>
-                    <div className="flex items-center gap-2">
-                      <SignalPip tone={idx === 0 ? 'amber' : 'blue'} label={idx === 0 ? 'best match' : 'related'} />
-                      <div className="font-black text-white text-sm">{playbook.title}</div>
-                    </div>
-                    <div className="text-[10px] text-slate-500 font-bold mt-1">Score {playbook.score || 0}</div>
-                  </div>
+              <div className="admin46-index-label">Suggested questions</div>
+              <div className="admin46-question-list">
+                {sampleAdminQuestions.slice(0, 5).map(question => (
+                  <button key={question} type="button" onClick={() => { setAdminManualQuestion(question); setGeminiManualQuestion(question); }} title={question}>
+                    {question}
+                  </button>
                 ))}
               </div>
-            </div>
 
-            <div className="space-y-4 min-w-0">
-              <div className={`${T.card} p-5 border border-[#D4A381]/40`}>
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Suggested answer</div>
-                    <h3 className="text-xl font-black text-white mt-1">{primarySupportPlaybook?.title || 'Start with support triage'}</h3>
-                  </div>
-                  <SignalPip tone={supportQuestion ? 'emerald' : 'amber'} label={supportQuestion ? 'question ready' : 'type a question'} />
-                </div>
-                {!supportQuestion && <div className="mt-4 bg-amber-900/10 border border-amber-500/30 rounded-xl p-3 text-xs font-bold text-amber-100">Type the customer problem above or pick a sample question. The console will match it against support playbooks and the full manual.</div>}
-                <div className="mt-4 grid lg:grid-cols-2 gap-3">
-                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
-                    <div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2">Likely cause</div>
-                    <p className="text-sm font-bold text-slate-200 leading-relaxed">{primarySupportPlaybook?.likelyCause}</p>
-                  </div>
-                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
-                    <div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2">Escalate when</div>
-                    <p className="text-sm font-bold text-slate-200 leading-relaxed">{primarySupportPlaybook?.escalation}</p>
-                  </div>
-                </div>
-                <div className="mt-4 grid lg:grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-2">First checks</div>
-                    <div className="space-y-2">{(primarySupportPlaybook?.firstChecks || []).map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-[#12161A] border border-[#2A353D] text-[#D4A381] flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-widest font-black text-emerald-300 mb-2">Fix it in this order</div>
-                    <div className="space-y-2">{(primarySupportPlaybook?.fixSteps || []).map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-emerald-900/30 border border-emerald-500/30 text-emerald-200 flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}</div>
-                  </div>
-                </div>
-                <div className="mt-4 bg-red-900/10 border border-red-500/30 rounded-xl p-3">
-                  <div className="text-[10px] uppercase tracking-widest font-black text-red-200 mb-2">Do not do this</div>
-                  <div className="space-y-1">{(primarySupportPlaybook?.doNot || []).map((line, idx) => <div key={idx} className="text-xs font-bold text-red-100 leading-relaxed">- {line}</div>)}</div>
-                </div>
+              <div className="admin46-index-label">Matching articles</div>
+              <div className="admin46-article-list">
+                {topManualArticles.length === 0 && <div className="admin46-empty">No articles matched. Try one or two simpler words.</div>}
+                {topManualArticles.map(article => (
+                  <button
+                    key={article.manualId}
+                    type="button"
+                    onClick={() => setSelectedAdminArticleId(article.manualId)}
+                    className={selectedAdminArticle?.manualId === article.manualId ? 'is-active' : ''}
+                  >
+                    <span>{article.group}</span>
+                    <strong>{article.title}</strong>
+                  </button>
+                ))}
               </div>
+            </aside>
 
-              <div className={`${T.card} p-5 border border-blue-500/30 bg-blue-950/10`}>
-                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+            <main className="admin46-manual-workbench">
+              <section className="admin46-assistant">
+                <div className="admin46-assistant-title">
                   <div>
-                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-black text-blue-300"><Sparkles size={14}/> Gemini manual assistant</div>
-                    <h3 className="font-black text-white text-lg mt-2">Ask the manual for exact next steps</h3>
-                    <p className="text-xs text-slate-400 font-bold mt-1 max-w-2xl">Uses matched playbooks, relevant articles, and safe admin context to produce step-by-step instructions. Requires server env <span className="font-mono text-slate-300">GEMINI_API_KEY</span>; the key never goes into the browser.</p>
+                    <div className="admin46-eyebrow"><Sparkles size={12}/> Gemini repair assistant</div>
+                    <h3>Describe the problem</h3>
                   </div>
-                  <button type="button" onClick={handleAskGeminiAdminManual} disabled={isGeminiManualLoading} className="px-4 py-2 rounded-xl bg-blue-900/30 border border-blue-500/40 text-blue-200 text-[10px] font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-50 flex items-center justify-center gap-2">{isGeminiManualLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>} Ask Gemini</button>
+                  <button type="button" onClick={handleAskGeminiAdminManual} disabled={isGeminiManualLoading} className="admin46-primary">
+                    {isGeminiManualLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>}
+                    {isGeminiManualLoading ? 'Working…' : 'Generate plan'}
+                  </button>
                 </div>
-                <textarea value={geminiManualQuestion || adminManualQuestion} onChange={e => setGeminiManualQuestion(e.target.value)} rows={3} placeholder="Ask Gemini exactly what to do. Example: Backup is 65 hours old on preview, what should I check next?" className="mt-4 w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl px-4 py-3 text-sm font-bold text-white outline-none focus:border-blue-400 resize-none" />
-                {geminiManualError && <div className="mt-3 bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-xs font-bold text-red-200">{geminiManualError}</div>}
-                {geminiManualAnswer && <div className="mt-3 bg-[#0B0E11] border border-blue-500/20 rounded-xl p-4">
-                  <div className="flex flex-wrap items-center gap-2 mb-3 text-[9px] uppercase tracking-widest font-black text-slate-500"><span>{geminiManualMeta?.model || 'Gemini'}</span><span>•</span><span>{geminiManualMeta?.api || 'api'}</span><span>•</span><span>{geminiManualMeta?.durationMs || 0}ms</span>{geminiManualMeta?.finishReason && <><span>•</span><span>{geminiManualMeta.finishReason}</span></>}{geminiManualMeta?.autoContinuationCount > 0 && <><span>•</span><span>auto-continued {geminiManualMeta.autoContinuationCount}x</span></>}</div>
-                  {geminiManualMeta?.answerIncomplete && <div className="mb-3 bg-amber-900/20 border border-amber-500/40 rounded-xl p-3 text-xs font-bold text-amber-100">Gemini may have stopped before the answer finished: {geminiManualMeta.incompleteReason || 'output limit reached'}. Tap Continue Gemini Answer to finish it.</div>}
-                  <div className="whitespace-pre-wrap text-sm font-bold text-slate-200 leading-relaxed">{geminiManualAnswer}</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {geminiManualMeta?.canContinue && <button type="button" onClick={handleContinueGeminiAdminManual} disabled={isGeminiManualLoading} className="px-3 py-2 rounded-lg bg-amber-900/20 border border-amber-500/40 text-amber-100 text-[10px] font-black uppercase tracking-widest hover:border-amber-300 disabled:opacity-50">{isGeminiManualLoading ? 'Continuing…' : 'Continue Gemini Answer'}</button>}
-                    <button type="button" onClick={() => { navigator.clipboard?.writeText(geminiManualAnswer); addToast('Copied', 'Gemini manual answer copied.'); }} className="px-3 py-2 rounded-lg bg-[#12161A] border border-[#2A353D] text-slate-300 text-[10px] font-black uppercase tracking-widest hover:border-blue-400">Copy Gemini Answer</button>
-                  </div>
-                </div>}
-              </div>
+                <textarea
+                  value={geminiManualQuestion || adminManualQuestion}
+                  onChange={event => { setGeminiManualQuestion(event.target.value); setAdminManualQuestion(event.target.value); }}
+                  rows={4}
+                  placeholder="Example: Automatic backups are stale on the testing deployment. What should I check?"
+                  className="admin46-textarea"
+                />
+                <div className="admin46-privacy-note">Questions are sent with matched manual excerpts and redacted system context. Never paste passwords, keys, tokens, signed URLs, or employee files.</div>
 
-              {selectedAdminArticle && (
-                <div className={`${T.card} p-5`}>
-                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-black text-[#D4A381]"><BookOpen size={14}/> Manual article</div>
-                  <h3 className="font-black text-white text-lg mt-2">{selectedAdminArticle.title}</h3>
-                  <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{selectedAdminArticle.group}</div>
-                  <div className="mt-4 space-y-2 max-h-[42vh] overflow-y-auto custom-scrollbar pr-1">
-                    {(selectedAdminArticle.body || []).map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-[#12161A] border border-[#2A353D] text-[#D4A381] flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}
+                {geminiManualError && (
+                  <div className="admin46-error">
+                    <strong>Gemini could not authorize this request.</strong>
+                    <span>{geminiManualError}</span>
                   </div>
-                  <div className="mt-4 text-[9px] font-mono text-slate-600 break-words">Search terms: {selectedAdminArticle.keywords || 'manual support'}</div>
+                )}
+
+                {geminiManualAnswer ? (
+                  <div className="admin46-answer">
+                    <div className="admin46-answer-meta">
+                      <span>{geminiManualMeta?.model || 'Gemini'}</span>
+                      <span>{geminiManualMeta?.durationMs || 0} ms</span>
+                      {geminiManualMeta?.finishReason && <span>{geminiManualMeta.finishReason}</span>}
+                      {geminiManualMeta?.crossProjectAuth && <span>trusted preview identity</span>}
+                    </div>
+                    {geminiManualMeta?.answerIncomplete && (
+                      <div className="admin46-warning">The answer may be incomplete: {geminiManualMeta.incompleteReason || 'output limit reached'}.</div>
+                    )}
+                    <div className="admin46-answer-copy">{geminiManualAnswer}</div>
+                    <div className="admin46-answer-actions">
+                      {geminiManualMeta?.canContinue && <button type="button" onClick={handleContinueGeminiAdminManual} disabled={isGeminiManualLoading} className="admin46-secondary">Continue answer</button>}
+                      <button type="button" onClick={() => { navigator.clipboard?.writeText(geminiManualAnswer); addToast('Copied', 'Gemini manual answer copied.'); }} className="admin46-secondary">Copy answer</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="admin46-assistant-empty">
+                    <Sparkles size={22}/>
+                    <strong>No generated plan yet</strong>
+                    <span>Enter an exact error or choose a suggested question.</span>
+                  </div>
+                )}
+              </section>
+
+              <section className="admin46-playbook">
+                <div className="admin46-playbook-header">
+                  <div>
+                    <div className="admin46-eyebrow">Matched local playbook</div>
+                    <h3>{primarySupportPlaybook?.title || 'General administrator triage'}</h3>
+                  </div>
+                  <button type="button" onClick={copyAdminSupportAnswer} className="admin46-secondary">Copy local plan</button>
                 </div>
+                <p className="admin46-cause">{primarySupportPlaybook?.likelyCause}</p>
+                <div className="admin46-step-columns">
+                  <div>
+                    <h4>Check first</h4>
+                    {(primarySupportPlaybook?.firstChecks || []).map((line, index) => <div key={index} className="admin46-step"><span>{index + 1}</span><p>{line}</p></div>)}
+                  </div>
+                  <div>
+                    <h4>Repair order</h4>
+                    {(primarySupportPlaybook?.fixSteps || []).map((line, index) => <div key={index} className="admin46-step is-repair"><span>{index + 1}</span><p>{line}</p></div>)}
+                  </div>
+                </div>
+                <div className="admin46-do-not">
+                  <strong>Do not touch yet</strong>
+                  <div>{(primarySupportPlaybook?.doNot || []).map((line, index) => <span key={index}>{line}</span>)}</div>
+                </div>
+              </section>
+            </main>
+
+            <aside className="admin46-article-reader">
+              {selectedAdminArticle ? (
+                <>
+                  <div className="admin46-eyebrow"><BookOpen size={12}/> {selectedAdminArticle.group}</div>
+                  <h3>{selectedAdminArticle.title}</h3>
+                  <div className="admin46-article-body">
+                    {(selectedAdminArticle.body || []).map((line, index) => (
+                      <div key={index}>
+                        <span>{index + 1}</span>
+                        <p>{line}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => { navigator.clipboard?.writeText((selectedAdminArticle.body || []).join('\n')); addToast('Copied', 'Manual article copied.'); }} className="admin46-secondary w-full">Copy article</button>
+                </>
+              ) : (
+                <div className="admin46-empty">Choose an article from the index.</div>
               )}
-
-              <div className={`${T.card} overflow-hidden`}>
-                <div className={`${T.th} flex justify-between gap-2`}><span>Relevant Articles</span><span>{topManualArticles.length}</span></div>
-              <div className="text-[10px] uppercase tracking-widest font-black text-slate-500">{filteredAdminManualArticles.length} searchable result(s)</div>
-              {filteredAdminManualArticles.length === 0 && <div className={`${T.card} p-6 text-center text-xs font-bold text-slate-500`}>No manual results. Try a simpler word like “tab”, “punch”, “backup”, “delete”, “GPS”, or “permission”.</div>}
-              {topManualArticles.map((article, idx) => (
-                <button type="button" onClick={() => setSelectedAdminArticleId(article.manualId)} key={article.manualId || `${article.title}-${idx}`} className={`w-full text-left ${T.row} hover:bg-[#12161A] transition-colors ${selectedAdminArticle?.manualId === article.manualId ? 'bg-[#D4A381]/10' : ''}`}>
-                  <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{article.group}</div>
-                  <h3 className="font-black text-white text-base mb-3">{article.title}</h3>
-                  <div className="text-xs text-slate-400 font-bold leading-relaxed line-clamp-2">{(article.body || [])[0] || 'Open this article for details.'}</div>
-                  <div className="mt-3 text-[9px] font-mono text-slate-600 break-words">Match score: {article.score || 0}</div>
-                </button>
-              ))}
-            </div>
+            </aside>
           </div>
         </div>
-      </div>
       )}
         </div>
       </div>

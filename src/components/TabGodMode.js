@@ -20,8 +20,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
   const [rName, setRName] = useState(''); const [oName, setOName] = useState(''); const [oEmail, setOEmail] = useState(''); const [oPhone, setOPhone] = useState('');  const [adminEmail, setAdminEmail] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [editingRest, setEditingRest] = useState(null);
-  const [forgeRecipeTitle, setForgeRecipeTitle] = useState(''); const [forgeRecipeBody, setForgeRecipeBody] = useState('');
-  const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
 
   // Nuke Security States
@@ -168,30 +166,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     setBroadcastMsg('');
   };
 
-  const handleForgePush = async (e, type) => {
-    e.preventDefault(); 
-    if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
-    
-    addToast('Deploying', `Pushing ${type} to all shards...`);
-    let success = 0; let failed = 0;
-
-    for (const r of restaurants) {
-      try {
-        if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
-        if (type === 'Recipe') await addDoc(collection(db, "recipes"), { title: forgeRecipeTitle.trim(), category: 'System Master', prepTime: '--', yieldAmt: '--', ingredients: forgeRecipeBody.trim(), instructions: "Imported from 86 Chaos Master DB.", authorName: "86 System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: r.id });
-        success++;
-      } catch (err) {
-        console.error("Forge blocked:", err);
-        failed++;
-      }
-    }
-    
-    if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
-    else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
-    
-    setForgeEventTitle(''); setForgeRecipeTitle(''); setForgeRecipeBody('');
-  };
-
   const handleOrphanSweep = async () => {
     if(!window.confirm("Scan platform for dead shifts (shifts attached to deleted users)?")) return;
     addToast('Scanning', 'Running orphan sweep...');
@@ -223,7 +197,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
       {/* MASTER NAVIGATION */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'forge', label:'The Forge'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
+        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
           <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
         ))}
       </div>
@@ -402,19 +376,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
         </div>
       )}
 
-      {/* --- TAB: THE FORGE --- */}
-      {subTab === 'forge' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <form onSubmit={(e) => handleForgePush(e, 'Event')} className={`${T.card} p-5`}>
-            <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={18}/> Global Event Injection</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Force an event onto every client's calendar simultaneously.</p></div>
-            <div className="flex flex-col sm:flex-row gap-3"><input type="date" value={forgeEventDate} onChange={e=>setForgeEventDate(e.target.value)} className={`${T.input} sm:w-48`} required /><input type="text" placeholder="Event Title (e.g. Mother's Day)" value={forgeEventTitle} onChange={e=>setForgeEventTitle(e.target.value)} className={T.input} required /><button type="submit" className={`${T.btn} px-8 whitespace-nowrap`}>Push Event</button></div>
-          </form>
-          <form onSubmit={(e) => handleForgePush(e, 'Recipe')} className={`${T.card} p-5`}>
-            <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><BookOpen className={T.copper} size={18}/> Global Recipe Push</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Distribute a master recipe to every active client database.</p></div>
-            <div className="space-y-3"><input type="text" placeholder="Recipe Title..." value={forgeRecipeTitle} onChange={e=>setForgeRecipeTitle(e.target.value)} className={T.input} required /><textarea placeholder="Ingredients & Instructions..." value={forgeRecipeBody} onChange={e=>setForgeRecipeBody(e.target.value)} rows="4" className={T.input} required></textarea><button type="submit" className={`w-full ${T.btn}`}>Push Spec Sheet</button></div>
-          </form>
-        </div>
-      )}
+
 
       {/* --- TAB: SUPPORT & CRASHES --- */}
       {subTab === 'support' && (

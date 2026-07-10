@@ -1,7 +1,8 @@
 {
-  "version": "15.0.45",
-  "name": "86 Chaos 15.0.45 Remembered Alerts and Calm Admin Workspace",
+  "version": "15.0.46",
+  "name": "86 Chaos 15.0.46 Professional Admin Console",
   "releasedAt": "2026-07-10",
-  "label": "86 Chaos 15.0.45",
-  "build": "15.0.45"
+  "label": "86 Chaos 15.0.46",
+  "build": "15.0.46",
+  "updatedAt": "2026-07-10T06:30:00.000Z"
 }

@@ -55,6 +55,26 @@ function parseMasterEmailEnv() {
 function masterEmails() {
   return parseMasterEmailEnv().valid;
 }
+
+// Narrow owner bootstrap used only after a Firebase token has passed full
+// signature, issuer, audience, expiration, and trusted-project validation.
+// This prevents Preview deployments from locking out the verified 86 Chaos
+// owner when MASTER_ADMIN_EMAIL variables are missing from that Vercel scope.
+const OWNER_BOOTSTRAP_MASTER_EMAILS = ['geoffm1985@gmail.com'];
+
+function crossProjectMasterEmails() {
+  const configured = [
+    ...masterEmails(),
+    process.env.REACT_APP_MASTER_ADMIN_EMAIL,
+    process.env.OWNER_BOOTSTRAP_EMAILS
+  ]
+    .filter(Boolean)
+    .flatMap(value => String(value).split(/[\s,;]+/))
+    .map(norm)
+    .filter(value => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value));
+
+  return [...new Set([...configured, ...OWNER_BOOTSTRAP_MASTER_EMAILS])];
+}
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
   if (raw) {
@@ -150,8 +170,14 @@ async function authorizeCrossProjectMaster(req) {
   try {
     const decoded = await verifyTrustedFirebaseIdToken(token);
     const email = norm(decoded.email);
-    if (!email || decoded.email_verified === false || !masterEmails().includes(email)) {
-      return { ok: false, status: 403, error: 'This cross-project request is not authorized for System Administrator access.' };
+    const claimAllows = decoded.superAdmin === true || decoded.systemAccess?.superAdmin === true;
+    const emailAllows = Boolean(email && decoded.email_verified !== false && crossProjectMasterEmails().includes(email));
+    if (!claimAllows && !emailAllows) {
+      return {
+        ok: false,
+        status: 403,
+        error: 'This verified Firebase account is not approved for the Gemini Administrator Manual. Confirm the Preview deployment includes MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS, then redeploy.'
+      };
     }
     const mfa = requireMfaIfEnforced(decoded, { role: 'system administrator', isSuperAdmin: true }, true);
     if (!mfa.ok) return mfa;
@@ -264,4 +290,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, readBody, authorize, authorizeCrossProjectMaster, verifyTrustedFirebaseIdToken, trustedFirebaseAuthProjects, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };
+module.exports = { admin, initAdmin, readBody, authorize, authorizeCrossProjectMaster, verifyTrustedFirebaseIdToken, trustedFirebaseAuthProjects, crossProjectMasterEmails, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };
