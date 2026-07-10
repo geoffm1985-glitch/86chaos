@@ -36,7 +36,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
   return (
     <div className="fixed inset-0 bg-[#12161A]/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md transition-opacity">
       <div className={`${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto`}>
-        <div className={`flex justify-between items-center p-3 border-b ${T.border}`}>
+        <div className={`flex justify-between items-center p-4 border-b ${T.border}`}>
           <h3 className="font-bold text-lg text-white">{title}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors"><X size={20}/></button>
         </div>
@@ -49,39 +49,10 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   const [menuSearch, setMenuSearch] = useState('');
 
+  // Reset the drawer search every time the hamburger menu opens/closes.
+  // This prevents an old search term from reappearing and making the drawer look auto-filled.
   useEffect(() => {
     setMenuSearch('');
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen || typeof window === 'undefined') return undefined;
-    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
-    const previousBody = {
-      position: document.body.style.position,
-      top: document.body.style.top,
-      left: document.body.style.left,
-      right: document.body.style.right,
-      width: document.body.style.width,
-      overflow: document.body.style.overflow
-    };
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
-    document.body.style.width = '100%';
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    return () => {
-      document.body.style.position = previousBody.position;
-      document.body.style.top = previousBody.top;
-      document.body.style.left = previousBody.left;
-      document.body.style.right = previousBody.right;
-      document.body.style.width = previousBody.width;
-      document.body.style.overflow = previousBody.overflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
-      window.scrollTo(0, scrollY);
-    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -91,26 +62,26 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
 
-  tabs.push({ id: 'today', label: 'Manager Brief', menuLabel: 'Today Command Center', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert, keywords: 'home manager brief today dashboard daily command center next actions' });
-  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Schedule', menuLabel: 'Time Clock & Shifts', icon: <Clock size={18}/>, dot: hasMyShiftAlert, keywords: 'clock in out my schedule published shifts time clock' }); 
-  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/>, keywords: 'labor timesheets daily ledger sales payroll financials punch fix' });
-  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Kitchen Command Center', menuLabel: 'Ops Command Center', icon: <ChefHat size={18}/>, keywords: 'kitchen ops command prep 86 rush operations' }); 
-  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages, keywords: 'messages announcements notes board communication' });
-  if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/>, keywords: 'events calendar specials party catering' });
-  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/>, keywords: 'prep tasks line kitchen list smart prep' });
-  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/>, keywords: 'recipes recipe book cards specs cooking' });
-  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/>, keywords: 'inventory orders vendors invoice scanner burn log stock' });  
-  if (!appUser?.isDemo && (appUser?.isAdmin || perms.inventory || perms.prep || perms.team || canUseMenuIntelligence(appUser, clientData))) tabs.push({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/>, keywords: 'ai tools invoice scanner voice menu scan smart prep' });
-  if (canUseMenuIntelligence(appUser, clientData)) tabs.push({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/>, keywords: 'menu intelligence menu scan affected unavailable ingredients 86 impact' });
-  tabs.push({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/>, keywords: 'personal reminders reminder alerts my tasks private' });
-  if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/>, keywords: 'staff roster team employees users permissions' });
-  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/>, keywords: 'maintenance broken repair equipment issue log' });
+  tabs.push({ id: 'today', label: 'Manager Brief', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
+  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
+  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
+  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+  if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
+  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
+  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
+  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
+  if (!appUser?.isDemo && (appUser?.isAdmin || perms.inventory || perms.prep || perms.team || canUseMenuIntelligence(appUser, clientData))) tabs.push({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
+  if (canUseMenuIntelligence(appUser, clientData)) tabs.push({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
+  tabs.push({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/> });
+  if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
   const isTrueGod = Boolean((MASTER_ADMIN_EMAIL && (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin === true);
-  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/>, keywords: 'system administrator admin godmode health backups security diagnostics support' });
-  if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/>, keywords: 'audit history logs actions security changes' });  
-  tabs.push({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate, keywords: 'help center guide manual instructions support' });
-  if (!appUser?.isDemo) tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/>, keywords: 'settings workspace preferences branding notifications' });
+  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
+  if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+  tabs.push({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
+  if (!appUser?.isDemo) tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   const menuActions = [
     { id: 'help-add-staff', label: 'How to add staff', tab: 'help', keywords: 'employee team roster invite user password' },
@@ -122,21 +93,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' }
   ];
   const q = menuSearch.trim().toLowerCase();
-  const visibleTabs = q ? tabs.filter(t => `${t.label} ${t.menuLabel || ''} ${t.id} ${t.keywords || ''}`.toLowerCase().includes(q)) : tabs;
+  const visibleTabs = q ? tabs.filter(t => `${t.label} ${t.id}`.toLowerCase().includes(q)) : tabs;
   const visibleActions = q ? menuActions.filter(a => `${a.label} ${a.keywords}`.toLowerCase().includes(q)).slice(0, 8) : [];
-  const groupedIds = new Set();
-  const menuSections = [
-    { title: 'Command', ids: ['today', 'published', 'messages', 'events', 'reminders'] },
-    { title: 'Kitchen Ops', ids: ['ops', 'prep', 'recipes', 'inventory', 'menu-intelligence', 'ai-tools', 'maintenance'] },
-    { title: 'Management', ids: ['financials', 'team'] },
-    { title: 'System', ids: ['godmode', 'audit', 'help', 'settings'] }
-  ].map(section => {
-    const sectionTabs = visibleTabs.filter(tab => section.ids.includes(tab.id));
-    sectionTabs.forEach(tab => groupedIds.add(tab.id));
-    return { ...section, tabs: sectionTabs };
-  }).filter(section => section.tabs.length > 0);
-  const overflowTabs = visibleTabs.filter(tab => !groupedIds.has(tab.id));
-  if (overflowTabs.length) menuSections.push({ title: 'More', ids: overflowTabs.map(tab => tab.id), tabs: overflowTabs });
   const activeWorkspaceLabel = activeWorkspaceName || appUser?.restaurantName || appUser?.workspaceName || appUser?.businessName || 'Current Restaurant';
   const switchableWorkspaceCount = Array.isArray(availableWorkspaces) ? availableWorkspaces.filter(w => w?.isActive !== false).length : 0;
   const canSwitchWorkspace = switchableWorkspaceCount > 1 && typeof onOpenWorkspaceSwitcher === 'function' && !appUser?.isDemo;
@@ -149,74 +107,57 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex justify-end overflow-hidden">
-          <div className="absolute inset-0 bg-[#05080A]/70 backdrop-blur-md" onClick={onClose}></div>
-          <div className={`w-[90vw] max-w-[22rem] sm:w-[22rem] cockpit-panel border-l ${T.border} h-full shadow-[0_28px_90px_rgba(0,0,0,.52)] flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
-            <div className={`p-3 border-b ${T.border} bg-[#070A0D]/76 space-y-2.5`}>
-              <div className="flex items-center justify-between gap-3">
-                <CheersLogo clientData={clientData} />
-                <button onClick={onClose} className="no-compact h-9 w-9 flex items-center justify-center bg-[#111821] border border-[#33414B] rounded-xl text-slate-400 hover:text-white hover:border-[#D4A381]/60 transition-colors" aria-label="Close navigation menu"><X size={18}/></button>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-               <div className="flex items-center gap-2.5 min-w-0">
-                 <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-9 h-9 rounded-full border ${T.border} object-cover`}/>
-                 <div className="min-w-0">
+        <div className="fixed inset-0 z-[70] flex justify-end">
+          <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
+          <div className={`w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+            <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
+               <div className="flex items-center gap-3">
+                 <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
+                 <div>
                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div>
-                   <div className="text-white font-black text-base tracking-tight leading-none truncate">{appUser.name}</div>
-                   <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-0.5 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
+                   <div className="text-white font-black text-lg tracking-tight leading-none">{appUser.name}</div>
+                   <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
+                   <button
+                     type="button"
+                     onClick={openWorkspaceSwitcherFromMenu}
+                     disabled={!canSwitchWorkspace}
+                     className={`mt-2 max-w-[170px] flex items-center gap-1.5 rounded-lg border ${T.border} bg-[#0B0E11] px-2 py-1 text-left text-[10px] font-black uppercase tracking-wider ${canSwitchWorkspace ? 'text-[#D4A381] hover:border-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
+                     title={canSwitchWorkspace ? 'Change restaurant workspace' : 'Current restaurant workspace'}
+                   >
+                     <Globe size={11} className="flex-shrink-0" />
+                     <span className="truncate">{activeWorkspaceLabel}</span>
+                     {canSwitchWorkspace && <Repeat size={10} className="flex-shrink-0 opacity-80" />}
+                   </button>
                  </div>
                </div>
-               <button
-                 type="button"
-                 onClick={openWorkspaceSwitcherFromMenu}
-                 disabled={!canSwitchWorkspace}
-                 className={`hidden sm:block text-right min-w-0 rounded-xl px-2 py-1 border ${canSwitchWorkspace ? 'border-[#D4A381]/40 hover:border-[#D4A381] cursor-pointer' : 'border-transparent cursor-default'}`}
-                 title={canSwitchWorkspace ? 'Change restaurant workspace' : 'Current restaurant workspace'}
-               >
-                 <div className="text-[9px] uppercase tracking-widest font-black text-[#C59373]">Workspace</div>
-                 <div className="text-[10px] font-bold text-slate-500 truncate max-w-[8rem]">{activeWorkspaceLabel}</div>
-               </button>
-              </div>
-              <button
-                type="button"
-                onClick={openWorkspaceSwitcherFromMenu}
-                disabled={!canSwitchWorkspace}
-                className={`sm:hidden w-full flex items-center justify-between gap-2 rounded-xl border ${T.border} bg-[#0B0E11] px-3 py-2 text-left ${canSwitchWorkspace ? 'text-[#D4A381]' : 'text-slate-500'}`}
-              >
-                <span className="min-w-0"><span className="block text-[8px] uppercase tracking-widest font-black">Workspace</span><span className="block text-xs font-black truncate">{activeWorkspaceLabel}</span></span>
-                {canSwitchWorkspace && <Repeat size={13} className="flex-shrink-0" />}
-              </button>
+               <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
             </div>
-            <div className="p-2.5 border-b border-[#33414B] bg-[#0D1318]/65">
+            <div className="p-3 border-b border-[#2A353D]">
               <div className="relative">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#070A0D] border border-[#33414B] rounded-xl pl-8 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381] focus:ring-2 focus:ring-[#D4A381]/20" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-2.5 space-y-2 custom-scrollbar">
-               {visibleTabs.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#33414B] rounded-xl">No menu results. Try schedule, punch, recipe, inventory, or help.</div>}
-               {menuSections.map(section => (
-                 <div key={section.title} className="space-y-1">
-                   <div className="px-2 text-[8px] uppercase tracking-widest font-black text-slate-500">{section.title}</div>
-                   {section.tabs.map(tab => (
-                     <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full min-h-[36px] flex items-center justify-between px-2.5 py-1.5 rounded-lg font-bold text-xs transition-all duration-200 border ${activeTab === tab.id ? `${T.grad} text-slate-950 border-[#C59373]/40 shadow-[0_12px_30px_rgba(212,163,129,.24)]` : tab.id === 'godmode' ? 'text-slate-300 bg-[#111821]/80 border-[#D4A381]/25 hover:bg-[#151D24] hover:text-white hover:border-[#D4A381]/60' : 'text-slate-400 bg-transparent border-transparent hover:bg-[#151D24] hover:text-white hover:border-[#33414B]'}`}>
-                       <div className="flex items-center gap-2.5 min-w-0">
-                         <div className="relative shrink-0">
-                           <span className={activeTab === tab.id ? 'text-slate-950' : T.copper}>{tab.icon}</span>
-                           {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
-                         </div>
-                         <span className="truncate">{tab.menuLabel || tab.label}</span>
-                       </div>
-                     </button>
-                   ))}
-                 </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+               {visibleTabs.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">No menu results. Try “schedule”, “punch”, “recipe”, or “help”.</div>}
+               {visibleTabs.map(tab => (
+                 <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+                   <div className="flex items-center gap-3">
+                     <div className="relative">
+                       <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
+                       {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
+                     </div>
+                     {tab.label}
+                   </div>
+                 </button>
                ))}
-               {visibleActions.length > 0 && <div className="pt-2 mt-1 border-t border-[#33414B]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-1">Suggested actions</div>{visibleActions.map(a => (
-                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full min-h-[34px] text-left px-2.5 py-1.5 rounded-lg font-bold text-xs text-slate-300 hover:bg-[#151D24] hover:text-[#C59373] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
+               {visibleActions.length > 0 && <div className="pt-3 mt-2 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-1">Suggested actions</div>{visibleActions.map(a => (
+                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full text-left px-3 py-2 rounded-xl font-bold text-xs text-slate-300 hover:bg-[#12161A] hover:text-[#D4A381] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
                ))}</div>}
             </div>
-            <div className={`p-2.5 border-t ${T.border} bg-[#070A0D]/78 space-y-2`}>
-             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); sessionStorage.removeItem('86chaosUser'); onClose(); }} className="w-full min-h-[38px] flex items-center justify-center gap-2 py-2 text-red-300 text-sm font-bold rounded-xl hover:bg-red-900/20 border border-red-500/20 transition-colors"><LogOut size={16} /> Log Out</button>
+            <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
+             <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> Report Problem</button>
+             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
             </div>
           </div>
         </div>
@@ -432,25 +373,6 @@ const findVoiceMatch = (items = [], spoken = '') => {
   }).sort((a,b) => b.score - a.score);
   return scored[0]?.score > 0 ? scored[0].item : null;
 };
-
-const findStrictEightySixItemMatch = (items = [], spoken = '') => {
-  const q = normalizeVoiceText(spoken);
-  if (!q) return null;
-  const singular = (value = '') => normalizeVoiceText(value).replace(/\b(tomatoes)\b/g, 'tomato').replace(/\b(onions)\b/g, 'onion').replace(/\b(potatoes)\b/g, 'potato').replace(/\b(.+?)s\b/g, '$1');
-  const qSimple = singular(q);
-  const candidates = (items || []).map(item => {
-    const name = normalizeVoiceText(item.name || item.title || '');
-    const nameSimple = singular(name);
-    const aliasBlob = normalizeVoiceText([item.name, item.title, item.category, item.supplierName, item.vendorName, item.packSize, item.pfgCode, item.code, item.sku].filter(Boolean).join(' '));
-    return { item, name, nameSimple, aliasBlob };
-  }).filter(row => row.name);
-  const exact = candidates.find(row => row.name === q || row.nameSimple === qSimple);
-  if (exact) return { item: exact.item, confidence: 100, method: 'exactInventory' };
-  const strongContains = candidates.filter(row => q.length >= 4 && (row.name.includes(q) || row.nameSimple.includes(qSimple) || row.aliasBlob.includes(q))).sort((a, b) => (a.name.length - b.name.length));
-  if (strongContains.length === 1) return { item: strongContains[0].item, confidence: 92, method: 'singleInventoryContains' };
-  return null;
-};
-
 
 const extractRecipeVoiceQuery = (raw = '') => {
   const q = normalizeVoiceText(raw);
@@ -842,35 +764,26 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       const voiceInventoryItems = liveContext.inventoryItems || inventoryItems || [];
       const voiceMenuDependencies = liveContext.menuDependencies || menuDependencies || [];
       const resolved = resolveEightySixInventoryMatch(cleaned, voiceInventoryItems, voiceMenuDependencies);
-      const strictMatch = findStrictEightySixItemMatch(voiceInventoryItems, cleaned);
-      const resolvedConfidence = Number(resolved?.confidence || 0);
-      const resolvedIsVeryStrong = Boolean(resolved?.item && (resolvedConfidence >= 95 || normalizeVoiceText(resolved.item.name || '') === normalizeVoiceText(cleaned)));
-      const item = strictMatch?.item || (resolvedIsVeryStrong ? resolved.item : null);
-      const matchMethod = strictMatch?.method || (item ? (resolved?.method || 'inventory') : 'none');
+      const item = resolved?.item || findVoiceMatch(voiceInventoryItems, cleaned);
       const requestedItemName = cleaned || item?.name || 'Item';
       const itemName = item?.name || requestedItemName;
       const displayName = requestedItemName || itemName;
-      const impactPreview = item ? buildEightySixAlertDetails({ requestedName: displayName, inventoryItem: item, menuDependencies: voiceMenuDependencies, matchMethod, matchedMenuItemName: resolved?.matchedMenuItemName }).impactText : '';
-      const rejectedMatchName = !item && resolved?.item?.name ? resolved.item.name : '';
+      const impactPreview = item ? buildEightySixAlertDetails({ requestedName: displayName, inventoryItem: item, menuDependencies: voiceMenuDependencies, matchMethod: resolved?.method, matchedMenuItemName: resolved?.matchedMenuItemName }).impactText : '';
       const matchNote = item?.name && normalizeVoiceText(item.name) !== normalizeVoiceText(displayName)
-        ? ` Matched inventory item: ${item.name}${matchMethod === 'menuIntelligence' ? ' through Menu Intelligence' : ''}.`
-        : rejectedMatchName
-          ? ` I found a possible inventory match (${rejectedMatchName}) but it was not strong enough to use automatically.`
-          : ' No exact inventory match was used.';
+        ? ` Matched inventory item: ${item.name}${resolved?.method === 'menuIntelligence' ? ' through Menu Intelligence' : ''}.`
+        : '';
       return {
         intent:'eighty_six_alert',
-        label:`Confirm 86 alert: ${displayName}`,
+        label:`Send 86 alert: ${displayName}`,
         item,
         itemName,
         requestedItemName: displayName,
-        menuMatchMethod: matchMethod,
-        matchedMenuItemName: item ? (resolved?.matchedMenuItemName || '') : '',
-        matchedIngredientName: item ? (resolved?.matchedIngredientName || '') : '',
+        menuMatchMethod: resolved?.method || (item ? 'inventory' : 'none'),
+        matchedMenuItemName: resolved?.matchedMenuItemName || '',
+        matchedIngredientName: resolved?.matchedIngredientName || '',
         resolvedMenuDependencies: voiceMenuDependencies,
-        voiceConfidence: item ? Math.max(Number(strictMatch?.confidence || 0), resolvedConfidence) : 0,
-        matchNeedsReview: Boolean(rejectedMatchName),
-        summary:`Confirm before sending: post an important 86 alert for ${displayName}.${matchNote}${impactPreview ? ` ${impactPreview}.` : ''} Inventory stock will not be changed.`,
-        needsConfirmation:true
+        summary:`Post an important 86 alert for ${displayName}.${matchNote}${impactPreview ? ` ${impactPreview}.` : ''} Inventory stock will not be changed.`,
+        needsConfirmation:false
       };
     }
 
@@ -1050,9 +963,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           menuImpactItemId: actionToRun.item?.id || '',
           inventoryItemName: inventoryName,
           requestedItemName: requestedName,
-          menuMatchMethod: actionToRun.menuMatchMethod || '',
-          voiceConfidence: Number(actionToRun.voiceConfidence || 0),
-          matchNeedsReview: Boolean(actionToRun.matchNeedsReview)
+          menuMatchMethod: actionToRun.menuMatchMethod || ''
         });
         await secureFetch('/api/send-push', {
           method:'POST',

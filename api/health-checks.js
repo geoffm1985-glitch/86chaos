@@ -14,7 +14,6 @@ const ROUTE_CHECKS = [
   { route: '/api/firestore-backup', file: 'firestore-backup.js', method: 'GET/POST', auth: 'cron-or-admin', notes: 'Firestore backup route.' },
   { route: '/api/firestore-backup-watchdog', file: 'firestore-backup-watchdog.js', method: 'GET/POST', auth: 'cron-or-admin', notes: 'Daily backup fallback watchdog. Runs a catch-up backup only when last successful backup is stale.' },
   { route: '/api/gemini-admin-manual', file: 'gemini-admin-manual.js', method: 'POST', auth: 'super-admin', notes: 'Gemini-powered System Administrator manual assistant.' },
-  { route: '/api/openai-diagnostics-explain', file: 'openai-diagnostics-explain.js', method: 'POST', auth: 'super-admin', notes: 'OpenAI structured diagnostics explanation route.' },
   { route: '/api/full-system-diagnostics', file: 'full-system-diagnostics.js', method: 'POST', auth: 'super-admin', notes: 'Full diagnostics bundle route.' },
   { route: '/api/geocode-address', file: 'geocode-address.js', method: 'POST', auth: 'workspace-admin', notes: 'Address/geofence helper.' },
   { route: '/api/import-cheers-july-schedule', file: 'import-cheers-july-schedule.js', method: 'POST', auth: 'super-admin', notes: 'Legacy guarded schedule import helper. Hidden from public workflows.' },
@@ -56,7 +55,6 @@ const HANDLER_LOADERS = {
   'firestore-backup.js': () => require('./firestore-backup'),
   'firestore-backup-watchdog.js': () => require('./firestore-backup-watchdog'),
   'gemini-admin-manual.js': () => require('./gemini-admin-manual'),
-  'openai-diagnostics-explain.js': () => require('./openai-diagnostics-explain'),
   'full-system-diagnostics.js': () => require('./full-system-diagnostics'),
   'geocode-address.js': () => require('./geocode-address'),
   'import-cheers-july-schedule.js': () => require('./import-cheers-july-schedule'),
@@ -120,7 +118,6 @@ module.exports = async function handler(req, res) {
       vercelEnv: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
       cronSecretConfigured: hasEnv('CRON_SECRET'),
       geminiConfigured: hasEnv('GEMINI_API_KEY') || hasEnv('GOOGLE_API_KEY') || hasEnv('GOOGLE_GENERATIVE_AI_API_KEY'),
-      openaiConfigured: hasEnv('OPENAI_API_KEY') || hasEnv('OPENAI_DIAGNOSTICS_API_KEY'),
       appCheckEnvConfigured: hasEnv('APP_CHECK_ENFORCE') || hasEnv('FIREBASE_APP_CHECK_ENFORCE'),
       mfaEnforcementConfigured: hasEnv('MFA_ENFORCE_ELEVATED_ROLES') || hasEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || hasEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES')
     };

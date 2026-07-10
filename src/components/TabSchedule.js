@@ -57,7 +57,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
     if (!isPublished) return 'bg-slate-400 text-slate-900';
     const r = (role || '').toLowerCase();
     if (r.includes('bartender')) return 'bg-blue-400 text-blue-950';
-    if (r.includes('cook') || r.includes('chef') || r.includes('kitchen')) return 'bg-[#D4A381] text-[#26170F]';
+    if (r.includes('cook') || r.includes('chef') || r.includes('kitchen')) return 'bg-orange-400 text-orange-950';
     if (r.includes('server') || r.includes('wait')) return 'bg-pink-400 text-pink-950';
     if (r.includes('host')) return 'bg-emerald-400 text-emerald-950';
     if (r.includes('manager')) return 'bg-purple-400 text-purple-950';

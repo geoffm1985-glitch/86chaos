@@ -3511,9 +3511,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [healthError, setHealthError] = useState('');
   const [isDiagnosticsRunning, setIsDiagnosticsRunning] = useState(false);
   const [lastDiagnosticsReport, setLastDiagnosticsReport] = useState(null);
-  const [diagnosticsExplanation, setDiagnosticsExplanation] = useState(null);
-  const [diagnosticsExplanationError, setDiagnosticsExplanationError] = useState('');
-  const [isDiagnosticsExplanationLoading, setIsDiagnosticsExplanationLoading] = useState(false);
   const [isScheduleReinjecting, setIsScheduleReinjecting] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [createdWorkspaceLogin, setCreatedWorkspaceLogin] = useState(null);
@@ -3522,7 +3519,6 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const defaultDemoFeatures = { published:true, schedule:true, events:true, ops:true, messages:true, prep:true, recipes:true, inventory:true, financials:true, team:true, maintenance:true, help:true };
   const [demoFeatures, setDemoFeatures] = useState(defaultDemoFeatures);
   const [adminManualSearch, setAdminManualSearch] = useState('');
-  const [adminToolSearch, setAdminToolSearch] = useState('');
   const [adminManualQuestion, setAdminManualQuestion] = useState('');
   const [adminManualCategory, setAdminManualCategory] = useState('All');
   const [selectedAdminArticleId, setSelectedAdminArticleId] = useState('');
@@ -4939,7 +4935,7 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 16.0.4 keeps the watchdog check, Gemini answer completion protection, the restored stable app shell, safer 86 Voice, and OpenAI diagnostics explanations.'
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.42 keeps the watchdog check and adds Gemini answer completion protection.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
@@ -5035,7 +5031,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'openai-diagnostics-explain', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
+  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
 
   const adminAccessSourceLabel = appUser?.serverAdminCheck?.serverMasterAdminMatched ? 'Server env' :
     appUser?.serverAdminCheck?.customClaimSuperAdmin ? 'Custom claim' :
@@ -5410,9 +5406,6 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
-    { title: 'Version 16.0.4 Copper Menu Overlay Cleanup', group: 'System Administrator', keywords: 'v16 16.0.4 openai diagnostics explain structured steps voice 86 accuracy confirmation menu organization admin search codex regression recovery', body: ['16.0.4 is based on the last stable 16.0.1 app line so the Codex 16.0.2 feature regression does not remove previously built System Administrator, backup, Gemini Manual, voice, menu intelligence, and diagnostics work.', 'The only Codex UI idea carried forward is the grouped main hamburger menu. It now organizes tools into Command, Kitchen Ops, Management, and System while preserving all existing permissions and feature tabs.', '86 Voice alerts now require confirmation before sending, never edit inventory, and only use exact or very strong inventory matches automatically. Weak matches are review-only so a spoken 86 alert does not quietly choose the wrong stock item.', 'System Administrator now has a tool search field for finding backups, users, MFA, rules, cron, push, Gemini, OpenAI, and diagnostics faster.', 'Full System Diagnostics now includes a Super Admin-only OpenAI structured explanation route. After running diagnostics, click Explain with OpenAI to get severity, likely cause, ordered steps, verification checks, do-not-touch warnings, deploy/publish notes, and escalation criteria.', 'Deploy through Vercel and add OPENAI_API_KEY for OpenAI diagnostics explanations. Firestore rules and Storage rules are unchanged.'] },
-    { title: 'Version 16.0.1 Emergency UI Recovery', group: 'System Administrator', keywords: 'v16 16.0.1 emergency ui recovery rollback menus navigation redesign horrible unusable restore stable shell', body: ['16.0.1 restores the last usable app shell and menu layout after the 16.0.0 full command-center redesign made navigation and menus difficult to use.', 'This is a recovery build. It keeps the current backend, Gemini Manual, backup watchdog, diagnostics, and System Administrator functionality while rolling back the disruptive visual shell changes.', 'After deploying, test desktop and mobile navigation first, then System Administrator categories, Manager Brief, Kitchen Command Center, Schedule, Inventory, Backup Center, and Gemini Manual.', 'No Firestore rules, Storage rules, API behavior, or new environment variables are required for this recovery release.'] },
-    { title: 'Version 15.0.43 Marketing Mockup App Reskin', group: 'System Administrator', keywords: 'v15 15.0.43 visual reskin marketing mockup app design copper command center shell cards drawer mobile styling', body: ['15.0.43 updates the live app styling to better match the 86 Chaos marketing mockup direction: darker command-center background, copper action accents, stronger card depth, cleaner drawers, and polished mobile surfaces.', 'This is a visual shell update only. Existing React components, Firebase data, Vercel API routes, permissions, backups, Gemini Manual behavior, and System Administrator tools are preserved.', 'The 86 Chaos logo remains mandatory and always visible. Restaurant/customer logos can still appear beside 86 Chaos branding when configured, but they do not replace it.', 'After deploying, test Manager Brief, System Administrator, Settings, Prep, Inventory, Schedule, side menu, mobile layout, and logo display. No Firebase rules or Storage rules need publishing for this visual update.'] },
     { title: 'Version 15.0.42 Gemini Manual Completion Guard', group: 'System Administrator', keywords: 'v15 15.0.42 gemini manual assistant cut off max tokens continue answer incomplete finish reason system administrator', body: ['15.0.42 improves the Gemini-powered System Administrator Manual assistant so long answers are less likely to stop mid-sentence.', 'The server route now uses a larger output token budget, checks Gemini finish reasons, detects dangling endings, and automatically asks Gemini to continue when it hits the output limit.', 'If Gemini still appears cut off, the Manual panel shows a warning and a Continue Gemini Answer button so the Super Admin can finish the answer without starting over.', 'The Gemini response metadata now shows finish reason and auto-continuation count, which helps troubleshoot model output limits without exposing secrets or signed URLs.'] },
     { title: 'Version 15.0.41 System Administrator Tool Reorganization', group: 'System Administrator', keywords: 'v15 15.0.41 system administrator reorganized categories recategorized navigation tool map left menu mobile groups', body: ['15.0.41 reorganizes the entire System Administrator into clearer tool neighborhoods: Start Here, Backup & Recovery, Security & Access, Workspaces & People, Support & Monitoring, Maintenance & Releases, and Platform Tools.', 'The left desktop rail, mobile picker, and overview Tool Map now use the same categories so the correct tools sit together instead of being scattered through one long command list.', 'Use Start Here for daily status and the AI Administrator Manual. Use Backup & Recovery before risky changes. Use Security & Access for lockouts, MFA, App Check, rules, and permission design. Use Workspaces & People for restaurants, clients, profiles, setup, and branding.', 'High-risk global tools now live under Platform Tools so they are easier to find when needed but less likely to be clicked while doing normal support work.'] },
     { title: 'Version 15.0.40 System Administrator Mobile Usability', group: 'System Administrator', keywords: 'v15 15.0.40 mobile phone system administrator menu quick jump sticky nav touch friendly command deck', body: ['15.0.40 makes System Administrator easier to operate from a phone by adding a mobile command strip with critical status, section picker, and quick-jump chips for the most common admin tools.', 'The left Admin Menu still lives on the left side on desktop, but on phones it opens immediately under the System Administrator header instead of getting buried below the Command Deck.', 'Mobile admin buttons now have larger touch targets, shorter labels, and a two-column menu layout where space allows. The active section is easier to see and switching sections automatically closes the mobile menu.', 'The Command Deck stays available, but it no longer has to be the first thing you fight through on a mobile device. Use Show Info Board only when you need the full signal board.'] },
@@ -6073,8 +6066,6 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const handleRunFullSystemDiagnostics = async () => {
     if (isDiagnosticsRunning) return;
     setIsDiagnosticsRunning(true);
-    setDiagnosticsExplanation(null);
-    setDiagnosticsExplanationError('');
     addToast('Diagnostics Started', 'Running full system diagnostics and building a deployment report.');
     try {
       const clientHealth = await refreshHealthDashboard({ silent: true });
@@ -6100,34 +6091,6 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       addToast('Diagnostics Error', err.message || 'Full system diagnostics failed. Check Vercel logs.');
     } finally {
       setIsDiagnosticsRunning(false);
-    }
-  };
-
-  const handleExplainDiagnosticsWithOpenAI = async (report = lastDiagnosticsReport) => {
-    if (!report) {
-      addToast('No Diagnostics Report', 'Run Full System Diagnostics first, then ask OpenAI to explain it.');
-      return;
-    }
-    if (isDiagnosticsExplanationLoading) return;
-    setIsDiagnosticsExplanationLoading(true);
-    setDiagnosticsExplanationError('');
-    addToast('OpenAI Diagnostics', 'Generating structured repair steps from the latest diagnostics report.');
-    try {
-      const response = await secureFetch('/api/openai-diagnostics-explain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report, appVersion: CURRENT_VERSION, currentUrl: typeof window !== 'undefined' ? window.location.href : '' })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data?.ok === false) throw new Error(data?.error || `OpenAI explanation failed with status ${response.status}`);
-      setDiagnosticsExplanation(data);
-      addToast('OpenAI Diagnostics Ready', `${data.explanation?.severity || 'structured'} repair steps generated.`);
-    } catch (err) {
-      const msg = err?.message || 'OpenAI diagnostics explanation failed.';
-      setDiagnosticsExplanationError(msg);
-      addToast('OpenAI Diagnostics Error', msg);
-    } finally {
-      setIsDiagnosticsExplanationLoading(false);
     }
   };
 
@@ -6418,15 +6381,6 @@ Type RESTORE to continue.`);
       ]
     }
   ];
-  const adminToolSearchQuery = adminToolSearch.trim().toLowerCase();
-  const searchableAdminTabGroups = adminToolSearchQuery
-    ? adminTabGroups.map(group => {
-        const groupText = `${group.title} ${group.summary} ${group.helper || ''}`.toLowerCase();
-        const tabs = group.tabs.filter(tab => `${tab.label} ${tab.short || ''} ${tab.intent || ''} ${tab.id} ${groupText}`.toLowerCase().includes(adminToolSearchQuery));
-        return { ...group, tabs };
-      }).filter(group => group.tabs.length > 0)
-    : adminTabGroups;
-  const adminSearchResultCount = searchableAdminTabGroups.reduce((sum, group) => sum + group.tabs.length, 0);
   const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
   const mobilePrimaryTabs = ['overview', 'health', 'manual', 'forensics', 'security', 'admins', 'roles', 'tenants', 'users', 'support', 'push', 'live'];
@@ -6591,20 +6545,6 @@ Type RESTORE to continue.`);
           </button>
         </div>
 
-        <div className="relative mt-3 bg-[#0B0E11]/80 border border-[#2A353D] rounded-2xl p-3">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              value={adminToolSearch}
-              onChange={event => setAdminToolSearch(event.target.value)}
-              placeholder="Search System Administrator tools... try backup, MFA, users, Gemini, cron, push"
-              className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-20 py-3 text-xs font-bold text-white outline-none focus:border-[#D4A381] focus:ring-2 focus:ring-[#D4A381]/15"
-            />
-            {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Clear</button>}
-          </div>
-          <div className="text-[9px] font-bold text-slate-500 mt-2 uppercase tracking-widest">{adminToolSearch ? `${adminSearchResultCount} matching tool(s)` : 'Search filters the left admin menu and tool map only. It does not hide the actual tools.'}</div>
-        </div>
-
         <div className="relative lg:hidden mt-3 space-y-3" id="admin-mobile-command-strip">
           <div className="grid grid-cols-3 gap-2">
             <button type="button" onClick={() => jumpToAdminIssue(platformStatus === 'Needs Attention' ? 'overview' : 'health')} className={`bg-[#0B0E11] border rounded-xl p-2 text-left min-h-[64px] ${platformStatus === 'Needs Attention' ? 'border-red-900/50' : 'border-[#2A353D]'}`}>
@@ -6736,7 +6676,7 @@ Type RESTORE to continue.`);
               <button type="button" onClick={() => setIsAdminNavOpen(false)} className="lg:hidden text-slate-500 hover:text-white border border-[#2A353D] rounded-lg px-2 py-1 text-[9px] font-black uppercase">Hide</button>
             </div>
             <div className="relative space-y-2 max-lg:max-h-[66vh] max-lg:overflow-y-auto custom-scrollbar pr-1">
-              {searchableAdminTabGroups.map(group => (
+              {adminTabGroups.map(group => (
                 <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
                   <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-0.5">{group.title}</div>
                   <div className="text-[9px] font-bold text-slate-600 px-1.5 pb-1.5 leading-snug">{group.summary}</div>
@@ -6917,7 +6857,7 @@ Type RESTORE to continue.`);
                     <div className="grid grid-cols-2 sm:flex sm:flex-wrap lg:justify-end gap-2 lg:min-w-[360px]">
                       <button onClick={() => openSupportUserEditor(u)} className="px-2.5 py-2 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40">Support Edit</button>
                       <button onClick={() => { setGhostTenant({ id: selectedClient.id, name: selectedClient.name, mode: 'user', impersonate: u }); setSelectedClient(null); setActiveTab('published'); }} className="px-2.5 py-2 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40">Possess</button>
-                      <button onClick={async () => { if(!window.confirm(`Force ${u.name || u.email} to log out and clear their device cache?`)) return; await updateDoc(doc(db, 'users', u.id), { forceLogout: true }); addToast('Executed', 'Kill signal sent to user device.'); }} className="px-2.5 py-2 bg-[#8F6040]/20 border border-[#8F6040]/50 text-[#D4A381] font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-[#8F6040]/40">Force Logout</button>
+                      <button onClick={async () => { if(!window.confirm(`Force ${u.name || u.email} to log out and clear their device cache?`)) return; await updateDoc(doc(db, 'users', u.id), { forceLogout: true }); addToast('Executed', 'Kill signal sent to user device.'); }} className="px-2.5 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-orange-900/40">Force Logout</button>
                       <button onClick={() => handleDeleteGlobalUser(u)} className="px-2.5 py-2 bg-red-900/20 border border-red-900/50 text-red-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-red-900/40">Delete</button>
                     </div>
                   </div>
@@ -7122,7 +7062,7 @@ Type RESTORE to continue.`);
               <button type="button" onClick={() => setIsAdminNavOpen(true)} className="lg:hidden bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest">Open Full Menu</button>
             </div>
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {searchableAdminTabGroups.map(group => (
+              {adminTabGroups.map(group => (
                 <div key={group.title} className={`bg-[#0B0E11]/80 border rounded-2xl p-3 ${group.danger ? 'border-red-900/50' : 'border-[#2A353D]'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -7163,7 +7103,7 @@ Type RESTORE to continue.`);
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid Workspaces</div><div className="text-2xl lg:text-3xl font-black text-white">{paidWorkspaces} <span className="text-[10px] text-slate-300 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded">ARPA: ${arpa}</span></div></div>
             <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-blue-900/30`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Active Trials</div><div className="text-2xl lg:text-3xl font-black text-white">{activeTrials} <span className="text-[10px] text-blue-400 tracking-widest uppercase align-middle bg-blue-900/20 border border-blue-900/50 px-1.5 py-0.5 rounded">Pipe: ${trialPipelineValue}</span></div></div>
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Daily Active (DAU)</div><div className="text-2xl lg:text-3xl font-black text-white">{dau} <span className="text-[10px] text-[#D4A381] tracking-widest uppercase align-middle bg-[#8F6040]/20 border border-[#8F6040]/50 px-1.5 py-0.5 rounded">Today</span></div></div>
+            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-1">Daily Active (DAU)</div><div className="text-2xl lg:text-3xl font-black text-white">{dau} <span className="text-[10px] text-orange-500 tracking-widest uppercase align-middle bg-orange-900/20 border border-orange-900/50 px-1.5 py-0.5 rounded">Today</span></div></div>
             <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">App Sticky Rate</div><div className={`text-2xl lg:text-3xl font-black ${stickyRate < 30 ? 'text-red-400' : 'text-emerald-400'}`}>{stickyRate}% <span className="text-[10px] text-slate-500 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded text-white">Adoption</span></div></div>
           </div>
 
@@ -7275,7 +7215,7 @@ Type RESTORE to continue.`);
                   <div className="font-black text-white text-sm">Application Stability</div>
                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{crashes24h} Crashes (Last 24h)</div>
                 </div>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${crashes24h > 10 ? 'bg-red-900/20 border-red-900/50 text-red-400 animate-pulse' : crashes24h > 0 ? 'bg-[#8F6040]/20 border-[#8F6040]/50 text-[#D4A381]' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${crashes24h > 10 ? 'bg-red-900/20 border-red-900/50 text-red-400 animate-pulse' : crashes24h > 0 ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
                   {crashes24h > 10 ? <Bug size={14}/> : <Check size={14}/>}
                   <span className="text-[10px] font-black uppercase tracking-widest">{crashes24h > 10 ? 'Degraded' : crashes24h > 0 ? 'Monitoring' : 'Stable'}</span>
                 </div>
@@ -7287,7 +7227,7 @@ Type RESTORE to continue.`);
                   <div className="font-black text-white text-sm">Push Notification Relay</div>
                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{pushOptInRate}% Global Opt-In Rate</div>
                 </div>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${pushOptInRate < 30 ? 'bg-[#8F6040]/20 border-[#8F6040]/50 text-[#D4A381]' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${pushOptInRate < 30 ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
                   <Bell size={14}/>
                   <span className="text-[10px] font-black uppercase tracking-widest">{pushOptInRate < 30 ? 'Low Adoption' : 'Active'}</span>
                 </div>
@@ -7369,7 +7309,7 @@ Type RESTORE to continue.`);
           </div>
           <div className="grid md:grid-cols-3 gap-3">
             <div className={`${T.card} p-3 border-amber-900/40 bg-amber-900/10`}><div className="text-[9px] uppercase tracking-widest text-amber-300 font-black">Missing Token</div><p className="text-[10px] text-slate-300 font-bold mt-1">Permission can say granted while no FCM token exists. Use Request Reconnect or Copy Link, then the employee must open the app on that device.</p></div>
-            <div className={`${T.card} p-3 border-[#8F6040]/40 bg-[#8F6040]/10`}><div className="text-[9px] uppercase tracking-widest text-[#D4A381] font-black">Stale Token</div><p className="text-[10px] text-slate-300 font-bold mt-1">Force Refresh clears the saved token, asks the device to refresh its service worker, and queues a fresh token sync on next open.</p></div>
+            <div className={`${T.card} p-3 border-orange-900/40 bg-orange-900/10`}><div className="text-[9px] uppercase tracking-widest text-orange-300 font-black">Stale Token</div><p className="text-[10px] text-slate-300 font-bold mt-1">Force Refresh clears the saved token, asks the device to refresh its service worker, and queues a fresh token sync on next open.</p></div>
             <div className={`${T.card} p-3 border-emerald-900/40 bg-emerald-900/10`}><div className="text-[9px] uppercase tracking-widest text-emerald-300 font-black">Connected</div><p className="text-[10px] text-slate-300 font-bold mt-1">Send Test validates the saved token through the server route. Bad tokens are automatically flagged by the push send route.</p></div>
           </div>
           <div className={`${T.card} overflow-hidden`}>
@@ -7384,7 +7324,7 @@ Type RESTORE to continue.`);
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="font-black text-white text-sm truncate">{u.name || u.email || 'Unnamed User'}</div>
                         {u.pushNeedsRepair && <span className="px-2 py-0.5 rounded-full bg-amber-900/30 border border-amber-900/60 text-amber-300 text-[8px] font-black uppercase tracking-widest">Repair queued</span>}
-                        {u.pushForceServiceWorkerRefresh && <span className="px-2 py-0.5 rounded-full bg-[#8F6040]/30 border border-[#8F6040]/60 text-[#D4A381] text-[8px] font-black uppercase tracking-widest">Force refresh</span>}
+                        {u.pushForceServiceWorkerRefresh && <span className="px-2 py-0.5 rounded-full bg-orange-900/30 border border-orange-900/60 text-orange-300 text-[8px] font-black uppercase tracking-widest">Force refresh</span>}
                       </div>
                       <div className="text-[10px] font-bold text-slate-400 truncate">{restName} • {u.email || 'no email'} • Devices: {u.deviceCount}</div>
                       <div className="grid sm:grid-cols-4 gap-2 mt-2 text-[10px] font-bold">
@@ -7398,7 +7338,7 @@ Type RESTORE to continue.`);
                     <div className="grid grid-cols-2 xl:grid-cols-1 gap-2 min-w-[190px]">
                       <button onClick={() => sendPushTestToUser(u)} disabled={!u.fcmToken} className="px-3 py-2 bg-blue-900/20 border border-blue-900/50 text-blue-300 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Send Test</button>
                       <button onClick={() => requestPushRepairForUser(u)} className="px-3 py-2 bg-amber-900/20 border border-amber-900/50 text-amber-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Request Reconnect</button>
-                      <button onClick={() => forceRefreshPushForUser(u)} className="px-3 py-2 bg-[#8F6040]/20 border border-[#8F6040]/50 text-[#D4A381] rounded-xl text-[10px] font-black uppercase tracking-widest">Force Refresh</button>
+                      <button onClick={() => forceRefreshPushForUser(u)} className="px-3 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Force Refresh</button>
                       <button onClick={() => copyPushRepairLinkForUser(u)} className="px-3 py-2 bg-cyan-900/20 border border-cyan-900/50 text-cyan-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Copy Link</button>
                       {needsRepair && <button onClick={() => clearPushRepairFlagForUser(u)} className="px-3 py-2 bg-slate-800/60 border border-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest col-span-2 xl:col-span-1">Clear Flag</button>}
                     </div>
@@ -7549,26 +7489,6 @@ Type RESTORE to continue.`);
                   {isDiagnosticsRunning ? <Loader2 size={14} className="animate-spin"/> : <Wrench size={14}/>} Run Full System Diagnostics
                 </button>
                 {lastDiagnosticsReport && <div className="mt-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-bold text-slate-400">Last report: {formatBackupTimestamp(lastDiagnosticsReport.generatedAt)} • Duration {lastDiagnosticsReport.durationMs || 0}ms • Integrity {lastDiagnosticsReport.backupIntegrity?.status || 'unknown'}</div>}
-                <button type="button" onClick={() => handleExplainDiagnosticsWithOpenAI()} disabled={!lastDiagnosticsReport || isDiagnosticsExplanationLoading} className="mt-3 w-full bg-purple-900/20 text-purple-300 border border-purple-900/50 hover:bg-purple-900/40 disabled:opacity-50 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
-                  {isDiagnosticsExplanationLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>} Explain with OpenAI
-                </button>
-                {diagnosticsExplanationError && <div className="mt-3 bg-red-900/20 border border-red-900/50 rounded-xl p-3 text-[10px] font-bold text-red-200">{diagnosticsExplanationError}</div>}
-                {diagnosticsExplanation?.explanation && <div className="mt-3 bg-[#0B0E11] border border-purple-900/50 rounded-xl p-3 text-xs font-bold text-slate-300 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div><div className="text-[9px] uppercase tracking-widest font-black text-purple-300">OpenAI Structured Repair Steps</div><div className="text-sm font-black text-white mt-1">Severity: {diagnosticsExplanation.explanation.severity}</div></div>
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{diagnosticsExplanation.meta?.model || 'OpenAI'}</span>
-                  </div>
-                  <p className="text-slate-300 leading-snug">{diagnosticsExplanation.explanation.summary}</p>
-                  <div><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mb-1">Likely cause</div><p className="text-slate-400 leading-snug">{diagnosticsExplanation.explanation.likelyCause}</p></div>
-                  {[
-                    ['Go here', diagnosticsExplanation.explanation.goTo],
-                    ['Do this in order', diagnosticsExplanation.explanation.steps],
-                    ['How to verify', diagnosticsExplanation.explanation.verification],
-                    ['Do not touch yet', diagnosticsExplanation.explanation.doNotTouchYet],
-                    ['Deploy / publish separately', diagnosticsExplanation.explanation.deployOrPublish],
-                    ['Escalate if', diagnosticsExplanation.explanation.escalateIf]
-                  ].map(([title, rows]) => Array.isArray(rows) && rows.length ? <div key={title}><div className="text-[9px] uppercase tracking-widest font-black text-purple-300 mb-1">{title}</div><ol className="list-decimal list-inside space-y-1 text-slate-400">{rows.map((row, idx) => <li key={idx}>{row}</li>)}</ol></div> : null)}
-                </div>}
               </div>
             </div>
           </div>
@@ -8080,7 +8000,7 @@ another@email.com"></textarea>
                       if(!window.confirm(`Force ${u.name} to log out and clear their device cache?`)) return;
                       await updateDoc(doc(db, "users", u.id), { forceLogout: true });
                       addToast('Executed', 'Kill signal sent to user device.');
-                    }} className="p-1.5 bg-[#8F6040]/20 border border-[#8F6040]/50 text-[#D4A381] hover:bg-[#8F6040]/40 rounded-lg transition-colors shadow-sm" title="Force Logout & Cache Clear">
+                    }} className="p-1.5 bg-orange-900/20 border border-orange-900/50 text-orange-500 hover:bg-orange-900/40 rounded-lg transition-colors shadow-sm" title="Force Logout & Cache Clear">
                       🔌
                     </button>
                     <button onClick={async () => {
@@ -8118,7 +8038,7 @@ another@email.com"></textarea>
             <div className="absolute inset-0 cockpit-grid opacity-30 pointer-events-none"></div>
             <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
-                <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-[#D4A381]" size={18}/> Support Diagnostics Bay</h3>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Support Diagnostics Bay</h3>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Runtime, auth, database integrity, API checks, crash ledger, and ghost-access clues.</p>
               </div>
               <div className="flex gap-2">
@@ -8185,7 +8105,7 @@ another@email.com"></textarea>
 
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-[#D4A381]" size={18}/> Bug Ledger</h3>
+              <h3 className="font-black text-sm text-white flex items-center gap-2"><Bug className="text-orange-500" size={18}/> Bug Ledger</h3>
               <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-500"><span className="cockpit-light bg-emerald-400 text-emerald-400 slow"></span>{crashLogs.length} recent logs</div>
             </div>
             <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
@@ -8193,7 +8113,7 @@ another@email.com"></textarea>
               {crashLogs.map(log => (
                 <div key={log.id} className={`${T.row} flex flex-col gap-2 ${(`${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied')) ? 'bg-red-950/20' : ''}`}>
                   <div className="flex justify-between items-start">
-                    <span className="text-xs font-black text-[#D4A381] bg-[#8F6040]/20 px-2 py-0.5 rounded border border-[#8F6040]/50 break-all leading-tight">{log.message}</span>
+                    <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
                     <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{formatClockDateTime(log.time)}</span>
                   </div>
                   {(log.restaurantId || log.user) && (
@@ -8429,7 +8349,7 @@ another@email.com"></textarea>
                   </button>
                   <div className="text-[9px] text-slate-500 font-bold leading-snug">Safety phrase required: <span className="text-red-200">REINJECT JULY</span>. Super Admin only.</div>
                 </div>
-                <button onClick={() => jumpToAdminIssue('support')} className="w-full bg-[#8F6040]/20 text-[#D4A381] border border-[#8F6040]/50 hover:bg-[#8F6040]/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Open Support Bay</button>
+                <button onClick={() => jumpToAdminIssue('support')} className="w-full bg-orange-900/20 text-orange-300 border border-orange-900/50 hover:bg-orange-900/40 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-colors">Open Support Bay</button>
               </div>
               <p className="text-[10px] text-slate-500 font-bold mt-3 leading-snug">Use raw JSON only when normal screens cannot explain the issue. For destructive changes, copy diagnostics first.</p>
             </div>
@@ -9072,7 +8992,6 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-16004', title:'What changed in version 16.0.4', group:'Release Notes', keywords:'new update 16.0.4 copper menu overlay spacing navigation openai diagnostics voice 86 confirmation system administrator search', body:['The main menu keeps the useful Command, Kitchen Ops, Management, and System organization while preserving the existing features and permissions.', 'The bright action color was removed from the app shell and the copper look was restored across menus, buttons, borders, focus rings, scrollbars, and command panels.', 'The hamburger menu spacing is tighter so the menu is easier to scan on desktop and mobile.', 'Opening the hamburger menu now locks the current page behind it and overlays the drawer instead of pushing or shifting the page.', '86 Voice alerts still ask for confirmation before sending and never edit inventory stock.', 'System Administrator search and OpenAI structured diagnostics explanations remain in place.', 'No Firestore or Storage rules need publishing for this update.'] },
   { id:'new-15034', title:'What changed in version 15.0.34', group:'Release Notes', keywords:'new update 15.0.34 master admin repair firestore users auth uid admin lockout', body:['Added a System Administrator self-repair tool for configured master-admin accounts whose Firebase Authentication account exists but Firestore users profile is missing.', 'The tool repairs only emails listed in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS and tells admins to log out and back in before publishing hardened Firebase rules.', 'Also added /api/master-admin-repair to the API checklist and updated diagnostics version metadata.'] },
   { id:'new-15033', title:'What changed in version 15.0.33', group:'Release Notes', keywords:'new update 15.0.33 deployment syntax hotfix vercel adjacent jsx elements manual', body:['Fixed the Vercel build failure from 15.0.32 caused by an unclosed JSX wrapper in System Administrator -> Manual.', 'Kept the 15.0.32 AI Support Manual, account deletion review, RECOVERY_CODE_SECRET guard, and production-hardening changes intact.', 'No Firebase rules, Storage rules, API routes, or Vercel environment variables changed in this hotfix.'] },
   { id:'new-15032', title:'What changed in version 15.0.32', group:'Release Notes', keywords:'new update 15.0.32 ai support manual security deletion recovery codes firebase rules', body:['System Administrator Manual now works like a support console: type a customer question and it returns likely causes, first checks, fix steps, warnings, escalation guidance, and relevant articles.', 'Security Center now includes account deletion request review so privacy requests can be marked reviewing, complete, or denied with admin notes and audit history.', 'MFA recovery codes now require a dedicated RECOVERY_CODE_SECRET in Vercel before codes can be generated or used.', 'Firebase rules no longer rely on personal-email fallbacks. Super Admin access for Firestore and Storage rules must come from a custom claim or Firestore profile flag.', 'This build requires a Vercel redeploy and testing-side Firebase rule publish before production rollout.'] },
@@ -9261,8 +9180,8 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
         <div className="lg:col-span-2 space-y-4">
           <div className={`${T.card} p-5`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{selected.group}</div><h3 className="text-2xl font-black text-white mb-4">{selected.title}</h3><div className="space-y-3">{selected.body.map((line, i) => <div key={i} className="flex gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="w-6 h-6 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-xs font-black flex-shrink-0">{i+1}</div><p className="text-sm font-bold text-slate-200 leading-relaxed">{line}</p></div>)}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { navigator.clipboard?.writeText(`${selected.title}\n\n${selected.body.map((b,i)=>`${i+1}. ${b}`).join('\n')}`); addToast?.('Copied', 'Help article copied.'); }} className={T.btnAlt}>Copy Instructions</button><button onClick={() => window.print()} className={T.btnAlt}>Print</button></div></div>
           <div className={`${T.card} p-4`}><h4 className="font-black text-white mb-2">Page-aware help</h4><p className="text-xs text-slate-400 font-bold mb-3">You are signed in as {appUser?.role || 'Staff'}. Start with these common articles:</p><div className="grid sm:grid-cols-3 gap-2">{(related.length ? related : HELP_ARTICLES.slice(0,3)).map(a => <button key={a.id} onClick={()=>setSelectedId(a.id)} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50"><div className="font-black text-white text-sm">{a.title}</div><div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{a.group}</div></button>)}</div></div>
-          <div className={`${T.card} p-4 border-[#8F6040]/40`}>
-            <div className="flex items-center gap-2 mb-2"><Bug size={18} className="text-[#D4A381]"/><h4 className="font-black text-[#D4A381]">Report a Bug / Error</h4></div>
+          <div className={`${T.card} p-4 border-orange-900/40`}>
+            <div className="flex items-center gap-2 mb-2"><Bug size={18} className="text-orange-300"/><h4 className="font-black text-orange-300">Report a Bug / Error</h4></div>
             <p className="text-xs text-slate-400 font-bold mb-3">Send problems from here instead of the side menu. Include exactly what you clicked, what you expected, and what happened. Device, screen, page, and browser details are attached automatically.</p>
             <form onSubmit={handleBugSubmit} className="space-y-3">
               <select value={bugCategory} onChange={e=>setBugCategory(e.target.value)} className={`${T.input} py-2 text-sm`}>

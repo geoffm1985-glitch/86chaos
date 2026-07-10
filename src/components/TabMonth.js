@@ -132,7 +132,7 @@ const TabMonth = ({ currentDate, users, shifts, T, getMonthStr, getDaysInMonth, 
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
               <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
                 {dayShifts.map(s=>(
-                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-[#D4A381]'} print-shift`}>
+                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-orange-400'} print-shift`}>
                     {users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}
                   </div>
                 ))}

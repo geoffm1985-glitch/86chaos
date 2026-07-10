@@ -46,34 +46,40 @@
   ],
   "functions": {
     "api/scan-invoice.js": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "memory": 1024
     },
     "api/scan-menu.js": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "memory": 1024
     },
     "api/dispatch-reminders.js": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "memory": 512
     },
     "api/full-system-diagnostics.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 1024
     },
     "api/presence-snapshot.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 512
     },
     "api/firestore-backup.js": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "memory": 1024
     },
     "api/firestore-backup-watchdog.js": {
-      "maxDuration": 120
+      "maxDuration": 120,
+      "memory": 512
     },
     "api/gemini-admin-manual.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 512
     },
     "api/health-checks.js": {
-      "maxDuration": 60
-    },
-    "api/openai-diagnostics-explain.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 512
     }
   }
 }

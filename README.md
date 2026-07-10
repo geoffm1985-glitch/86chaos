@@ -1,29 +1,39 @@
 # 86 Chaos
 
-Version: 16.0.4
+Current Version: 15.0.42 - Gemini Manual Completion Guard
 
-## 16.0.4 update
+## 15.0.42 focus
 
-16.0.4 is a visual/menu cleanup build on top of 16.0.3. It keeps the recovered 16.0.1 feature set, the safer 86 Voice behavior, OpenAI diagnostics explanations, Gemini Manual improvements, backup watchdog work, and the organized main menu.
+This release fixes the System Administrator Manual assistant issue where Gemini answers could stop mid-sentence on longer troubleshooting responses.
 
-What changed:
+### Included fixes
+- Increased the Gemini Manual assistant output budget on the server route.
+- Added Gemini finish-reason tracking so `MAX_TOKENS` cutoffs are visible in the UI.
+- Added server-side incomplete-answer detection for dangling endings such as answers ending with “if”, “because”, commas, or unfinished section headers.
+- Added automatic continuation attempts so the server asks Gemini to finish the answer before returning it to the app.
+- Added a `Continue Gemini Answer` button when Gemini still appears incomplete after automatic retries.
+- Updated Gemini instructions so it favors shorter complete instructions over long answers that cut off.
+- Added response metadata in the Manual panel showing finish reason and auto-continuation count.
+- Updated Administrator Manual release documentation for the Gemini completion guard.
 
-- Removed the bright action color from the app shell and restored the copper look across the core theme, menu, buttons, borders, focus rings, scrollbars, and command panels.
-- Tightened the main hamburger menu so menu items take less vertical space and the drawer is easier to scan on desktop and mobile.
-- Changed the main menu drawer to behave as a true overlay: opening it locks the page behind it instead of letting the current page shift or get pushed around.
-- Preserved the grouped main menu categories: Command, Kitchen Ops, Management, and System.
-- Preserved the stable System Administrator layout/tools from the recovered app line.
-- Kept the OpenAI diagnostics route, safer 86 Voice confirmation behavior, System Administrator search, Gemini Manual, backup watchdog, and other 16.0.x features.
+### Separate deployment / publishing
+- Vercel redeploy required because frontend code, `/api/gemini-admin-manual`, and version metadata changed.
+- No `vercel.json` changes.
+- No Firestore rules changes.
+- No Storage rules changes.
+- No new env vars required.
+- Optional tuning env var: `GEMINI_MANUAL_MAX_OUTPUT_TOKENS` or `MANUAL_GEMINI_MAX_OUTPUT_TOKENS`. Default is `4096`, capped at `8192`.
 
-## Deployment notes
+### Quick validation
+1. Deploy to Vercel preview/testing first.
+2. Confirm `/version.json` reports `15.0.42`.
+3. Open System Administrator → Manual.
+4. Ask a longer Gemini question, such as “Users schedule has disappeared and backup is stale, what do I check?”
+5. Confirm the answer does not stop mid-sentence.
+6. Confirm metadata shows model, API, duration, finish reason, and auto-continuation count when used.
+7. If a warning appears, tap `Continue Gemini Answer` and confirm the answer appends instead of replacing the existing response.
 
-- Redeploy on Vercel because frontend styling, version metadata, and the displayed API version changed.
-- Add `OPENAI_API_KEY` to the Vercel environment where you want OpenAI diagnostics explanations to work.
-- Optional: set `OPENAI_DIAGNOSTICS_MODEL` if you want a different OpenAI model. The default is `gpt-5-mini`.
-- Firestore rules are unchanged.
-- Storage rules are unchanged.
-- No Firebase publishing is required for this build.
-
-## Important QA focus
-
-Test the main menu first on desktop and mobile. Confirm it opens over the current page, does not push the page down, keeps the copper styling, and still exposes every permitted feature. Then verify System Administrator, 86 Voice confirmation, and OpenAI diagnostics still work.
+## Notes
+- 86 Chaos branding remains mandatory and cannot be hidden or replaced.
+- Customer restaurant logos may appear beside 86 Chaos branding, but not instead of it.
+- Keep Help Center public-facing and generic. Keep System Administrator security details inside the Administrator Manual.
