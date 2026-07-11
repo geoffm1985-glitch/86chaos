@@ -212,31 +212,62 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
   {
     id: "financials",
     group: "Management",
-    title: "Financials: Labor, Timesheets, Tips, Exports, and Daily Ledger",
-    tab: "Financials",
-    audience: "Owners, administrators, and users with labor or sales permission",
-    summary: "Review labor records and daily sales information, correct punches with an audit trail, and prepare exports.",
-    keywords: "financials labor timesheet punch fixer add edit approve tips export payroll daily ledger sales cash card deposits variance",
+    title: "Financial Center: Daily Close, Labor, Tips, COGS, Expenses, P&L, Targets, and Reports",
+    tab: "Financial Center",
+    audience: "Owners, administrators, and users with sales or labor permission",
+    summary: "Run a professional restaurant financial workflow from one readable center: daily close, sales mix, payroll readiness, tips, vendor costs, expenses, targets, and owner reports.",
+    keywords: "financial center overview daily close sales labor payroll tips cogs vendors expenses profit loss pnl targets reports cash deposit variance custom roster roles",
     sections: [
-      { title: "Labor and Timesheets", steps: [
-        "Open Punch Fixer and work through Needs Attention first: open punches, missed clock-outs, long shifts, unscheduled punches, and time errors.",
-        "When adding or editing a punch, select the employee, correct date and times, break information, reason, and a clear manager note.",
-        "Approve only after comparing the record with the schedule and manager knowledge. Never erase a valid punch simply to reduce reported labor.",
-        "Review Tips separately and confirm cash and credit tips are assigned according to restaurant policy."
+      { title: "Overview", steps: [
+        "Open Financial Center and choose the correct month. The Overview summarizes net sales, prime cost, estimated profit, cash variance, deposits pending, missing daily closes, and payroll issues.",
+        "Use the health cards as a management signal, not as final accounting. The numbers depend on saved Daily Close records, time punches, invoices, expenses, and target settings.",
+        "Labor by role always uses the account owner's custom Roster Roles from Preferences, plus active staff roles already assigned. Do not create separate hardcoded finance-only roles.",
+        "A red or orange card means review the source area: Daily Close for sales/cash, Labor & Payroll for punches, Inventory for invoice spend, or Expenses for operating costs."
       ]},
-      { title: "Exports and payroll handoff", steps: [
-        "Select the date range and role filter before exporting. Whole Restaurant includes all matching staff.",
-        "Choose detailed punches when payroll needs each clock event, or totals when a summarized hour report is appropriate.",
-        "Open the downloaded file and spot-check employees, dates, regular hours, overtime treatment, and tips before sending it to payroll.",
-        "Keep exported payroll files in approved secure storage; they contain private employee information."
+      { title: "Daily Close", steps: [
+        "Use Daily Close at the end of every business day. Enter gross sales, net sales, discounts, comps, refunds, sales tax, sales categories, cash sales, card sales, gift cards, and useful notes.",
+        "Enter the starting bank, cash paid out, tips paid out, cash counted, deposit amount, deposit status, close status, and manager sign-off. The app calculates expected cash, over/short variance, category total, and estimated profit.",
+        "Use Manager Reviewed only after a manager has compared POS totals, drawer count, deposits, and unusual activity. Use Locked only when the restaurant treats the close as final.",
+        "Explain any cash variance, unusual discounts, refunds, bad weather, large event, or staffing issue in the close notes. Future reviews are much easier when the story is written down."
       ]},
-      { title: "Daily Ledger", steps: [
-        "Enter the correct business date and sales categories. Record cash, card, deposits, discounts, comps, refunds, and notes consistently.",
-        "Use variance and trend indicators as review tools, not as automatic proof of loss or wrongdoing.",
-        "Correct mistakes with an explanation so the audit history makes sense later."
+      { title: "Sales and sales mix", steps: [
+        "Sales reads the saved Daily Close records for the selected month and shows the mix of food, liquor, beer, wine, NA beverage, specials, catering, and other sales.",
+        "Use category sales consistently. If the POS category names differ, decide how they map before entering data so month-to-month comparisons stay useful.",
+        "Deposit status shows whether a day is Not Prepared, Prepared, Deposited, or Verified. Pending deposits should be cleared according to restaurant policy.",
+        "Sales totals should be reconciled against the POS before owner reports are treated as final."
+      ]},
+      { title: "Labor & Payroll", steps: [
+        "Open Labor & Payroll to fix missed punches, open punches, long shifts, unscheduled punches, and geofence review items before exporting payroll.",
+        "When adding or editing a punch, choose the employee, correct date and times, break minutes, correction reason, and a clear manager note. The correction is written with audit context.",
+        "Filter payroll by Whole Restaurant or any custom Roster Role created in Preferences. Role choices must match the restaurant's real roster roles rather than a generic list.",
+        "Export detail when payroll needs each clock event. Export summary when payroll needs total hours by employee. Spot-check dates, hours, wages, and tips before sending files outside the app."
+      ]},
+      { title: "Tips", steps: [
+        "Tips summarizes cash tips and credit tips recorded on time punches. Review them by employee and roster role before payroll handoff.",
+        "Tip totals depend on punch records. If tips look wrong, open the employee's punches for that date range and correct the source punch with a reason.",
+        "Download the tip report for payroll review and keep it in approved secure storage because it contains employee pay information.",
+        "The app can organize tip data, but the restaurant is still responsible for its tip-pooling, tip-out, tax, and payroll policies."
+      ]},
+      { title: "COGS & Vendors", steps: [
+        "COGS & Vendors summarizes invoice spend from Inventory invoice history and groups spend by vendor when invoice records include vendor names.",
+        "Use it to spot large vendor changes, missing invoice review, or unusual purchasing spikes. Then open Inventory to inspect the original invoice and stock changes.",
+        "Food and beverage cost percentages come from Daily Close entries. Invoice spend is purchase activity and may not match true cost of goods sold until inventory counts are reconciled.",
+        "Finish invoice reconciliation in Inventory before relying on vendor spend for owner reporting."
+      ]},
+      { title: "Expenses", steps: [
+        "Use Expenses for non-invoice operating costs such as rent, utilities, repairs, supplies, marketing, fees, insurance, technology, and other bills.",
+        "Enter the date, vendor or payee, category, amount, payment method, due date, paid/unpaid state, and notes. Do not store card numbers, bank login information, or private personal data.",
+        "Mark unpaid expenses clearly so the Overview can show what still needs attention.",
+        "Delete expenses only when they were entered by mistake. Use notes for context rather than deleting legitimate records that changed status."
+      ]},
+      { title: "P&L, targets, and reports", steps: [
+        "P&L is an operational snapshot: gross sales, discounts/comps/refunds, net sales, food and beverage cost, gross profit, labor, operating expenses, and estimated net profit.",
+        "Targets sets the restaurant's warning thresholds for labor percent, food percent, beverage percent, prime cost, weekly and monthly sales goals, cash variance, and overtime risk.",
+        "Reports creates owner-ready print and CSV summaries. Use the Daily Close, Payroll, Tip, COGS, and Financial Center reports together when reviewing a week or month.",
+        "Financial access is sensitive. Give sales, labor, wage view, wage edit, and report access only to people with a real business need."
       ]}
     ],
-    notes: ["Wage visibility and wage editing are separate permissions. Give each only to people who genuinely need it."]
+    notes: ["Financial Center is a management tool, not a replacement for an accountant, payroll provider, bank reconciliation, POS settlement, or tax filing system."]
   },
   {
     id: "message-board",

@@ -2862,7 +2862,7 @@ const TabAuditLog = ({ appUser }) => {
 
 const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) => {
   const getMonday = (dStr) => {
-    const d = new Date(dStr + 'T12:00:00');
+    const d = new Date((dStr || getToday()) + 'T12:00:00');
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
@@ -2870,42 +2870,56 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
   const [weekStart, setWeekStart] = useState(getMonday(getToday()));
   const [editData, setEditData] = useState({});
-
-  const weekDays = Array.from({length: 7}).map((_, i) => {
+  const weekDays = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + i);
     return d.toISOString().split('T')[0];
   });
 
-  // --- AUTO-LABOR CALCULATION ENGINE ---
-  const calculatePunchHours = (inTime, outTime, breakMins = 0) => {
-      if (!inTime) return 0;
-      const end = outTime ? new Date(outTime) : new Date(); // If currently on clock, calc up to this exact minute
-      const rawMins = (end - new Date(inTime)) / 60000;
-      return Math.max(0, (rawMins - breakMins) / 60);
-  };
+  const calculateDailyLabor = (date) => timePunches
+    .filter(p => p.date === date)
+    .reduce((acc, p) => {
+      const emp = users.find(u => u.id === p.employeeId);
+      const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
+      return acc + (hours * parseFinanceAmount(emp?.wage));
+    }, 0);
 
-  const getDailyLabor = (date) => {
-      const dayPunches = timePunches.filter(p => p.date === date);
-      return dayPunches.reduce((acc, p) => {
-          const emp = users.find(u => u.id === p.employeeId);
-          const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-          return acc + (hours * (emp?.wage || 0));
-      }, 0);
-  };
+  const blankClose = (record = {}) => ({
+    grossSales: record.grossSales ?? '',
+    netSales: record.netSales ?? '',
+    cashSales: record.cashSales ?? '',
+    cardSales: record.cardSales ?? '',
+    giftCardSales: record.giftCardSales ?? '',
+    discounts: record.discounts ?? '',
+    comps: record.comps ?? '',
+    refunds: record.refunds ?? '',
+    salesTax: record.salesTax ?? '',
+    foodSales: record.foodSales ?? '',
+    liquorSales: record.liquorSales ?? '',
+    beerSales: record.beerSales ?? '',
+    wineSales: record.wineSales ?? '',
+    beverageSales: record.beverageSales ?? '',
+    specialsSales: record.specialsSales ?? '',
+    cateringSales: record.cateringSales ?? '',
+    otherSales: record.otherSales ?? '',
+    laborCost: record.laborCost !== undefined ? record.laborCost : '',
+    foodCost: record.foodCost ?? '',
+    beverageCost: record.beverageCost ?? '',
+    tipsPaidOut: record.tipsPaidOut ?? '',
+    startingBank: record.startingBank ?? '',
+    cashPaidOut: record.cashPaidOut ?? '',
+    cashCounted: record.cashCounted ?? '',
+    depositAmount: record.depositAmount ?? '',
+    depositStatus: record.depositStatus || 'Not Prepared',
+    closeStatus: record.closeStatus || 'Open',
+    managerSignOff: record.managerSignOff || '',
+    notes: record.notes || ''
+  });
 
   useEffect(() => {
-    const newEditData = {};
-    weekDays.forEach(date => {
-      const daySale = sales.find(s => s.date === date);
-      newEditData[date] = {
-        grossSales: daySale?.grossSales || '',
-        laborCost: daySale?.laborCost !== undefined ? daySale.laborCost : '',
-        foodCost: daySale?.foodCost || '',
-        notes: daySale?.notes || ''
-      };
-    });
-    setEditData(newEditData);
+    const next = {};
+    weekDays.forEach(date => next[date] = blankClose(sales.find(s => s.date === date)));
+    setEditData(next);
   }, [weekStart, sales]);
 
   const changeWeek = (offset) => {
@@ -2914,115 +2928,173 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
     setWeekStart(newDate);
   };
 
-  const handleSave = async (date) => {
-    const data = editData[date];
-    const existing = sales.find(s => s.date === date);
-    const autoLabor = getDailyLabor(date);
-    
-    // If they didn't type anything, grab the auto-calculated labor
-    const finalLabor = data.laborCost !== '' ? parseFloat(data.laborCost) : autoLabor;
+  const handleInputChange = (date, field, value) => setEditData(prev => ({ ...prev, [date]: { ...prev[date], [field]: value } }));
 
+  const dayMath = (date) => {
+    const data = editData[date] || blankClose();
+    const gross = parseFinanceAmount(data.grossSales);
+    const discounts = parseFinanceAmount(data.discounts);
+    const comps = parseFinanceAmount(data.comps);
+    const refunds = parseFinanceAmount(data.refunds);
+    const net = parseFinanceAmount(data.netSales) || Math.max(0, gross - discounts - comps - refunds);
+    const labor = data.laborCost !== '' ? parseFinanceAmount(data.laborCost) : calculateDailyLabor(date);
+    const food = parseFinanceAmount(data.foodCost);
+    const beverage = parseFinanceAmount(data.beverageCost);
+    const startingBank = parseFinanceAmount(data.startingBank);
+    const expectedCash = startingBank + parseFinanceAmount(data.cashSales) - parseFinanceAmount(data.tipsPaidOut) - parseFinanceAmount(data.cashPaidOut);
+    const variance = parseFinanceAmount(data.cashCounted) - expectedCash;
+    const categoryTotal = FINANCE_SALES_CATEGORIES.reduce((sum, [key]) => sum + parseFinanceAmount(data[key]), 0);
+    return { gross, discounts, comps, refunds, net, labor, food, beverage, expectedCash, variance, categoryTotal, profit: net - labor - food - beverage };
+  };
+
+  const handleSave = async (date) => {
+    const data = editData[date] || blankClose();
+    const existing = sales.find(s => s.date === date);
+    const m = dayMath(date);
     const payload = {
+      ...Object.fromEntries(Object.entries(data).map(([key, value]) => {
+        const numeric = ['grossSales','netSales','cashSales','cardSales','giftCardSales','discounts','comps','refunds','salesTax','foodSales','liquorSales','beerSales','wineSales','beverageSales','specialsSales','cateringSales','otherSales','laborCost','foodCost','beverageCost','tipsPaidOut','startingBank','cashPaidOut','cashCounted','depositAmount'].includes(key);
+        return [key, numeric ? parseFinanceAmount(value) : value];
+      })),
       date,
-      grossSales: parseFloat(data.grossSales) || 0,
-      laborCost: finalLabor || 0,
-      foodCost: parseFloat(data.foodCost) || 0,
-      notes: data.notes || '',
+      netSales: m.net,
+      expectedCash: m.expectedCash,
+      cashVariance: m.variance,
+      categorySalesTotal: m.categoryTotal,
+      estimatedProfit: m.profit,
       restaurantId: appUser.restaurantId,
-      loggedBy: appUser.name,
-      timestamp: new Date().toISOString()
+      loggedBy: appUser.name || appUser.email || 'Manager',
+      updatedAt: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
+      source: 'financial_center_daily_close'
     };
 
     try {
       if (existing) {
-        await updateDoc(doc(db, "sales", existing.id), payload);
+        await updateDoc(doc(db, 'sales', existing.id), payload);
+        await logAudit(appUser, 'FINANCIAL_CLOSE_UPDATED', `sales/${existing.id}`, `Updated daily close for ${date}`);
       } else {
-        await addDoc(collection(db, "sales"), payload);
+        const refObj = await addDoc(collection(db, 'sales'), { ...payload, createdAt: new Date().toISOString() });
+        await logAudit(appUser, 'FINANCIAL_CLOSE_CREATED', `sales/${refObj.id}`, `Created daily close for ${date}`);
       }
-      addToast('Saved', `Data for ${new Date(date+'T12:00').toLocaleDateString()} locked in.`);
+      addToast('Daily Close Saved', `${formatDisplayDate(date)} financial close saved.`);
     } catch (err) {
       addToast('Error', err.message);
     }
   };
 
-  const handleInputChange = (date, field, value) => {
-    setEditData(prev => ({ ...prev, [date]: { ...prev[date], [field]: value } }));
-  };
+  const weekly = weekDays.reduce((acc, date) => {
+    const m = dayMath(date);
+    acc.gross += m.gross; acc.net += m.net; acc.labor += m.labor; acc.food += m.food; acc.beverage += m.beverage; acc.profit += m.profit; acc.variance += m.variance;
+    return acc;
+  }, { gross: 0, net: 0, labor: 0, food: 0, beverage: 0, profit: 0, variance: 0 });
+  const wtdLaborPct = weekly.net > 0 ? (weekly.labor / weekly.net) * 100 : 0;
+  const wtdFoodPct = weekly.net > 0 ? (weekly.food / weekly.net) * 100 : 0;
+  const wtdPrimePct = weekly.net > 0 ? ((weekly.labor + weekly.food + weekly.beverage) / weekly.net) * 100 : 0;
 
-  let wtdGross = 0; let wtdLabor = 0; let wtdFood = 0;
-  weekDays.forEach(d => {
-    const s = sales.find(x => x.date === d);
-    const autoLabor = getDailyLabor(d);
-    if (s) { 
-      wtdGross += (s.grossSales||0); 
-      wtdLabor += (s.laborCost > 0 ? s.laborCost : autoLabor); 
-      wtdFood += (s.foodCost||0); 
-    } else {
-      wtdLabor += autoLabor; // Add auto-labor even if not saved yet to show running trends
-    }
-  });
-  
-  const wtdLaborPct = wtdGross > 0 ? ((wtdLabor / wtdGross) * 100).toFixed(1) : 0;
-  const wtdFoodPct = wtdGross > 0 ? ((wtdFood / wtdGross) * 100).toFixed(1) : 0;
-  const wtdProfit = wtdGross - (wtdLabor + wtdFood);
+  const MoneyInput = ({ date, field, label, value, placeholder = '0.00' }) => (
+    <label className="block">
+      <span className="block text-xs font-black text-slate-300 mb-1">{label}</span>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-black">$</span>
+        <input type="number" inputMode="decimal" min="0" step="0.01" value={value ?? ''} onChange={e => handleInputChange(date, field, e.target.value)} placeholder={placeholder} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm font-bold pl-7 pr-3 py-2.5 rounded-xl outline-none focus:border-[#D4A381]" />
+      </div>
+    </label>
+  );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      
-      {/* Tight Weekly Controls */}
-      <div className="flex justify-between items-center bg-[#1A2126] border border-[#2A353D] rounded-xl p-2 shadow-sm">
-         <button onClick={() => changeWeek(-1)} className="p-2 bg-[#12161A] text-slate-400 rounded-lg hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronLeft size={18} /></button>
-         <div className="text-center">
-           <h2 className="text-sm font-black text-white uppercase tracking-widest">Week of {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</h2>
-         </div>
-         <button onClick={() => changeWeek(1)} className="p-2 bg-[#12161A] text-slate-400 rounded-lg hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronRight size={18} /></button>
+    <div className="max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className="flex justify-between items-center bg-[#1A2126] border border-[#2A353D] rounded-2xl p-3 shadow-sm">
+        <button onClick={() => changeWeek(-1)} className="p-2 bg-[#12161A] text-slate-300 rounded-xl hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronLeft size={20} /></button>
+        <div className="text-center">
+          <div className="text-xs uppercase tracking-widest font-black text-[#D4A381]">Daily Close</div>
+          <h2 className="text-lg sm:text-xl font-black text-white">Week of {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</h2>
+        </div>
+        <button onClick={() => changeWeek(1)} className="p-2 bg-[#12161A] text-slate-300 rounded-xl hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronRight size={20} /></button>
       </div>
 
-      {/* Expanded WTD KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Gross</div><div className="text-sm sm:text-lg font-black text-[#D4A381]">${wtdGross.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</div></div>
-        <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Labor</div><div className={`text-sm sm:text-lg font-black ${wtdLaborPct > 30 ? 'text-red-400' : 'text-emerald-400'}`}>{wtdLaborPct}%</div></div>
-        <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Food</div><div className={`text-sm sm:text-lg font-black ${wtdFoodPct > 33 ? 'text-red-400' : 'text-emerald-400'}`}>{wtdFoodPct}%</div></div>
-        <div className={`${T.card} p-2
- sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Profit</div><div className={`text-sm sm:text-lg font-black ${wtdProfit < 0 ? 'text-red-400' : 'text-emerald-400'}`}>${wtdProfit.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</div></div>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        <StatusTile label="WTD Net Sales" value={moneyText(weekly.net)} icon={TrendingUp} color="text-[#D4A381]" />
+        <StatusTile label="Labor" value={pctText(wtdLaborPct)} icon={Users} color={wtdLaborPct > 30 ? 'text-red-400' : 'text-emerald-400'} />
+        <StatusTile label="Food Cost" value={pctText(wtdFoodPct)} icon={Package} color={wtdFoodPct > 33 ? 'text-red-400' : 'text-emerald-400'} />
+        <StatusTile label="Prime Cost" value={pctText(wtdPrimePct)} icon={Scale} color={wtdPrimePct > 65 ? 'text-red-400' : 'text-emerald-400'} />
+        <StatusTile label="Est. Profit" value={moneyText(weekly.profit)} icon={Star} color={weekly.profit < 0 ? 'text-red-400' : 'text-emerald-400'} />
       </div>
 
-      {/* Ultra-Compact 7-Day Ledger with Notes */}
-      <div className={`${T.card} overflow-hidden`}>
-         <div className="divide-y divide-[#2A353D]">
-           {weekDays.map(date => {
-              const data = editData[date] || { grossSales: '', laborCost: '', foodCost: '', notes: '' };
-              const isToday = date === getToday();
-              const hasData = sales.find(s => s.date === date);
-              const autoLabor = getDailyLabor(date);
-              
-              const displayLabor = data.laborCost !== '' ? data.laborCost : (autoLabor > 0 ? autoLabor.toFixed(2) : '');
-
-              return (
-                <div key={date} className={`p-2 sm:p-3 flex flex-col gap-2 ${isToday ? 'bg-[#12161A] border-l-2 border-[#D4A381]' : 'hover:bg-[#12161A]/50 transition-colors'}`}>
-                   <div className="flex justify-between items-center">
-                      <span className={`text-[10px] font-black uppercase tracking-widest ${isToday ? 'text-[#D4A381]' : 'text-slate-300'}`}>{new Date(date+'T12:00').toLocaleDateString('en-US', {weekday:'short', month:'numeric', day:'numeric'})}</span>
-                      <div className="flex items-center gap-2">
-                         {data.laborCost === '' && autoLabor > 0 && <span className="text-[8px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-900/20 px-1.5 py-0.5 rounded border border-emerald-900/50">Auto-Labor</span>}
-                         {hasData && <span className="text-[8px] text-[#D4A381] font-black uppercase tracking-widest bg-[#8F6040]/20 px-1.5 py-0.5 rounded border border-[#D4A381]/30">Saved</span>}
-                         {hasData && appUser?.isAdmin && <button onClick={() => { if(window.confirm("Delete record?")) deleteDoc(doc(db,"sales",hasData.id)); }} className="text-slate-500 hover:text-red-500"><Trash2 size={12}/></button>}
-                      </div>
-                   </div>
-                   <div className="flex flex-col gap-1.5">
-                      <div className="flex gap-1.5">
-                        <div className="relative flex-1"><span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold">$</span><input type="number" value={data.grossSales} onChange={e=>handleInputChange(date, 'grossSales', e.target.value)} placeholder="Gross" className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381]" /></div>
-                        <div className="relative flex-1"><span className={`absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold ${data.laborCost === '' && autoLabor > 0 ? 'text-emerald-500' : 'text-slate-500'}`}>$</span><input type="number" value={displayLabor} onChange={e=>handleInputChange(date, 'laborCost', e.target.value)} placeholder="Labor" className={`w-full bg-[#0B0E11] border border-[#2A353D] text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381] ${data.laborCost === '' && autoLabor > 0 ? 'text-emerald-400 bg-emerald-900/10 border-emerald-900/50' : 'text-white'}`} /></div>
-                        <div className="relative flex-1"><span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold">$</span><input type="number" value={data.foodCost} onChange={e=>handleInputChange(date, 'foodCost', e.target.value)} placeholder="Food" className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381]" /></div>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <input type="text" value={data.notes} onChange={e=>handleInputChange(date, 'notes', e.target.value)} placeholder="Context notes (e.g., Event, Weather, Promos)..." className="flex-1 w-full bg-[#0B0E11] border border-[#2A353D] text-slate-300 text-[10px] sm:text-xs font-medium px-2 py-1.5 rounded outline-none focus:border-[#D4A381]" />
-                        <button onClick={()=>handleSave(date)} className="w-16 bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 text-[10px] font-black uppercase tracking-wider rounded flex items-center justify-center flex-shrink-0 hover:opacity-80 transition-opacity">Save</button>
-                      </div>
-                   </div>
+      <div className="space-y-4">
+        {weekDays.map(date => {
+          const data = editData[date] || blankClose();
+          const existing = sales.find(s => s.date === date);
+          const autoLabor = calculateDailyLabor(date);
+          const m = dayMath(date);
+          const isToday = date === getToday();
+          return (
+            <div key={date} className={`${T.card} overflow-hidden ${isToday ? 'border-[#D4A381]/60' : ''}`}>
+              <div className="p-4 bg-[#12161A] border-b border-[#2A353D] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-widest font-black text-[#D4A381]">{formatDisplayFullDate(date)}</div>
+                  <h3 className="text-xl font-black text-white">Closeout Worksheet</h3>
                 </div>
-              )
-           })}
-         </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {data.laborCost === '' && autoLabor > 0 && <span className="px-3 py-1 rounded-full border border-emerald-800/60 bg-emerald-900/20 text-emerald-300 text-xs font-black">Auto labor {moneyText(autoLabor, 2)}</span>}
+                  {existing && <span className="px-3 py-1 rounded-full border border-[#D4A381]/30 bg-[#8F6040]/20 text-[#D4A381] text-xs font-black">Saved</span>}
+                  {existing && appUser?.isAdmin && <button onClick={async () => { if (window.confirm('Delete this daily close record?')) { await deleteDoc(doc(db, 'sales', existing.id)); await logAudit(appUser, 'FINANCIAL_CLOSE_DELETED', `sales/${existing.id}`, `Deleted daily close for ${date}`); addToast('Deleted', 'Daily close record removed.'); } }} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={16}/></button>}
+                </div>
+              </div>
+
+              <div className="p-4 grid xl:grid-cols-12 gap-4">
+                <section className="xl:col-span-4 space-y-3">
+                  <h4 className="font-black text-white flex items-center gap-2"><Scale size={17} className="text-[#D4A381]"/> Sales Summary</h4>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <MoneyInput date={date} field="grossSales" label="Gross Sales" value={data.grossSales} />
+                    <MoneyInput date={date} field="netSales" label="Net Sales" value={data.netSales} />
+                    <MoneyInput date={date} field="discounts" label="Discounts" value={data.discounts} />
+                    <MoneyInput date={date} field="comps" label="Comps" value={data.comps} />
+                    <MoneyInput date={date} field="refunds" label="Refunds" value={data.refunds} />
+                    <MoneyInput date={date} field="salesTax" label="Sales Tax" value={data.salesTax} />
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {FINANCE_SALES_CATEGORIES.map(([key, label]) => <MoneyInput key={key} date={date} field={key} label={label} value={data[key]} />)}
+                  </div>
+                </section>
+
+                <section className="xl:col-span-4 space-y-3">
+                  <h4 className="font-black text-white flex items-center gap-2"><Coffee size={17} className="text-[#D4A381]"/> Cash, Deposits & Cost</h4>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <MoneyInput date={date} field="cashSales" label="Cash Sales" value={data.cashSales} />
+                    <MoneyInput date={date} field="cardSales" label="Card Sales" value={data.cardSales} />
+                    <MoneyInput date={date} field="giftCardSales" label="Gift Cards" value={data.giftCardSales} />
+                    <MoneyInput date={date} field="startingBank" label="Starting Bank" value={data.startingBank} />
+                    <MoneyInput date={date} field="cashPaidOut" label="Paid Out" value={data.cashPaidOut} />
+                    <MoneyInput date={date} field="tipsPaidOut" label="Tips Paid Out" value={data.tipsPaidOut} />
+                    <MoneyInput date={date} field="cashCounted" label="Cash Counted" value={data.cashCounted} />
+                    <MoneyInput date={date} field="depositAmount" label="Deposit Amount" value={data.depositAmount} />
+                    <MoneyInput date={date} field="laborCost" label="Labor Cost" value={data.laborCost === '' && autoLabor > 0 ? autoLabor.toFixed(2) : data.laborCost} />
+                    <MoneyInput date={date} field="foodCost" label="Food Cost" value={data.foodCost} />
+                    <MoneyInput date={date} field="beverageCost" label="Beverage Cost" value={data.beverageCost} />
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <label><span className="block text-xs font-black text-slate-300 mb-1">Deposit Status</span><select value={data.depositStatus} onChange={e => handleInputChange(date, 'depositStatus', e.target.value)} className={T.input}>{FINANCE_DEPOSIT_STATUSES.map(status => <option key={status}>{status}</option>)}</select></label>
+                    <label><span className="block text-xs font-black text-slate-300 mb-1">Close Status</span><select value={data.closeStatus} onChange={e => handleInputChange(date, 'closeStatus', e.target.value)} className={T.input}>{FINANCE_CLOSE_STATUSES.map(status => <option key={status}>{status}</option>)}</select></label>
+                  </div>
+                </section>
+
+                <section className="xl:col-span-4 space-y-3">
+                  <h4 className="font-black text-white flex items-center gap-2"><ClipboardList size={17} className="text-[#D4A381]"/> Manager Review</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-slate-400">Expected Cash</div><div className="text-lg font-black text-white">{moneyText(m.expectedCash, 2)}</div></div>
+                    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-slate-400">Over / Short</div><div className={`text-lg font-black ${Math.abs(m.variance) > 10 ? 'text-red-400' : 'text-emerald-400'}`}>{moneyText(m.variance, 2)}</div></div>
+                    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-slate-400">Category Total</div><div className="text-lg font-black text-white">{moneyText(m.categoryTotal, 2)}</div></div>
+                    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-slate-400">Est. Profit</div><div className={`text-lg font-black ${m.profit < 0 ? 'text-red-400' : 'text-emerald-400'}`}>{moneyText(m.profit, 2)}</div></div>
+                  </div>
+                  <label><span className="block text-xs font-black text-slate-300 mb-1">Manager Sign-off</span><input value={data.managerSignOff} onChange={e => handleInputChange(date, 'managerSignOff', e.target.value)} placeholder="Manager name or initials" className={T.input}/></label>
+                  <label><span className="block text-xs font-black text-slate-300 mb-1">Close Notes</span><textarea value={data.notes} onChange={e => handleInputChange(date, 'notes', e.target.value)} rows={4} placeholder="Weather, events, drawer explanation, unusual discounts, staffing notes..." className={T.input}></textarea></label>
+                  <button onClick={() => handleSave(date)} className={`${T.btn} w-full py-3 text-sm`}>Save Daily Close</button>
+                </section>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -3030,6 +3102,18 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
 
 const ADMIN_TROUBLESHOOTING_ARTICLES = [
+  {
+    "title": "Version 15.0.53 Professional Financial Center and Complete Manuals",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.53 financial center daily close sales labor payroll tips cogs vendors expenses pnl targets reports help center training manual roster roles",
+    "body": [
+      "15.0.53 turns Financials into a professional Financial Center with Overview, Daily Close, Sales, Labor & Payroll, Tips, COGS & Vendors, Expenses, P&L, Targets, and Reports.",
+      "Daily Close now records sales categories, discounts, comps, refunds, tax, cash/card/gift cards, tips paid out, starting bank, cash counted, deposit amount, close status, manager sign-off, and variance math.",
+      "Labor-by-role, payroll filters, tips, schedule coverage, exports, and financial reports must use the account owner custom Roster Roles from Preferences as the source of truth.",
+      "Help Center now includes a searchable main-app training manual, while System Administrator keeps the deeper admin manual for support, security, diagnostics, permissions, and deployment work.",
+      "Firestore rules add explicit financial protection for sales, financialExpenses, and financialTargets so financial records no longer rely only on the broad tenant catch-all rule."
+    ]
+  },
   {
     "title": "Master admin exists in Auth but not Firestore users",
     "group": "System Administrator / Troubleshooting",
@@ -5564,7 +5648,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Health Dashboard and full diagnostics', group: 'System Administrator', keywords: 'health dashboard firestore latency storage usage api response times sync diagnostics deployment report', body: ['Open System Administrator → Health Dashboard to see Firestore read latency, backup Storage usage, API route response times, backup integrity, and last successful sync.', 'Click Refresh Health to retest live timings without changing data.', 'Click Run Full System Diagnostics before deployments to download a JSON report with client runtime health plus server-side Firebase/Admin/Storage checks.', 'A failed backup-integrity badge means the latest backup could not be verified after upload and should be checked before deploying risky changes.'] },
     { title: 'Audit timeline by administrator session', group: 'System Administrator', keywords: 'audit timeline sessions administrator actions grouped session forensics', body: ['Open System Administrator → Forensics & Backups and review Administrator Session Timeline.', 'Actions are grouped by the saved browser session ID when available. Older logs without a session ID are grouped into 30-minute actor windows.', 'Use this timeline to reconstruct what a support/admin user did during one troubleshooting visit instead of reading a flat log stream.', 'Server-side actions such as automatic backups use the run ID or route actor as their session clue.'] },
     { title: 'Backup integrity verification', group: 'Backups', keywords: 'backup integrity verification sha checksum storage round trip automatic backups firestore backup', body: ['Every Firestore backup now verifies itself after uploading to Firebase Storage.', 'The backup route downloads the saved gzip, checks it can be decompressed, validates document and collection counts, and compares a SHA-256 checksum.', 'The Command Deck and Health Dashboard show the latest verification status from system/backupStatus.', 'If verification fails, do not restore or rely on that backup. Run another backup and check Vercel/Firebase Storage logs.'] },
-    { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Labor & Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
+    { title: 'Financial Center workflow', group: 'Financials', keywords: 'financials financial center overview daily close sales payroll tips cogs vendors expenses pnl targets reports roster roles permissions', body: ['Financial Center is the professional money area for owners and permitted managers. It includes Overview, Daily Close, Sales, Labor & Payroll, Tips, COGS & Vendors, Expenses, P&L, Targets, and Reports.', 'Overview shows net sales, labor percent, food and beverage cost, prime cost, estimated profit, cash variance, missing daily closes, pending deposits, and open payroll issues.', 'Daily Close records end-of-day sales, discounts, comps, refunds, tax, sales categories, cash/card/gift card totals, tips paid out, starting bank, cash counted, deposit amount, manager sign-off, close status, and notes.', 'Labor & Payroll, Tips, payroll exports, and labor-by-role must use the account owner custom Roster Roles from Preferences. Do not hardcode generic restaurant roles for financial reports or scheduling logic.', 'COGS & Vendors summarizes invoice history from Inventory. Expenses tracks operating costs. P&L is an operational estimate, not tax accounting. Targets set the thresholds that color the dashboard.', 'Keep sales, labor, wage view/edit, expense, target, and report permissions restricted. Firestore has explicit financial rules for sales, financialExpenses, and financialTargets, so UI access and backend enforcement stay aligned.'] },
     { title: 'Schedule Builder location', group: 'Scheduling', keywords: 'schedule builder time clock shifts subtab permissions', body: ['Schedule Builder is now a protected subtab inside Time Clock & Schedule.', 'Users still need schedule permission or admin access.', 'Event Calendar remains separate because it is not the same thing as staff scheduling.', 'Old Schedule Builder links route into the same protected schedule workflow.'] },
     { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Manager Brief after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
     ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
@@ -8982,6 +9066,31 @@ const ROLE_KEYWORDS = {
 
 const normalizeLaborRole = (role) => String(role || 'Unassigned').trim() || 'Unassigned';
 const roleFilterKey = (role) => normalizeLaborRole(role).toLowerCase();
+const parseFinanceAmount = (value) => Number.isFinite(parseFloat(value)) ? parseFloat(value) : 0;
+const moneyText = (value, digits = 0) => `$${parseFinanceAmount(value).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+const pctText = (value, digits = 1) => `${(Number.isFinite(parseFloat(value)) ? parseFloat(value) : 0).toFixed(digits)}%`;
+const safeFinanceDate = (item = {}) => item.date || item.businessDate || item.invoiceDate || item.createdAt?.slice?.(0, 10) || '';
+const getFinancialGrossSales = (item = {}) => parseFinanceAmount(item.grossSales ?? item.netSales ?? item.amount ?? item.totalSales ?? item.sales);
+const getFinancialNetSales = (item = {}) => {
+  const stored = parseFinanceAmount(item.netSales);
+  if (stored > 0) return stored;
+  const gross = getFinancialGrossSales(item);
+  return Math.max(0, gross - parseFinanceAmount(item.discounts) - parseFinanceAmount(item.comps) - parseFinanceAmount(item.refunds));
+};
+const getFinancialLaborCost = (item = {}) => parseFinanceAmount(item.laborCost);
+const getFinancialFoodCost = (item = {}) => parseFinanceAmount(item.foodCost);
+const getFinancialBeverageCost = (item = {}) => parseFinanceAmount(item.beverageCost);
+const getFinancialExpenseAmount = (item = {}) => parseFinanceAmount(item.amount ?? item.total ?? item.extendedCost ?? item.invoiceTotal);
+const getFinancialInvoiceAmount = (item = {}) => parseFinanceAmount(item.total ?? item.invoiceTotal ?? item.amount ?? item.grandTotal ?? item.subtotal);
+const FINANCE_SALES_CATEGORIES = [
+  ['foodSales', 'Food'], ['liquorSales', 'Liquor'], ['beerSales', 'Beer'], ['wineSales', 'Wine'], ['beverageSales', 'NA Bev'], ['specialsSales', 'Specials'], ['cateringSales', 'Catering'], ['otherSales', 'Other']
+];
+const FINANCE_EXPENSE_CATEGORIES = ['Food', 'Liquor / Beer / Wine', 'Payroll', 'Rent', 'Utilities', 'Repairs & Maintenance', 'Supplies', 'Marketing', 'Fees', 'Insurance', 'Technology', 'Other'];
+const FINANCE_PAYMENT_METHODS = ['Unpaid', 'Cash', 'Card', 'ACH', 'Check', 'Auto Pay', 'Owner Paid', 'Other'];
+const FINANCE_DEPOSIT_STATUSES = ['Not Prepared', 'Prepared', 'Deposited', 'Verified'];
+const FINANCE_CLOSE_STATUSES = ['Open', 'Manager Reviewed', 'Locked'];
+const DEFAULT_FINANCE_TARGETS = { laborPct: 28, foodPct: 32, beveragePct: 22, primePct: 60, weeklySalesGoal: 0, monthlySalesGoal: 0, cashVarianceAlert: 10, overtimeAlertHours: 40 };
+const financeAccess = (user = {}, perm = '') => Boolean(user?.isSuperAdmin || user?.isAdmin || user?.isOwner || user?.accountOwner || user?.owner || user?.workspaceOwner || user?.accountRole === 'owner' || (perm && user?.permissions?.[perm]));
 
 const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser }) => {
   const [subTab, setSubTab] = useState('fixer');
@@ -9026,7 +9135,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   }
 
   const exceptionPunches = timePunches.filter(p => getPunchIssue(p)).sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
-  const rangeSales = sales.filter(s => (s.date || '') >= rangeStart && (s.date || '') <= rangeEnd).reduce((sum, s) => sum + (parseFloat(s.amount || s.totalSales || s.sales || 0) || 0), 0);
+  const rangeSales = sales.filter(s => (s.date || '') >= rangeStart && (s.date || '') <= rangeEnd).reduce((sum, s) => sum + getFinancialNetSales(s), 0);
   const payrollRows = visiblePunches.map(p => {
     const emp = users.find(u => u.id === p.employeeId) || {};
     const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
@@ -9298,6 +9407,7 @@ const HELP_ARTICLES = [
   { id:'menu-intelligence-guide', title:'Using Menu Intelligence', group:'Menu Intelligence', keywords:'menu intelligence intelligent menu menu scanner scan menu upload photo pdf approve reviewed menu links ingredient match inventory link unavailable menu items 86 burger patty beef gr pty edit delete recent menu scans', body:['Menu Intelligence helps managers connect menu items to the inventory products that make them. Once those links are approved, 86 Chaos can tell staff which menu items are affected when an ingredient is 86d or unavailable.', 'Open Menu Intelligence, choose a clear menu photo or PDF, and start the scan. Large photos are compressed before upload when possible. If a PDF is still too large, split it into smaller sections or export fewer pages.', 'When the scan finishes, review the detected menu items. The AI is a helper, not the boss. Check names, ingredients, and suggested inventory matches before approving anything.', 'For each menu item, connect the ingredients to the real inventory rows your kitchen uses. Use the actual product name when possible. For example, a burger may need to link to an inventory item named BEEF GR PTY, beef patty, hamburger patty, bun, cheese, lettuce, tomato, or other items you track.', 'Click Approve Reviewed Menu Links after the matches look right. The approval button shows progress and locks while saving so duplicate links are not created by extra clicks.', 'Use Recent Menu Scans to edit a scan when an ingredient match is wrong or delete a scan when it is outdated. Deleting a scan removes its menu-impact links so old menus do not keep affecting 86 alerts.', 'When someone posts or says an 86 alert such as 86 burger, the app can use approved Menu Intelligence links to find the best inventory match and show unavailable menu items on the Message Board, Manager Brief, and Kitchen Command Center.', 'For best results, approve links for common shorthand items staff actually say: burger, patty, wings, fries, chicken, buns, ranch, cheese, lettuce, tomatoes, and sauces. If an 86 alert does not show menu impact, edit the menu scan and make sure that ingredient is linked to the correct inventory item.'] },
 
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
+  { id:'app-training-manual', title:'Complete app training manual', group:'Training Manual', keywords:'training manual complete app everything explain all tabs staff manager owner help center system administrator financials inventory schedule prep recipes messages security roles', body:['The Help Center includes a searchable main-app training manual. It explains what each area does, who should use it, what to check, and safety or privacy warnings.', 'Search for plain words such as clock, schedule, prep, inventory, invoice, 86, financials, tips, expenses, training, HR, message, voice, or security. Matching manual chapters appear under the Searchable app training manual card.', 'The main-app training manual is public-facing and customer safe. It explains everyday app features without exposing System Administrator repair details, secrets, forensics, or internal support-only procedures.', 'System Administrator has its own deeper manual for super admins and support work. Keep both manuals updated whenever features are added or renamed so staff can understand what every button is for.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
   { id:'manager-quick-start', title:'Manager / Restaurant Quick Start', group:'Quick Start Guides', keywords:'manager restaurant setup workspace tour add employees permissions backups geofence', body:['New workspaces open a manager setup tour that covers saving the app, adding employees, setting permissions, setting clock rules, backups, and Help Center.','Staff Roster shows the one-time generated login popup after adding employees. Copy, print, email, or text before closing.','Set the required work area in Settings so clock-out location can be reviewed.','Backup Center is under System Administrator → Forensics & Backups and requires RESTORE confirmation for restore actions.'] },
   { id:'voice-preview', title:'Using Voice Assistant Preview', group:'Voice Commands', keywords:'voice preview microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list manager brief kitchen command center 86 alert', body:['The microphone button is marked PREVIEW. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.' , 'Saying “86 salmon”, “86 burger”, or “we’re out of ranch” posts an important 86 alert and does not edit inventory stock counts. When Menu Intelligence links exist, the alert can include the matched inventory item and unavailable menu items.','Navigation commands can pull up screens by plain name: “open manager brief”, “open kitchen command center”, “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, “open prep”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice can open specific recipes by name, such as “open beer cheese recipe” or “show me chicken marsala recipe”. It searches the live Recipe Book, so recipes added later work without adding new command phrases.', 'Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
@@ -9331,7 +9441,7 @@ const HELP_ARTICLES = [
   { id:'schedule-stability', title:'Schedule stability and restore help', group:'Scheduling', keywords:'schedule restore deleted shifts missing old data stability', body:['Fixed stability issues around schedule restore and month loading.', 'If a schedule looks wrong after a restore, contact a system administrator so the month can be repaired safely.'] },
   { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste gzip json integrity', body:['Open System Administrator → Forensics & Backups → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore. The restore reader accepts the current compressed JSON backup format and readable JSON returned by cloud storage.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
   { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the production Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics & Backups → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
-  { id:'financials-tab', title:'Using Financials', group:'Financials', keywords:'financials labor timesheets daily ledger sales payroll export costs', body:['Financials combines Labor & Timesheets with Daily Ledger so managers do not jump between separate money screens.', 'Use the Labor & Timesheets subtab for punches, payroll exports, role filters, tips, and punch corrections.', 'Use the Daily Ledger subtab for sales, labor cost, food cost, and context notes.', 'Old links for Labor or Daily Ledger still open Financials and land on the matching subtab.'] },
+  { id:'financials-tab', title:'Using the Financial Center', group:'Financials', keywords:'financials financial center overview daily close sales labor payroll tips cogs vendors expenses profit loss pnl targets reports custom roster roles', body:['Financial Center is the professional money hub for owners and permitted managers. It combines Overview, Daily Close, Sales, Labor & Payroll, Tips, COGS & Vendors, Expenses, P&L, Targets, and Reports.', 'Overview answers the owner question fast: net sales, prime cost, estimated profit, cash variance, deposits pending, missing daily closes, open payroll issues, and labor by role.', 'Daily Close is the end-of-day worksheet. Enter gross and net sales, sales categories, discounts, comps, refunds, tax, cash, card, gift cards, tips paid out, starting bank, cash counted, deposit amount, deposit status, close status, manager sign-off, and notes.', 'Sales shows the monthly sales mix and daily close status. Category sales make food, liquor, beer, wine, NA beverage, specials, catering, and other revenue easier to understand.', 'Labor & Payroll handles punch correction, timesheet review, role-filtered payroll exports, geofence review, open punches, and payroll readiness. Role filters use the Roster Roles created in Preferences, plus active roles already assigned to staff.', 'Tips summarizes cash and credit tips from time punches by employee and roster role, then exports a payroll-ready tip report.', 'COGS & Vendors summarizes invoice spend and vendor spend from Inventory invoice history. Expenses records non-invoice operating costs. P&L combines sales, COGS, labor, and expenses into an estimated operating snapshot.', 'Targets stores warning thresholds for labor percent, food percent, beverage percent, prime cost, sales goals, cash variance, and overtime risk. Reports gives owner-ready print and CSV outputs. Financial access is permission-controlled and should be limited to people with a real business need.'] },
   { id:'schedule-builder-under-shifts', title:'Finding Schedule Builder', group:'Scheduling', keywords:'schedule builder maker time clock shifts subtab publish template coverage', body:['Schedule Builder now lives inside Time Clock & Schedule as a subtab for users with schedule access.', 'Open Time Clock & Schedule, then choose Schedule Builder from the subtab row.', 'The Schedule Builder is still hidden from staff who do not have schedule permission.', 'Event Calendar remains its own main menu tab.'] },
   { id:'full-backup-restore', title:'Restoring a full database backup', group:'System Administrator', keywords:'restore backup firestore storage path deleted data database recovery gzip json integrity', body:['Full automatic backups are saved to Firebase Storage as compressed JSON files.', 'To restore one, open System Administrator → Forensics & Backups → Backup Center, select a backup, and click Restore.', 'The restore reader now checks the backup bytes first. If cloud storage returns already-readable JSON instead of raw gzip, restore can still read the backup instead of throwing an incorrect-header error.', 'The restore is merge-based: it puts back missing/deleted documents and overwrites damaged documents from the backup, without deleting new documents that are not in the backup. If you use full database restore and a schedule month looks contaminated by old records, run that month’s Emergency Schedule Rescue afterward so the schedule month is hard-replaced cleanly.', 'Always run a fresh backup before restoring so there is a current safety copy.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Financials → Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
@@ -9404,6 +9514,29 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
         <div className="lg:col-span-2 space-y-4">
           <div className={`${T.card} p-5`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{selected.group}</div><h3 className="text-2xl font-black text-white mb-4">{selected.title}</h3><div className="space-y-3">{selected.body.map((line, i) => <div key={i} className="flex gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="w-6 h-6 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-xs font-black flex-shrink-0">{i+1}</div><p className="text-sm font-bold text-slate-200 leading-relaxed">{line}</p></div>)}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { navigator.clipboard?.writeText(`${selected.title}\n\n${selected.body.map((b,i)=>`${i+1}. ${b}`).join('\n')}`); addToast?.('Copied', 'Help article copied.'); }} className={T.btnAlt}>Copy Instructions</button><button onClick={() => window.print()} className={T.btnAlt}>Print</button></div></div>
           <div className={`${T.card} p-4`}><h4 className="font-black text-white mb-2">Page-aware help</h4><p className="text-xs text-slate-400 font-bold mb-3">You are signed in as {appUser?.role || 'Staff'}. Start with these common articles:</p><div className="grid sm:grid-cols-3 gap-2">{(related.length ? related : HELP_ARTICLES.slice(0,3)).map(a => <button key={a.id} onClick={()=>setSelectedId(a.id)} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50"><div className="font-black text-white text-sm">{a.title}</div><div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{a.group}</div></button>)}</div></div>
+          <div className={`${T.card} p-4`}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <div className="text-xs uppercase tracking-widest font-black text-[#D4A381]">Searchable app training manual</div>
+                <h4 className="font-black text-white text-xl">Complete 86 Chaos Training Manual</h4>
+              </div>
+              <BookOpen className="text-[#D4A381]" size={22}/>
+            </div>
+            <p className="text-sm text-slate-300 font-bold leading-relaxed mb-3">This is the same deterministic, non-AI main-app manual used for full training. It explains what each area is for, who should use it, what to check, and what not to put in the app.</p>
+            <div className="grid sm:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
+              {SYSTEM_TRAINING_MANUAL_CHAPTERS
+                .filter(chapter => !q || `${chapter.title} ${chapter.group} ${chapter.tab} ${chapter.audience} ${chapter.summary} ${chapter.keywords} ${(chapter.sections || []).map(section => `${section.title} ${(section.steps || []).join(' ')}`).join(' ')}`.toLowerCase().includes(q))
+                .slice(0, 16)
+                .map(chapter => (
+                  <button key={chapter.id} type="button" onClick={() => { setQuery(chapter.title); setSelectedId('app-training-manual'); }} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50">
+                    <div className="text-xs uppercase tracking-widest font-black text-slate-500">{chapter.group} • {chapter.audience}</div>
+                    <div className="font-black text-white mt-1">{chapter.title}</div>
+                    <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">{chapter.summary}</p>
+                  </button>
+                ))}
+            </div>
+          </div>
+
           <div className={`${T.card} p-4 border-orange-900/40`}>
             <div className="flex items-center gap-2 mb-2"><Bug size={18} className="text-orange-300"/><h4 className="font-black text-orange-300">Report a Bug / Error</h4></div>
             <p className="text-xs text-slate-400 font-bold mb-3">Send problems from here instead of the side menu. Include exactly what you clicked, what you expected, and what happened. Device, screen, page, and browser details are attached automatically.</p>
@@ -9430,26 +9563,308 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
 
 
 
-const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser, initialSubTab = 'labor' }) => {
-  const [subTab, setSubTab] = useState(initialSubTab);
+const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser, initialSubTab = 'overview' }) => {
+  const canSales = financeAccess(appUser, 'sales');
+  const canLabor = financeAccess(appUser, 'labor');
+  const [subTab, setSubTab] = useState(initialSubTab === 'ledger' ? 'daily-close' : initialSubTab === 'labor' ? 'labor' : initialSubTab || 'overview');
+  const [month, setMonth] = useState(getMonthStr(currentDate || getToday()));
+  const [expenseForm, setExpenseForm] = useState({ date: getToday(), vendor: '', category: 'Other', amount: '', paymentMethod: 'Unpaid', dueDate: '', paid: false, notes: '' });
+  const [targetsDraft, setTargetsDraft] = useState(DEFAULT_FINANCE_TARGETS);
+
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 250 });
+  const financialExpenses = useLiveCollection('financialExpenses', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales, limitCount: 250, fallbackLimitCount: 150 });
+  const financialTargets = useLiveCollection('financialTargets', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales, limitCount: 25, fallbackLimitCount: 25 });
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales, limitCount: 250, fallbackLimitCount: 150 });
+
+  const rosterRoleOptions = Array.from(new Map([
+    ...dbRoles.map(r => normalizeLaborRole(r.name)),
+    ...users.filter(u => u.isActive !== false).map(u => normalizeLaborRole(u.role))
+  ].filter(Boolean).map(role => [roleFilterKey(role), role])).values()).sort((a, b) => a.localeCompare(b));
+
+  const monthStart = `${month}-01`;
+  const monthEnd = `${month}-${String(getDaysInMonth(month)).padStart(2, '0')}`;
+  const monthSales = sales.filter(s => safeFinanceDate(s) >= monthStart && safeFinanceDate(s) <= monthEnd);
+  const monthPunches = timePunches.filter(p => (p.date || '') >= monthStart && (p.date || '') <= monthEnd);
+  const monthExpenses = financialExpenses.filter(e => safeFinanceDate(e) >= monthStart && safeFinanceDate(e) <= monthEnd);
+  const monthInvoices = invoices.filter(inv => safeFinanceDate(inv) >= monthStart && safeFinanceDate(inv) <= monthEnd);
+  const targetRecord = financialTargets[0] || null;
+  const targets = { ...DEFAULT_FINANCE_TARGETS, ...(targetRecord || {}) };
+
+  useEffect(() => {
+    setTargetsDraft({ ...DEFAULT_FINANCE_TARGETS, ...(targetRecord || {}) });
+  }, [targetRecord?.id, targetRecord?.updatedAt]);
+
+  const activeUsers = users.filter(u => u.isActive !== false);
+  const userForPunch = (p) => users.find(u => u.id === p.employeeId) || {};
+  const payrollRows = monthPunches.map(p => {
+    const emp = userForPunch(p);
+    const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
+    return { punch: p, emp, role: normalizeLaborRole(emp.role), hours, pay: hours * parseFinanceAmount(emp.wage), tips: parseFinanceAmount(p.cashTips) + parseFinanceAmount(p.creditTips), issue: ['clocked_in','on_break'].includes(p.status) || !p.clockOutTime || hours > 12 || p.requiresManagerReview };
+  });
+  const grossSales = monthSales.reduce((sum, s) => sum + getFinancialGrossSales(s), 0);
+  const netSales = monthSales.reduce((sum, s) => sum + getFinancialNetSales(s), 0);
+  const laborCost = payrollRows.reduce((sum, row) => sum + row.pay, 0) || monthSales.reduce((sum, s) => sum + getFinancialLaborCost(s), 0);
+  const foodCost = monthSales.reduce((sum, s) => sum + getFinancialFoodCost(s), 0);
+  const beverageCost = monthSales.reduce((sum, s) => sum + getFinancialBeverageCost(s), 0);
+  const operatingExpenses = monthExpenses.reduce((sum, e) => sum + getFinancialExpenseAmount(e), 0);
+  const invoiceSpend = monthInvoices.reduce((sum, inv) => sum + getFinancialInvoiceAmount(inv), 0);
+  const totalTips = payrollRows.reduce((sum, row) => sum + row.tips, 0);
+  const openPayrollIssues = payrollRows.filter(row => row.issue).length;
+  const cashVariance = monthSales.reduce((sum, s) => sum + parseFinanceAmount(s.cashVariance), 0);
+  const depositsPending = monthSales.filter(s => !['Deposited', 'Verified'].includes(String(s.depositStatus || '')) && getFinancialGrossSales(s) > 0).length;
+  const missingCloseDays = Array.from({ length: getDaysInMonth(month) }).map((_, i) => `${month}-${String(i + 1).padStart(2, '0')}`).filter(date => new Date(date + 'T12:00:00') <= new Date() && !monthSales.some(s => s.date === date)).length;
+  const primeCost = laborCost + foodCost + beverageCost;
+  const laborPct = netSales > 0 ? (laborCost / netSales) * 100 : 0;
+  const foodPct = netSales > 0 ? (foodCost / netSales) * 100 : 0;
+  const beveragePct = netSales > 0 ? (beverageCost / netSales) * 100 : 0;
+  const primePct = netSales > 0 ? (primeCost / netSales) * 100 : 0;
+  const estimatedProfit = netSales - primeCost - operatingExpenses;
+
+  const roleBreakdown = rosterRoleOptions.map(role => {
+    const key = roleFilterKey(role);
+    const rows = payrollRows.filter(row => roleFilterKey(row.role) === key);
+    return { role, hours: rows.reduce((s, r) => s + r.hours, 0), pay: rows.reduce((s, r) => s + r.pay, 0), tips: rows.reduce((s, r) => s + r.tips, 0), issues: rows.filter(r => r.issue).length };
+  }).filter(row => row.hours > 0 || row.pay > 0 || row.tips > 0);
+
+  const salesMix = FINANCE_SALES_CATEGORIES.map(([key, label]) => ({ label, value: monthSales.reduce((sum, s) => sum + parseFinanceAmount(s[key]), 0) })).filter(row => row.value > 0);
+  const expenseBreakdown = FINANCE_EXPENSE_CATEGORIES.map(category => ({ category, amount: monthExpenses.filter(e => e.category === category).reduce((s, e) => s + getFinancialExpenseAmount(e), 0) })).filter(row => row.amount > 0);
+  const vendorSpend = Object.entries(monthInvoices.reduce((acc, inv) => {
+    const name = inv.vendorName || inv.vendor || inv.supplier || 'Unassigned vendor';
+    acc[name] = (acc[name] || 0) + getFinancialInvoiceAmount(inv);
+    return acc;
+  }, {})).map(([vendor, amount]) => ({ vendor, amount })).sort((a, b) => b.amount - a.amount);
+
+  const financeTabs = [
+    { id: 'overview', label: 'Overview', show: canSales || canLabor },
+    { id: 'daily-close', label: 'Daily Close', show: canSales },
+    { id: 'sales', label: 'Sales', show: canSales },
+    { id: 'labor', label: 'Labor & Payroll', show: canLabor },
+    { id: 'tips', label: 'Tips', show: canLabor },
+    { id: 'cogs', label: 'COGS & Vendors', show: canSales },
+    { id: 'expenses', label: 'Expenses', show: canSales },
+    { id: 'pnl', label: 'P&L', show: canSales },
+    { id: 'targets', label: 'Targets', show: canSales },
+    { id: 'reports', label: 'Reports', show: canSales || canLabor }
+  ].filter(t => t.show);
+
+  useEffect(() => {
+    if (!financeTabs.some(t => t.id === subTab) && financeTabs[0]) setSubTab(financeTabs[0].id);
+  }, [canSales, canLabor, subTab]);
+
+  const saveExpense = async (e) => {
+    e.preventDefault();
+    if (!expenseForm.vendor.trim()) return addToast('Vendor Needed', 'Enter a vendor or payee for this expense.');
+    if (parseFinanceAmount(expenseForm.amount) <= 0) return addToast('Amount Needed', 'Enter an expense amount greater than zero.');
+    const payload = {
+      ...expenseForm,
+      vendor: expenseForm.vendor.trim(),
+      amount: parseFinanceAmount(expenseForm.amount),
+      paid: expenseForm.paid === true || expenseForm.paymentMethod !== 'Unpaid',
+      restaurantId: appUser.restaurantId,
+      createdAt: new Date().toISOString(),
+      createdBy: appUser.name || appUser.email || 'Manager',
+      updatedAt: new Date().toISOString()
+    };
+    try {
+      const refObj = await addDoc(collection(db, 'financialExpenses'), payload);
+      await logAudit(appUser, 'FINANCIAL_EXPENSE_CREATED', `financialExpenses/${refObj.id}`, `Added ${moneyText(payload.amount, 2)} expense for ${payload.vendor}`);
+      setExpenseForm({ date: getToday(), vendor: '', category: 'Other', amount: '', paymentMethod: 'Unpaid', dueDate: '', paid: false, notes: '' });
+      addToast('Expense Saved', 'Expense added to Financial Center.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const deleteExpense = async (expense) => {
+    if (!window.confirm(`Delete ${expense.vendor || 'this expense'} for ${moneyText(expense.amount, 2)}?`)) return;
+    try {
+      await deleteDoc(doc(db, 'financialExpenses', expense.id));
+      await logAudit(appUser, 'FINANCIAL_EXPENSE_DELETED', `financialExpenses/${expense.id}`, `Deleted expense ${expense.vendor || ''}`);
+      addToast('Expense Deleted', 'Expense removed.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const saveTargets = async (e) => {
+    e.preventDefault();
+    const payload = {
+      ...Object.fromEntries(Object.entries(targetsDraft).map(([key, value]) => [key, parseFinanceAmount(value)])),
+      restaurantId: appUser.restaurantId,
+      updatedAt: new Date().toISOString(),
+      updatedBy: appUser.name || appUser.email || 'Manager'
+    };
+    try {
+      await setDoc(doc(db, 'financialTargets', appUser.restaurantId), payload, { merge: true });
+      await logAudit(appUser, 'FINANCIAL_TARGETS_UPDATED', `financialTargets/${appUser.restaurantId}`, 'Updated Financial Center targets');
+      addToast('Targets Saved', 'Financial goals and warning thresholds updated.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const reportPrefix = getRestaurantExportPrefix(appUser, '86chaos');
+  const downloadFinanceReport = (type = 'overview') => {
+    const rows = [
+      ['Metric', 'Value'],
+      ['Month', formatDisplayMonth(month)],
+      ['Gross Sales', moneyText(grossSales, 2)],
+      ['Net Sales', moneyText(netSales, 2)],
+      ['Labor Cost', moneyText(laborCost, 2)],
+      ['Labor %', pctText(laborPct)],
+      ['Food Cost', moneyText(foodCost, 2)],
+      ['Food %', pctText(foodPct)],
+      ['Beverage Cost', moneyText(beverageCost, 2)],
+      ['Prime Cost %', pctText(primePct)],
+      ['Operating Expenses', moneyText(operatingExpenses, 2)],
+      ['Invoice Spend', moneyText(invoiceSpend, 2)],
+      ['Estimated Profit', moneyText(estimatedProfit, 2)],
+      ['Cash Variance', moneyText(cashVariance, 2)],
+      ['Open Payroll Issues', openPayrollIssues],
+      ['Pending Deposits', depositsPending],
+      ['Missing Daily Closes', missingCloseDays]
+    ];
+    if (type === 'csv') downloadCsvRows(`${reportPrefix}_financial_center_${month}.csv`, rows);
+    else openPrintableReport({ title: 'Financial Center Report', subtitle: `${formatDisplayMonth(month)} • ${appUser?.restaurantName || appUser?.restaurant || 'Restaurant'}`, rows, filename: `${reportPrefix}_financial_center_${month}` });
+  };
+
+  const downloadTipsReport = () => {
+    const rows = [['Employee', 'Roster Role', 'Hours', 'Cash Tips', 'Credit Tips', 'Total Tips'], ...activeUsers.map(user => {
+      const rows = monthPunches.filter(p => p.employeeId === user.id);
+      const hours = rows.reduce((s, p) => s + calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0), 0);
+      const cash = rows.reduce((s, p) => s + parseFinanceAmount(p.cashTips), 0);
+      const credit = rows.reduce((s, p) => s + parseFinanceAmount(p.creditTips), 0);
+      return [user.name || user.email || 'Employee', normalizeLaborRole(user.role), hours.toFixed(2), cash.toFixed(2), credit.toFixed(2), (cash + credit).toFixed(2)];
+    }).filter(row => parseFinanceAmount(row[2]) || parseFinanceAmount(row[5]))];
+    downloadCsvRows(`${reportPrefix}_tips_${month}.csv`, rows);
+  };
+
+  const Metric = ({ label, value, helper, tone = 'text-white' }) => (
+    <div className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4">
+      <div className="text-xs uppercase tracking-widest font-black text-slate-400">{label}</div>
+      <div className={`text-2xl font-black mt-1 ${tone}`}>{value}</div>
+      {helper && <div className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">{helper}</div>}
+    </div>
+  );
+
+  const SimpleTable = ({ headers, rows, empty = 'No records found.' }) => (
+    <div className={`${T.card} overflow-hidden`}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-[#12161A] text-slate-300"><tr>{headers.map(h => <th key={h} className="text-left p-3 font-black whitespace-nowrap">{h}</th>)}</tr></thead>
+          <tbody className="divide-y divide-[#2A353D]">
+            {rows.length === 0 && <tr><td colSpan={headers.length} className="p-6 text-center text-slate-400 font-bold">{empty}</td></tr>}
+            {rows.map((row, idx) => <tr key={idx} className="hover:bg-[#12161A]/60">{row.map((cell, i) => <td key={i} className="p-3 text-slate-200 align-top whitespace-nowrap">{cell}</td>)}</tr>)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
-      <div className={`${T.card} p-4 sm:p-5 cockpit-grid`}>
-        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Financials</div>
-        <h2 className="text-2xl font-black text-white tracking-tight">Financials</h2>
-        <p className="text-xs text-slate-400 font-bold mt-1 max-w-3xl">Labor & Timesheets and Daily Ledger now live together here. Labor handles payroll reality; Daily Ledger handles sales, costs, and trend notes.</p>
+    <div className="max-w-7xl mx-auto space-y-4 pb-24">
+      <div className={`${T.card} p-5 cockpit-grid`}>
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+          <div>
+            <div className="text-xs font-black uppercase tracking-widest text-[#D4A381] mb-1">Financial Center</div>
+            <h2 className="text-3xl font-black text-white tracking-tight">Professional Financial Center</h2>
+            <p className="text-sm text-slate-300 font-bold mt-2 max-w-4xl">Daily close, sales mix, labor, tips, COGS, expenses, P&L, targets, and owner-ready reports in one readable command center. Role views use the custom Roster Roles created in Preferences.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className={`${T.input} w-auto`}/>
+            <button onClick={() => downloadFinanceReport('print')} className={T.btnAlt}>Print Report</button>
+          </div>
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
-        <button onClick={() => setSubTab('labor')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'labor' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Labor & Timesheets</button>
-        <button onClick={() => setSubTab('ledger')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'ledger' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Daily Ledger</button>
+
+      <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
+        {financeTabs.map(tab => <button key={tab.id} onClick={() => setSubTab(tab.id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === tab.id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{tab.label}</button>)}
       </div>
-      {subTab === 'labor' ? (
-        <TabLabor currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={appUser} />
-      ) : (
-        <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={appUser} />
+
+      {subTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <Metric label="Net Sales" value={moneyText(netSales)} helper={`${monthSales.length} daily close records`} tone="text-[#D4A381]" />
+            <Metric label="Prime Cost" value={pctText(primePct)} helper={`${moneyText(primeCost)} labor + food + beverage`} tone={primePct > targets.primePct ? 'text-red-400' : 'text-emerald-400'} />
+            <Metric label="Estimated Profit" value={moneyText(estimatedProfit)} helper="Net sales minus prime cost and expenses" tone={estimatedProfit < 0 ? 'text-red-400' : 'text-emerald-400'} />
+            <Metric label="Cash Variance" value={moneyText(cashVariance, 2)} helper={`${depositsPending} pending deposits`} tone={Math.abs(cashVariance) > parseFinanceAmount(targets.cashVarianceAlert) ? 'text-red-400' : 'text-emerald-400'} />
+          </div>
+          <div className="grid lg:grid-cols-3 gap-4">
+            <div className={`${T.card} p-4 lg:col-span-2`}>
+              <h3 className="font-black text-white text-xl mb-3">Financial Health</h3>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <Metric label="Labor" value={pctText(laborPct)} helper={`Target ${pctText(targets.laborPct)}`} tone={laborPct > targets.laborPct ? 'text-red-400' : 'text-emerald-400'} />
+                <Metric label="Food" value={pctText(foodPct)} helper={`Target ${pctText(targets.foodPct)}`} tone={foodPct > targets.foodPct ? 'text-red-400' : 'text-emerald-400'} />
+                <Metric label="Beverage" value={pctText(beveragePct)} helper={`Target ${pctText(targets.beveragePct)}`} tone={beveragePct > targets.beveragePct ? 'text-red-400' : 'text-emerald-400'} />
+              </div>
+            </div>
+            <div className={`${T.card} p-4`}>
+              <h3 className="font-black text-white text-xl mb-3">Needs Attention</h3>
+              <div className="space-y-2 text-sm font-bold">
+                <div className="flex justify-between gap-3"><span className="text-slate-400">Open payroll issues</span><span className={openPayrollIssues ? 'text-red-400' : 'text-emerald-400'}>{openPayrollIssues}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-400">Missing daily closes</span><span className={missingCloseDays ? 'text-orange-300' : 'text-emerald-400'}>{missingCloseDays}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-400">Deposits pending</span><span className={depositsPending ? 'text-orange-300' : 'text-emerald-400'}>{depositsPending}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-400">Expenses unpaid</span><span className={monthExpenses.filter(e => !e.paid && e.paymentMethod === 'Unpaid').length ? 'text-orange-300' : 'text-emerald-400'}>{monthExpenses.filter(e => !e.paid && e.paymentMethod === 'Unpaid').length}</span></div>
+              </div>
+            </div>
+          </div>
+          <SimpleTable headers={['Roster Role', 'Hours', 'Labor Cost', 'Tips', 'Issues']} rows={roleBreakdown.map(r => [r.role, r.hours.toFixed(2), moneyText(r.pay, 2), moneyText(r.tips, 2), r.issues])} empty="No labor by role for this month yet. Role names come from Preferences > Roster Roles." />
+        </div>
+      )}
+
+      {subTab === 'daily-close' && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={appUser} />}
+
+      {subTab === 'sales' && (
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-xl mb-3">Sales Mix</h3><div className="space-y-3">{salesMix.length === 0 && <FriendlyEmpty title="No sales mix yet" text="Enter category sales in Daily Close to unlock mix reporting."/>}{salesMix.map(row => <div key={row.label}><div className="flex justify-between text-sm font-black"><span className="text-white">{row.label}</span><span className="text-[#D4A381]">{moneyText(row.value, 2)}</span></div><div className="h-2 bg-[#0B0E11] border border-[#2A353D] rounded-full mt-1 overflow-hidden"><div className="h-full bg-[#D4A381]" style={{ width: `${Math.min(100, netSales > 0 ? (row.value / netSales) * 100 : 0)}%` }} /></div></div>)}</div></div>
+          <SimpleTable headers={['Date', 'Gross', 'Net', 'Cash', 'Card', 'Deposit', 'Status']} rows={monthSales.sort((a,b) => safeFinanceDate(a).localeCompare(safeFinanceDate(b))).map(s => [formatDisplayDate(safeFinanceDate(s)), moneyText(getFinancialGrossSales(s), 2), moneyText(getFinancialNetSales(s), 2), moneyText(s.cashSales, 2), moneyText(s.cardSales, 2), moneyText(s.depositAmount, 2), s.closeStatus || 'Open'])} />
+        </div>
+      )}
+
+      {subTab === 'labor' && <TabLabor currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={appUser} />}
+
+      {subTab === 'tips' && (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-3 gap-3"><Metric label="Total Tips" value={moneyText(totalTips, 2)} helper="Cash + credit tips on time punches" tone="text-[#D4A381]"/><Metric label="Tip Records" value={monthPunches.filter(p => parseFinanceAmount(p.cashTips) || parseFinanceAmount(p.creditTips)).length} helper="Punches with declared tips"/><Metric label="Export" value="Ready" helper="CSV tip report by employee and roster role" tone="text-emerald-400"/></div>
+          <button onClick={downloadTipsReport} className={T.btn}>Download Tip Report</button>
+          <SimpleTable headers={['Employee', 'Roster Role', 'Hours', 'Cash Tips', 'Credit Tips', 'Total']} rows={activeUsers.map(user => { const rows = monthPunches.filter(p => p.employeeId === user.id); const hours = rows.reduce((s,p)=>s+calculatePunchHours(p.clockInTime,p.clockOutTime,p.breakMinutes||0),0); const cash = rows.reduce((s,p)=>s+parseFinanceAmount(p.cashTips),0); const credit = rows.reduce((s,p)=>s+parseFinanceAmount(p.creditTips),0); return [user.name || user.email || 'Employee', normalizeLaborRole(user.role), hours.toFixed(2), moneyText(cash,2), moneyText(credit,2), moneyText(cash+credit,2)]; }).filter(row => parseFinanceAmount(row[2]) || row[5] !== moneyText(0,2))} />
+        </div>
+      )}
+
+      {subTab === 'cogs' && (
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div className="space-y-3"><Metric label="Invoice Spend" value={moneyText(invoiceSpend, 2)} helper="From invoice history in the selected month" tone="text-[#D4A381]"/><Metric label="Food + Beverage Cost" value={moneyText(foodCost + beverageCost, 2)} helper={`${pctText(netSales > 0 ? ((foodCost + beverageCost) / netSales) * 100 : 0)} of net sales`} tone={(foodPct + beveragePct) > (targets.foodPct + targets.beveragePct) ? 'text-red-400' : 'text-emerald-400'} /><Metric label="Unreviewed invoices" value={monthInvoices.filter(inv => ['Needs Review','Draft','Pending'].includes(String(inv.status || ''))).length} helper="Finish reconciliation in Inventory" /></div>
+          <SimpleTable headers={['Vendor', 'Spend']} rows={vendorSpend.map(v => [v.vendor, moneyText(v.amount, 2)])} empty="No invoice vendor spend found for this month." />
+        </div>
+      )}
+
+      {subTab === 'expenses' && (
+        <div className="grid lg:grid-cols-3 gap-4">
+          <form onSubmit={saveExpense} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Expense</h3><label className={T.label}>Date</label><input type="date" value={expenseForm.date} onChange={e=>setExpenseForm({...expenseForm,date:e.target.value})} className={T.input}/><label className={T.label}>Vendor / Payee</label><input value={expenseForm.vendor} onChange={e=>setExpenseForm({...expenseForm,vendor:e.target.value})} className={T.input} placeholder="Utility company, repair tech, supplier..."/><label className={T.label}>Category</label><select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm,category:e.target.value})} className={T.input}>{FINANCE_EXPENSE_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select><label className={T.label}>Amount</label><input type="number" min="0" step="0.01" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm,amount:e.target.value})} className={T.input}/><label className={T.label}>Payment Method</label><select value={expenseForm.paymentMethod} onChange={e=>setExpenseForm({...expenseForm,paymentMethod:e.target.value,paid:e.target.value!=='Unpaid'})} className={T.input}>{FINANCE_PAYMENT_METHODS.map(c=><option key={c}>{c}</option>)}</select><label className={T.label}>Due Date</label><input type="date" value={expenseForm.dueDate} onChange={e=>setExpenseForm({...expenseForm,dueDate:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={expenseForm.notes} onChange={e=>setExpenseForm({...expenseForm,notes:e.target.value})} className={T.input} rows={3}></textarea><button className={`${T.btn} w-full`}>Save Expense</button></form>
+          <div className="lg:col-span-2 space-y-4"><div className="grid sm:grid-cols-2 gap-3"><Metric label="Operating Expenses" value={moneyText(operatingExpenses, 2)} helper={`${monthExpenses.length} expense records`} tone="text-[#D4A381]"/><Metric label="Unpaid" value={moneyText(monthExpenses.filter(e=>!e.paid && e.paymentMethod==='Unpaid').reduce((s,e)=>s+getFinancialExpenseAmount(e),0),2)} helper="Marked Unpaid" tone="text-orange-300"/></div><SimpleTable headers={['Date','Vendor','Category','Amount','Method','Due','']} rows={monthExpenses.sort((a,b)=>safeFinanceDate(b).localeCompare(safeFinanceDate(a))).map(e => [formatDisplayDate(safeFinanceDate(e)), e.vendor || e.payee || 'Expense', e.category || 'Other', moneyText(e.amount,2), e.paymentMethod || (e.paid ? 'Paid' : 'Unpaid'), e.dueDate || '', <button onClick={() => deleteExpense(e)} className="text-red-300 hover:text-red-200 font-black">Delete</button>])} /></div>
+        </div>
+      )}
+
+      {subTab === 'pnl' && (
+        <div className="grid lg:grid-cols-2 gap-4">
+          <SimpleTable headers={['Line', 'Amount']} rows={[
+            ['Gross Sales', moneyText(grossSales, 2)], ['Less Discounts / Comps / Refunds', moneyText(grossSales - netSales, 2)], ['Net Sales', moneyText(netSales, 2)], ['Food Cost', moneyText(foodCost, 2)], ['Beverage Cost', moneyText(beverageCost, 2)], ['Gross Profit', moneyText(netSales - foodCost - beverageCost, 2)], ['Labor', moneyText(laborCost, 2)], ['Operating Expenses', moneyText(operatingExpenses, 2)], ['Estimated Net Profit', moneyText(estimatedProfit, 2)]
+          ]} />
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-xl mb-3">P&L Notes</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">This is an operational P&L snapshot, not tax accounting. It uses entered Daily Close numbers, time punches, invoices, and expenses saved in 86 Chaos. Use it to manage the restaurant week-to-week, then reconcile against your accountant or POS/accounting system.</p><div className="mt-4 grid sm:grid-cols-2 gap-3"><Metric label="Gross Profit" value={moneyText(netSales - foodCost - beverageCost, 2)} /><Metric label="Net Profit" value={moneyText(estimatedProfit, 2)} tone={estimatedProfit < 0 ? 'text-red-400' : 'text-emerald-400'} /></div></div>
+        </div>
+      )}
+
+      {subTab === 'targets' && (
+        <form onSubmit={saveTargets} className={`${T.card} p-5 space-y-4 max-w-5xl`}><h3 className="text-2xl font-black text-white">Financial Targets & Warning Thresholds</h3><p className="text-sm text-slate-300 font-bold">Targets drive the dashboard color signals. Set realistic numbers for this restaurant, not generic industry mythology.</p><div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">{Object.entries({ laborPct:'Target Labor %', foodPct:'Target Food %', beveragePct:'Target Beverage %', primePct:'Target Prime %', weeklySalesGoal:'Weekly Sales Goal', monthlySalesGoal:'Monthly Sales Goal', cashVarianceAlert:'Cash Variance Alert', overtimeAlertHours:'Overtime Alert Hours' }).map(([key,label]) => <label key={key}><span className="block text-xs font-black text-slate-300 mb-1">{label}</span><input type="number" step="0.01" value={targetsDraft[key] ?? ''} onChange={e=>setTargetsDraft({...targetsDraft,[key]:e.target.value})} className={T.input}/></label>)}</div><button className={T.btn}>Save Targets</button></form>
+      )}
+
+      {subTab === 'reports' && (
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{[
+          ['Owner Financial Report', 'Printable month summary with KPIs, risks, P&L, and close status.', () => downloadFinanceReport('print')],
+          ['CSV Financial Summary', 'Download the same high-level report as a spreadsheet-friendly CSV.', () => downloadFinanceReport('csv')],
+          ['Tip Report', 'Employee tips by roster role for payroll review.', downloadTipsReport],
+          ['Payroll Detail', 'Use Labor & Payroll > Export for punch-level CSV or print-ready PDF.', () => setSubTab('labor')],
+          ['Daily Close Review', 'Open Daily Close to save or print individual closeout worksheets.', () => setSubTab('daily-close')],
+          ['COGS & Vendor Spend', 'Review invoice totals and vendor spend before ordering or budgeting.', () => setSubTab('cogs')]
+        ].map(([title, desc, action]) => <button key={title} onClick={action} className={`${T.card} p-5 text-left hover:border-[#D4A381]/60 transition-colors`}><h3 className="text-lg font-black text-white">{title}</h3><p className="text-sm text-slate-400 font-bold mt-2 leading-relaxed">{desc}</p></button>)}</div>
       )}
     </div>
   );
 };
+
 
 export { TabTeam, TabMessages, TabSettings, TabAuditLog, TabSales, TabFinancials, TabGodMode, ROLE_KEYWORDS, TabLabor, HELP_ARTICLES, TabHelpCenter };

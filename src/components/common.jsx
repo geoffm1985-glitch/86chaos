@@ -309,12 +309,14 @@ const ROLE_KEYWORDS = {
 };
 
 const roleMatches = (userRole = '', targetRole = '') => {
+  // Roster roles are customer-defined in Preferences. Match exact/custom role
+  // names and simple contained text only; do not force every restaurant into
+  // a generic cook/server/bartender bucket.
   if (!targetRole) return true;
-  const u = String(userRole).toLowerCase();
-  const t = String(targetRole).toLowerCase();
-  if (u.includes(t) || t.includes(u)) return true;
-  const bucket = Object.entries(ROLE_KEYWORDS).find(([label, words]) => label.toLowerCase() === t || words.some(w => t.includes(w)));
-  return bucket ? bucket[1].some(w => u.includes(w)) : false;
+  const u = String(userRole || '').trim().toLowerCase();
+  const t = String(targetRole || '').trim().toLowerCase();
+  if (!u || !t) return false;
+  return u === t || u.includes(t) || t.includes(u);
 };
 
 const toLocalTimeInput = (iso) => {

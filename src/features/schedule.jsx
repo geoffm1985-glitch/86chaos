@@ -2561,8 +2561,12 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       if (count >= 6) warnings.push(`${u.name} has ${count} scheduled days this week.`);
     });
     dates.forEach(d => {
-      const cooks = schedule.filter(s => s.date === d && roleMatches(s.role, 'Cook')).length;
-      if (cooks === 0) warnings.push(`No cook coverage on ${formatDisplayDate(d)}.`);
+      const targetForDay = coverageTargets.filter(t => weekDates[parseInt(t.dayIndex || 0, 10)] === d);
+      targetForDay.forEach(t => {
+        const targetRole = canonicalScheduleRole(t.role);
+        const existing = schedule.filter(s => s.date === d && roleMatches(s.role, targetRole)).length;
+        if (existing < (parseInt(t.count || 0, 10) || 0)) warnings.push(`Coverage target short on ${formatDisplayDate(d)} for ${targetRole}.`);
+      });
     });
     return [...new Set(warnings)].slice(0, 12);
   }
