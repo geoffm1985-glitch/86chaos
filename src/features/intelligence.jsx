@@ -324,7 +324,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const [deletingScanId, setDeletingScanId] = useState(null);
   const [deleteProgress, setDeleteProgress] = useState(null);
   const [progressTick, setProgressTick] = useState(Date.now());
-  const [menuAiUsage, setMenuAiUsage] = useState({ menuPagesUsed: 0, menuPagesLimit: 10 });
+  const [menuAiUsage, setMenuAiUsage] = useState({ menuPagesUsed: 0, menuPagesLimit: 10, menuPagesProcessed: 0, menuBypassPagesProcessed: 0 });
   const [menuAiUsageLoading, setMenuAiUsageLoading] = useState(false);
   const [menuAiExempt, setMenuAiExempt] = useState(false);
   const scanBusyRef = useRef(false);
@@ -340,7 +340,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       const response = await secureFetch(`/api/ai-usage?restaurantId=${encodeURIComponent(appUser.restaurantId)}&eventLimit=5`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not load AI page usage.');
-      setMenuAiUsage(payload.usage || { menuPagesUsed: 0, menuPagesLimit: 10 });
+      setMenuAiUsage(payload.usage || { menuPagesUsed: 0, menuPagesLimit: 10, menuPagesProcessed: 0, menuBypassPagesProcessed: 0 });
       setMenuAiExempt(payload.isExempt === true);
     } catch (error) {
       console.warn('Menu AI usage could not load:', error?.message || error);
@@ -619,7 +619,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
         if (result.code === 'AI_SCAN_ALREADY_SUBMITTED') throw new Error('This menu scan was already submitted. Wait for the first request to finish before trying again.');
         throw new Error(result?.error || 'Menu scan failed.');
       }
-      if (result.aiUsage) setMenuAiUsage(previous => ({ ...previous, menuPagesUsed: result.aiUsage.usedAfter, menuPagesLimit: result.aiUsage.limit }));
+      if (result.aiUsage) setMenuAiUsage(previous => ({ ...previous, menuPagesUsed: result.aiUsage.usedAfter, menuPagesLimit: result.aiUsage.limit, menuPagesProcessed: result.aiUsage.processedAfter ?? Math.max(Number(previous.menuPagesProcessed || 0), Number(result.aiUsage.usedAfter || 0)), menuBypassPagesProcessed: result.aiUsage.bypassPagesAfter ?? Number(previous.menuBypassPagesProcessed || 0) }));
       setScanResult(normalizeReviewResult({ ...result, storagePath: path, downloadUrl, fileName: file.name, uploadedFileName: uploadFile.name, compression: prepared.compression }));
       setReviewOpen(true);
       setScanProgress({ label: 'Menu scan ready', detail: 'Review the AI matches before saving.', percent: 100, done: true, startedAt: scanStartedAt });
@@ -889,10 +889,10 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
         <div className={`${T.card} p-4 space-y-4`}>
           <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[11px] font-black text-white">Menu AI pages used: {menuUsageSummary.used} / {menuUsageSummary.limit} this month</div>
+              <div className="text-[11px] font-black text-white">Menu AI pages: {menuUsageSummary.used} / {menuUsageSummary.limit} quota · {menuUsageSummary.processed} actually processed this month</div>
               <button type="button" onClick={loadMenuAiUsage} disabled={menuAiUsageLoading} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] disabled:opacity-50">{menuAiUsageLoading ? 'Refreshing…' : 'Refresh'}</button>
             </div>
-            {menuAiExempt && <div className="mt-1 text-[10px] font-bold text-blue-300">Testing bypass active. This scan will be logged but not blocked.</div>}
+            {menuAiExempt && <div className="mt-1 text-[10px] font-bold text-blue-300">Testing bypass active. Processed pages are logged separately and do not consume the customer quota.</div>}
             {!menuAiExempt && menuUsageWarning && <div className={`mt-1 text-[10px] font-bold ${menuUsageSummary.reached ? 'text-red-300' : 'text-amber-300'}`}>{menuUsageWarning}</div>}
           </div>
           <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center bg-[#12161A]">

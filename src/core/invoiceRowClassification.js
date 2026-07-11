@@ -141,7 +141,7 @@ export const classifyInvoiceRow = (input = {}) => {
   return { kind: 'document', reason: 'No reliable purchase signature', category: 'Document row', row };
 };
 
-export const isPurchasedInvoiceLine = (input = {}) => classifyInvoiceRow(input).kind === 'stock';
+export const isPurchasedInvoiceLine = (input = {}) => ['stock', 'non_food'].includes(classifyInvoiceRow(input).kind);
 export const invoiceProductKey = (row = {}) => {
   const enriched = inferInvoiceProductFields(row);
   const code = normalizeInvoiceSku(enriched.productCode || '');

@@ -1700,3 +1700,27 @@ select {
 .admin46-shell #admin-content-start code {
   color: #dbe8f0;
 }
+
+/* 15.0.50 compact controls outside System Administrator. Sizes mirror the admin console; colors remain page-owned. */
+.non-admin-controls-compact button {
+  min-height: 31px !important;
+  border-radius: 7px !important;
+  padding: 6px 9px !important;
+  font-size: 8px !important;
+  line-height: 1.15 !important;
+}
+
+.non-admin-controls-compact input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+.non-admin-controls-compact select,
+.non-admin-controls-compact textarea {
+  min-height: 34px !important;
+  border-radius: 7px !important;
+  padding: 8px 9px !important;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+
+.non-admin-controls-compact textarea {
+  min-height: 54px !important;
+}
+

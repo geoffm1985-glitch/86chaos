@@ -581,7 +581,7 @@ const [searchTerm, setSearchTerm] = useState('');
   const [invoiceReviewTab, setInvoiceReviewTab] = useState('matched');
   const [csvImportReview, setCsvImportReview] = useState(null);
   const [isSavingCsvImport, setIsSavingCsvImport] = useState(false);
-  const [invoiceAiUsage, setInvoiceAiUsage] = useState({ invoicePagesUsed: 0, invoicePagesLimit: 40 });
+  const [invoiceAiUsage, setInvoiceAiUsage] = useState({ invoicePagesUsed: 0, invoicePagesLimit: 40, invoicePagesProcessed: 0, invoiceBypassPagesProcessed: 0 });
   const [invoiceAiUsageLoading, setInvoiceAiUsageLoading] = useState(false);
   const [invoiceAiExempt, setInvoiceAiExempt] = useState(false);
   const invoiceScanBusyRef = useRef(false);
@@ -593,7 +593,7 @@ const [searchTerm, setSearchTerm] = useState('');
       const response = await secureFetch(`/api/ai-usage?restaurantId=${encodeURIComponent(appUser.restaurantId)}&eventLimit=5`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not load AI page usage.');
-      setInvoiceAiUsage(payload.usage || { invoicePagesUsed: 0, invoicePagesLimit: 40 });
+      setInvoiceAiUsage(payload.usage || { invoicePagesUsed: 0, invoicePagesLimit: 40, invoicePagesProcessed: 0, invoiceBypassPagesProcessed: 0 });
       setInvoiceAiExempt(payload.isExempt === true);
     } catch (error) {
       console.warn('Invoice AI usage could not load:', error?.message || error);
@@ -1263,7 +1263,7 @@ const executeOrder = async (method) => {
         throw new Error(data.error || data.details || 'Failed to scan invoice.');
       }
       if (data.aiUsage) {
-        setInvoiceAiUsage(previous => ({ ...previous, invoicePagesUsed: data.aiUsage.usedAfter, invoicePagesLimit: data.aiUsage.limit }));
+        setInvoiceAiUsage(previous => ({ ...previous, invoicePagesUsed: data.aiUsage.usedAfter, invoicePagesLimit: data.aiUsage.limit, invoicePagesProcessed: data.aiUsage.processedAfter ?? Math.max(Number(previous.invoicePagesProcessed || 0), Number(data.aiUsage.usedAfter || 0)), invoiceBypassPagesProcessed: data.aiUsage.bypassPagesAfter ?? Number(previous.invoiceBypassPagesProcessed || 0) }));
       }
 
       const fullRows = Array.isArray(data.allExtractedRows) ? data.allExtractedRows : (Array.isArray(data.invoiceRows) ? data.invoiceRows : []);
@@ -1277,7 +1277,7 @@ const executeOrder = async (method) => {
         const incomingCode = inferred.productCode || inferred.sku || inferred.itemNumber || inferred.pfgCode || inferred.code || inferred.itemCode || '';
         const skuKey = normalizeSku(incomingCode);
         const nameKey = normalizeName(itemName);
-        const isInventoryLine = classification.kind === 'stock';
+        const isInventoryLine = ['stock', 'non_food'].includes(classification.kind);
         const matchByCode = isInventoryLine && skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
         const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
         const match = matchByCode || matchByName;
@@ -1305,26 +1305,19 @@ const executeOrder = async (method) => {
 
       const preparedRows = sourceRows.map(prepareReviewRow);
       const lineItemMap = new Map();
-      preparedRows.filter(row => row.scannerClassification === 'stock').forEach(row => {
+      preparedRows.filter(row => ['stock', 'non_food'].includes(row.scannerClassification)).forEach(row => {
         const key = invoiceProductKey(row);
         const previous = lineItemMap.get(key) || {};
-        lineItemMap.set(key, { ...previous, ...row, isInventoryLine: true, rowType: 'product', scannerClassification: 'stock' });
+        lineItemMap.set(key, { ...previous, ...row, isInventoryLine: true, rowType: row.scannerClassification === 'non_food' ? 'non_food_supply' : 'product' });
       });
       const normalizedLineItems = Array.from(lineItemMap.values());
       const productKeys = new Set(normalizedLineItems.map(invoiceProductKey));
       const normalizedFullRows = (fullRows.length ? fullRows : sourceRows).map(prepareReviewRow);
 
-      const nonFoodMap = new Map();
-      normalizedFullRows
-        .filter(row => row.scannerClassification === 'non_food' && !productKeys.has(invoiceProductKey(row)))
-        .forEach(row => nonFoodMap.set(invoiceProductKey(row), { ...row, isInventoryLine: false }));
-      const excludedNonFoodRows = Array.from(nonFoodMap.values());
-      const nonFoodKeys = new Set(excludedNonFoodRows.map(invoiceProductKey));
-
       const reviewMap = new Map();
       normalizedFullRows
         .filter(row => row.scannerClassification === 'review')
-        .filter(row => !productKeys.has(invoiceProductKey(row)) && !nonFoodKeys.has(invoiceProductKey(row)))
+        .filter(row => !productKeys.has(invoiceProductKey(row)))
         .forEach(row => reviewMap.set(invoiceProductKey(row), { ...row, isInventoryLine: false }));
       const skippedRows = Array.from(reviewMap.values());
       const ignoredDocumentRowCount = normalizedFullRows.filter(row => row.scannerClassification === 'document').length;
@@ -1335,7 +1328,6 @@ const executeOrder = async (method) => {
         ...data,
         lineItems: normalizedLineItems,
         skippedRows,
-        excludedNonFoodRows,
         ignoredDocumentRowCount,
         allExtractedRows: normalizedFullRows,
         sourceFile: file.name,
@@ -1344,8 +1336,8 @@ const executeOrder = async (method) => {
       });
       const recoveredCount = normalizedLineItems.filter(row => /recovered from distributor/i.test(row.classificationReason || '')).length;
       const reviewText = skippedRows.length ? `${skippedRows.length} uncertain purchase row${skippedRows.length === 1 ? '' : 's'} need review.` : 'No uncertain rows need review.';
-      const filterText = excludedNonFoodRows.length ? ` ${excludedNonFoodRows.length} obvious non-food suppl${excludedNonFoodRows.length === 1 ? 'y was' : 'ies were'} filtered automatically.` : '';
-      addToast('Scan Complete', `Found ${normalizedLineItems.length} food/product rows${recoveredCount ? `, including ${recoveredCount} recovered from dense invoice text` : ''}. ${reviewText}${filterText}`);
+      const supplyCount = normalizedLineItems.filter(row => row.scannerClassification === 'non_food').length;
+      addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased inventory rows${supplyCount ? `, including ${supplyCount} non-food suppl${supplyCount === 1 ? 'y' : 'ies'}` : ''}${recoveredCount ? ` and ${recoveredCount} recovered from dense invoice text` : ''}. ${reviewText}`);
     } catch (err) {
       if (aiPulseId) window.clearInterval(aiPulseId);
       if (timeoutId) window.clearTimeout(timeoutId);
@@ -1383,9 +1375,7 @@ const executeOrder = async (method) => {
       matchId: match?.id || '',
       matchName: match?.name || '',
       action: match ? 'update' : 'create',
-      classificationReason: sourceList === 'excludedNonFoodRows'
-        ? 'Manually promoted from automatic non-food filtering'
-        : 'Manually promoted from Needs Review'
+      classificationReason: 'Manually promoted from Needs Review'
     };
 
     setScannedInvoice(previous => {
@@ -1403,12 +1393,12 @@ const executeOrder = async (method) => {
     addToast('Moved to Stock Matcher', `${itemName} is ready to match or add as a new inventory item.`);
   };
 
-  const dismissInvoiceReviewRow = (row, rowIndex) => {
+  const excludeInvoiceReviewRow = (row, rowIndex) => {
     const dismissed = {
       ...row,
-      scannerClassification: 'non_food',
-      classificationCategory: 'Manually excluded',
-      classificationReason: 'Marked as not food / not tracked by the reviewer',
+      scannerClassification: 'document',
+      classificationCategory: 'Manually excluded document row',
+      classificationReason: 'Reviewer confirmed this row is not a purchased inventory item',
       isInventoryLine: false
     };
     setScannedInvoice(previous => {
@@ -1416,17 +1406,17 @@ const executeOrder = async (method) => {
       return {
         ...previous,
         skippedRows: (previous.skippedRows || []).filter((_, index) => index !== rowIndex),
-        excludedNonFoodRows: [...(previous.excludedNonFoodRows || []), dismissed]
+        excludedReviewRows: [...(previous.excludedReviewRows || []), dismissed]
       };
     });
-    addToast('Row Cleared', 'The row was marked as not food and will not update inventory.');
+    addToast('Row Excluded', 'The row was confirmed as document noise or a non-inventory charge.');
   };
 
   const handleApproveInvoice = async () => {
      const unresolvedReviewRows = scannedInvoice?.skippedRows || [];
      if (unresolvedReviewRows.length) {
        setInvoiceReviewTab('skipped');
-       addToast('Review Needed', `${unresolvedReviewRows.length} uncertain invoice row${unresolvedReviewRows.length === 1 ? '' : 's'} must be moved to Stock Matcher or marked “Not Food” before approval. Nothing was saved or changed.`);
+       addToast('Review Needed', `${unresolvedReviewRows.length} uncertain invoice row${unresolvedReviewRows.length === 1 ? '' : 's'} must be moved to Stock Matcher or deliberately excluded as a document/charge before approval. Nothing was saved or changed.`);
        return;
      }
      const unresolvedProducts = (scannedInvoice?.lineItems || []).filter(item => item.isInventoryLine && !item.matchedItemId);
@@ -1472,15 +1462,17 @@ for (const item of scannedInvoice.lineItems) {
 if (item.matchedItemId === 'CREATE_NEW') {
              // Smart Auto-Categorizer
              const n = (item.itemName || '').toLowerCase();
-             let autoCat = 'Other';
-             if (n.includes('beef') || n.includes('chicken') || n.includes('pork') || n.includes('steak') || n.includes('bacon') || n.includes('sausage') || n.includes('turkey')) autoCat = 'Meat';
-             else if (n.includes('lettuce') || n.includes('tomato') || n.includes('onion') || n.includes('potato') || n.includes('apple') || n.includes('lemon') || n.includes('lime') || n.includes('pepper') || n.includes('produce')) autoCat = 'Produce';
-             else if (n.includes('milk') || n.includes('cheese') || n.includes('cream') || n.includes('butter') || n.includes('yogurt') || n.includes('dairy')) autoCat = 'Dairy';
-             else if (n.includes('bread') || n.includes('bun') || n.includes('roll') || n.includes('tortilla') || n.includes('dough')) autoCat = 'Bakery';
-             else if (n.includes('fish') || n.includes('shrimp') || n.includes('salmon') || n.includes('crab') || n.includes('seafood')) autoCat = 'Seafood';
-             else if (n.includes('fry') || n.includes('fries') || n.includes('frozen') || n.includes('ice')) autoCat = 'Frozen';
-             else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
-             else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
+             let autoCat = item.scannerClassification === 'non_food' ? 'Supplies' : 'Other';
+             if (item.scannerClassification !== 'non_food') {
+               if (n.includes('beef') || n.includes('chicken') || n.includes('pork') || n.includes('steak') || n.includes('bacon') || n.includes('sausage') || n.includes('turkey')) autoCat = 'Meat';
+               else if (n.includes('lettuce') || n.includes('tomato') || n.includes('onion') || n.includes('potato') || n.includes('apple') || n.includes('lemon') || n.includes('lime') || n.includes('pepper') || n.includes('produce')) autoCat = 'Produce';
+               else if (n.includes('milk') || n.includes('cheese') || n.includes('cream') || n.includes('butter') || n.includes('yogurt') || n.includes('dairy')) autoCat = 'Dairy';
+               else if (n.includes('bread') || n.includes('bun') || n.includes('roll') || n.includes('tortilla') || n.includes('dough')) autoCat = 'Bakery';
+               else if (n.includes('fish') || n.includes('shrimp') || n.includes('salmon') || n.includes('crab') || n.includes('seafood')) autoCat = 'Seafood';
+               else if (n.includes('fry') || n.includes('fries') || n.includes('frozen') || n.includes('ice')) autoCat = 'Frozen';
+               else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
+               else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
+             }
 
              const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
              await safeInventoryWrite({ quiet: true, action: "add", collectionName: "inventoryItems", label: "Invoice inventory item", data: {
@@ -1499,6 +1491,8 @@ if (item.matchedItemId === 'CREATE_NEW') {
                 pendingQty: 0,
                 isStarred: false,
                 lastOrderedDate: null,
+                inventorySourceType: item.scannerClassification === 'non_food' ? 'non_food_supply' : 'food_product',
+                invoiceSupplyCategory: item.scannerClassification === 'non_food' ? (item.classificationCategory || 'Supplies') : '',
                 lastInvoiceRaw: item,
                 restaurantId: appUser.restaurantId
              } });
@@ -1612,10 +1606,11 @@ const groupedItems = inventoryItems
 <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || scannedInvoice.grandTotal || 0).toFixed(2)}</div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Food / Product</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Purchased Items</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Food / Beverage</div><div className="text-lg font-black text-emerald-300">{(scannedInvoice.lineItems || []).filter(row => row.scannerClassification === 'stock').length}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Needs Review</div><div className={`text-lg font-black ${(scannedInvoice.skippedRows || []).length ? 'text-amber-300' : 'text-emerald-300'}`}>{(scannedInvoice.skippedRows || []).length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Non-food Filtered</div><div className="text-lg font-black text-blue-300">{(scannedInvoice.excludedNonFoodRows || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Non-food Supplies</div><div className="text-lg font-black text-blue-300">{(scannedInvoice.lineItems || []).filter(row => row.scannerClassification === 'non_food').length}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Document Rows</div><div className="text-lg font-black text-slate-300">{Number(scannedInvoice.ignoredDocumentRowCount || 0)}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Confidence</div><div className="text-lg font-black text-[#D4A381]">{scannedInvoice.confidence || 'Review'}</div></div>
             </div>
@@ -1631,17 +1626,12 @@ const groupedItems = inventoryItems
             
             {(scannedInvoice.skippedRows || []).length > 0 && (
               <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-2 text-[10px] text-amber-100 font-bold leading-snug">
-                Only uncertain purchase-looking rows appear in Needs Review. Move a real food item to Stock Matcher or mark it Not Food before approval.
-              </div>
-            )}
-            {(scannedInvoice.excludedNonFoodRows || []).length > 0 && (
-              <div className="bg-blue-900/10 border border-blue-500/30 rounded-xl p-2 text-[10px] text-blue-200 font-bold leading-snug">
-                Obvious supplies and non-food purchases were filtered automatically. They do not block approval. Open Non-food Filtered only if you intentionally track one in inventory.
+                Only uncertain purchase-looking rows appear in Needs Review. Move a real purchased item to Stock Matcher or choose Exclude Row before approval.
               </div>
             )}
             
             <div className="flex flex-wrap gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-1">
-              {[['matched','Stock Matcher'], ['skipped',`Needs Review (${(scannedInvoice.skippedRows || []).length})`], ['nonfood',`Non-food (${(scannedInvoice.excludedNonFoodRows || []).length})`], ['raw','Raw Audit']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
+              {[['matched','Stock Matcher'], ['skipped',`Needs Review (${(scannedInvoice.skippedRows || []).length})`], ['raw','Raw Audit']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
             </div>
 
             {invoiceReviewTab === 'matched' && <div className="flex justify-between items-center mt-2 mb-1">
@@ -1664,6 +1654,7 @@ const groupedItems = inventoryItems
 <div className="font-bold text-white text-sm flex items-center gap-1.5">
   {item.productCode && <span className="text-[#D4A381] font-black">[{item.productCode}]</span>}
   {item.itemName}
+  {item.scannerClassification === 'non_food' && <span className="text-[8px] bg-blue-900/30 text-blue-200 border border-blue-500/30 px-1.5 py-0.5 rounded uppercase">Supply</span>}
   {!item.isInventoryLine && <span className="text-[8px] bg-slate-800 text-slate-400 border border-[#2A353D] px-1.5 py-0.5 rounded uppercase">{item.rowType || 'non-stock'}</span>}
 </div>                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
                         Qty: {item.quantity || item.shippedQty || '—'} {item.packSize || item.uom || ''} • Unit: ${Number(item.unitPrice || item.casePrice || 0).toFixed(2)} • Total: ${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}
@@ -1706,8 +1697,8 @@ const groupedItems = inventoryItems
                     {row.rawText && row.rawText !== row.itemName && <div className="text-[9px] text-slate-500 font-bold mt-1 break-words">Raw: {row.rawText}</div>}
                   </div>
                   <div className="flex flex-wrap gap-2 shrink-0">
-                    <button type="button" onClick={() => dismissInvoiceReviewRow(row, idx)} className="rounded-lg border border-slate-600 bg-slate-900/40 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-white">
-                      Not Food
+                    <button type="button" onClick={() => excludeInvoiceReviewRow(row, idx)} className="rounded-lg border border-slate-600 bg-slate-900/40 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-white">
+                      Exclude Row
                     </button>
                     <button type="button" onClick={() => promoteInvoiceReviewRow(row, idx, 'skippedRows')} className="rounded-lg border border-[#D4A381]/50 bg-[#D4A381]/10 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#F4C8A8] hover:bg-[#D4A381]/20">
                       Move to Stock Matcher
@@ -1715,21 +1706,6 @@ const groupedItems = inventoryItems
                   </div>
                 </div>
               )) : <div className="p-6 text-center text-emerald-300 font-bold">No uncertain rows need review.</div>}
-            </div>}
-
-            {invoiceReviewTab === 'nonfood' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
-              {(scannedInvoice.excludedNonFoodRows || []).length ? scannedInvoice.excludedNonFoodRows.map((row, idx) => (
-                <div key={idx} className="p-3 bg-[#1A2126] flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm text-white font-black">{row.itemName || row.description || row.rawText || `Non-food row ${idx + 1}`}</div>
-                    <div className="text-[10px] text-blue-300 font-bold mt-1">{row.classificationCategory || 'Non-food supply'} · {row.classificationReason || 'Automatically filtered'}</div>
-                    {row.rawText && row.rawText !== row.itemName && <div className="text-[9px] text-slate-500 font-bold mt-1 break-words">Raw: {row.rawText}</div>}
-                  </div>
-                  <button type="button" onClick={() => promoteInvoiceReviewRow(row, idx, 'excludedNonFoodRows')} className="shrink-0 rounded-lg border border-blue-500/40 bg-blue-900/20 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-blue-200 hover:bg-blue-900/35">
-                    Track This Item
-                  </button>
-                </div>
-              )) : <div className="p-6 text-center text-slate-500 font-bold">No non-food supplies were detected.</div>}
             </div>}
 
             <button onClick={handleApproveInvoice} disabled={(scannedInvoice.skippedRows || []).length > 0 || (scannedInvoice.lineItems || []).some(item => item.isInventoryLine && !item.matchedItemId)} className={`w-full ${T.btn} py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>Approve & Update Stock</button>
@@ -2002,10 +1978,10 @@ const groupedItems = inventoryItems
             {/* INVOICE SCANNER: Split Camera & Upload */}
             <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[11px] font-black text-white">Invoice AI pages used: {invoiceUsageSummary.used} / {invoiceUsageSummary.limit} this month</div>
+                <div className="text-[11px] font-black text-white">Invoice AI pages: {invoiceUsageSummary.used} / {invoiceUsageSummary.limit} quota · {invoiceUsageSummary.processed} actually processed this month</div>
                 <button type="button" onClick={loadInvoiceAiUsage} disabled={invoiceAiUsageLoading} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] disabled:opacity-50">{invoiceAiUsageLoading ? 'Refreshing…' : 'Refresh'}</button>
               </div>
-              {invoiceAiExempt && <div className="mt-1 text-[10px] font-bold text-blue-300">Testing bypass active. This scan will be logged but not blocked.</div>}
+              {invoiceAiExempt && <div className="mt-1 text-[10px] font-bold text-blue-300">Testing bypass active. Processed pages are logged separately and do not consume the customer quota.</div>}
               {!invoiceAiExempt && invoiceUsageWarning && <div className={`mt-1 text-[10px] font-bold ${invoiceUsageSummary.reached ? 'text-red-300' : 'text-amber-300'}`}>{invoiceUsageWarning}</div>}
             </div>
             <div id="invoice-scanner-panel" className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${(isScanningInvoice || (!invoiceAiExempt && invoiceUsageSummary.reached)) ? 'opacity-60 pointer-events-none' : ''}`}>

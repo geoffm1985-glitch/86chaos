@@ -46,12 +46,18 @@ export const normalizeAiUsage = (usage = {}, scanType = 'invoice') => {
   const isMenu = scanType === 'menu';
   const usedRaw = Number(isMenu ? usage.menuPagesUsed : usage.invoicePagesUsed);
   const limitRaw = Number(isMenu ? usage.menuPagesLimit : usage.invoicePagesLimit);
+  const processedRaw = Number(isMenu ? usage.menuPagesProcessed : usage.invoicePagesProcessed);
+  const bypassRaw = Number(isMenu ? usage.menuBypassPagesProcessed : usage.invoiceBypassPagesProcessed);
   const used = Number.isFinite(usedRaw) && usedRaw >= 0 ? usedRaw : 0;
+  const processed = Number.isFinite(processedRaw) && processedRaw >= 0 ? Math.max(used, processedRaw) : used;
+  const bypass = Number.isFinite(bypassRaw) && bypassRaw >= 0 ? bypassRaw : Math.max(0, processed - used);
   const limit = Number.isFinite(limitRaw) && limitRaw >= 0
     ? limitRaw
     : (isMenu ? DEFAULT_MENU_AI_PAGE_LIMIT : DEFAULT_INVOICE_AI_PAGE_LIMIT);
   return {
     used,
+    processed,
+    bypass,
     limit,
     remaining: Math.max(0, limit - used),
     reached: used >= limit
