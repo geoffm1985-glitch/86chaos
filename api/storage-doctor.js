@@ -4,7 +4,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use GET or POST.' });
   const started = Date.now();
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const body = await readBody(req);
     const targetRestaurantId = clean(body.restaurantId || req.query?.restaurantId || '');
     const auth = await authorize(req, app, { allowTenantAdmin: true, targetRestaurantId });

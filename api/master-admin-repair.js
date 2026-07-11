@@ -1,6 +1,6 @@
 const { admin, initAdmin, requireAppCheckIfEnforced, readBody, parseMasterEmailEnv, norm, clean, memberDocId } = require('./_chaos-admin');
 
-const CURRENT_VERSION = '15.0.43';
+const CURRENT_VERSION = '15.0.52';
 
 function displayNameFromEmail(email) {
   const prefix = String(email || '').split('@')[0] || 'System Administrator';
@@ -285,7 +285,7 @@ async function repairOne({ app, authClient, db, decoded, email, requestedRestaur
 module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'Use GET or POST.' });
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const runtime = getRuntimeEnv(app);
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error, runtime });

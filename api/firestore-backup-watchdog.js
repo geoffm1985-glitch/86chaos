@@ -1,6 +1,6 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, writeAudit } = require('./_chaos-admin');
 
-const APP_VERSION = '15.0.43';
+const APP_VERSION = '15.0.52';
 const DEFAULT_STALE_HOURS = 23;
 
 function parseDate(value) {
@@ -39,7 +39,7 @@ async function authorizeWatchdog(req, app) {
 
 module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'Use GET for cron or POST for manual watchdog check.' });
-  const app = initAdmin();
+  const app = initAdmin(req);
   const db = app.firestore();
   const startedAt = new Date();
   try {

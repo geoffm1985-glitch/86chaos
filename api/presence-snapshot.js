@@ -54,7 +54,7 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed.' });
 
   try {
-    const app = initAdmin();
+    const app = initAdmin(req);
     const ctx = await authorize(req, app, { allowTenantAdmin: false });
     if (!ctx.ok) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error });
     if (!ctx.isSuperAdmin) return res.status(403).json({ ok: false, error: 'Manual presence snapshots are Super Admin only.' });

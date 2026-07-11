@@ -1,20 +1,8 @@
 const admin = require('firebase-admin');
+const { getAdminAppForRequest } = require('./_firebase-project-admin');
 
-function initAdmin() {
-  if (admin.apps.length) return admin;
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (raw) {
-    admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
-    return admin;
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-    })
-  });
-  return admin;
+function initAdmin(req) {
+  return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
 async function commitChunks(db, writes, chunkSize = 450) {
@@ -41,7 +29,7 @@ module.exports = async function handler(req, res) {
       return res.status(401).json({ ok: false, error: 'Unauthorized cron request' });
     }
 
-    const app = initAdmin();
+    const app = initAdmin(req);
     const db = app.firestore();
     const runStartedAt = new Date().toISOString();
     const version = '13.1.1';
@@ -84,7 +72,7 @@ module.exports = async function handler(req, res) {
     });
   } catch (err) {
     try {
-      const app = initAdmin();
+      const app = initAdmin(req);
       await app.firestore().collection('system').doc('weeklyMaintenance').collection('errors').add({
         message: err.message,
         stack: err.stack || '',
