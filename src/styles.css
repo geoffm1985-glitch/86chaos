@@ -1702,7 +1702,7 @@ select {
 }
 
 /* 15.0.50 compact controls outside System Administrator. Sizes mirror the admin console; colors remain page-owned. */
-.non-admin-controls-compact button {
+.non-admin-controls-compact button:not(.no-compact) {
   min-height: 31px !important;
   border-radius: 7px !important;
   padding: 6px 9px !important;
@@ -1724,3 +1724,233 @@ select {
   min-height: 54px !important;
 }
 
+
+
+/* 15.0.51 targeted readable compactness fixes. */
+.non-admin-controls-compact .app-drawer-readable button:not(.drawer-icon-button) {
+  min-height: 36px !important;
+  border-radius: 10px !important;
+  padding: 7px 12px !important;
+  font-size: 13px !important;
+  line-height: 1.25 !important;
+}
+
+.non-admin-controls-compact .app-drawer-readable input {
+  min-height: 40px !important;
+  border-radius: 10px !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+}
+
+.non-admin-controls-compact .app-drawer-readable .drawer-section-label {
+  font-size: 10px !important;
+}
+
+.non-admin-controls-compact .clock-action-button {
+  min-height: 52px !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+}
+
+.non-admin-controls-compact .clock-action-button .clock-action-meta {
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+}
+
+.schedule-copilot-compact {
+  max-height: 520px;
+  overflow: hidden;
+}
+
+.schedule-copilot-compact .schedule-copilot-body {
+  max-height: 350px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.schedule-copilot-compact .schedule-copilot-metric {
+  min-height: 48px;
+  border-radius: 10px;
+  padding: 7px 9px;
+}
+
+.schedule-copilot-compact .schedule-copilot-metric strong {
+  display: block;
+  margin-top: 1px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.manager-brief-compact {
+  gap: .55rem !important;
+}
+
+.manager-brief-compact .brief-card {
+  padding: .7rem !important;
+  border-radius: 12px !important;
+}
+
+.manager-brief-compact .brief-card h2 {
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+}
+
+.manager-brief-compact .brief-hero {
+  padding: .75rem !important;
+}
+
+.manager-brief-compact .brief-hero h1 {
+  font-size: 22px !important;
+  line-height: 1.05 !important;
+}
+
+.manager-brief-compact .brief-quick-action {
+  min-height: 36px !important;
+  padding: 8px 10px !important;
+  font-size: 11px !important;
+}
+
+.kitchen-command-compact {
+  gap: .55rem !important;
+}
+
+.kitchen-command-compact .command-hero {
+  padding: .75rem !important;
+}
+
+.kitchen-command-compact .command-hero h1 {
+  font-size: 24px !important;
+  line-height: 1.05 !important;
+}
+
+.kitchen-command-compact .command-card {
+  padding: .65rem !important;
+  border-radius: 12px !important;
+}
+
+.kitchen-command-compact .command-kpi {
+  min-height: 70px;
+  padding: .55rem !important;
+}
+
+.kitchen-command-compact .command-kpi-value {
+  font-size: 17px !important;
+  line-height: 1.05 !important;
+}
+
+.kitchen-command-compact .command-scroll {
+  max-height: 270px !important;
+}
+
+.maintenance-center-compact {
+  gap: .65rem !important;
+}
+
+.maintenance-center-compact .maintenance-summary-card {
+  min-height: 70px;
+  padding: .65rem;
+  border-radius: 12px;
+}
+
+.maintenance-center-compact .maintenance-record-card {
+  padding: .75rem;
+  border-radius: 12px;
+}
+
+.maintenance-center-compact .maintenance-record-card h3 {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+@media (max-width: 720px) {
+  .schedule-copilot-compact {
+    max-height: 580px;
+  }
+  .schedule-copilot-compact .schedule-copilot-body {
+    max-height: 400px;
+  }
+  .manager-brief-compact .brief-hero h1,
+  .kitchen-command-compact .command-hero h1 {
+    font-size: 20px !important;
+  }
+}
+
+.manager-brief-compact .mini-problem-card {
+  padding: .55rem !important;
+  border-radius: 10px !important;
+}
+
+.manager-brief-compact .mini-problem-card button {
+  margin-top: .35rem !important;
+}
+
+
+.non-admin-controls-compact .app-drawer-readable .drawer-icon-button {
+  min-height: 32px !important;
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+}
+
+.manager-brief-compact .p-4 {
+  padding: .7rem !important;
+}
+
+.manager-brief-compact .gap-3 {
+  gap: .55rem !important;
+}
+
+.manager-brief-compact .rounded-xl,
+.manager-brief-compact .rounded-2xl {
+  border-radius: 11px !important;
+}
+
+.kitchen-command-compact .p-4 {
+  padding: .65rem !important;
+}
+
+.kitchen-command-compact .p-3 {
+  padding: .55rem !important;
+}
+
+.kitchen-command-compact .gap-4,
+.kitchen-command-compact .gap-3 {
+  gap: .6rem !important;
+}
+
+.kitchen-command-compact .rounded-xl,
+.kitchen-command-compact .rounded-2xl {
+  border-radius: 11px !important;
+}
+
+.non-admin-controls-compact .schedule-copilot-compact button,
+.non-admin-controls-compact .manager-brief-compact button,
+.non-admin-controls-compact .kitchen-command-compact button,
+.non-admin-controls-compact .maintenance-center-compact button:not(.no-compact) {
+  min-height: 32px !important;
+  padding: 6px 9px !important;
+  font-size: 10px !important;
+  line-height: 1.2 !important;
+}
+
+.non-admin-controls-compact .manager-brief-compact .brief-quick-action {
+  min-height: 36px !important;
+  padding: 8px 10px !important;
+  font-size: 11px !important;
+}
+
+.non-admin-controls-compact .schedule-copilot-compact input,
+.non-admin-controls-compact .schedule-copilot-compact select,
+.non-admin-controls-compact .schedule-copilot-compact textarea,
+.non-admin-controls-compact .maintenance-center-compact input,
+.non-admin-controls-compact .maintenance-center-compact select,
+.non-admin-controls-compact .maintenance-center-compact textarea {
+  font-size: 12px !important;
+  line-height: 1.3 !important;
+}

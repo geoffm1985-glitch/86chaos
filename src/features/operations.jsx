@@ -2612,6 +2612,8 @@ const TabMaintenance = ({ appUser, addToast }) => {
   const [cost, setCost] = useState('');
   const [notes, setNotes] = useState('');
   const [editingLogId, setEditingLogId] = useState(null);
+  const [issueSearch, setIssueSearch] = useState('');
+  const [issueStatusFilter, setIssueStatusFilter] = useState('Open');
 
   // PM Form State
   const [pmTitle, setPmTitle] = useState('');
@@ -2738,147 +2740,141 @@ const TabMaintenance = ({ appUser, addToast }) => {
     return (pm.frequencyDays - Math.floor((todayMs - lastMs) / 86400000)) <= 0;
   }).length;
 
+  const openLogs = logs.filter(log => (log.status || 'Reported') !== 'Resolved');
+  const criticalLogs = openLogs.filter(log => ['Critical', 'High'].includes(log.urgency));
+  const inProgressLogs = openLogs.filter(log => ['In Progress', 'Pending Parts'].includes(log.status));
+  const totalRepairCost = logs.reduce((sum, log) => sum + (Number(log.cost) || 0), 0);
+  const sortedLogs = logs.slice().sort((a,b) => {
+    if ((a.status || 'Reported') !== 'Resolved' && (b.status || 'Reported') === 'Resolved') return -1;
+    if ((a.status || 'Reported') === 'Resolved' && (b.status || 'Reported') !== 'Resolved') return 1;
+    const urgencyRank = { Critical: 0, High: 1, Standard: 2 };
+    const rankDiff = (urgencyRank[a.urgency] ?? 3) - (urgencyRank[b.urgency] ?? 3);
+    if (rankDiff) return rankDiff;
+    return new Date(b.lastUpdated || b.reportedAt || 0) - new Date(a.lastUpdated || a.reportedAt || 0);
+  });
+  const normalizedIssueSearch = issueSearch.trim().toLowerCase();
+  const visibleLogs = sortedLogs.filter(log => {
+    const matchesStatus = issueStatusFilter === 'All'
+      || (issueStatusFilter === 'Open' && (log.status || 'Reported') !== 'Resolved')
+      || log.status === issueStatusFilter;
+    const haystack = `${log.equipment || ''} ${log.issue || ''} ${log.notes || ''} ${log.reportedBy || ''}`.toLowerCase();
+    return matchesStatus && (!normalizedIssueSearch || haystack.includes(normalizedIssueSearch));
+  });
+  const sortedPmSchedules = pmSchedules.slice().sort((a,b) => {
+    const aLast = new Date((a.lastCompleted || getToday())+'T12:00:00').getTime();
+    const bLast = new Date((b.lastCompleted || getToday())+'T12:00:00').getTime();
+    const aLeft = Number(a.frequencyDays || 30) - Math.floor((todayMs - aLast) / 86400000);
+    const bLeft = Number(b.frequencyDays || 30) - Math.floor((todayMs - bLast) / 86400000);
+    return aLeft - bLeft;
+  });
+
   return (
-    <div className="max-w-5xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      
-      {/* REACTIVE MODAL */}
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Log" : "Report Equipment Issue"}>
-        <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div><label className={T.label}>Equipment / Area</label><input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required /></div>
-            <div><label className={T.label}>Urgency Level</label><select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}><option value="Standard">Standard (Monitor)</option><option value="High">High (Needs Repair Soon)</option><option value="Critical">Critical (Down/Hazard)</option></select></div>
+    <div className="maintenance-center-compact max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Record" : "Report Equipment Issue"}>
+        <form onSubmit={handleSave} className="space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div><label className={T.label}>Equipment / Area</label><input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="Walk-in cooler, fryer 1, prep sink" required /></div>
+            <div><label className={T.label}>Urgency</label><select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}><option value="Standard">Standard</option><option value="High">High</option><option value="Critical">Critical / Down</option></select></div>
           </div>
-          <div><label className={T.label}>Issue Description</label><textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea></div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-[#2A353D]">
-            <div><label className={T.label}>Current Status</label><select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}><option value="Reported">Reported (Open)</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved / Fixed</option></select></div>
-            <div><label className={T.label}>Repair Cost ($)</label><input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." /></div>
+          <div><label className={T.label}>Issue</label><textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="3" className={T.input} placeholder="Describe what is happening and when it started." required /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div><label className={T.label}>Status</label><select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}><option value="Reported">Reported</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved</option></select></div>
+            <div><label className={T.label}>Repair Cost</label><input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="0.00" /></div>
           </div>
-          <div><label className={T.label}>Repair Notes / Vendor Used</label><input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" /></div>
-          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingLogId ? 'Update Log' : 'Submit Report'}</button>
+          <div><label className={T.label}>Vendor / Repair Notes</label><input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="Vendor, part ordered, temporary workaround" /></div>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingLogId ? 'Save Changes' : 'Create Maintenance Record'}</button>
         </form>
       </Modal>
 
-      {/* PM MODAL */}
-      <Modal isOpen={isPmModalOpen} onClose={() => { setIsPmModalOpen(false); resetPmForm(); }} title={editingPmId ? "Edit PM Schedule" : "New Preventative Maintenance"}>
-        <form onSubmit={handleSavePm} className="space-y-4">
-          <div><label className={T.label}>Task Title</label><input type="text" value={pmTitle} onChange={e=>setPmTitle(e.target.value)} className={T.input} placeholder="e.g. Clean Hood Vents" required /></div>
-          <div><label className={T.label}>Equipment / Area</label><input type="text" value={pmEquipment} onChange={e=>setPmEquipment(e.target.value)} className={T.input} placeholder="e.g. Grill Line" required /></div>
-          <div><label className={T.label}>Frequency (In Days)</label><input type="number" min="1" value={pmDays} onChange={e=>setPmDays(e.target.value)} className={T.input} placeholder="e.g. 90 for quarterly" required /></div>
-          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingPmId ? 'Update Schedule' : 'Start Countdown'}</button>
+      <Modal isOpen={isPmModalOpen} onClose={() => { setIsPmModalOpen(false); resetPmForm(); }} title={editingPmId ? "Edit Preventative Schedule" : "New Preventative Schedule"}>
+        <form onSubmit={handleSavePm} className="space-y-3">
+          <div><label className={T.label}>Task</label><input type="text" value={pmTitle} onChange={e=>setPmTitle(e.target.value)} className={T.input} placeholder="Clean condenser coils" required /></div>
+          <div><label className={T.label}>Equipment / Area</label><input type="text" value={pmEquipment} onChange={e=>setPmEquipment(e.target.value)} className={T.input} placeholder="Walk-in cooler" required /></div>
+          <div><label className={T.label}>Repeat Every</label><div className="flex items-center gap-2"><input type="number" min="1" value={pmDays} onChange={e=>setPmDays(e.target.value)} className={T.input} required /><span className="text-xs font-bold text-slate-400">days</span></div></div>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingPmId ? 'Save Schedule' : 'Create Schedule'}</button>
         </form>
       </Modal>
 
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
-        <button onClick={() => setSubTab('issues')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'issues' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Reactive Repairs</button>
-        <button onClick={() => setSubTab('pm')} className={`relative px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'pm' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-          PM Schedules
-          {overdueCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg animate-pulse">{overdueCount}</span>}
-        </button>
+      <div className={`${T.card} p-3`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#D4A381]">Equipment Care</div>
+            <h1 className="text-xl font-black text-white leading-tight flex items-center gap-2"><Wrench size={19} className={T.copper}/> Maintenance Center</h1>
+            <p className="text-xs text-slate-400 font-bold mt-1">Repairs, costs, vendors, and preventative work in one compact workspace.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => { resetForm(); setIsModalOpen(true); }} className={`${T.btn} flex items-center gap-1.5`}><Plus size={14}/> Report Issue</button>
+            <button onClick={() => { resetPmForm(); setIsPmModalOpen(true); }} className={`${T.btnAlt} flex items-center gap-1.5`}><Calendar size={14}/> Add PM</button>
+          </div>
+        </div>
       </div>
 
-      {subTab === 'issues' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
-            <div>
-              <h2 className="text-xl font-black text-white flex items-center gap-2"><Wrench className={T.copper} size={20}/> Logged Repairs</h2>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track broken equipment and repair costs.</p>
-            </div>
-            <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
-          </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {[
+          ['Open Repairs', openLogs.length, openLogs.length ? 'text-orange-300' : 'text-emerald-400'],
+          ['High Priority', criticalLogs.length, criticalLogs.length ? 'text-red-400' : 'text-emerald-400'],
+          ['In Progress', inProgressLogs.length, 'text-blue-300'],
+          ['Recorded Cost', `$${totalRepairCost.toFixed(2)}`, 'text-[#D4A381]']
+        ].map(([label,value,color]) => <div key={label} className="maintenance-summary-card bg-[#1A2126] border border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500">{label}</div><div className={`text-lg font-black mt-1 ${color}`}>{value}</div></div>)}
+      </div>
 
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={T.th}>Active & Resolved Issues</div>
-            <div className={`divide-y ${T.border}`}>
-              {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged.</div>}
-              {logs.sort((a,b) => {
-                  if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
-                  if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
-                  if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
-                  if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
-                  return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
-              }).map(log => (
-                <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' && !log.issue.includes('[PM') ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-white text-base">{log.equipment}</span>
-                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
-                      {log.issue.includes('[PM COMPLETED]') && <span className="text-[8px] font-black uppercase tracking-widest bg-blue-900/20 text-blue-400 px-2 py-0.5 rounded border border-blue-900/50">Auto-Logged PM</span>}
-                      {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
-                    </div>
-                    <div className={`text-sm font-medium mt-1 ${log.issue.includes('[PM') ? 'text-blue-300' : 'text-slate-300'}`}>{log.issue}</div>
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
-                      {!log.issue.includes('[PM') && <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>}
-                      <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
-                      {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 md:self-end">
-                    <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
-                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) safeMaintenanceWrite({ action: "delete", collectionName: "maintenanceLogs", docId: log.id, label: "Maintenance log", before: log }); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
-                  </div>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
+        <div className="flex gap-1.5 overflow-x-auto custom-scrollbar">
+          <button onClick={() => setSubTab('issues')} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
+          <button onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
+        </div>
+        {subTab === 'issues' && <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+          <input value={issueSearch} onChange={e=>setIssueSearch(e.target.value)} className={`${T.input} md:w-56`} placeholder="Search equipment, issue, vendor" />
+          <select value={issueStatusFilter} onChange={e=>setIssueStatusFilter(e.target.value)} className={`${T.input} md:w-36`}><option value="Open">Open</option><option value="All">All</option><option value="Reported">Reported</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved</option></select>
+        </div>}
+      </div>
+
+      {subTab === 'issues' && <div className="animate-[slideIn_0.2s_ease-out]">
+        <div className="flex items-center justify-between mb-2"><div><h2 className="text-sm font-black text-white">Repair Board</h2><p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">{visibleLogs.length} record{visibleLogs.length === 1 ? '' : 's'} shown</p></div></div>
+        {visibleLogs.length === 0 ? <SmartEmptyState icon={<Wrench size={22}/>} title="No maintenance records match" desc="Change the filter or report a new equipment issue." /> : <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+          {visibleLogs.map(log => {
+            const reportedDate = log.reportedAt ? new Date(log.reportedAt).toLocaleDateString() : 'Date unavailable';
+            const isResolved = (log.status || 'Reported') === 'Resolved';
+            const isPmLog = String(log.issue || '').includes('[PM COMPLETED]');
+            return <article key={log.id} className={`maintenance-record-card bg-[#1A2126] border ${log.urgency === 'Critical' && !isResolved ? 'border-red-500/50' : 'border-[#2A353D]'} ${isResolved ? 'opacity-75' : ''}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5"><h3 className="font-black text-white truncate">{log.equipment || 'Equipment'}</h3><span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status || 'Reported')}`}>{log.status || 'Reported'}</span>{isPmLog && <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-blue-900/50 bg-blue-900/20 text-blue-300">PM History</span>}</div>
+                  <div className={`text-[9px] font-black uppercase tracking-widest mt-1 ${getUrgencyColor(log.urgency)}`}>{isPmLog ? 'Preventative maintenance' : `${log.urgency || 'Standard'} priority`}</div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+                <div className="flex gap-1 flex-shrink-0"><button onClick={() => handleEdit(log)} className="no-compact w-8 h-8 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center" title="Edit record"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this maintenance record permanently?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'maintenanceLogs', docId: log.id, label: 'Maintenance log', before: log }); }} className="no-compact w-8 h-8 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center" title="Delete record"><Trash2 size={14}/></button></div>
+              </div>
+              <div className="mt-2 rounded-lg bg-[#12161A] border border-[#2A353D] px-3 py-2 text-sm font-bold text-slate-200 leading-snug">{String(log.issue || '').replace('[PM COMPLETED] ', '')}</div>
+              {log.notes && <div className="mt-2 text-xs font-bold text-[#D4A381] line-clamp-2">{log.notes}</div>}
+              <div className="mt-2 pt-2 border-t border-[#2A353D] grid grid-cols-2 sm:grid-cols-3 gap-2 text-[9px] uppercase tracking-widest font-black text-slate-500"><span>Reported {reportedDate}</span><span className="truncate">By {log.reportedBy || log.updatedBy || 'Unknown'}</span><span className="text-right sm:text-left">Cost ${Number(log.cost || 0).toFixed(2)}</span></div>
+            </article>;
+          })}
+        </div>}
+      </div>}
 
-      {subTab === 'pm' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
-            <div>
-              <h2 className="text-xl font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={20}/> Preventative Schedules</h2>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Automated countdowns for recurring tasks.</p>
-            </div>
-            <button onClick={() => setIsPmModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> New PM</button>
-          </div>
-
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={T.th}>Active PM Countdowns</div>
-            <div className={`divide-y ${T.border}`}>
-              {pmSchedules.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No preventative maintenance schedules set up.</div>}
-              {pmSchedules.sort((a,b) => {
-                const aDaysLeft = a.frequencyDays - Math.floor((todayMs - new Date(a.lastCompleted+'T12:00:00').getTime()) / 86400000);
-                const bDaysLeft = b.frequencyDays - Math.floor((todayMs - new Date(b.lastCompleted+'T12:00:00').getTime()) / 86400000);
-                return aDaysLeft - bDaysLeft;
-              }).map(pm => {
-                const lastMs = new Date(pm.lastCompleted+'T12:00:00').getTime();
-                const daysSince = Math.floor((todayMs - lastMs) / 86400000);
-                const daysLeft = pm.frequencyDays - daysSince;
-                
-                let statusColor = 'text-emerald-500 bg-emerald-900/20 border-emerald-900/50';
-                let statusText = `${daysLeft} Days Left`;
-                if (daysLeft <= 0) { statusColor = 'text-red-500 bg-red-900/20 border-red-900/50 animate-pulse'; statusText = `OVERDUE (${Math.abs(daysLeft)}d)`; }
-                else if (daysLeft <= 7) { statusColor = 'text-orange-400 bg-orange-900/20 border-orange-900/50'; statusText = `DUE SOON (${daysLeft}d)`; }
-
-                return (
-                  <div key={pm.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
-                    <div className="flex-1">
-                      <div className="font-bold text-white text-base">{pm.title}</div>
-                      <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">{pm.equipment} • Every {pm.frequencyDays} Days</div>
-                      <div className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-widest">Last Done: {new Date(pm.lastCompleted+'T12:00:00').toLocaleDateString()}</div>
-                    </div>
-                    <div className="flex items-center gap-3 md:self-end">
-                      <div className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border ${statusColor}`}>
-                        {statusText}
-                      </div>
-                      <button onClick={() => handleMarkPmDone(pm)} className="bg-[#12161A] text-emerald-500 border border-[#2A353D] hover:bg-[#1A2126] hover:border-emerald-900/50 font-black text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-1">
-                        <Check size={14}/> Mark Done
-                      </button>
-                      <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
-                        <button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(pm.frequencyDays.toString()); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><Edit size={14}/></button>
-                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) safeMaintenanceWrite({ action: "delete", collectionName: "pmSchedules", docId: pm.id, label: "PM schedule", before: pm }); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+      {subTab === 'pm' && <div className="animate-[slideIn_0.2s_ease-out]">
+        <div className="flex items-center justify-between mb-2"><div><h2 className="text-sm font-black text-white">Preventative Maintenance</h2><p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Recurring equipment care and due dates</p></div></div>
+        {sortedPmSchedules.length === 0 ? <SmartEmptyState icon={<Calendar size={22}/>} title="No preventative schedules" desc="Add recurring equipment care to build the maintenance calendar." /> : <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+          {sortedPmSchedules.map(pm => {
+            const lastCompleted = pm.lastCompleted || getToday();
+            const lastMs = new Date(lastCompleted+'T12:00:00').getTime();
+            const daysSince = Math.max(0, Math.floor((todayMs - lastMs) / 86400000));
+            const frequency = Math.max(1, Number(pm.frequencyDays || 30));
+            const daysLeft = frequency - daysSince;
+            const progress = Math.max(0, Math.min(100, Math.round((daysSince / frequency) * 100)));
+            const statusText = daysLeft <= 0 ? `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} overdue` : daysLeft <= 7 ? `Due in ${daysLeft} day${daysLeft === 1 ? '' : 's'}` : `${daysLeft} days left`;
+            const statusClass = daysLeft <= 0 ? 'text-red-300 border-red-500/40 bg-red-950/20' : daysLeft <= 7 ? 'text-orange-300 border-orange-500/40 bg-orange-950/20' : 'text-emerald-300 border-emerald-500/30 bg-emerald-950/10';
+            return <article key={pm.id} className="maintenance-record-card bg-[#1A2126] border border-[#2A353D]">
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="font-black text-white truncate">{pm.title}</h3><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mt-1 truncate">{pm.equipment}</div></div><span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border flex-shrink-0 ${statusClass}`}>{statusText}</span></div>
+              <div className="mt-3"><div className="h-1.5 rounded-full bg-[#0B0E11] overflow-hidden"><div className={`${daysLeft <= 0 ? 'bg-red-500' : daysLeft <= 7 ? 'bg-orange-400' : 'bg-emerald-500'} h-full rounded-full`} style={{ width: `${Math.max(4, progress)}%` }} /></div><div className="flex justify-between text-[9px] uppercase tracking-widest font-black text-slate-500 mt-1"><span>Last {new Date(lastCompleted+'T12:00:00').toLocaleDateString()}</span><span>Every {frequency} days</span></div></div>
+              <div className="mt-3 flex gap-1.5"><button onClick={() => handleMarkPmDone(pm)} className={`${T.btn} flex-1 flex items-center justify-center gap-1`}><Check size={13}/> Complete</button><button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(String(pm.frequencyDays || 30)); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="no-compact w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this preventative schedule?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'pmSchedules', docId: pm.id, label: 'PM schedule', before: pm }); }} className="no-compact w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center"><Trash2 size={14}/></button></div>
+            </article>;
+          })}
+        </div>}
+      </div>}
     </div>
   );
+
 };
 
 const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab }) => {
@@ -2893,6 +2889,30 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const [depInventoryItemId, setDepInventoryItemId] = useState('');
   const [depNotes, setDepNotes] = useState('');
   const safeOpsWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
+  const dependencyInventoryOptions = Array.from(inventoryItems.reduce((map, item) => {
+    const name = String(item?.name || item?.itemName || '').replace(/\s+/g, ' ').trim();
+    if (!item?.id || !name || name.length < 2 || name.length > 100 || item.isArchived === true || item.deleted === true) return map;
+    const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const looksLikeNoise = !/[a-z]{2}/i.test(name)
+      || /^(?:inventory item|item|product|unknown|misc|n\/?a)$/i.test(name)
+      || /(?:\bshipper\b|\bbill to\b|\bship to\b|\bdue \d|\bt\/?wt\b|\bsuite \d|\bhighway\b|\bhwy\b|\bphone\b|\bfax\b|\binvoice\b|\baccount\b)/i.test(name)
+      || /(?:\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4})/.test(name)
+      || /^(?:[\d./-]+\s*){2,}$/.test(name);
+    if (looksLikeNoise) return map;
+    const classification = classifyInvoiceRow({
+      itemName: name,
+      description: name,
+      rawText: name,
+      rowType: 'item',
+      quantity: 1,
+      uom: item.unit || item.uom || 'EA',
+      productCode: item.productCode || item.sku || ''
+    });
+    if (classification.kind === 'document') return map;
+    if (!map.has(normalized)) map.set(normalized, { ...item, name });
+    return map;
+  }, new Map()).values()).sort((a,b) => a.name.localeCompare(b.name));
+  const hiddenDependencyNoiseCount = Math.max(0, inventoryItems.length - dependencyInventoryOptions.length);
 
   const today = currentDate || getToday();
   const todayDate = new Date(today + 'T12:00:00');
@@ -3231,8 +3251,8 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
+    <div className="kitchen-command-compact max-w-6xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className={`${T.card} command-hero p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
         <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
@@ -3253,15 +3273,15 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
         {kpiCards.map(card => (
-          <button key={card.label} type="button" onClick={card.label === 'Low Stock' ? openInventoryFocus : undefined} className={`${T.card} p-3 text-center ${card.label === 'Low Stock' ? 'hover:border-red-500/60 transition-colors cursor-pointer' : 'cursor-default'}`}>
+          <button key={card.label} type="button" onClick={card.label === 'Low Stock' ? openInventoryFocus : undefined} className={`${T.card} command-kpi p-3 text-center ${card.label === 'Low Stock' ? 'hover:border-red-500/60 transition-colors cursor-pointer' : 'cursor-default'}`}>
             <div className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>{card.label}</div>
-            <div className="text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
+            <div className="command-kpi-value text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
             <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
           </button>
         ))}
       </div>
 
-      <div className={`${T.card} p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
+      <div className={`${T.card} command-card p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
         <div className="lg:col-span-2">
           <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Do These First</h2>
           <p className="text-xs text-slate-400 font-bold mt-1">The few actions managers need during service.</p>
@@ -3273,7 +3293,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className={`${T.card} p-4 lg:col-span-2`}>
+        <div className={`${T.card} command-card p-4 lg:col-span-2`}>
           <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
             <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Today’s Priorities</h2>
             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
@@ -3288,7 +3308,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
         </div>
 
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} command-card p-4`}>
           <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Prep Forecast</h2>
           <div className="space-y-2">
             {prepForecast.map(row => (
@@ -3307,7 +3327,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={`${T.card} overflow-hidden`}>
           <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Stock to Check</div>
-          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+          <div className={`divide-y ${T.border} command-scroll max-h-[360px] overflow-y-auto custom-scrollbar`}>
             {lowStockItems.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No par problems detected.</div>}
             {lowStockItems.slice(0, 12).map(item => {
               const par = Number(item.parLevel || 0);
@@ -3331,7 +3351,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
         <div className={`${T.card} overflow-hidden`}>
           <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Fixes to Check</div>
-          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+          <div className={`divide-y ${T.border} command-scroll max-h-[360px] overflow-y-auto custom-scrollbar`}>
             {openMaintenance.length === 0 && overduePm.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No equipment warnings right now.</div>}
             {criticalMaintenance.concat(openMaintenance.filter(l => !criticalMaintenance.includes(l))).slice(0, 8).map(log => (
               <div key={log.id} className={`${T.row}`}>
@@ -3371,7 +3391,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
         <div className={`${T.card} overflow-hidden`}>
           <div className={`${T.th} flex items-center gap-2`}><Clock size={14}/> Kitchen Timeline</div>
-          <div className={`divide-y ${T.border} max-h-[420px] overflow-y-auto custom-scrollbar`}>
+          <div className={`divide-y ${T.border} command-scroll max-h-[420px] overflow-y-auto custom-scrollbar`}>
             {timeline.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No timeline activity for this day yet.</div>}
             {timeline.map((item, idx) => (
               <div key={`${item.type}-${idx}`} className={`${T.row} flex gap-3`}>
@@ -3387,7 +3407,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         </div>
       </div>
 
-      <div className={`${T.card} p-4`}>
+      <div className={`${T.card} command-card p-4`}>
         <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
           <h2 className="font-black text-white flex items-center gap-2"><BookOpen size={18} className={T.copper}/> Recipe & Menu Brain</h2>
           <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{recipes.length} recipes tracked</span>
@@ -3421,14 +3441,15 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
                 {recipes.slice().sort((a,b)=>String(a.title || a.name || '').localeCompare(String(b.title || b.name || ''))).map(r => <option key={r.id} value={r.id}>{r.title || r.name || 'Recipe'}</option>)}
               </select>
               <select value={depInventoryItemId} onChange={e => setDepInventoryItemId(e.target.value)} className={T.input}>
-                <option value="">Choose inventory item</option>
-                {inventoryItems.slice().sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''))).map(i => <option key={i.id} value={i.id}>{i.name || 'Inventory item'}</option>)}
+                <option value="">Choose inventory item ({dependencyInventoryOptions.length})</option>
+                {dependencyInventoryOptions.map(i => <option key={i.id} value={i.id}>{i.name} • {i.category || 'Inventory'} • Stock {Number(i.currentStock || 0)}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2">
               <input value={depNotes} onChange={e => setDepNotes(e.target.value)} className={T.input} placeholder="Optional note, station, substitute, or recovery hint" />
               <button className={T.btn}>Map Dependency</button>
             </div>
+            <div className="text-[9px] font-bold text-slate-500">Showing real inventory records only.{hiddenDependencyNoiseCount > 0 ? ` ${hiddenDependencyNoiseCount} invoice-noise or duplicate record${hiddenDependencyNoiseCount === 1 ? '' : 's'} hidden from this chooser.` : ''}</div>
           </form>
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
             <div className="font-black text-white text-sm">Graph Status</div>
@@ -3572,8 +3593,8 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const heroTitle = profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief';
   const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
 
-  return <div className="max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
-    <div className="cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
+  return <div className="manager-brief-compact max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="brief-hero cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
       <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
@@ -3590,44 +3611,44 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     </div>
 
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <button onClick={() => quickCreate('86')} className="bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
-      <button onClick={() => quickCreate('prep')} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
-      <button onClick={() => quickCreate('message')} className="bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
-      <button onClick={() => quickCreate('maintenance')} className="bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>
+      <button onClick={() => quickCreate('86')} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
+      <button onClick={() => quickCreate('prep')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
+      <button onClick={() => quickCreate('message')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
+      <button onClick={() => quickCreate('maintenance')} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>
     </div>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
       <div className="lg:col-span-2 space-y-3">
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
           {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
             {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
           </div>}
         </div>
 
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
           {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={openInventoryFocus} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
           {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Kitchen Command" detail="Open Kitchen Command Center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
           {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
         </div>
 
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">Important Messages</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open Board</button></div>
           <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div>{(n.notes || n.menuImpact) && <div className="text-[11px] text-slate-300 font-bold mt-1 whitespace-pre-wrap line-clamp-3">{n.notes || n.menuImpact}</div>}</div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
         </div>
       </div>
 
       <div className="space-y-3">
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/7</span></button>
           {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
         </div>
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Recently Used</h2>
           <div className="flex flex-wrap gap-2">{recentTabs.length ? recentTabs.map(t => <button key={t} onClick={() => setActiveTab(t)} className="px-3 py-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[10px] text-slate-300 font-black uppercase tracking-widest">{t}</button>) : <p className="text-xs text-slate-500 font-bold">Tabs you use will appear here.</p>}</div>
         </div>
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, prefs: !e.prefs}))}><h2 className="font-black text-white text-lg">My Preferences</h2><Settings size={16}/></button>
           {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Apply {profile} Notification Preset</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">Open Full Settings</button></div>}
         </div>

@@ -122,7 +122,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
       {isOpen && (
         <div className="fixed inset-0 z-[70] flex justify-end">
           <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
-          <div className={`w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
             <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
                <div className="flex items-center gap-3">
                  <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
@@ -143,7 +143,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    </button>
                  </div>
                </div>
-               <button onClick={onClose} className="p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
+               <button onClick={onClose} className="drawer-icon-button no-compact p-1.5 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
             </div>
             <div className="p-2 border-b border-[#2A353D]">
               <div className="relative">
@@ -155,7 +155,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                {visibleSections.length === 0 && visibleActions.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-500 border border-dashed border-[#2A353D] rounded-xl">No menu results. Try “schedule”, “punch”, “recipe”, or “help”.</div>}
                {visibleSections.map(section => (
                  <div key={section.label} className="mb-1.5 last:mb-0">
-                   <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
+                   <div className="drawer-section-label px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
                    <div className="space-y-0.5">
                      {section.tabs.map(tab => (
                        <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
@@ -245,7 +245,7 @@ const MiniProblemCard = ({ tone='amber', title, detail, action, onClick }) => {
     blue: 'border-blue-500/40 bg-blue-950/10 text-blue-300',
     emerald: 'border-emerald-500/40 bg-emerald-950/10 text-emerald-300'
   };
-  return <div className={`rounded-xl border p-3 ${tones[tone] || tones.amber}`}>
+  return <div className={`mini-problem-card rounded-xl border p-3 ${tones[tone] || tones.amber}`}>
     <div className="text-[10px] font-black uppercase tracking-widest">{title}</div>
     <div className="text-xs text-slate-300 font-bold mt-1 leading-snug">{detail}</div>
     {action && <button onClick={onClick} className="mt-2 text-[9px] font-black uppercase tracking-widest underline underline-offset-4">{action}</button>}
