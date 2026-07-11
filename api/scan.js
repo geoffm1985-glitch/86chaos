@@ -20,7 +20,7 @@ const {
   completeAiRequestLock
 } = aiPolicy;
 
-const RECIPE_SCANNER_VERSION = '15.0.52';
+const RECIPE_SCANNER_VERSION = '15.0.53';
 
 export const config = {
   regions: ['iad1'],

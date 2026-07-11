@@ -3,7 +3,7 @@ const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const { getAllowedGeminiModels, getHardOutputTokenLimit, getHardRateLimit, createProviderCallBudget, reserveAiRequest, completeAiRequestLock } = require('./_ai-policy');
 
-const APP_VERSION = '15.0.52';
+const APP_VERSION = '15.0.53';
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MAX_QUESTION_CHARS = 1600;
 const MAX_CONTEXT_CHARS = 26000;
