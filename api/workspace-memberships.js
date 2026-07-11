@@ -100,10 +100,9 @@ module.exports = async function handler(req, res) {
       options.set(restaurantId, { ...current, ...raw, restaurantId, membershipSource: clean(raw.membershipSource || source || current.membershipSource) });
     };
 
-    // Legacy user fields are still valid memberships for older restaurants.
+    // Only restaurantId is a legacy membership. activeRestaurantId and
+    // defaultRestaurantId are UI selectors and cannot create workspace access.
     if (user.restaurantId) addRaw({ ...user, restaurantId: user.restaurantId, restaurantName: user.restaurantName, membershipSource: 'legacy-user-restaurantId' });
-    if (user.defaultRestaurantId && user.defaultRestaurantId !== user.restaurantId) addRaw({ restaurantId: user.defaultRestaurantId, membershipSource: 'legacy-defaultRestaurantId' });
-    if (user.activeRestaurantId && user.activeRestaurantId !== user.restaurantId) addRaw({ restaurantId: user.activeRestaurantId, membershipSource: 'legacy-activeRestaurantId' });
 
     // New multi-workspace map on the account profile.
     if (user.memberships && typeof user.memberships === 'object') {

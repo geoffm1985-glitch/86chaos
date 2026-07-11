@@ -88,6 +88,10 @@ type ArchiveRule = {
 };
 
 const TRANSIENT_RULES: PurgeRule[] = [
+  // Server-only request guards. The API writes short-lived expiry fields; keep
+  // a 30-day forensic buffer, then remove them so cost controls stay bounded.
+  { collection: "aiRequestLocks", field: "expiresAt", cutoffKind: "timestamp" },
+  { collection: "apiRateLimits", field: "expiresAt", cutoffKind: "iso" },
   // Current 86 Chaos schema.
   {
     collection: "prepItems",

@@ -11,10 +11,39 @@ const {
   buildLimitResponse,
   buildDuplicateResponse
 } = require('./_ai-usage');
-const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 
-const MENU_SCANNER_VERSION = '15.0.50';
+const MENU_SCANNER_VERSION = '15.0.52';
+const {
+  getAllowedGeminiModels,
+  getHardOutputTokenLimit,
+  getHardInputByteLimit,
+  getHardRateLimit,
+  createProviderCallBudget,
+  assertInputWithinHardLimit,
+  assertPageCountWithinHardLimit,
+  detectMimeTypeFromBuffer,
+  assertImageDimensionsWithinHardLimit
+} = require('./_ai-policy');
+
+function requireTenantStoragePath(path = '', restaurantId = '', folder = '') {
+  const clean = String(path || '').trim().replace(/^\/+/, '');
+  const expectedRestaurantId = String(restaurantId || '').trim();
+  const segments = clean.split('/');
+  const invalid = !clean ||
+    !expectedRestaurantId ||
+    clean.includes('\\') ||
+    segments.length < 3 ||
+    segments[0] !== expectedRestaurantId ||
+    segments[1] !== folder ||
+    segments.slice(2).some(segment => !segment || segment === '.' || segment === '..');
+  if (invalid) {
+    const error = new Error('Menu upload path must be inside this workspace\'s approved menuUploads folder.');
+    error.statusCode = 403;
+    throw error;
+  }
+  return clean;
+}
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -132,16 +161,15 @@ function normalizeMenuPayload(parsed = {}, inventoryItems = []) {
 }
 
 function getMenuModelCandidates() {
-  const configured = process.env.MENU_SCAN_GEMINI_MODEL || process.env.GEMINI_MENU_MODEL || process.env.GEMINI_MODEL || '';
-  return Array.from(new Set([
+  const configured = process.env.MENU_SCAN_GEMINI_MODEL || process.env.GEMINI_MENU_MODEL || '';
+  return getAllowedGeminiModels({
+    feature: 'menu',
     configured,
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash'
-  ].map(v => String(v || '').trim()).filter(Boolean)));
+    defaults: ['gemini-2.5-flash-lite']
+  });
 }
 
-async function callGeminiMenuScan({ apiKey, prompt, contentType, buffer }) {
+async function callGeminiMenuScan({ apiKey, prompt, contentType, buffer, modelCandidates, callBudget }) {
   let lastError = null;
   const requestBody = {
     contents: [{
@@ -151,10 +179,15 @@ async function callGeminiMenuScan({ apiKey, prompt, contentType, buffer }) {
         { inlineData: { mimeType: contentType, data: buffer.toString('base64') } }
       ]
     }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+      maxOutputTokens: getHardOutputTokenLimit('menu', process.env.MENU_SCAN_MAX_OUTPUT_TOKENS)
+    }
   };
 
-  for (const model of getMenuModelCandidates()) {
+  for (const model of modelCandidates) {
+    callBudget.consume({ model, attempt: 'menu-extraction' });
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -236,6 +269,9 @@ module.exports = async function handler(req, res) {
   let usageDb = null;
   let providerCallStarted = false;
   let usedModel = '';
+  let providerCallBudget = null;
+  let estimatedInputTokens = 0;
+  let estimatedOutputTokens = 0;
   try {
     const body = await readBody(req);
     const restaurantId = String(body.restaurantId || '').trim();
@@ -248,33 +284,36 @@ module.exports = async function handler(req, res) {
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
 
-    const scanLimit = Number(process.env.SCAN_MENU_RATE_LIMIT || 8);
+    const scanLimit = getHardRateLimit('menu', process.env.SCAN_MENU_RATE_LIMIT);
     const rate = await enforceRateLimit({ db: usageDb, req, decoded, routeName: 'scan-menu', limit: scanLimit, windowMs: 60 * 1000 });
     if (!rate.ok) return sendRateLimited(res, rate);
 
-    const storagePath = String(body.storagePath || '').trim();
-    if (!storagePath) return res.status(400).json({ ok: false, error: 'storagePath is required.' });
-    if (!storagePath.startsWith(`${restaurantId}/menuUploads/`)) return res.status(403).json({ ok: false, error: 'Menu upload path is not restaurant-scoped.' });
+    if (!String(body.storagePath || '').trim()) return res.status(400).json({ ok: false, error: 'storagePath is required.' });
+    const storagePath = requireTenantStoragePath(body.storagePath, restaurantId, 'menuUploads');
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing GEMINI_API_KEY in Vercel environment variables.' });
 
-    const maxBytes = parseInt(process.env.MENU_SCAN_MAX_BYTES || String(DEFAULT_MENU_SCAN_MAX_BYTES), 10);
+    const maxBytes = getHardInputByteLimit('menu', process.env.MENU_SCAN_MAX_BYTES);
     let contentType = body.contentType || 'application/octet-stream';
     let buffer;
     const menuFile = app.storage().bucket().file(storagePath);
     const [metadata] = await menuFile.getMetadata().catch(() => ([{}]));
     contentType = body.contentType || metadata?.contentType || contentType;
     const purpose = metadata?.metadata?.purpose || '';
-    if (purpose && purpose !== 'menu-scan') return res.status(400).json({ ok: false, error: 'This uploaded file is not marked as a menu scan. Upload it again from Menu Intelligence.' });
+    if (purpose !== 'menu-scan') return res.status(400).json({ ok: false, error: 'This uploaded file is not marked as a menu scan. Upload it again from Menu Intelligence.' });
     const reportedBytes = Number(metadata?.size || 0);
     if (reportedBytes && reportedBytes > maxBytes) return res.status(413).json({ ok: false, error: `Menu file is over the current ${Math.round(maxBytes / 1048576)}MB scanner limit.` });
     [buffer] = await menuFile.download();
 
+    assertInputWithinHardLimit('menu', buffer.length);
+    contentType = detectMimeTypeFromBuffer(buffer, contentType);
     if (!/^image\//i.test(contentType) && contentType !== 'application/pdf') return res.status(415).json({ ok: false, error: 'Menu scans must be an image or PDF.' });
+    assertImageDimensionsWithinHardLimit('menu', buffer, contentType);
     if (buffer.length > maxBytes) return res.status(413).json({ ok: false, error: `Menu file is over the current ${Math.round(maxBytes / 1048576)}MB scanner limit.` });
 
     const pageCount = await resolveScanPageCount({ mimeType: contentType, buffer });
+    assertPageCountWithinHardLimit('menu', pageCount);
     const modelCandidates = getMenuModelCandidates();
     const idempotencyKey = getIdempotencyKey(req, body);
     usageReservation = await checkAndReserveAiScanPages({
@@ -301,8 +340,11 @@ module.exports = async function handler(req, res) {
     ].join('\n');
 
     providerCallStarted = true;
-    const { data, model } = await callGeminiMenuScan({ apiKey, prompt, contentType, buffer });
+    providerCallBudget = createProviderCallBudget('menu');
+    const { data, model } = await callGeminiMenuScan({ apiKey, prompt, contentType, buffer, modelCandidates, callBudget: providerCallBudget });
     usedModel = model;
+    estimatedInputTokens += Number(data?.usageMetadata?.promptTokenCount || 0);
+    estimatedOutputTokens += Number(data?.usageMetadata?.candidatesTokenCount || 0);
     const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
     if (!text) throw new Error('Gemini returned no menu text.');
     const parsed = parseGeminiJson(text || '{}');
@@ -324,8 +366,10 @@ module.exports = async function handler(req, res) {
       status: 'completed',
       provider: 'google_gemini',
       model,
-      estimatedInputTokens: data?.usageMetadata?.promptTokenCount,
-      estimatedOutputTokens: data?.usageMetadata?.candidatesTokenCount
+      estimatedInputTokens,
+      estimatedOutputTokens,
+      providerCallCount: providerCallBudget.used,
+      attempts: providerCallBudget.attempts
     });
 
     return res.status(200).json({
@@ -360,7 +404,18 @@ module.exports = async function handler(req, res) {
     if (usageReservation && usageDb) {
       try {
         if (providerCallStarted) {
-          await completeAiScanUsageEvent({ db: usageDb, reservation: usageReservation, status: 'failed', errorMessage: err.message, provider: 'google_gemini', model: usedModel });
+          await completeAiScanUsageEvent({
+            db: usageDb,
+            reservation: usageReservation,
+            status: 'failed',
+            errorMessage: err.message,
+            provider: 'google_gemini',
+            model: usedModel || providerCallBudget?.attempts?.[0]?.model || '',
+            estimatedInputTokens,
+            estimatedOutputTokens,
+            providerCallCount: providerCallBudget?.used || 0,
+            attempts: providerCallBudget?.attempts || []
+          });
         } else {
           await cancelAiScanReservation({ db: usageDb, reservation: usageReservation });
         }
@@ -372,4 +427,3 @@ module.exports = async function handler(req, res) {
     return res.status(status).json({ ok: false, code: err?.code || undefined, error: err.message || 'Menu scan failed.', scannerVersion: MENU_SCANNER_VERSION });
   }
 };
-

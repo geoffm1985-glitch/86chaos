@@ -12,7 +12,7 @@ function cleanMoney(v) {
   return Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0;
 }
 function cleanPerms(perms = {}) {
-  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'menuIntelligence', 'wageView', 'wageEdit'];
+  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'menuIntelligence', 'hr', 'wageView', 'wageEdit'];
   return allowed.reduce((acc, key) => {
     acc[key] = perms?.[key] === true;
     return acc;
@@ -48,19 +48,29 @@ async function loadWorkspaceMember(db, uid, email, restaurantId) {
   return null;
 }
 function resolveRoleProfile(user, membership, restaurantId) {
-  const legacyMatch = user?.restaurantId === restaurantId || user?.defaultRestaurantId === restaurantId || user?.activeRestaurantId === restaurantId;
-  const source = membership || (legacyMatch ? user : {});
+  const legacyPrimary = user?.restaurantId === restaurantId;
+  const activeMembership = membership && membership.isActive !== false ? membership : null;
+  // An explicit inactive membership suppresses the legacy fallback. Top-level
+  // account roles are valid only inside the primary legacy restaurantId.
+  const legacySource = legacyPrimary ? (user || {}) : {};
+  const source = activeMembership
+    ? {
+        ...legacySource,
+        ...activeMembership,
+        permissions: { ...(legacySource.permissions || {}), ...(activeMembership.permissions || {}) }
+      }
+    : (!membership ? legacySource : {});
   return {
     name: cleanString(source.name || user?.name || ''),
     email: norm(source.email || user?.email || ''),
     phone: cleanString(source.phone || user?.phone || ''),
-    role: cleanString(source.role || user?.role || 'Staff') || 'Staff',
-    wage: cleanMoney(source.wage ?? user?.wage ?? 0),
+    role: cleanString(source.role || 'Staff') || 'Staff',
+    wage: cleanMoney(source.wage ?? 0),
     photoURL: cleanString(source.photoURL || user?.photoURL || ''),
-    isAdmin: source.isAdmin === true || (legacyMatch && user?.isAdmin === true),
-    isOwner: source.isOwner === true || source.accountOwner === true || (legacyMatch && (user?.isOwner === true || user?.accountOwner === true || user?.owner === true || user?.workspaceOwner === true || norm(user?.accountRole) === 'owner')),
-    permissions: cleanPerms({ ...(legacyMatch ? (user?.permissions || {}) : {}), ...(source.permissions || {}) }),
-    isActive: source.isActive !== false && user?.isActive !== false
+    isAdmin: source.isAdmin === true,
+    isOwner: source.isOwner === true || source.accountOwner === true || source.owner === true || source.workspaceOwner === true || norm(source.accountRole) === 'owner',
+    permissions: cleanPerms(source.permissions || {}),
+    isActive: Boolean(source && Object.keys(source).length) && source.isActive !== false && user?.isActive !== false
   };
 }
 
@@ -89,7 +99,9 @@ async function verifyCaller(req, body, db, auth) {
 
   const restSnap = await db.collection('restaurants').doc(requestedRestaurantId).get();
   const restaurant = restSnap.exists ? restSnap.data() : {};
-  const callerMembership = membershipFromUserMap(caller, requestedRestaurantId) || await loadWorkspaceMember(db, decoded.uid, callerEmail, requestedRestaurantId);
+  const mappedMembership = membershipFromUserMap(caller, requestedRestaurantId);
+  const storedMembership = await loadWorkspaceMember(db, decoded.uid, callerEmail, requestedRestaurantId);
+  const callerMembership = storedMembership || mappedMembership;
   const callerProfile = resolveRoleProfile(caller, callerMembership, requestedRestaurantId);
 
   const isSuperAdmin = decoded.superAdmin === true || caller?.isSuperAdmin === true || caller?.systemAccess?.superAdmin === true || masterEmails().includes(callerEmail);
@@ -103,7 +115,14 @@ async function verifyCaller(req, body, db, auth) {
     norm(restaurant.ownerEmailLower) === callerEmail ||
     norm(restaurant.ownerUserEmail) === callerEmail
   );
-  const isMember = Boolean(isSuperAdmin || isOwner || callerMembership || caller.restaurantId === requestedRestaurantId || caller.workspaceIds?.includes?.(requestedRestaurantId) || caller.memberships?.[requestedRestaurantId]);
+  const activeScopedMembership = Boolean(callerMembership && callerMembership.isActive !== false);
+  const legacyMembership = Boolean(
+    !callerMembership && (
+      caller.restaurantId === requestedRestaurantId ||
+      caller.workspaceIds?.includes?.(requestedRestaurantId)
+    )
+  );
+  const isMember = Boolean(isSuperAdmin || isOwner || activeScopedMembership || legacyMembership);
   if (!isMember) throw new Error('Your login is not a member of this workspace.');
 
   const permissions = callerProfile.permissions || {};
@@ -145,7 +164,7 @@ function buildMembershipPayload(ctx, uid, base = {}, existing = {}) {
   const incomingPerms = cleanPerms(base.permissions || {});
   if (incomingPerms.wageEdit) incomingPerms.wageView = true;
   const currentPerms = cleanPerms(existing.permissions || {});
-  const ownerOnlyPermissionKeys = ['wageView', 'wageEdit', 'settings', 'branding', 'integrations', 'menuIntelligence'];
+  const ownerOnlyPermissionKeys = ['wageView', 'wageEdit', 'settings', 'branding', 'integrations', 'menuIntelligence', 'hr'];
   const permissions = ctx.canChooseWageAccess ? incomingPerms : { ...currentPerms, ...incomingPerms };
   if (!ctx.canChooseWageAccess) ownerOnlyPermissionKeys.forEach((key) => { permissions[key] = currentPerms[key] === true; });
   if (permissions.wageEdit) permissions.wageView = true;

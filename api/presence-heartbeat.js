@@ -31,12 +31,11 @@ function memberDocId(uid, restaurantId) {
   return `${safeString(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${safeString(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
 }
 function hasMembership(user, uid, email, restaurantId) {
+  const mapped = user?.memberships?.[restaurantId];
   return Boolean(
     user?.restaurantId === restaurantId ||
-    user?.activeRestaurantId === restaurantId ||
-    user?.defaultRestaurantId === restaurantId ||
     user?.workspaceIds?.includes?.(restaurantId) ||
-    user?.memberships?.[restaurantId]?.isActive === true
+    (mapped && typeof mapped === 'object' && mapped.isActive !== false)
   );
 }
 async function loadMembership(db, uid, email, restaurantId) {
@@ -70,8 +69,10 @@ module.exports = async function handler(req, res) {
     if (!restaurantId) return res.status(400).json({ ok: false, error: 'Missing restaurant ID for heartbeat.' });
 
     const isSuperAdmin = decoded.superAdmin === true || user.isSuperAdmin === true;
-    const mappedMembership = user.memberships?.[restaurantId] || null;
-    const loadedMembership = mappedMembership || await loadMembership(db, uid, decoded.email, restaurantId);
+    const mapped = user.memberships?.[restaurantId];
+    const mappedMembership = mapped && typeof mapped === 'object' && mapped.isActive !== false ? mapped : null;
+    const storedMembership = await loadMembership(db, uid, decoded.email, restaurantId);
+    const loadedMembership = storedMembership || mappedMembership;
     const hasWorkspace = hasMembership(user, uid, decoded.email, restaurantId) || !!loadedMembership;
     if (!isSuperAdmin && !hasWorkspace) {
       return res.status(403).json({ ok: false, error: 'Heartbeat restaurant does not match an active workspace membership for this login.' });
@@ -111,7 +112,7 @@ module.exports = async function handler(req, res) {
       userName: safeString(membership?.name || user.name || decoded.name || ''),
       userEmail: safeString(membership?.email || user.email || decoded.email || ''),
       email: safeString(membership?.email || user.email || decoded.email || ''),
-      role: safeString(membership?.role || user.role || ''),
+      role: safeString(membership?.role || (user.restaurantId === restaurantId ? user.role : '') || ''),
       photoURL: safeString(membership?.photoURL || user.photoURL || ''),
       createdAt: user.createdAt || stamp,
       updatedAt: stamp,

@@ -20,6 +20,42 @@ function recoveryCodeSecret() {
 }
 function normalizeRecoveryCode(value = '') { return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function hashRecoveryCode(value = '') { return crypto.createHmac('sha256', recoveryCodeSecret()).update(normalizeRecoveryCode(value)).digest('hex'); }
+const INVALID_RECOVERY_MESSAGE = 'Recovery could not be completed. Check the email and code, wait a moment, then try again.';
+
+function recoveryRejected() {
+  const err = new Error(INVALID_RECOVERY_MESSAGE);
+  err.statusCode = 400;
+  err.code = 'RECOVERY_REJECTED';
+  return err;
+}
+
+function clearReservation(item = {}) {
+  const {
+    recoveryReservationId,
+    recoveryReservedAt,
+    recoveryReservationExpiresAt,
+    recoveryReservedFromIp,
+    ...rest
+  } = item;
+  return rest;
+}
+
+async function releaseRecoveryReservation(db, userRef, reservationId) {
+  if (!reservationId) return;
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(userRef);
+    if (!snap.exists) return;
+    const user = snap.data() || {};
+    const codes = Array.isArray(user.accountSecurity?.recoveryCodes) ? user.accountSecurity.recoveryCodes : [];
+    if (!codes.some(item => item?.recoveryReservationId === reservationId)) return;
+    tx.set(userRef, {
+      accountSecurity: {
+        ...(user.accountSecurity || {}),
+        recoveryCodes: codes.map(item => item?.recoveryReservationId === reservationId ? clearReservation(item) : item)
+      }
+    }, { merge: true });
+  }).catch(() => null);
+}
 
 async function rateLimit(db, key, limit = 6, windowMs = 10 * 60 * 1000) {
   const now = Date.now();
@@ -64,19 +100,61 @@ module.exports = async function handler(req, res) {
     }
     if (!email || !code) return res.status(400).json({ ok: false, error: 'Email and recovery code are required.' });
     const authUser = await app.auth().getUserByEmail(email).catch(() => null);
-    if (!authUser) return res.status(404).json({ ok: false, error: 'No Firebase Auth user found for that email.' });
+    if (!authUser) return res.status(400).json({ ok: false, error: INVALID_RECOVERY_MESSAGE });
     const userRef = db.collection('users').doc(authUser.uid);
     const suppliedHash = hashRecoveryCode(code);
     const now = new Date().toISOString();
-    const result = await db.runTransaction(async tx => {
+    const reservationId = crypto.randomBytes(16).toString('hex');
+    const reservationExpiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+    const reservation = await db.runTransaction(async tx => {
       const snap = await tx.get(userRef);
-      if (!snap.exists) throw new Error('This account is missing its Firestore user profile. Ask a System Administrator to repair it.');
+      if (!snap.exists) throw recoveryRejected();
       const user = snap.data() || {};
       const codes = Array.isArray(user.accountSecurity?.recoveryCodes) ? user.accountSecurity.recoveryCodes : [];
       const matchIndex = codes.findIndex(item => item && !item.usedAt && item.hash === suppliedHash);
-      if (matchIndex < 0) throw new Error('Recovery code was not accepted. Check the code or ask a System Administrator to reset MFA.');
-      const nextCodes = codes.map((item, index) => index === matchIndex ? { ...item, usedAt: now, usedFromIp: ip } : item);
-      const remaining = nextCodes.filter(item => item.hash && !item.usedAt).length;
+      if (matchIndex < 0) throw recoveryRejected();
+      const matchedCode = codes[matchIndex] || {};
+      const reservationActive = matchedCode.recoveryReservationId && new Date(matchedCode.recoveryReservationExpiresAt || 0).getTime() > Date.now();
+      if (reservationActive) throw recoveryRejected();
+      const nextCodes = codes.map((item, index) => index === matchIndex ? {
+        ...clearReservation(item),
+        recoveryReservationId: reservationId,
+        recoveryReservedAt: now,
+        recoveryReservationExpiresAt: reservationExpiresAt,
+        recoveryReservedFromIp: ip
+      } : item);
+      tx.set(userRef, {
+        accountSecurity: {
+          ...(user.accountSecurity || {}),
+          recoveryCodes: nextCodes
+        }
+      }, { merge: true });
+      return { user, usedIndex: matchIndex + 1 };
+    });
+
+    try {
+      await app.auth().updateUser(authUser.uid, { multiFactor: { enrolledFactors: [] } });
+    } catch (authResetError) {
+      await releaseRecoveryReservation(db, userRef, reservationId);
+      const safeError = new Error('Two-step login could not be reset. The recovery code was not consumed; wait a moment and try again.');
+      safeError.statusCode = 502;
+      safeError.cause = authResetError;
+      throw safeError;
+    }
+
+    const result = await db.runTransaction(async tx => {
+      const snap = await tx.get(userRef);
+      if (!snap.exists) throw new Error('Recovery profile disappeared before the reset could be finalized.');
+      const user = snap.data() || {};
+      const codes = Array.isArray(user.accountSecurity?.recoveryCodes) ? user.accountSecurity.recoveryCodes : [];
+      const matchIndex = codes.findIndex(item => item?.recoveryReservationId === reservationId && item.hash === suppliedHash && !item.usedAt);
+      if (matchIndex < 0) throw new Error('Recovery reservation could not be finalized.');
+      const nextCodes = codes.map((item, index) => index === matchIndex ? {
+        ...clearReservation(item),
+        usedAt: now,
+        usedFromIp: ip
+      } : item);
+      const remaining = nextCodes.filter(item => item?.hash && !item.usedAt).length;
       tx.set(userRef, {
         mfaEnabled: false,
         multiFactorEnabled: false,
@@ -100,8 +178,6 @@ module.exports = async function handler(req, res) {
       }, { merge: true });
       return { user, remaining, usedIndex: matchIndex + 1 };
     });
-
-    await app.auth().updateUser(authUser.uid, { multiFactor: { enrolledFactors: [] } });
     await db.collection('userSecurityAlerts').add({
       userId: authUser.uid,
       targetUserId: authUser.uid,
@@ -127,6 +203,7 @@ module.exports = async function handler(req, res) {
     });
     return res.status(200).json({ ok: true, message: 'Recovery code accepted. Two-step login was reset. Sign in again and re-enroll a phone from Account Security.', remainingRecoveryCodes: result.remaining });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message || 'Recovery code failed.' });
+    const statusCode = Number(err?.statusCode || 500);
+    return res.status(statusCode).json({ ok: false, error: statusCode === 400 ? INVALID_RECOVERY_MESSAGE : (err.message || 'Recovery code failed.') });
   }
 };

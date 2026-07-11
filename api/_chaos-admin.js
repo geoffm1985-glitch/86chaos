@@ -6,7 +6,18 @@ const { getAdminAppForRequest, getAdminAppForProject, getRequestedProjectId, ver
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
 function memberDocId(uid, restaurantId) { return `${clean(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${clean(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240); }
-function userHasWorkspace(user, restaurantId) { return Boolean(user?.restaurantId === restaurantId || user?.activeRestaurantId === restaurantId || user?.defaultRestaurantId === restaurantId || user?.workspaceIds?.includes?.(restaurantId) || user?.memberships?.[restaurantId]?.isActive === true); }
+function mappedWorkspaceMember(user, restaurantId) {
+  const member = user?.memberships?.[restaurantId];
+  return member && typeof member === 'object' && member.isActive !== false ? member : null;
+}
+function userHasWorkspace(user, restaurantId) {
+  if (!restaurantId) return false;
+  return Boolean(
+    user?.restaurantId === restaurantId ||
+    user?.workspaceIds?.includes?.(restaurantId) ||
+    mappedWorkspaceMember(user, restaurantId)
+  );
+}
 async function readWorkspaceMember(db, uid, email, restaurantId) {
   if (!restaurantId) return null;
   const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
@@ -18,16 +29,34 @@ async function readWorkspaceMember(db, uid, email, restaurantId) {
   return null;
 }
 function profileForWorkspace(user, member, restaurantId) {
-  const legacy = user?.restaurantId === restaurantId || user?.activeRestaurantId === restaurantId || user?.defaultRestaurantId === restaurantId;
-  const source = member || (legacy ? user : {});
+  // activeRestaurantId/defaultRestaurantId are selectors, not authorization.
+  // Top-level legacy roles remain valid only for the account's primary
+  // restaurantId. Every secondary workspace must supply workspace-scoped
+  // membership roles and permissions.
+  const legacyPrimary = user?.restaurantId === restaurantId;
+  const activeMember = member && member.isActive !== false ? member : null;
+  const legacySource = legacyPrimary ? (user || {}) : {};
+  const source = activeMember
+    ? {
+        ...legacySource,
+        ...activeMember,
+        permissions: { ...(legacySource.permissions || {}), ...(activeMember.permissions || {}) }
+      }
+    : legacySource;
   return {
     ...(user || {}),
     ...(source || {}),
     id: user?.id,
     restaurantId,
-    permissions: { ...((legacy && user?.permissions) || {}), ...(source?.permissions || {}) },
-    isAdmin: source?.isAdmin === true || (legacy && user?.isAdmin === true),
-    isOwner: source?.isOwner === true || source?.accountOwner === true || source?.workspaceOwner === true || (legacy && (user?.isOwner === true || user?.accountOwner === true || user?.workspaceOwner === true || norm(user?.accountRole) === 'owner'))
+    role: clean(source?.role || ''),
+    accountRole: clean(source?.accountRole || ''),
+    permissions: { ...(source?.permissions || {}) },
+    isAdmin: source?.isAdmin === true,
+    isOwner: source?.isOwner === true || source?.accountOwner === true || source?.owner === true || source?.workspaceOwner === true || norm(source?.accountRole) === 'owner',
+    accountOwner: source?.accountOwner === true,
+    owner: source?.owner === true,
+    workspaceOwner: source?.workspaceOwner === true,
+    isActive: source?.isActive !== false && user?.isActive !== false
   };
 }
 function parseMasterEmailEnv() {
@@ -242,7 +271,12 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
     }
     const isSuperAdmin = Boolean(decoded.superAdmin === true || user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || masterEmails().includes(email));
     const restaurantId = clean(targetRestaurantId || user?.activeRestaurantId || user?.restaurantId || user?.defaultRestaurantId || '');
-    const member = restaurantId && !isSuperAdmin ? (userHasWorkspace(user, restaurantId) ? (user?.memberships?.[restaurantId] || null) : await readWorkspaceMember(db, decoded.uid, email, restaurantId)) : null;
+    // Always look for the canonical workspace member first. A workspaceIds
+    // entry proves basic membership but must never hide a scoped admin role.
+    const storedMember = restaurantId && !isSuperAdmin
+      ? await readWorkspaceMember(db, decoded.uid, email, restaurantId)
+      : null;
+    const member = storedMember || mappedWorkspaceMember(user, restaurantId);
     const workspaceUser = profileForWorkspace({ ...(user || {}), id: userDocId }, member, restaurantId);
     const permissions = workspaceUser?.permissions || {};
     const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && (isSuperAdmin || member || userHasWorkspace(user, restaurantId)) && (workspaceUser?.isAdmin === true || workspaceUser?.isOwner === true || workspaceUser?.accountOwner === true || permissions.settings === true || permissions.team === true));

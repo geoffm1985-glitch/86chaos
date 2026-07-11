@@ -4,6 +4,9 @@ const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const MAX_INPUT_BYTES = 70000;
 const MAX_ARRAY_ITEMS = 80;
 const MAX_STRING_LENGTH = 5000;
+const MAX_REQUESTS_PER_MINUTE = 8;
+const HARD_MAX_OUTPUT_TOKENS = 5000;
+const ALLOWED_DIAGNOSTICS_MODELS = new Set(['gpt-5-mini']);
 
 const SECRET_KEY_PATTERN = /(authorization|cookie|secret|private.?key|api.?key|access.?token|refresh.?token|id.?token|bearer|password|credential|signed.?url|download.?url|client.?secret)/i;
 const PERSONAL_KEY_PATTERN = /(^|_)(email|phone|address|owneremail|useremail|clientemail|employeeemail|displayname|fullname)($|_)/i;
@@ -104,7 +107,7 @@ module.exports = async function handler(req, res) {
       req,
       decoded: ctx.decoded,
       routeName: 'openai-diagnostics-explain',
-      limit: Number(process.env.OPENAI_DIAGNOSTICS_RATE_LIMIT || 8),
+      limit: Math.min(MAX_REQUESTS_PER_MINUTE, Math.max(1, Number.parseInt(process.env.OPENAI_DIAGNOSTICS_RATE_LIMIT || MAX_REQUESTS_PER_MINUTE, 10) || MAX_REQUESTS_PER_MINUTE)),
       windowMs: 60 * 1000
     });
     if (!rate.ok) return sendRateLimited(res, rate);
@@ -135,6 +138,18 @@ module.exports = async function handler(req, res) {
     }
 
     const model = String(process.env.OPENAI_DIAGNOSTICS_MODEL || 'gpt-5-mini').trim();
+    if (!ALLOWED_DIAGNOSTICS_MODELS.has(model)) {
+      return res.status(500).json({
+        ok: false,
+        configured: true,
+        code: 'AI_MODEL_NOT_ALLOWED',
+        error: 'OPENAI_DIAGNOSTICS_MODEL is not permitted by the hard cost policy. Use gpt-5-mini.'
+      });
+    }
+    const maxOutputTokens = Math.min(
+      HARD_MAX_OUTPUT_TOKENS,
+      Math.max(1000, Number.parseInt(process.env.OPENAI_DIAGNOSTICS_MAX_OUTPUT_TOKENS || HARD_MAX_OUTPUT_TOKENS, 10) || HARD_MAX_OUTPUT_TOKENS)
+    );
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
@@ -144,7 +159,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         model,
         store: false,
-        max_output_tokens: 5000,
+        max_output_tokens: maxOutputTokens,
         instructions: [
           'You are the 86 Chaos diagnostics repair assistant for a React, Firebase Auth/Firestore/Storage, and Vercel application.',
           'Analyze only the supplied redacted operational data. Never invent a failed check, secret value, customer record, click path, or deployment result.',

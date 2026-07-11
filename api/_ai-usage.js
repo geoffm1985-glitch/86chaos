@@ -371,7 +371,7 @@ function sanitizeErrorMessage(message = '') {
     .slice(0, 800);
 }
 
-async function completeAiScanUsageEvent({ db, reservation, status, errorMessage = '', estimatedInputTokens = null, estimatedOutputTokens = null, provider = '', model = '' }) {
+async function completeAiScanUsageEvent({ db, reservation, status, errorMessage = '', estimatedInputTokens = null, estimatedOutputTokens = null, provider = '', model = '', providerCallCount = null, attempts = [] }) {
   if (!db || !reservation?.eventRef) return;
   const safeStatus = status === 'completed' ? 'completed' : 'failed';
   const update = {
@@ -383,6 +383,14 @@ async function completeAiScanUsageEvent({ db, reservation, status, errorMessage 
   if (safeStatus === 'failed') update.errorMessage = sanitizeErrorMessage(errorMessage || 'AI scan failed.');
   if (Number.isFinite(Number(estimatedInputTokens))) update.estimatedInputTokens = Math.max(0, Math.round(Number(estimatedInputTokens)));
   if (Number.isFinite(Number(estimatedOutputTokens))) update.estimatedOutputTokens = Math.max(0, Math.round(Number(estimatedOutputTokens)));
+  if (Number.isFinite(Number(providerCallCount))) update.providerCallCount = Math.max(0, Math.round(Number(providerCallCount)));
+  if (Array.isArray(attempts) && attempts.length) {
+    update.providerAttempts = attempts.slice(0, 8).map(row => ({
+      number: Math.max(1, Math.round(Number(row?.number || 1))),
+      model: clean(row?.model).slice(0, 80),
+      attempt: clean(row?.attempt).slice(0, 80)
+    }));
+  }
   await reservation.eventRef.set(update, { merge: true });
 }
 
@@ -509,9 +517,15 @@ async function authorizeAiScanWorkspace({ app, decoded, restaurantId, scanType }
   );
   const allowed = scanType === 'menu'
     ? Boolean(isOwnerOrAdmin || permissions.menuIntelligence === true || permissions.inventory === true)
-    : Boolean(isOwnerOrAdmin || permissions.inventory === true || permissions.team === true);
+    : scanType === 'recipe'
+      ? Boolean(isOwnerOrAdmin || permissions.prep === true || permissions.team === true || String(workspaceUser?.role || '').toLowerCase() === 'kitchen')
+      : Boolean(isOwnerOrAdmin || permissions.inventory === true || permissions.team === true);
   if (!allowed) {
-    const error = new Error(scanType === 'menu' ? 'Menu Intelligence access is required.' : 'Inventory editing access is required for invoice scanning.');
+    const error = new Error(scanType === 'menu'
+      ? 'Menu Intelligence access is required.'
+      : scanType === 'recipe'
+        ? 'Recipe or prep access is required for recipe scanning.'
+        : 'Inventory editing access is required for invoice scanning.');
     error.statusCode = 403;
     throw error;
   }

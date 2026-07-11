@@ -55,12 +55,11 @@ const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_A
   .filter(Boolean);
 
 function userHasWorkspace(user, restaurantId) {
+  const member = user?.memberships?.[restaurantId];
   return Boolean(
     user?.restaurantId === restaurantId ||
-    user?.activeRestaurantId === restaurantId ||
-    user?.defaultRestaurantId === restaurantId ||
     user?.workspaceIds?.includes?.(restaurantId) ||
-    user?.memberships?.[restaurantId]?.isActive === true
+    (member && typeof member === 'object' && member.isActive !== false)
   );
 }
 

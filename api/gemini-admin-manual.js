@@ -1,8 +1,10 @@
 const { authorizeCrossProjectMaster, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
+const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+const { getAllowedGeminiModels, getHardOutputTokenLimit, getHardRateLimit, createProviderCallBudget, reserveAiRequest, completeAiRequestLock } = require('./_ai-policy');
 
-const APP_VERSION = '15.0.50';
-const DEFAULT_MODEL = 'gemini-3.5-flash';
+const APP_VERSION = '15.0.52';
+const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MAX_QUESTION_CHARS = 1600;
 const MAX_CONTEXT_CHARS = 26000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
@@ -132,7 +134,7 @@ function getGenerateContentFinishReason(data) {
 function getManualMaxOutputTokens() {
   const raw = Number(process.env.GEMINI_MANUAL_MAX_OUTPUT_TOKENS || process.env.MANUAL_GEMINI_MAX_OUTPUT_TOKENS || DEFAULT_MAX_OUTPUT_TOKENS);
   if (!Number.isFinite(raw) || raw < 1200) return DEFAULT_MAX_OUTPUT_TOKENS;
-  return Math.min(Math.round(raw), HARD_MAX_OUTPUT_TOKENS);
+  return getHardOutputTokenLimit('manual', Math.min(Math.round(raw), HARD_MAX_OUTPUT_TOKENS));
 }
 
 function answerLooksIncomplete(text = '') {
@@ -201,7 +203,8 @@ function buildFallbackAnswer({ question, playbook, articles, currentState }) {
   ].join('\n');
 }
 
-async function callGemini({ prompt, apiKey, model, maxOutputTokens, temperature = 0.15 }) {
+async function callGemini({ prompt, apiKey, model, maxOutputTokens, temperature = 0.15, callBudget, attempt = 'manual-answer' }) {
+  callBudget.consume({ model, attempt });
   const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
   const generationConfig = {
     temperature,
@@ -266,10 +269,10 @@ function buildContinuationPrompt({ manualContext, partialAnswer }) {
   ].join('\n');
 }
 
-async function generateCompleteAnswer({ prompt, manualContext, apiKey, model }) {
+async function generateCompleteAnswer({ prompt, manualContext, apiKey, model, callBudget }) {
   const finishReasons = [];
   const maxOutputTokens = getManualMaxOutputTokens();
-  let result = await callGemini({ prompt, apiKey, model, maxOutputTokens });
+  let result = await callGemini({ prompt, apiKey, model, maxOutputTokens, callBudget, attempt: 'manual-initial' });
   let answer = result.text;
   finishReasons.push(result.finishReason || 'UNKNOWN');
 
@@ -278,7 +281,7 @@ async function generateCompleteAnswer({ prompt, manualContext, apiKey, model }) 
   while (incompleteReason && autoContinuationCount < AUTO_CONTINUE_LIMIT) {
     autoContinuationCount += 1;
     const continuationPrompt = buildContinuationPrompt({ manualContext, partialAnswer: answer });
-    const continuation = await callGemini({ prompt: continuationPrompt, apiKey, model, maxOutputTokens: Math.min(maxOutputTokens, 4096), temperature: 0.1 });
+    const continuation = await callGemini({ prompt: continuationPrompt, apiKey, model, maxOutputTokens: Math.min(maxOutputTokens, 4096), temperature: 0.1, callBudget, attempt: `manual-auto-continue-${autoContinuationCount}` });
     finishReasons.push(continuation.finishReason || 'UNKNOWN');
     answer = smartAppendAnswer(answer, continuation.text);
     incompleteReason = getIncompleteReason({ finishReason: continuation.finishReason, text: answer });
@@ -299,12 +302,25 @@ async function generateCompleteAnswer({ prompt, manualContext, apiKey, model }) 
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
+  let requestLock = null;
+  let callBudget = null;
   try {
     const app = getAdminAppForRequest(req, { requireCredentials: false });
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
     const ctx = await authorizeCrossProjectMaster(req);
     if (!ctx.ok || !ctx.isSuperAdmin) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'Super admin required.' });
+
+    const db = app.firestore();
+    const rate = await enforceRateLimit({
+      db,
+      req,
+      decoded: ctx.decoded,
+      routeName: 'gemini-admin-manual',
+      limit: getHardRateLimit('manual', process.env.GEMINI_MANUAL_RATE_LIMIT),
+      windowMs: 60 * 1000
+    });
+    if (!rate.ok) return sendRateLimited(res, rate);
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) return res.status(400).json({ ok: false, error: 'Gemini is not configured. Add GEMINI_API_KEY in Vercel and redeploy.' });
@@ -313,10 +329,27 @@ module.exports = async function handler(req, res) {
     const question = redactText(body.question, MAX_QUESTION_CHARS);
     if (question.length < 3) return res.status(400).json({ ok: false, error: 'Ask a System Administrator manual question first.' });
 
+    requestLock = await reserveAiRequest({
+      db,
+      feature: 'manual',
+      restaurantId: ctx.restaurantId || ctx.authProjectId || 'platform',
+      uid: ctx.uid || ctx.decoded?.uid || ctx.email || 'master-admin',
+      idempotencyKey: body.idempotencyKey || req.headers['x-idempotency-key']
+    });
+    if (requestLock.duplicate) {
+      return res.status(409).json({
+        ok: false,
+        duplicate: true,
+        error: 'This manual request was already submitted. No additional AI call was made.'
+      });
+    }
+
     const articles = normalizeArticles(body.articles);
     const playbook = normalizePlaybook(body.playbook || {});
     const currentState = normalizeCurrentState(body.currentState || {});
-    const model = cleanText(process.env.GEMINI_MODEL || process.env.GOOGLE_GENERATIVE_AI_MODEL || DEFAULT_MODEL, 80) || DEFAULT_MODEL;
+    const configuredModel = cleanText(process.env.GEMINI_MANUAL_MODEL || '', 80);
+    const model = getAllowedGeminiModels({ feature: 'manual', configured: configuredModel, defaults: [DEFAULT_MODEL] })[0];
+    callBudget = createProviderCallBudget('manual');
     const runtime = {
       firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
@@ -331,7 +364,7 @@ module.exports = async function handler(req, res) {
       if (body.continueFrom) {
         const partialAnswer = redactText(body.continueFrom, 10000);
         const continuationPrompt = buildContinuationPrompt({ manualContext, partialAnswer });
-        const continuation = await callGemini({ prompt: continuationPrompt, apiKey, model, maxOutputTokens: Math.min(getManualMaxOutputTokens(), 4096), temperature: 0.1 });
+        const continuation = await callGemini({ prompt: continuationPrompt, apiKey, model, maxOutputTokens: Math.min(getManualMaxOutputTokens(), 4096), temperature: 0.1, callBudget, attempt: 'manual-requested-continue' });
         const incompleteReason = getIncompleteReason({ finishReason: continuation.finishReason, text: continuation.text });
         result = {
           ...continuation,
@@ -343,7 +376,7 @@ module.exports = async function handler(req, res) {
         };
       } else {
         const prompt = buildInitialPrompt({ manualContext });
-        result = await generateCompleteAnswer({ prompt, manualContext, apiKey, model });
+        result = await generateCompleteAnswer({ prompt, manualContext, apiKey, model, callBudget });
       }
     } catch (err) {
       fallbackUsed = true;
@@ -361,9 +394,14 @@ module.exports = async function handler(req, res) {
     }
 
     if (!ctx.crossProjectAuth) {
-      const db = app.firestore();
       await writeAudit(db, ctx, body.continueFrom ? 'GEMINI_ADMIN_MANUAL_CONTINUE' : 'GEMINI_ADMIN_MANUAL_QUERY', 'system-administrator/manual', `Manual answer generated with ${result.api}. Question: ${question.slice(0, 160)}`, ctx.restaurantId || 'platform');
     }
+
+    await completeAiRequestLock(requestLock, 'completed', {
+      providerCallCount: callBudget.used,
+      model: result.model,
+      errorCode: fallbackUsed ? 'LOCAL_FALLBACK' : ''
+    });
 
     return res.status(200).json({
       ok: true,
@@ -384,11 +422,19 @@ module.exports = async function handler(req, res) {
       incompleteReason: result.incompleteReason || '',
       canContinue: Boolean(result.answerIncomplete && !fallbackUsed),
       continuation: Boolean(result.continuation),
+      providerCallCount: callBudget.used,
+      providerCallLimit: callBudget.maxCalls,
       authProjectId: ctx.authProjectId || process.env.FIREBASE_PROJECT_ID || '',
       crossProjectAuth: Boolean(ctx.crossProjectAuth),
       answerShape: ['What this probably means', 'Go here in System Administrator', 'Do this in order', 'How to know it worked', 'What not to touch yet', 'Deploy/publish separately', 'Escalate if']
     });
   } catch (err) {
-    return res.status(500).json({ ok: false, version: APP_VERSION, error: err.message || 'Gemini manual assistant failed.' });
+    if (requestLock && !requestLock.duplicate) {
+      await completeAiRequestLock(requestLock, 'failed', {
+        providerCallCount: callBudget?.used || 0,
+        errorCode: err.code || 'GEMINI_MANUAL_FAILED'
+      }).catch(() => {});
+    }
+    return res.status(err.statusCode || 500).json({ ok: false, version: APP_VERSION, error: err.message || 'Gemini manual assistant failed.' });
   }
 };

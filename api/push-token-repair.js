@@ -56,12 +56,11 @@ const cleanId = (value = '') => String(value || '').replace(/[^A-Za-z0-9_-]/g, '
 const memberDocId = (uid, restaurantId) => `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
 
 function userHasWorkspace(user, restaurantId) {
+  const member = user?.memberships?.[restaurantId];
   return Boolean(
     user?.restaurantId === restaurantId ||
-    user?.activeRestaurantId === restaurantId ||
-    user?.defaultRestaurantId === restaurantId ||
     user?.workspaceIds?.includes?.(restaurantId) ||
-    user?.memberships?.[restaurantId]?.isActive === true
+    (member && typeof member === 'object' && member.isActive !== false)
   );
 }
 
@@ -109,14 +108,24 @@ async function callerCanRepair(db, caller, decoded, restaurantId) {
   const email = (decoded.email || caller.email || '').toLowerCase().trim();
   if (decoded.superAdmin === true || caller.isSuperAdmin === true || caller.systemAccess?.superAdmin === true || MASTER_EMAILS.has(email)) return true;
   if (!restaurantId) return false;
-  const memberships = caller.memberships || {};
-  const member = memberships?.[restaurantId] || await readWorkspaceMember(db, decoded.uid, email, restaurantId);
-  const legacyWorkspace = userHasWorkspace(caller, restaurantId);
-  const permissions = { ...((legacyWorkspace && caller.permissions) || {}), ...(member?.permissions || {}) };
+  const mapped = caller.memberships?.[restaurantId];
+  const mappedMember = mapped && typeof mapped === 'object' && mapped.isActive !== false ? mapped : null;
+  const storedMember = await readWorkspaceMember(db, decoded.uid, email, restaurantId);
+  const member = storedMember || mappedMember;
+  const legacyPrimary = caller.restaurantId === restaurantId;
+  const legacyPermissions = legacyPrimary ? (caller.permissions || {}) : {};
+  const memberPermissions = member?.permissions || {};
   return Boolean(
-    legacyWorkspace && (caller.isAdmin === true || caller.isOwner === true || caller.accountOwner === true || permissions.team === true || permissions.settings === true) ||
-    member && member.isActive !== false && (member.isAdmin === true || member.isOwner === true || member.accountOwner === true || member.workspaceOwner === true || permissions.team === true || permissions.settings === true)
+    legacyPrimary && (caller.isAdmin === true || caller.isOwner === true || caller.accountOwner === true || caller.owner === true || caller.workspaceOwner === true || legacyPermissions.team === true || legacyPermissions.settings === true) ||
+    member && member.isActive !== false && (member.isAdmin === true || member.isOwner === true || member.accountOwner === true || member.owner === true || member.workspaceOwner === true || memberPermissions.team === true || memberPermissions.settings === true)
   );
+}
+
+async function targetHasWorkspace(db, target, restaurantId) {
+  if (!restaurantId) return false;
+  if (userHasWorkspace(target, restaurantId)) return true;
+  const member = await readWorkspaceMember(db, target.id, target.email, restaurantId);
+  return Boolean(member);
 }
 
 async function loadUsersForRestaurant(db, restaurantId) {
@@ -205,12 +214,15 @@ export default async function handler(req, res) {
     if (['request-repair', 'force-refresh', 'clear-token'].includes(action)) {
       if (!ids.length) return res.status(400).json({ error: 'Missing target user.' });
       const snaps = await Promise.all(ids.map(id => db.collection('users').doc(id).get()));
-      const targets = snaps.filter(s => s.exists).map(s => ({ id: s.id, ...s.data() }));
+      const targets = snaps.filter(s => s.exists).map(s => ({ ...s.data(), id: s.id }));
       if (!targets.length) return res.status(404).json({ error: 'Target user not found.' });
       for (const target of targets) {
         const targetRestaurantId = restaurantId || target.restaurantId || target.activeRestaurantId || '';
         if (!await callerCanRepair(db, caller, decoded, targetRestaurantId)) {
           return res.status(403).json({ error: `Forbidden: no push repair access for ${targetRestaurantId || target.id}.` });
+        }
+        if (targetRestaurantId && !await targetHasWorkspace(db, target, targetRestaurantId)) {
+          return res.status(403).json({ error: `Forbidden: the target user is not a member of ${targetRestaurantId}.` });
         }
       }
       const mode = action === 'force-refresh' ? 'force-refresh' : 'repair';
@@ -246,10 +258,11 @@ export default async function handler(req, res) {
     if (action === 'clear-repair-flag') {
       if (!ids.length) return res.status(400).json({ error: 'Missing target user.' });
       const snaps = await Promise.all(ids.map(id => db.collection('users').doc(id).get()));
-      const targets = snaps.filter(s => s.exists).map(s => ({ id: s.id, ...s.data() }));
+      const targets = snaps.filter(s => s.exists).map(s => ({ ...s.data(), id: s.id }));
       for (const target of targets) {
         const targetRestaurantId = restaurantId || target.restaurantId || target.activeRestaurantId || '';
         if (!await callerCanRepair(db, caller, decoded, targetRestaurantId)) return res.status(403).json({ error: `Forbidden: no push repair access for ${targetRestaurantId || target.id}.` });
+        if (targetRestaurantId && !await targetHasWorkspace(db, target, targetRestaurantId)) return res.status(403).json({ error: `Forbidden: the target user is not a member of ${targetRestaurantId}.` });
       }
       await Promise.all(targets.map(target => db.collection('users').doc(target.id).set({
         pushNeedsRepair: false,
