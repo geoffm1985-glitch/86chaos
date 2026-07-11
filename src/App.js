@@ -6,10 +6,40 @@ import 'leaflet/dist/leaflet.css';
 import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
-import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools } from './features';
+import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools, TabHrTraining } from './features';
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
+const hasOwn = (value, key) => Boolean(value && Object.prototype.hasOwnProperty.call(value, key));
+const resolveWorkspaceAccess = (currentUser = {}, workspace = {}) => {
+  const restaurantId = workspace.restaurantId || currentUser.restaurantId || '';
+  const mappedMembership = currentUser?.memberships?.[restaurantId];
+  const hasScopedMembership = Boolean(
+    mappedMembership ||
+    workspace.membershipSource ||
+    workspace.workspaceMemberId ||
+    ['permissions', 'isAdmin', 'isOwner', 'accountOwner', 'workspaceOwner'].some(key => hasOwn(workspace, key))
+  );
+  const scoped = mappedMembership ? { ...mappedMembership, ...workspace, permissions: { ...(mappedMembership.permissions || {}), ...(workspace.permissions || {}) } } : workspace;
+  const primaryIds = new Set([
+    currentUser.restaurantId,
+    currentUser.defaultRestaurantId,
+    currentUser?.accountProfile?.defaultRestaurantId
+  ].filter(Boolean));
+  const mayUseLegacyProfile = !hasScopedMembership && (!restaurantId || primaryIds.has(restaurantId));
+  return {
+    restaurantId,
+    hasScopedMembership,
+    permissions: hasScopedMembership ? { ...(scoped.permissions || {}) } : (mayUseLegacyProfile ? { ...(currentUser.permissions || {}) } : {}),
+    isAdmin: hasScopedMembership ? scoped.isAdmin === true : Boolean(mayUseLegacyProfile && currentUser.isAdmin === true),
+    isOwner: hasScopedMembership
+      ? Boolean(scoped.isOwner === true || scoped.accountOwner === true || scoped.workspaceOwner === true)
+      : Boolean(mayUseLegacyProfile && (currentUser.isOwner === true || currentUser.accountOwner === true || currentUser.owner === true || currentUser.workspaceOwner === true || String(currentUser.accountRole || '').toLowerCase() === 'owner')),
+    accountOwner: hasScopedMembership ? scoped.accountOwner === true : Boolean(mayUseLegacyProfile && currentUser.accountOwner === true),
+    workspaceOwner: hasScopedMembership ? scoped.workspaceOwner === true : Boolean(mayUseLegacyProfile && currentUser.workspaceOwner === true),
+    accountRole: hasScopedMembership ? String(scoped.accountRole || '') : (mayUseLegacyProfile ? String(currentUser.accountRole || '') : '')
+  };
+};
 const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
   const accountProfile = currentUser.accountProfile || {
     id: currentUser.id,
@@ -24,6 +54,7 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     memberships: currentUser.memberships || {}
   };
   const userId = currentUser.id || workspace.userId || workspace.uid || accountProfile.id;
+  const scopedAccess = resolveWorkspaceAccess(currentUser, workspace);
   return {
     ...currentUser,
     id: userId,
@@ -38,29 +69,39 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     role: workspace.role || currentUser.role || 'Staff',
     wage: workspace.wage ?? currentUser.wage ?? 0,
     photoURL: workspace.photoURL || currentUser.photoURL || accountProfile.photoURL || '',
-    isAdmin: workspace.isAdmin === true || currentUser.isSuperAdmin === true,
-    isOwner: workspace.isOwner === true || workspace.accountOwner === true || workspace.workspaceOwner === true || currentUser.isOwner === true,
-    accountOwner: workspace.accountOwner === true || currentUser.accountOwner === true,
-    workspaceOwner: workspace.workspaceOwner === true || currentUser.workspaceOwner === true,
-    permissions: { ...(currentUser.permissions || {}), ...(workspace.permissions || {}) },
+    isAdmin: currentUser.isSuperAdmin === true || scopedAccess.isAdmin,
+    isOwner: scopedAccess.isOwner,
+    owner: scopedAccess.isOwner,
+    accountOwner: scopedAccess.accountOwner,
+    workspaceOwner: scopedAccess.workspaceOwner,
+    accountRole: scopedAccess.accountRole,
+    permissions: scopedAccess.permissions,
     activeRestaurantId: workspace.restaurantId || currentUser.activeRestaurantId || currentUser.restaurantId,
     defaultRestaurantId: currentUser.defaultRestaurantId || workspace.restaurantId || currentUser.restaurantId,
     availableWorkspaces: currentUser.availableWorkspaces || [],
     workspaceSwitcherReady: true
   };
 };
-const userFromWorkspaceMember = (member = {}, accountUser = {}) => ({
-  ...accountUser,
-  ...Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id')),
-  id: member.userId || member.uid || accountUser.id || member.id,
-  userId: member.userId || member.uid || accountUser.id || member.id,
-  membershipId: member.membershipId || member.id || '',
-  restaurantId: member.restaurantId || accountUser.restaurantId,
-  restaurantName: safeWorkspaceName(member),
-  permissions: { ...(accountUser.permissions || {}), ...(member.permissions || {}) },
-  isAdmin: member.isAdmin === true || accountUser.isSuperAdmin === true || (accountUser.restaurantId === member.restaurantId && accountUser.isAdmin === true),
-  isActive: member.isActive !== false && accountUser.isActive !== false
-});
+const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
+  const memberOwner = Boolean(member.isOwner === true || member.accountOwner === true || member.workspaceOwner === true);
+  return {
+    ...accountUser,
+    ...Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id')),
+    id: member.userId || member.uid || accountUser.id || member.id,
+    userId: member.userId || member.uid || accountUser.id || member.id,
+    membershipId: member.membershipId || member.id || '',
+    restaurantId: member.restaurantId || accountUser.restaurantId,
+    restaurantName: safeWorkspaceName(member),
+    permissions: { ...(member.permissions || {}) },
+    isAdmin: member.isAdmin === true || accountUser.isSuperAdmin === true,
+    isOwner: memberOwner,
+    owner: memberOwner,
+    accountOwner: member.accountOwner === true,
+    workspaceOwner: member.workspaceOwner === true,
+    accountRole: memberOwner ? 'owner' : String(member.accountRole || ''),
+    isActive: member.isActive !== false && accountUser.isActive !== false
+  };
+};
 
 export default function App() {
   const [appUser, setAppUser] = useState(() => { 
@@ -1263,6 +1304,7 @@ What I clicked / expected:
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
+    if (activeTabState === 'hr-training' && !isDemoMode && displayClientFeatures?.hr !== false) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
@@ -1457,7 +1499,7 @@ return (
         </div>
       )}
 
-      <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
+      <header className="app-header sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo clientData={displayClientData} />
 
         {/* ACTIVE WORKSPACE NAME / SWITCHER */}
@@ -1612,7 +1654,7 @@ return (
         </div>}
       </Modal>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+      <main className="app-content-shell flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
         {renderMainContent()}
       </main>
       
@@ -1626,7 +1668,7 @@ return (
         ))}
       </div>
       
-      <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
+      <div className="app-footer w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
         <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version {CURRENT_VERSION}</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>

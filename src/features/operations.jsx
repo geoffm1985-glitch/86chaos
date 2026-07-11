@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
+import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
@@ -70,6 +70,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
 
   // Local selection state (Fixes checkboxes staying checked across days)
   const [selectedPreps, setSelectedPreps] = useState([]);
+  useEffect(() => { setSelectedPreps([]); }, [prepDate]);
 
   // Prep Form State
   const [text, setText] = useState(''); 
@@ -100,6 +101,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
 
   // --- PREP LOGIC ---
   const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
+  const selectedActivePrep = activePrep.filter(item => selectedPreps.includes(item.id));
   
   const handleAddPrep = async (e) => { 
     e.preventDefault(); 
@@ -487,17 +489,21 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
           </div>
           <div className={`fixed bottom-0 left-0 right-0 p-4 bg-[#161D22] border-t ${T.border} z-50 backdrop-blur-md bg-opacity-95`}>
             <div className="max-w-2xl mx-auto flex gap-3">
-              <button onClick={() => { 
-                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
-                  if(sel.length===0)return; 
-                  const toP=[]; 
-                  sel.forEach(i=>{for(let j=0;j<(i.qty ?? 1);j++)toP.push({...i, printId:`${i.id}-${j}`});}); 
-                  setLabelsToPrint({items:toP, prepDate}); 
-              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print Selected</button>
+              <button onClick={() => {
+                  if (selectedActivePrep.length === 0) {
+                    addToast?.('Choose Prep Items', 'Select at least one item from this prep date before printing labels.');
+                    return;
+                  }
+                  const labels = selectedActivePrep.map((item, index) => ({
+                    ...item,
+                    printId: `${item.id || 'prep'}-${prepDate}-${index}`,
+                    labelQuantity: formatPrepAmount(item.qty ?? 1, item.unit || 'item')
+                  }));
+                  setLabelsToPrint({items: labels, prepDate});
+              }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print {selectedActivePrep.length || ''} {selectedActivePrep.length === 1 ? 'Label' : 'Labels'}</button>
               
               <button onClick={async () => { 
-                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
-                  for(const item of sel){ 
+                  for(const item of selectedActivePrep){
                       if(item.isMaster){ 
                           const dts={...(item.completedDates||{})}; 
                           dts[prepDate]=appUser.name; 
@@ -507,7 +513,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                       }
                   } 
                   setSelectedPreps([]);
-              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
+              }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
             </div>
           </div>
   
@@ -1785,14 +1791,14 @@ const groupedItems = inventoryItems
 
       <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b ${T.border} pb-3`}>
         <h2 className="text-2xl font-black flex items-center gap-2 text-white"><ClipboardList size={24} className={T.copper}/> Inventory</h2>
-        <div className={`bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
+        <div className={`inventory-subtabs bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
 <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>
-            🚨 Burn Log <span className="ml-1 bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+            🚨 Burn Log <span className="inventory-preview-badge ml-1 bg-red-900/30 text-red-300 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Preview</span>
           </button>        </div>
       </div>
 
@@ -2110,7 +2116,7 @@ const groupedItems = inventoryItems
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
 <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">
               🚨 The Burn Log
-              <span className="bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+              <span className="inventory-preview-badge bg-red-900/30 text-red-300 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Preview</span>
             </h3>            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               
               {/* THE FILTERABLE DROPDOWN */}
@@ -2262,11 +2268,16 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
         const base64Data = base64Compressed.split(',')[1];
 
         try {
+          const idempotencyKey = createAiScanIdempotencyKey('recipe', appUser?.restaurantId);
           // THIS IS THE CRITICAL BLOCK. It MUST explicitly say POST.
           const response = await secureFetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64Data })
+            body: JSON.stringify({
+              imageBase64: base64Data,
+              restaurantId: appUser?.restaurantId,
+              idempotencyKey
+            })
           });
 
           // Prevent the "Unexpected token A" HTML crash
@@ -2885,10 +2896,23 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
   const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
   const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
+  const kitchenSpecials = useLiveCollection('kitchenSpecials', appUser?.restaurantId, { limitCount: 250 });
   const [depRecipeId, setDepRecipeId] = useState('');
   const [depInventoryItemId, setDepInventoryItemId] = useState('');
   const [depNotes, setDepNotes] = useState('');
+  const [specialEditorOpen, setSpecialEditorOpen] = useState(false);
+  const [specialSaving, setSpecialSaving] = useState(false);
+  const [editingSpecial, setEditingSpecial] = useState(null);
+  const [specialView, setSpecialView] = useState('current');
+  const [specialForm, setSpecialForm] = useState({
+    name: '', startDate: currentDate || getToday(), endDate: currentDate || getToday(), description: '', price: '', allergens: '', dietaryNotes: '', prepNotes: '', status: 'Scheduled'
+  });
   const safeOpsWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
+  const canManageSpecials = Boolean(
+    appUser?.isSuperAdmin || appUser?.systemAccess?.superAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.owner || appUser?.workspaceOwner ||
+    appUser?.permissions?.prep || appUser?.permissions?.ops || appUser?.permissions?.team ||
+    ['General Manager', 'Manager', 'Kitchen Manager', 'Operations Manager', 'Store Manager', 'Owner', 'Shift Lead', 'Lead', 'Supervisor'].includes(String(appUser?.role || ''))
+  );
   const dependencyInventoryOptions = Array.from(inventoryItems.reduce((map, item) => {
     const name = String(item?.name || item?.itemName || '').replace(/\s+/g, ' ').trim();
     if (!item?.id || !name || name.length < 2 || name.length > 100 || item.isArchived === true || item.deleted === true) return map;
@@ -2921,6 +2945,109 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const yesterday = formatDate(yesterdayDate);
   const todayName = todayDate.toLocaleDateString('en-US', { weekday: 'long' });
   const monthStr = getMonthStr(today);
+
+  const sortedSpecials = [...kitchenSpecials].sort((a, b) => {
+    const dateDiff = String(b.startDate || '').localeCompare(String(a.startDate || ''));
+    return dateDiff || String(a.name || '').localeCompare(String(b.name || ''));
+  });
+  const currentSpecials = sortedSpecials.filter(special => {
+    const start = special.startDate || today;
+    const end = special.endDate || start;
+    return special.isArchived !== true && ['Scheduled', 'Active', 'Sold Out'].includes(special.status || 'Scheduled') && start <= today && end >= today;
+  });
+  const upcomingSpecials = sortedSpecials
+    .filter(special => special.isArchived !== true && ['Scheduled', 'Active'].includes(special.status || 'Scheduled') && (special.startDate || '') > today)
+    .sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || '')));
+  const displayedSpecials = canManageSpecials && specialView === 'all'
+    ? sortedSpecials
+    : [...currentSpecials, ...upcomingSpecials].filter((special, index, rows) => rows.findIndex(row => row.id === special.id) === index).slice(0, 8);
+
+  const resetSpecialForm = () => {
+    setSpecialForm({ name: '', startDate: today, endDate: today, description: '', price: '', allergens: '', dietaryNotes: '', prepNotes: '', status: 'Scheduled' });
+    setEditingSpecial(null);
+  };
+
+  const openNewSpecial = () => {
+    resetSpecialForm();
+    setSpecialEditorOpen(true);
+  };
+
+  const openSpecialEditor = (special) => {
+    setEditingSpecial(special);
+    setSpecialForm({
+      name: special.name || '',
+      startDate: special.startDate || today,
+      endDate: special.endDate || special.startDate || today,
+      description: special.description || '',
+      price: special.price === 0 || special.price ? String(special.price) : '',
+      allergens: special.allergens || '',
+      dietaryNotes: special.dietaryNotes || '',
+      prepNotes: special.prepNotes || '',
+      status: special.status || 'Scheduled'
+    });
+    setSpecialEditorOpen(true);
+  };
+
+  const handleSaveSpecial = async (event) => {
+    event.preventDefault();
+    if (specialSaving) return;
+    const name = specialForm.name.replace(/\s+/g, ' ').trim();
+    const startDate = specialForm.startDate || today;
+    const endDate = specialForm.endDate || startDate;
+    const parsedPrice = Number(specialForm.price || 0);
+    if (!name) return addToast('Special Name Needed', 'Enter the name guests and the kitchen should use.');
+    if (endDate < startDate) return addToast('Check Service Dates', 'The end date cannot be before the start date.');
+    const payload = {
+      name: name.slice(0, 120),
+      startDate,
+      endDate,
+      description: specialForm.description.trim().slice(0, 1200),
+      price: Number.isFinite(parsedPrice) ? Math.min(100000, Math.max(0, parsedPrice)) : 0,
+      allergens: specialForm.allergens.trim().slice(0, 500),
+      dietaryNotes: specialForm.dietaryNotes.trim().slice(0, 500),
+      prepNotes: specialForm.prepNotes.trim().slice(0, 1200),
+      status: specialForm.status,
+      isArchived: specialForm.status === 'Archived',
+      restaurantId: appUser.restaurantId,
+      ...(editingSpecial ? {} : { createdAt: new Date().toISOString(), createdBy: appUser?.name || appUser?.email || 'Kitchen Manager' })
+    };
+    try {
+      setSpecialSaving(true);
+      await safeOpsWrite({
+        action: editingSpecial ? 'update' : 'add',
+        collectionName: 'kitchenSpecials',
+        docId: editingSpecial?.id || '',
+        label: editingSpecial ? 'Kitchen special updated' : 'Kitchen special published',
+        before: editingSpecial,
+        data: payload
+      });
+      setSpecialEditorOpen(false);
+      resetSpecialForm();
+    } catch (_) {
+      // safeWriteWithQueue already presents the user-facing save error.
+    } finally {
+      setSpecialSaving(false);
+    }
+  };
+
+  const handleArchiveSpecial = async (special) => {
+    if (!window.confirm(`Archive ${special.name || 'this special'}? It will remain in the history.`)) return;
+    try {
+      await safeOpsWrite({
+        action: 'update', collectionName: 'kitchenSpecials', docId: special.id, label: 'Kitchen special archived', before: special,
+        data: { status: 'Archived', isArchived: true, archivedAt: new Date().toISOString(), archivedBy: appUser?.name || appUser?.email || 'Kitchen Manager' }
+      });
+    } catch (_) {}
+  };
+
+  const handleSpecialStatus = async (special, status) => {
+    try {
+      await safeOpsWrite({
+        action: 'update', collectionName: 'kitchenSpecials', docId: special.id, label: `Special marked ${status}`, before: special,
+        data: { status, isArchived: false }
+      });
+    } catch (_) {}
+  };
 
   const sameDay = (date) => date === today;
   const openMaintenance = maintenanceLogs.filter(l => (l.status || 'Reported') !== 'Resolved');
@@ -3170,6 +3297,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     ...todayWaste.map(w => ({ at: w.timestamp || today, type: 'Waste', title: `${w.itemName || 'Item'} wasted`, detail: `${w.qty || ''} ${w.reason || ''}` })),
     ...maintenanceLogs.filter(l => (l.reportedAt || '').startsWith(today) || (l.lastUpdated || '').startsWith(today)).map(l => ({ at: l.lastUpdated || l.reportedAt, type: 'Maintenance', title: l.equipment, detail: l.issue })),
     ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.messageCategory || e.type || 'Event', title: e.title || 'Event', detail: e.notes || e.menuImpact || e.author || '' })),
+    ...currentSpecials.map(special => ({ at: `${special.startDate || today}T12:00:00`, type: `Special - ${special.status || 'Scheduled'}`, title: special.name || 'Kitchen special', detail: special.description || special.prepNotes || '' })),
     ...todayShifts.slice(0, 12).map(s => ({ at: `${today}T${s.startTime || '00:00'}:00`, type: 'Scheduled', title: `${users.find(u => u.id === s.employeeId)?.name || 'Staff'} ${s.role || ''}`, detail: `${formatShortTime(s.startTime)} - ${formatShortTime(s.endTime)}` }))
   ].filter(x => x.at).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0, 18);
 
@@ -3181,6 +3309,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       todaySales ? `Today sales entered: $${Number(todaySales.grossSales || 0).toLocaleString()}.` : 'Today sales are not entered yet.',
       `Today: ${todayShifts.length} shifts, ${activePunches.length} currently clocked in.`,
       `Open tasks: ${openTasks.length}. Low-stock items: ${lowStockItems.length}. Open maintenance: ${openMaintenance.length}.`,
+      currentSpecials.length ? `Current specials: ${currentSpecials.map(special => special.name).join(', ')}.` : 'No current specials are posted.',
       `Top priority: ${recommendations.find(Boolean) || 'Keep service smooth.'}`
     ];
     return lines.join('\n');
@@ -3243,6 +3372,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const kpiCards = [
     { label: 'Shift Health', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Looking good' : healthScore >= 70 ? 'Check weak spots' : 'Needs manager attention' },
     { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
+    { label: 'Specials', value: `${currentSpecials.length}`, detail: currentSpecials.length ? 'On for service today' : `${upcomingSpecials.length} upcoming` },
     { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
     { label: 'Menu Impact', value: `${affectedMenuItems.length}`, detail: affectedMenuItems.length ? 'Menu items affected' : 'Menu looks clear' },
     { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
@@ -3271,7 +3401,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
         {kpiCards.map(card => (
           <button key={card.label} type="button" onClick={card.label === 'Low Stock' ? openInventoryFocus : undefined} className={`${T.card} command-kpi p-3 text-center ${card.label === 'Low Stock' ? 'hover:border-red-500/60 transition-colors cursor-pointer' : 'cursor-default'}`}>
             <div className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>{card.label}</div>
@@ -3407,6 +3537,74 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         </div>
       </div>
 
+      <section className={`${T.card} command-card overflow-hidden`} aria-labelledby="kitchen-specials-heading">
+        <div className="p-4 sm:p-5 border-b border-[#2A353D] bg-gradient-to-r from-[#1A2126] to-[#12161A]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 id="kitchen-specials-heading" className="text-lg font-black text-white flex items-center gap-2"><Star size={19} className={T.copper}/> Service Specials</h2>
+              <p className="text-xs sm:text-sm text-slate-400 font-medium mt-1">The official list for pre-shift, line execution, allergens, and 86 status. Posted directly - no AI.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canManageSpecials && <>
+                <button type="button" onClick={() => setSpecialView('current')} className={`${specialView === 'current' ? T.btn : T.btnAlt} px-3`}>Current</button>
+                <button type="button" onClick={() => setSpecialView('all')} className={`${specialView === 'all' ? T.btn : T.btnAlt} px-3`}>All & History</button>
+                <button type="button" onClick={openNewSpecial} className={`${T.btn} flex items-center gap-1.5`}><Plus size={15}/> Add Special</button>
+              </>}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+            <div className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-xl p-3"><div className="text-[11px] uppercase tracking-wider font-black text-slate-500">On Today</div><div className="text-2xl font-black text-[#D4A381] mt-1">{currentSpecials.length}</div></div>
+            <div className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-xl p-3"><div className="text-[11px] uppercase tracking-wider font-black text-slate-500">Upcoming</div><div className="text-2xl font-black text-white mt-1">{upcomingSpecials.length}</div></div>
+            <div className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-xl p-3"><div className="text-[11px] uppercase tracking-wider font-black text-slate-500">Sold Out</div><div className="text-2xl font-black text-red-300 mt-1">{currentSpecials.filter(s => s.status === 'Sold Out').length}</div></div>
+            <div className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-xl p-3"><div className="text-[11px] uppercase tracking-wider font-black text-slate-500">Total Records</div><div className="text-2xl font-black text-white mt-1">{kitchenSpecials.length}</div></div>
+          </div>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          {displayedSpecials.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[#3A464F] bg-[#0B0E11]/50 p-7 text-center">
+              <Star size={26} className="mx-auto text-[#D4A381] mb-2"/>
+              <div className="font-black text-white">No specials are posted for service</div>
+              <div className="text-sm text-slate-400 mt-1">{canManageSpecials ? 'Add a special so the whole kitchen has one accurate source of truth.' : 'Your kitchen lead will post upcoming and current specials here.'}</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {displayedSpecials.map(special => {
+                const isCurrent = currentSpecials.some(row => row.id === special.id);
+                const serviceDates = special.startDate === special.endDate || !special.endDate
+                  ? formatDisplayFullDate(special.startDate)
+                  : `${formatDisplayDate(special.startDate)} - ${formatDisplayDate(special.endDate)}`;
+                const statusClass = special.status === 'Sold Out' ? 'border-red-500/50 bg-red-950/20 text-red-300' : special.status === 'Active' ? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300' : special.status === 'Archived' ? 'border-slate-600 bg-slate-900/40 text-slate-400' : special.status === 'Draft' ? 'border-amber-500/40 bg-amber-950/20 text-amber-300' : 'border-[#D4A381]/40 bg-[#D4A381]/10 text-[#E7B997]';
+                return <article key={special.id} className={`rounded-2xl border p-4 ${isCurrent ? 'border-[#D4A381]/50 bg-gradient-to-br from-[#1A2126] to-[#12161A]' : 'border-[#2A353D] bg-[#12161A]'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isCurrent && <span className="text-[11px] font-black uppercase tracking-wider text-[#D4A381]">On Today</span>}
+                        <span className={`text-[11px] font-black uppercase tracking-wider border rounded-full px-2 py-1 ${statusClass}`}>{special.status || 'Scheduled'}</span>
+                      </div>
+                      <h3 className="text-lg font-black text-white mt-2 leading-tight">{special.name}</h3>
+                      <div className="text-xs font-bold text-slate-400 mt-1">{serviceDates}</div>
+                    </div>
+                    <div className="text-right flex-shrink-0"><div className="text-xl font-black text-[#D4A381]">{Number(special.price || 0) > 0 ? `$${Number(special.price).toFixed(2)}` : 'Market'}</div><div className="text-[11px] uppercase tracking-wider font-bold text-slate-500">Menu price</div></div>
+                  </div>
+                  {special.description && <p className="text-sm leading-relaxed font-medium text-slate-200 mt-3 whitespace-pre-wrap">{special.description}</p>}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                    <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11]/70 p-3"><div className="text-[11px] font-black uppercase tracking-wider text-orange-300">Allergens</div><div className="text-sm text-slate-300 font-medium mt-1 whitespace-pre-wrap">{special.allergens || 'None listed - verify the recipe before answering a guest.'}</div></div>
+                    <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11]/70 p-3"><div className="text-[11px] font-black uppercase tracking-wider text-emerald-300">Dietary Notes</div><div className="text-sm text-slate-300 font-medium mt-1 whitespace-pre-wrap">{special.dietaryNotes || 'No dietary claims listed.'}</div></div>
+                  </div>
+                  {special.prepNotes && <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11]/70 p-3 mt-2"><div className="text-[11px] font-black uppercase tracking-wider text-[#D4A381]">Prep / 86 Notes</div><div className="text-sm text-slate-200 font-medium mt-1 whitespace-pre-wrap">{special.prepNotes}</div></div>}
+                  {canManageSpecials && <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-[#2A353D]">
+                    {special.status === 'Sold Out' ? <button type="button" onClick={() => handleSpecialStatus(special, 'Active')} className={T.btnAlt}>Put Back On</button> : special.status !== 'Archived' && <button type="button" onClick={() => handleSpecialStatus(special, 'Sold Out')} className={T.btnAlt}>Mark Sold Out</button>}
+                    <button type="button" onClick={() => openSpecialEditor(special)} className={`${T.btnAlt} flex items-center gap-1.5`}><Edit size={14}/> Edit</button>
+                    {special.status !== 'Archived' && <button type="button" onClick={() => handleArchiveSpecial(special)} className={`${T.btnAlt} flex items-center gap-1.5 text-red-300`}><Archive size={14}/> Archive</button>}
+                  </div>}
+                </article>;
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
       <div className={`${T.card} command-card p-4`}>
         <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
           <h2 className="font-black text-white flex items-center gap-2"><BookOpen size={18} className={T.copper}/> Recipe & Menu Brain</h2>
@@ -3476,6 +3674,33 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
         </div>
       </div>
+
+      <Modal isOpen={specialEditorOpen} onClose={() => { setSpecialEditorOpen(false); resetSpecialForm(); }} title={editingSpecial ? 'Edit Service Special' : 'Add Service Special'} sizeClass="max-w-3xl">
+        <form onSubmit={handleSaveSpecial} className="space-y-4">
+          <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-3 text-sm text-slate-300">
+            Keep this practical: what the dish is, when it runs, what the line needs to know, and exactly what staff may say about allergens or dietary needs.
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_150px] gap-3">
+            <div><label className={T.label}>Special Name</label><input value={specialForm.name} onChange={e => setSpecialForm(form => ({ ...form, name: e.target.value }))} className={T.input} maxLength={120} required placeholder="e.g. Friday Fish Fry" /></div>
+            <div><label className={T.label}>Menu Price</label><input type="number" min="0" max="100000" step="0.01" value={specialForm.price} onChange={e => setSpecialForm(form => ({ ...form, price: e.target.value }))} className={T.input} placeholder="0.00" /></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div><label className={T.label}>First Service Date</label><input type="date" value={specialForm.startDate} onChange={e => setSpecialForm(form => ({ ...form, startDate: e.target.value, endDate: form.endDate < e.target.value ? e.target.value : form.endDate }))} className={T.input} required /></div>
+            <div><label className={T.label}>Last Service Date</label><input type="date" min={specialForm.startDate} value={specialForm.endDate} onChange={e => setSpecialForm(form => ({ ...form, endDate: e.target.value }))} className={T.input} required /></div>
+            <div><label className={T.label}>Service Status</label><select value={specialForm.status} onChange={e => setSpecialForm(form => ({ ...form, status: e.target.value }))} className={T.input}><option>Draft</option><option>Scheduled</option><option>Active</option><option>Sold Out</option>{editingSpecial?.status === 'Archived' && <option>Archived</option>}</select></div>
+          </div>
+          <div><label className={T.label}>Guest-Facing Description</label><textarea rows="3" maxLength={1200} value={specialForm.description} onChange={e => setSpecialForm(form => ({ ...form, description: e.target.value }))} className={T.input} placeholder="Plain-English description, sides, preparation, and what makes it special." /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className={T.label}>Allergens</label><textarea rows="3" maxLength={500} value={specialForm.allergens} onChange={e => setSpecialForm(form => ({ ...form, allergens: e.target.value }))} className={T.input} placeholder="List known allergens and cross-contact cautions. Never guess." /></div>
+            <div><label className={T.label}>Dietary Notes</label><textarea rows="3" maxLength={500} value={specialForm.dietaryNotes} onChange={e => setSpecialForm(form => ({ ...form, dietaryNotes: e.target.value }))} className={T.input} placeholder="Only verified claims, substitutions, and restrictions." /></div>
+          </div>
+          <div><label className={T.label}>Prep, Pickup & 86 Notes</label><textarea rows="4" maxLength={1200} value={specialForm.prepNotes} onChange={e => setSpecialForm(form => ({ ...form, prepNotes: e.target.value }))} className={T.input} placeholder="Station, batch size, plating, pickup call, pars, substitutions, and what to do when sold out." /></div>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+            <button type="button" onClick={() => { setSpecialEditorOpen(false); resetSpecialForm(); }} className={T.btnAlt}>Cancel</button>
+            <button type="submit" disabled={specialSaving} className={`${T.btn} flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait`}>{specialSaving ? <Loader2 size={16} className="animate-spin"/> : <Check size={16}/>} {specialSaving ? 'Saving...' : editingSpecial ? 'Save Changes' : specialForm.status === 'Draft' ? 'Save Draft' : 'Publish Special'}</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

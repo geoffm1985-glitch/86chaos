@@ -8,6 +8,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+import { SYSTEM_TRAINING_MANUAL_CHAPTERS } from './trainingManual';
 
 
 const GEOFENCE_TILE_PROVIDERS = [
@@ -170,7 +171,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, menuIntelligence: false, wageView: false, wageEdit: false };
+  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, menuIntelligence: false, hr: false, wageView: false, wageEdit: false };
   const PERMISSION_PRESETS = {
     'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false },
     'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false, labor: false },
@@ -412,9 +413,9 @@ return (
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => {
                   const wageAccessToggle = k === 'wageView' || k === 'wageEdit';
-                  const ownerOnlyToggle = wageAccessToggle || k === 'settings' || k === 'branding' || k === 'integrations' || k === 'menuIntelligence';
+                  const ownerOnlyToggle = wageAccessToggle || k === 'settings' || k === 'branding' || k === 'integrations' || k === 'menuIntelligence' || k === 'hr';
                   const disabled = ownerOnlyToggle && !canChooseWageAccess;
-                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Kitchen Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', menuIntelligence: 'Menu Intelligence', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
+                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Kitchen Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', menuIntelligence: 'Menu Intelligence', hr: 'HR Administration', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
                   return (
                   <label key={k} className={`flex items-center gap-2 text-xs font-bold uppercase ${disabled ? 'opacity-45 cursor-not-allowed text-slate-500' : 'cursor-pointer text-slate-300'}`} title={disabled ? 'Only the account owner can choose this access.' : ''}>
                     <input type="checkbox" disabled={disabled} checked={!!perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked, ...(k === 'wageEdit' && e.target.checked ? { wageView: true } : {})})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded disabled:opacity-40" /> 
@@ -939,7 +940,12 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const accountSecurityDebug = mfaStatus?.debug || {};
   const firestoreProfileMissing = mfaStatus && mfaStatus.firestoreUserDocExists === false;
   const canAdminVerifyEmail = Boolean(mfaStatus?.canAdminVerifyEmail || mfaStatus?.isMasterAdminEmail || appUser?.isSuperAdmin);
-  const canRecoverUserMfa = Boolean(mfaStatus?.canMfaRecovery || appUser?.isSuperAdmin || appUser?.systemAccess?.superAdmin || (MASTER_ADMIN_EMAIL && settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || false);
+  const canRecoverUserMfa = Boolean(
+    auth.currentUser?.uid &&
+    mfaStatus?.authUid === auth.currentUser.uid &&
+    mfaStatus?.isMasterAdminEmail === true &&
+    mfaStatus?.canMfaRecovery === true
+  );
   const mfaRecoveryUsers = [...(users || [])].filter(u => u?.id && (u.email || u.name)).sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
   const selectedMfaRecoveryUser = mfaRecoveryUsers.find(u => u.id === mfaRecoveryTargetId) || null;
   const mfaFactorLimitReached = Number(mfaStatus?.mfaFactorCount || 0) >= 5;
@@ -1012,7 +1018,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   };
 
   useEffect(() => {
-    if ((subTab === 'profile' || subTab === 'accountSecurity') && appUser?.id) refreshAccountSecurityStatus({ silent: true });
+    if (subTab === 'accountSecurity' && appUser?.id) refreshAccountSecurityStatus({ silent: true });
   }, [subTab, appUser?.id]);
 
   useEffect(() => {
@@ -1667,15 +1673,15 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
   
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-<div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
+    <div className="settings-page max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+<div className="settings-tab-bar grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['profile', 'accountSecurity', 'preferences', 'alerts'].concat(canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], canManageIntegrations ? ['integrations'] : []).map((tab) => (
 <button type="button" key={tab} onClick={() => {
             if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
               return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
             }
             setSubTab(tab);
-          }} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
+          }} className={`settings-tab-button px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-300 hover:text-white'} ${(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
             {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab === 'accountSecurity' ? 'Account Security' : tab}
             {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Beta</span>}
           </button>
@@ -1715,6 +1721,11 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <button type="submit" className={`w-full ${T.btn} py-2`}>Save Profile</button>
             </form>
           </div>
+        </div>
+      )}
+
+      {false && (
+        <div className="space-y-3">
           <div className={`${T.card} p-3 sm:p-5 border-blue-900/40 bg-blue-950/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
              <div>
                <h3 className="text-xs font-black text-blue-300 uppercase tracking-widest mb-1">Account Security / Two-Step Login</h3>
@@ -1861,7 +1872,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-red-950/10 border border-red-900/40 rounded-xl p-3 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Super Admin MFA Recovery</div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Master Admin MFA Recovery</div>
                     <p className="text-[10px] text-slate-400 font-bold leading-snug mt-1">Use only after verifying the person in real life. This removes their Firebase MFA factors and records the reason in audit logs.</p>
                   </div>
                   <div className="px-2 py-1 rounded-lg border border-red-900/50 bg-red-900/20 text-red-200 text-[8px] font-black uppercase tracking-widest">Audit Logged</div>
@@ -1917,6 +1928,13 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 
       {subTab === 'accountSecurity' && (
         <div className="space-y-3">
+          <div className={`${T.card} p-3 sm:p-4 bg-red-950/10 border-red-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
+             <div>
+               <h3 className="text-sm font-black text-red-300 uppercase tracking-widest mb-1">Password Security</h3>
+               <p className="text-xs text-slate-300 font-medium">Send a secure password-reset link to the signed-in email address.</p>
+             </div>
+             <button type="button" onClick={handlePasswordReset} className="w-full sm:w-auto bg-[#12161A] text-red-300 border border-red-900/50 hover:bg-red-900/30 font-bold px-4 py-2 rounded-xl transition-colors text-xs whitespace-nowrap">Reset Password</button>
+          </div>
           <div className={`${T.card} p-3 sm:p-5 border-blue-900/40 bg-blue-950/10 space-y-4`}>
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
               <div>
@@ -2047,7 +2065,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-red-950/10 border border-red-900/40 rounded-xl p-3 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Super Admin MFA Recovery</div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Master Admin MFA Recovery</div>
                     <p className="text-[10px] text-slate-400 font-bold leading-snug mt-1">Use only after verifying the person in real life. This removes their Firebase MFA factors and records the reason in audit logs.</p>
                   </div>
                   <div className="px-2 py-1 rounded-lg border border-red-900/50 bg-red-900/20 text-red-200 text-[8px] font-black uppercase tracking-widest">Audit Logged</div>
@@ -3533,6 +3551,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [adminManualQuestion, setAdminManualQuestion] = useState('');
   const [adminManualCategory, setAdminManualCategory] = useState('All');
   const [selectedAdminArticleId, setSelectedAdminArticleId] = useState('');
+  const [trainingManualSearch, setTrainingManualSearch] = useState('');
+  const [trainingManualCategory, setTrainingManualCategory] = useState('All');
+  const [activeTrainingManualChapterId, setActiveTrainingManualChapterId] = useState(SYSTEM_TRAINING_MANUAL_CHAPTERS[0]?.id || '');
+  const [selectedTrainingManualChapterIds, setSelectedTrainingManualChapterIds] = useState(() => SYSTEM_TRAINING_MANUAL_CHAPTERS.map(chapter => chapter.id));
   const [adminHelpModal, setAdminHelpModal] = useState(null);
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0);
@@ -3553,6 +3575,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [geminiManualMeta, setGeminiManualMeta] = useState(null);
   const [geminiManualError, setGeminiManualError] = useState('');
   const [isGeminiManualLoading, setIsGeminiManualLoading] = useState(false);
+  const geminiManualRequestKeyRef = useRef({ signature: '', key: '' });
   const [aiUsageRows, setAiUsageRows] = useState([]);
   const [aiUsageMonth, setAiUsageMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [aiUsageLoading, setAiUsageLoading] = useState(false);
@@ -5649,6 +5672,85 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const relatedSupportPlaybooks = scoredPlaybooks.filter(p => p.score > 0 && p.title !== primarySupportPlaybook.title).slice(0, 3);
   const topManualArticles = filteredAdminManualArticles.slice(0, 8);
   const selectedAdminArticle = scoredAdminManualArticles.find(a => a.manualId === selectedAdminArticleId) || topManualArticles[0] || scoredAdminManualArticles[0];
+  const trainingManualCategories = ['All', ...Array.from(new Set(SYSTEM_TRAINING_MANUAL_CHAPTERS.map(chapter => chapter.group)))];
+  const trainingManualTokens = String(trainingManualSearch || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(word => word.length > 1);
+  const visibleTrainingManualChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => {
+    if (trainingManualCategory !== 'All' && chapter.group !== trainingManualCategory) return false;
+    if (!trainingManualTokens.length) return true;
+    const searchable = [
+      chapter.title,
+      chapter.tab,
+      chapter.group,
+      chapter.audience,
+      chapter.summary,
+      chapter.keywords,
+      ...(chapter.sections || []).flatMap(section => [section.title, ...(section.steps || [])]),
+      ...(chapter.notes || [])
+    ].join(' ').toLowerCase();
+    return trainingManualTokens.every(token => searchable.includes(token));
+  });
+  const activeTrainingManualChapter = visibleTrainingManualChapters.find(chapter => chapter.id === activeTrainingManualChapterId)
+    || visibleTrainingManualChapters[0]
+    || null;
+  const selectedTrainingManualChapterIdSet = new Set(selectedTrainingManualChapterIds);
+  const selectedTrainingManualChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => selectedTrainingManualChapterIdSet.has(chapter.id));
+  const toggleTrainingManualChapterSelection = (chapterId) => {
+    setSelectedTrainingManualChapterIds(current => current.includes(chapterId)
+      ? current.filter(id => id !== chapterId)
+      : [...current, chapterId]);
+  };
+  const selectAllTrainingManualChapters = () => setSelectedTrainingManualChapterIds(SYSTEM_TRAINING_MANUAL_CHAPTERS.map(chapter => chapter.id));
+  const clearTrainingManualChapters = () => setSelectedTrainingManualChapterIds([]);
+  const selectVisibleTrainingManualChapters = () => setSelectedTrainingManualChapterIds(current => Array.from(new Set([...current, ...visibleTrainingManualChapters.map(chapter => chapter.id)])));
+  const handlePrintTrainingManual = () => {
+    if (!selectedTrainingManualChapters.length) {
+      addToast('Choose Manual Sections', 'Select at least one chapter before opening the print dialog.');
+      return;
+    }
+    const escapePrintHtml = (value) => String(value ?? '').replace(/[&<>"']/g, character => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character]));
+    const chapterHtml = selectedTrainingManualChapters.map(chapter => {
+      const chapterNumber = SYSTEM_TRAINING_MANUAL_CHAPTERS.findIndex(item => item.id === chapter.id) + 1;
+      const sections = (chapter.sections || []).map((section, sectionIndex) => `
+        <section>
+          <h3>${sectionIndex + 1}. ${escapePrintHtml(section.title)}</h3>
+          <ol>${(section.steps || []).map(step => `<li>${escapePrintHtml(step)}</li>`).join('')}</ol>
+        </section>`).join('');
+      const notes = (chapter.notes || []).map(note => `<p class="note"><strong>Important:</strong> ${escapePrintHtml(note)}</p>`).join('');
+      return `<article class="chapter">
+        <div class="chapter-label">Chapter ${chapterNumber} · ${escapePrintHtml(chapter.group)} · ${escapePrintHtml(chapter.tab)}</div>
+        <h2>${escapePrintHtml(chapter.title)}</h2>
+        <p class="summary">${escapePrintHtml(chapter.summary)}</p>
+        <p class="audience"><strong>Who uses it:</strong> ${escapePrintHtml(chapter.audience)}</p>
+        ${sections}${notes}
+      </article>`;
+    }).join('');
+    const tableOfContents = selectedTrainingManualChapters.map(chapter => `<li>${escapePrintHtml(chapter.title)}</li>`).join('');
+    const printedDate = new Date().toLocaleDateString();
+    const printableHtml = `<!doctype html><html><head><meta charset="utf-8"><title>86 Chaos Complete App Training Manual</title>
+      <style>
+        @page{size:auto;margin:.58in .62in .62in}*{box-sizing:border-box}body{margin:0;color:#1d2b33;background:#fff;font-family:Arial,Helvetica,sans-serif;font-size:10.5pt;line-height:1.5}
+        .print-action{position:fixed;z-index:10;right:18px;top:18px;border:0;border-radius:9px;background:#1d3949;color:#fff;padding:10px 14px;font-weight:800;box-shadow:0 5px 16px #0003}.cover{min-height:9in;display:flex;flex-direction:column;justify-content:center;border-top:10px solid #223d4e;border-bottom:2px solid #c89672;padding:.5in .1in;break-after:page}.brand{color:#986744;font-size:11pt;font-weight:800;letter-spacing:.18em}.cover h1{max-width:7in;margin:.16in 0 .1in;color:#172b37;font-size:35pt;line-height:1.06}.cover p{color:#586873;font-size:11pt}.intro{break-after:page}.intro h2,.chapter h2{margin:0 0 .12in;color:#1c394a;font-size:22pt;line-height:1.15}.intro h3,.chapter h3{margin:.2in 0 .07in;color:#263c49;font-size:13.5pt;break-after:avoid}.intro ol,.chapter ol{padding-left:.27in}.intro li,.chapter li{margin-bottom:.06in}.chapter{break-before:page}.chapter-label{margin-bottom:.11in;border-bottom:1px solid #aebcc4;color:#7b583f;padding-bottom:.08in;font-size:9pt;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.summary{border-left:3px solid #3f7794;background:#edf4f7;padding:.1in .13in}.audience{margin:.12in 0}.note{border:1px solid #d6b998;background:#fff8ef;padding:.1in .12in;break-inside:avoid}section{break-inside:auto}.footer{margin-top:.3in;border-top:1px solid #bcc7cd;color:#657680;padding-top:.08in;font-size:8.5pt;text-align:center}
+        @media print{.print-action{display:none}.cover{min-height:8.4in}}
+      </style></head><body>
+      <button class="print-action" onclick="window.print()">Print / Save as PDF</button>
+      <header class="cover"><div class="brand">86 CHAOS</div><h1>Complete App Training Manual</h1><p>Selected chapters · Version ${escapePrintHtml(CURRENT_VERSION)} · Printed ${escapePrintHtml(printedDate)}</p></header>
+      <section class="intro"><h2>How to use this manual</h2><p>This plain-English reference covers the selected 86 Chaos tabs and workflows. Features still follow workspace settings and user permissions, so a reader may not see every control described here. This manual is static: searching and printing it makes no AI calls.</p><h3>Selected chapters</h3><ol>${tableOfContents}</ol></section>
+      ${chapterHtml}<div class="footer">86 Chaos · Complete App Training Manual · ${selectedTrainingManualChapters.length} selected chapter(s)</div>
+      </body></html>`;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      addToast('Popup Blocked', 'Allow popups for 86 Chaos, then choose Print selected again.');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(printableHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    addToast('Print Manual', `Opening ${selectedTrainingManualChapters.length} selected chapter(s). Choose Save as PDF in the print dialog for a PDF copy.`);
+    window.setTimeout(() => { if (!printWindow.closed) printWindow.print(); }, 350);
+  };
   const supportAnswerLines = primarySupportPlaybook ? [
     `Customer question: ${supportQuestion || 'No question entered yet.'}`,
     `Likely area: ${primarySupportPlaybook.title}`,
@@ -5715,6 +5817,20 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     return `${left}\n\n${right}`.trim();
   };
 
+  const getGeminiManualRequestKey = (signature) => {
+    if (geminiManualRequestKeyRef.current.signature === signature && geminiManualRequestKeyRef.current.key) {
+      return geminiManualRequestKeyRef.current.key;
+    }
+    const randomPart = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const key = `manual-${randomPart}`.slice(0, 180);
+    geminiManualRequestKeyRef.current = { signature, key };
+    return key;
+  };
+
+  const clearGeminiManualRequestKey = () => {
+    geminiManualRequestKeyRef.current = { signature: '', key: '' };
+  };
+
   const handleAskGeminiAdminManual = async () => {
     const question = (geminiManualQuestion || adminManualQuestion || adminManualSearch || '').trim();
     if (!question) {
@@ -5728,15 +5844,18 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     setGeminiManualMeta(null);
     setIsGeminiManualLoading(true);
     try {
+      const requestSignature = `ask:${CURRENT_VERSION}:${question}`;
+      const idempotencyKey = getGeminiManualRequestKey(requestSignature);
       const response = await secureFetch('/api/gemini-admin-manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildGeminiManualRequestPayload(question))
+        body: JSON.stringify(buildGeminiManualRequestPayload(question, { idempotencyKey }))
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Gemini manual failed with status ${response.status}`);
       setGeminiManualAnswer(result.answer || 'Gemini returned no answer.');
       setGeminiManualMeta(result);
+      clearGeminiManualRequestKey();
       const continuationNote = result.autoContinuationCount ? ` • auto-continued ${result.autoContinuationCount}x` : '';
       addToast('Gemini Manual Ready', `${result.articleCount || 0} article(s) used • ${result.model || 'Gemini'}${continuationNote}`);
       if (result.answerIncomplete) addToast('Gemini Answer Needs Continue', result.incompleteReason || 'Gemini may have stopped before the answer was finished.');
@@ -5759,15 +5878,18 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     setGeminiManualError('');
     setIsGeminiManualLoading(true);
     try {
+      const requestSignature = `continue:${CURRENT_VERSION}:${question}:${geminiManualAnswer.length}:${geminiManualAnswer.slice(-160)}`;
+      const idempotencyKey = getGeminiManualRequestKey(requestSignature);
       const response = await secureFetch('/api/gemini-admin-manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildGeminiManualRequestPayload(question, { continueFrom: geminiManualAnswer }))
+        body: JSON.stringify(buildGeminiManualRequestPayload(question, { continueFrom: geminiManualAnswer, idempotencyKey }))
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Gemini manual continue failed with status ${response.status}`);
       setGeminiManualAnswer(prev => appendGeminiManualText(prev, result.answer || ''));
       setGeminiManualMeta(result);
+      clearGeminiManualRequestKey();
       addToast('Gemini Continued', result.answerIncomplete ? 'Added more text, but Gemini may still need one more continuation.' : 'Answer completed.');
     } catch (err) {
       const message = err.message || 'Gemini manual continuation failed.';
@@ -6436,13 +6558,13 @@ Type RESTORE to continue.`);
   const adminTabGroups = [
     {
       title:'Start Here',
-      summary:'Daily command center, system health, deployment readiness, and the AI manual.',
-      helper:'Use this first when you are not sure where to go. It explains the current state, shows live health, and sends you to the right repair area.',
+      summary:'Daily command center, system health, deployment readiness, complete app training, and AI-assisted troubleshooting.',
+      helper:'Use this first when you are not sure where to go. It explains the current state, teaches every app tab, shows live health, and sends you to the right repair area.',
       tabs:[
         {id:'overview', label:'Command Center', short:'Home', intent:'Start here for live status and suggested next actions.'},
         {id:'health', label:'Health Dashboard', short:'Health', intent:'Check API routes, Firebase connection, backup integrity, and runtime status.'},
         {id:'deployment', label:'Deployment Readiness', short:'Deploy', intent:'Confirm env vars, rules, versions, and production readiness before releases.'},
-        {id:'manual', label:'AI Administrator Manual', short:'Manual', intent:'Ask Gemini for step-by-step admin instructions.'}
+        {id:'manual', label:'Training & Administrator Manuals', short:'Manuals', intent:'Search the complete non-AI app training guide or use the preserved Gemini troubleshooting desk.'}
       ]
     },
     {
@@ -6517,7 +6639,8 @@ Type RESTORE to continue.`);
     { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
     { label:'Review AI Scan Page Usage', tab:'ai-usage', keywords:'invoice menu ai pages limits scans failures blocked bypass model provider' },
     { label:'Review App Check and MFA', tab:'security', keywords:'security app check mfa rules environment' },
-    { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting manual' },
+    { label:'Open Complete App Training Manual', tab:'manual', keywords:'non ai training whole app tab guide print pdf instructions manual' },
+    { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting repair manual' },
     { label:'Check Deployment Readiness', tab:'deployment', keywords:'deploy vercel firebase publish production readiness' },
     { label:'Create a Workspace', tab:'setup', keywords:'client restaurant owner onboarding setup' }
   ];
@@ -8554,7 +8677,133 @@ another@email.com"></textarea>
       )}
 
       {subTab === 'manual' && (
-        <div id="admin-manual" className="admin46-manual">
+        <div id="admin-manual" className="admin-manual-stack">
+          <section className="training-manual-shell" aria-labelledby="complete-training-manual-title">
+            <div className="training-manual-heading">
+              <div>
+                <div className="training-manual-kicker"><BookOpen size={14}/> Complete app training</div>
+                <h2 id="complete-training-manual-title">86 Chaos Training Manual</h2>
+                <p>Plain-English instructions for the whole app, tab by tab. Search happens on this device and makes no AI calls.</p>
+              </div>
+              <div className="training-manual-heading-actions">
+                <span className="training-manual-local-badge"><Shield size={13}/> Non-AI / local search</span>
+                <button type="button" onClick={handlePrintTrainingManual} className="training-manual-print-button">
+                  <BookOpen size={15}/> Print selected / Save as PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="training-manual-toolbar">
+              <div className="training-manual-search-field">
+                <label htmlFor="training-manual-search">Search every chapter</label>
+                <div>
+                  <Search size={16}/>
+                  <input
+                    id="training-manual-search"
+                    value={trainingManualSearch}
+                    onChange={event => setTrainingManualSearch(event.target.value)}
+                    placeholder="Try: prep labels, MFA, invoice, schedule, specials..."
+                  />
+                  {trainingManualSearch && <button type="button" onClick={() => setTrainingManualSearch('')} aria-label="Clear training manual search"><X size={15}/></button>}
+                </div>
+              </div>
+              <div className="training-manual-category-field">
+                <label htmlFor="training-manual-category">Chapter group</label>
+                <select id="training-manual-category" value={trainingManualCategory} onChange={event => setTrainingManualCategory(event.target.value)}>
+                  {trainingManualCategories.map(category => <option key={category} value={category}>{category}</option>)}
+                </select>
+              </div>
+              <div className="training-manual-counts" aria-live="polite">
+                <strong>{visibleTrainingManualChapters.length}</strong>
+                <span>matching</span>
+                <strong>{selectedTrainingManualChapters.length}</strong>
+                <span>selected to print</span>
+              </div>
+            </div>
+
+            <div className="training-manual-selection-bar">
+              <span>Choose exactly what belongs in the printable manual.</span>
+              <div>
+                <button type="button" onClick={selectAllTrainingManualChapters}>Select all</button>
+                <button type="button" onClick={selectVisibleTrainingManualChapters}>Select matching</button>
+                <button type="button" onClick={clearTrainingManualChapters}>Clear all</button>
+              </div>
+            </div>
+
+            <div className="training-manual-layout">
+              <aside className="training-manual-chapter-index" aria-label="Training manual chapters">
+                {visibleTrainingManualChapters.length === 0 && (
+                  <div className="training-manual-empty">No chapter matched all of those words. Try a shorter search such as "labels" or "security".</div>
+                )}
+                {visibleTrainingManualChapters.map((chapter, index) => {
+                  const isSelected = selectedTrainingManualChapterIdSet.has(chapter.id);
+                  const isActive = activeTrainingManualChapter?.id === chapter.id;
+                  const fullChapterNumber = SYSTEM_TRAINING_MANUAL_CHAPTERS.findIndex(item => item.id === chapter.id) + 1;
+                  return (
+                    <div key={chapter.id} className={`training-manual-index-row ${isActive ? 'is-active' : ''} ${isSelected ? 'is-selected' : ''}`}>
+                      <label title={isSelected ? 'Remove from printable manual' : 'Add to printable manual'}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleTrainingManualChapterSelection(chapter.id)}
+                          aria-label={`${isSelected ? 'Remove' : 'Add'} ${chapter.title} ${isSelected ? 'from' : 'to'} printable manual`}
+                        />
+                        <span aria-hidden="true"><Check size={13}/></span>
+                      </label>
+                      <button type="button" onClick={() => setActiveTrainingManualChapterId(chapter.id)}>
+                        <small>Chapter {fullChapterNumber} · {chapter.group}</small>
+                        <strong>{chapter.title}</strong>
+                        <em>{chapter.tab}</em>
+                      </button>
+                    </div>
+                  );
+                })}
+              </aside>
+
+              <article className="training-manual-reader">
+                {activeTrainingManualChapter ? (
+                  <>
+                    <div className="training-manual-reader-topline">
+                      <div>
+                        <span>{activeTrainingManualChapter.group}</span>
+                        <span>{activeTrainingManualChapter.tab}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleTrainingManualChapterSelection(activeTrainingManualChapter.id)}
+                        className={selectedTrainingManualChapterIdSet.has(activeTrainingManualChapter.id) ? 'is-selected' : ''}
+                      >
+                        <Check size={14}/>
+                        {selectedTrainingManualChapterIdSet.has(activeTrainingManualChapter.id) ? 'Selected for print' : 'Add to print'}
+                      </button>
+                    </div>
+                    <h3>{activeTrainingManualChapter.title}</h3>
+                    <p className="training-manual-summary">{activeTrainingManualChapter.summary}</p>
+                    <div className="training-manual-audience"><Users size={15}/><strong>Who uses it:</strong><span>{activeTrainingManualChapter.audience}</span></div>
+
+                    <div className="training-manual-sections">
+                      {(activeTrainingManualChapter.sections || []).map((section, sectionIndex) => (
+                        <section key={`${activeTrainingManualChapter.id}-${section.title}`}>
+                          <h4><span>{sectionIndex + 1}</span>{section.title}</h4>
+                          <ol>
+                            {(section.steps || []).map((step, stepIndex) => <li key={stepIndex}>{step}</li>)}
+                          </ol>
+                        </section>
+                      ))}
+                    </div>
+                    {(activeTrainingManualChapter.notes || []).length > 0 && (
+                      <div className="training-manual-notes">
+                        <strong>Important</strong>
+                        {(activeTrainingManualChapter.notes || []).map((note, index) => <p key={index}>{note}</p>)}
+                      </div>
+                    )}
+                  </>
+                ) : <div className="training-manual-empty">Choose a chapter.</div>}
+              </article>
+            </div>
+          </section>
+
+          <div className="admin46-manual">
           <div className="admin46-manual-heading">
             <div>
               <div className="admin46-eyebrow">Internal knowledge system</div>
@@ -8714,6 +8963,7 @@ another@email.com"></textarea>
                 <div className="admin46-empty">Choose an article from the index.</div>
               )}
             </aside>
+          </div>
           </div>
         </div>
       )}

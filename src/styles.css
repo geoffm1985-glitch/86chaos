@@ -19,7 +19,7 @@ body {
 
 html,
 body {
-  touch-action: pan-x pan-y;
+  touch-action: pan-x pan-y pinch-zoom;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -53,6 +53,36 @@ select {
 
 img {
   max-width: 100%;
+}
+
+/* Keep every sign-in state fully inside narrow phones without shrinking its text. */
+.chaos-login-screen {
+  width: 100%;
+  overflow-x: clip;
+  padding: 20px 12px;
+}
+
+.chaos-login-card {
+  width: min(100%, 24rem) !important;
+  min-width: 0;
+}
+
+.chaos-login-logo {
+  width: min(100%, 17rem);
+  height: auto !important;
+  min-height: 88px;
+}
+
+@media (max-width: 420px) {
+  .chaos-login-card {
+    padding: 24px 20px !important;
+    border-radius: 20px !important;
+  }
+
+  .chaos-login-card input,
+  .chaos-login-card button {
+    min-width: 0;
+  }
 }
 
 @keyframes slideIn {
@@ -1703,25 +1733,25 @@ select {
 
 /* 15.0.50 compact controls outside System Administrator. Sizes mirror the admin console; colors remain page-owned. */
 .non-admin-controls-compact button:not(.no-compact) {
-  min-height: 31px !important;
-  border-radius: 7px !important;
-  padding: 6px 9px !important;
-  font-size: 8px !important;
-  line-height: 1.15 !important;
+  min-height: 38px !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
 }
 
 .non-admin-controls-compact input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
 .non-admin-controls-compact select,
 .non-admin-controls-compact textarea {
-  min-height: 34px !important;
-  border-radius: 7px !important;
-  padding: 8px 9px !important;
-  font-size: 11px !important;
-  line-height: 1.35 !important;
+  min-height: 42px !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
 }
 
 .non-admin-controls-compact textarea {
-  min-height: 54px !important;
+  min-height: 80px !important;
 }
 
 
@@ -1762,18 +1792,18 @@ select {
 }
 
 .schedule-copilot-compact {
-  max-height: 520px;
+  max-height: 410px;
   overflow: hidden;
 }
 
 .schedule-copilot-compact .schedule-copilot-body {
-  max-height: 350px;
+  max-height: 245px;
   overflow-y: auto;
   padding-right: 3px;
 }
 
 .schedule-copilot-compact .schedule-copilot-metric {
-  min-height: 48px;
+  min-height: 52px;
   border-radius: 10px;
   padding: 7px 9px;
 }
@@ -1868,10 +1898,10 @@ select {
 
 @media (max-width: 720px) {
   .schedule-copilot-compact {
-    max-height: 580px;
+    max-height: 430px;
   }
   .schedule-copilot-compact .schedule-copilot-body {
-    max-height: 400px;
+    max-height: 255px;
   }
   .manager-brief-compact .brief-hero h1,
   .kitchen-command-compact .command-hero h1 {
@@ -1933,10 +1963,10 @@ select {
 .non-admin-controls-compact .manager-brief-compact button,
 .non-admin-controls-compact .kitchen-command-compact button,
 .non-admin-controls-compact .maintenance-center-compact button:not(.no-compact) {
-  min-height: 32px !important;
-  padding: 6px 9px !important;
-  font-size: 10px !important;
-  line-height: 1.2 !important;
+  min-height: 38px !important;
+  padding: 8px 11px !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
 }
 
 .non-admin-controls-compact .manager-brief-compact .brief-quick-action {
@@ -1951,6 +1981,800 @@ select {
 .non-admin-controls-compact .maintenance-center-compact input,
 .non-admin-controls-compact .maintenance-center-compact select,
 .non-admin-controls-compact .maintenance-center-compact textarea {
-  font-size: 12px !important;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+}
+
+/* 15.0.52 unified, readable application surfaces. System Administrator keeps its own palette. */
+.non-admin-controls-compact {
+  background:
+    radial-gradient(circle at 12% -10%, rgba(212, 163, 129, .08), transparent 28rem),
+    radial-gradient(circle at 92% 8%, rgba(72, 101, 120, .08), transparent 24rem),
+    #12161A;
+}
+
+.non-admin-controls-compact .chaos-card {
+  border-color: #33414b !important;
+  background: linear-gradient(180deg, rgba(28, 36, 42, .98), rgba(23, 30, 35, .98)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .035), 0 10px 28px rgba(0, 0, 0, .16) !important;
+  border-radius: 14px !important;
+}
+
+.non-admin-controls-compact .chaos-button {
+  letter-spacing: .055em;
+  text-wrap: balance;
+}
+
+.non-admin-controls-compact .chaos-button-primary {
+  box-shadow: 0 7px 18px rgba(143, 96, 64, .2) !important;
+}
+
+.non-admin-controls-compact .chaos-button-secondary:hover {
+  border-color: rgba(212, 163, 129, .58) !important;
+  background: #182027 !important;
+}
+
+.non-admin-controls-compact .chaos-input {
+  border-color: #3a4852 !important;
+  background: #10161b !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .28);
+}
+
+.non-admin-controls-compact .chaos-input:focus {
+  border-color: var(--chaos-accent, #D4A381) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chaos-accent, #D4A381) 18%, transparent) !important;
+}
+
+.non-admin-controls-compact .chaos-label,
+.non-admin-controls-compact .chaos-table-heading {
+  font-size: 11px !important;
   line-height: 1.3 !important;
+  color: #b7c2ca !important;
+}
+
+.non-admin-controls-compact .text-\[8px\],
+.non-admin-controls-compact .text-\[9px\] {
+  font-size: 10px !important;
+  line-height: 1.3 !important;
+}
+
+.non-admin-controls-compact .text-\[10px\] {
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+
+.non-admin-controls-compact .text-xs {
+  font-size: 13px !important;
+  line-height: 1.42 !important;
+}
+
+.app-header {
+  border-color: #34414a !important;
+  background: rgba(16, 22, 27, .94) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .16);
+}
+
+.app-footer {
+  border-color: #303c45 !important;
+  background: rgba(18, 24, 29, .92) !important;
+}
+
+.app-content-shell > .max-w-2xl,
+.app-content-shell > .max-w-3xl,
+.app-content-shell > .max-w-4xl,
+.app-content-shell > .max-w-5xl,
+.app-content-shell > .max-w-6xl {
+  width: 100%;
+  max-width: 72rem !important;
+}
+
+.inventory-subtabs {
+  gap: 4px !important;
+}
+
+.non-admin-controls-compact .inventory-subtabs > button {
+  min-height: 42px !important;
+  padding: 9px 13px !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+}
+
+.non-admin-controls-compact .inventory-preview-badge {
+  font-size: 10px !important;
+  line-height: 1 !important;
+  letter-spacing: .08em !important;
+}
+
+.non-admin-controls-compact .settings-tab-button {
+  min-height: 42px !important;
+  padding: 9px 12px !important;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+}
+
+.schedule-copilot-launcher {
+  min-height: 72px;
+}
+
+.non-admin-controls-compact :where(button, input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--chaos-accent, #D4A381) !important;
+  outline-offset: 2px !important;
+}
+
+@media (max-width: 640px) {
+  .app-content-shell {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .inventory-subtabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100% !important;
+  }
+
+  .inventory-subtabs > button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .settings-tab-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (pointer: coarse) {
+  .non-admin-controls-compact button:not(.no-compact) {
+    min-height: 44px !important;
+  }
+
+  .non-admin-controls-compact input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+  .non-admin-controls-compact select,
+  .non-admin-controls-compact textarea {
+    min-height: 44px !important;
+    font-size: 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .non-admin-controls-compact *,
+  .non-admin-controls-compact *::before,
+  .non-admin-controls-compact *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* 15.0.52 Complete App Training Manual. Static search and printing use no AI. */
+.admin-manual-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.training-manual-shell {
+  overflow: hidden;
+  border: 1px solid #3b5363;
+  border-radius: 14px;
+  background: #101820;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .28);
+  color: #edf5fa;
+}
+
+.training-manual-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  border-bottom: 1px solid #334754;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(54, 137, 174, .2), transparent 34%),
+    linear-gradient(135deg, #172733 0%, #111c24 74%);
+}
+
+.training-manual-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #8fc5e3;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.training-manual-heading h2 {
+  margin: 7px 0 0;
+  color: #fff;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: -.025em;
+}
+
+.training-manual-heading p {
+  max-width: 720px;
+  margin: 9px 0 0;
+  color: #bed0da;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.training-manual-heading-actions {
+  display: flex;
+  min-width: 250px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+}
+
+.training-manual-local-badge {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(90, 196, 151, .44);
+  border-radius: 999px;
+  background: rgba(31, 116, 78, .18);
+  color: #9ce2bf;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.training-manual-print-button {
+  display: inline-flex;
+  min-height: 44px !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #d6aa89 !important;
+  border-radius: 10px !important;
+  background: linear-gradient(135deg, #e2b795, #bd8764) !important;
+  color: #17110d !important;
+  padding: 10px 14px !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  letter-spacing: .01em !important;
+  text-transform: none !important;
+  box-shadow: 0 8px 20px rgba(190, 132, 94, .18);
+}
+
+.training-manual-print-button:hover {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+}
+
+.training-manual-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(190px, .42fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 16px 18px;
+  border-bottom: 1px solid #2d414e;
+  background: #111c24;
+}
+
+.training-manual-search-field > label,
+.training-manual-category-field > label {
+  display: block;
+  margin-bottom: 6px;
+  color: #9eb3c0;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.training-manual-search-field > div {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #435c6b;
+  border-radius: 10px;
+  background: #0c141a;
+  padding: 0 11px;
+  color: #91a9b6;
+}
+
+.training-manual-search-field input,
+.training-manual-category-field select {
+  width: 100%;
+  min-height: 44px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #f5fafc !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  outline: 0 !important;
+}
+
+.training-manual-search-field input::placeholder {
+  color: #738995 !important;
+}
+
+.training-manual-search-field button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  min-height: 32px !important;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px !important;
+  background: #1d2c36;
+  color: #c6d5dd;
+}
+
+.training-manual-category-field select {
+  border: 1px solid #435c6b !important;
+  border-radius: 10px !important;
+  background: #0c141a !important;
+  padding: 0 11px !important;
+}
+
+.training-manual-category-field option {
+  background: #101820;
+  color: #fff;
+}
+
+.training-manual-counts {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0 7px;
+  align-items: baseline;
+  border: 1px solid #344b59;
+  border-radius: 10px;
+  background: #16242d;
+  padding: 8px 12px;
+}
+
+.training-manual-counts strong {
+  color: #8fc5e3;
+  font-size: 17px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.training-manual-counts span {
+  color: #aabdc8;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.training-manual-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 18px;
+  border-bottom: 1px solid #2d414e;
+  background: #15222b;
+}
+
+.training-manual-selection-bar > span {
+  color: #b8c9d2;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.training-manual-selection-bar > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.training-manual-selection-bar button {
+  min-height: 36px !important;
+  border: 1px solid #466172 !important;
+  border-radius: 8px !important;
+  background: #1b2a34 !important;
+  color: #e1ebf0 !important;
+  padding: 7px 11px !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.training-manual-selection-bar button:hover {
+  border-color: #83bddd !important;
+  color: #fff !important;
+}
+
+.training-manual-layout {
+  display: grid;
+  grid-template-columns: minmax(290px, 350px) minmax(0, 1fr);
+  min-height: 700px;
+}
+
+.training-manual-chapter-index {
+  max-height: 820px;
+  overflow-y: auto;
+  border-right: 1px solid #2d414e;
+  background: #111a21;
+  padding: 10px;
+  scrollbar-color: #4d6878 #101820;
+}
+
+.training-manual-index-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 4px;
+  margin-bottom: 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #15212a;
+  overflow: hidden;
+}
+
+.training-manual-index-row:hover {
+  border-color: #425d6d;
+}
+
+.training-manual-index-row.is-active {
+  border-color: #7ab3d2;
+  box-shadow: inset 3px 0 0 #7ab3d2;
+  background: #1a2a35;
+}
+
+.training-manual-index-row.is-selected {
+  background-image: linear-gradient(90deg, rgba(50, 137, 98, .12), transparent 54%);
+}
+
+.training-manual-index-row > label {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14px;
+  cursor: pointer;
+}
+
+.training-manual-index-row > label input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.training-manual-index-row > label span {
+  display: inline-flex;
+  width: 21px;
+  height: 21px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #5a7381;
+  border-radius: 6px;
+  background: #0d151b;
+  color: transparent;
+}
+
+.training-manual-index-row > label input:checked + span {
+  border-color: #65c692;
+  background: #2e9962;
+  color: #fff;
+}
+
+.training-manual-index-row > label input:focus-visible + span {
+  outline: 2px solid #e2b795;
+  outline-offset: 2px;
+}
+
+.training-manual-index-row > button {
+  min-height: 78px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 10px 10px 10px 5px !important;
+  text-align: left;
+  text-transform: none !important;
+}
+
+.training-manual-index-row small,
+.training-manual-index-row strong,
+.training-manual-index-row em {
+  display: block;
+  font-style: normal;
+}
+
+.training-manual-index-row small {
+  color: #86a5b6;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.training-manual-index-row strong {
+  margin-top: 4px;
+  color: #f1f7fa;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.3;
+}
+
+.training-manual-index-row em {
+  margin-top: 4px;
+  color: #a4bac6;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.training-manual-reader {
+  min-width: 0;
+  background: linear-gradient(180deg, #14212a, #101820 46%);
+  padding: clamp(20px, 3vw, 34px);
+}
+
+.training-manual-reader-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.training-manual-reader-topline > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.training-manual-reader-topline > div span {
+  border: 1px solid #3f5968;
+  border-radius: 999px;
+  background: #1b2b35;
+  color: #a8c1ce;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.training-manual-reader-topline > button {
+  display: inline-flex;
+  min-height: 38px !important;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #4d6776 !important;
+  border-radius: 8px !important;
+  background: #1a2a34 !important;
+  color: #dce8ee !important;
+  padding: 8px 11px !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  white-space: nowrap;
+}
+
+.training-manual-reader-topline > button.is-selected {
+  border-color: rgba(101, 198, 146, .6) !important;
+  background: rgba(46, 153, 98, .18) !important;
+  color: #a4e8c2 !important;
+}
+
+.training-manual-reader h3 {
+  margin: 19px 0 0;
+  color: #fff;
+  font-size: clamp(23px, 3vw, 32px);
+  font-weight: 900;
+  line-height: 1.16;
+  letter-spacing: -.02em;
+}
+
+.training-manual-summary {
+  max-width: 820px;
+  margin-top: 10px;
+  color: #c4d4dc;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.65;
+}
+
+.training-manual-audience {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  border-left: 3px solid #80b9d7;
+  background: rgba(40, 97, 127, .18);
+  color: #c8dce7;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.training-manual-audience strong {
+  color: #fff;
+}
+
+.training-manual-sections {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.training-manual-sections > section {
+  border: 1px solid #344b58;
+  border-radius: 12px;
+  background: #16242d;
+  padding: 17px;
+}
+
+.training-manual-sections h4 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: #f5f9fb;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.training-manual-sections h4 > span {
+  display: inline-flex;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #27485b;
+  color: #bce3f7;
+  font-size: 13px;
+}
+
+.training-manual-sections ol {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding-left: 24px;
+}
+
+.training-manual-sections li {
+  color: #d0dde4;
+  padding-left: 5px;
+  font-size: 14px;
+  font-weight: 620;
+  line-height: 1.62;
+}
+
+.training-manual-sections li::marker {
+  color: #8bc3df;
+  font-weight: 900;
+}
+
+.training-manual-notes {
+  margin-top: 17px;
+  border: 1px solid rgba(220, 166, 110, .45);
+  border-radius: 11px;
+  background: rgba(128, 77, 31, .16);
+  padding: 13px 15px;
+}
+
+.training-manual-notes strong {
+  display: block;
+  color: #efc18f;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.training-manual-notes p {
+  margin-top: 5px;
+  color: #e6d4c2;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.training-manual-empty {
+  margin: 10px;
+  border: 1px dashed #4b6270;
+  border-radius: 10px;
+  color: #b4c4cc;
+  padding: 18px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@media (max-width: 980px) {
+  .training-manual-heading {
+    flex-direction: column;
+  }
+
+  .training-manual-heading-actions {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .training-manual-heading-actions > * {
+    flex: 1 1 220px;
+  }
+
+  .training-manual-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .training-manual-counts {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    grid-template-columns: auto 1fr auto 1fr;
+  }
+
+  .training-manual-counts strong {
+    text-align: left;
+  }
+
+  .training-manual-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .training-manual-heading,
+  .training-manual-toolbar,
+  .training-manual-selection-bar,
+  .training-manual-reader {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .training-manual-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .training-manual-counts {
+    grid-column: auto;
+    grid-template-columns: auto 1fr auto 1fr;
+  }
+
+  .training-manual-selection-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .training-manual-selection-bar > div,
+  .training-manual-selection-bar button {
+    width: 100%;
+  }
+
+  .training-manual-selection-bar > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .training-manual-layout {
+    display: block;
+    min-height: 0;
+  }
+
+  .training-manual-chapter-index {
+    max-height: 390px;
+    border-right: 0;
+    border-bottom: 1px solid #2d414e;
+  }
+
+  .training-manual-reader-topline {
+    flex-direction: column;
+  }
+
+  .training-manual-reader-topline > button {
+    width: 100%;
+    justify-content: center;
+  }
 }

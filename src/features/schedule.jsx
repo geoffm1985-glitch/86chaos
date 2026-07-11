@@ -2511,7 +2511,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const weekEnd = weekDates[6];
   const weekShifts = shifts.filter(s => weekDates.includes(s.date));
   const activeUsers = users.filter(u => u.isActive !== false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [activeTool, setActiveTool] = useState('targets');
   const [templateId, setTemplateId] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState(null);
@@ -2537,7 +2537,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     }));
   }, [firstScheduleRole, scheduleRoleOptions.join('|')]);
 
-  const templateOptions = templates.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const templateOptions = [...templates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   const activeTemplate = templates.find(t => t.id === templateId) || null;
   const draftCount = weekShifts.filter(s => !s.isPublished).length;
   const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests, weekDates);
@@ -2553,7 +2553,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const warnings = [];
     schedule.forEach(s => {
       const emp = allUsers.find(u => u.id === s.employeeId);
-      const off = requests.find(r => (r.userId === s.employeeId || r.employeeId === s.employeeId) && r.date === s.date && ['approved','Accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()));
+      const off = requests.find(r => (r.userId === s.employeeId || r.employeeId === s.employeeId) && r.date === s.date && ['approved','accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()));
       if (off) warnings.push(`${emp?.name || 'Someone'} is scheduled on requested-off date ${formatDisplayDate(s.date)}.`);
     });
     allUsers.forEach(u => {
@@ -2597,7 +2597,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const scheduleRole = canonicalScheduleRole(role);
     const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, scheduleRole));
     const pool = candidates.length ? candidates : activeUsers.filter(u => !usedIds.includes(u.id));
-    return pool.find(u => !timeOffRequests.some(r => (r.userId === u.id || r.employeeId === u.id) && r.date === date && String(r.status || '').toLowerCase().includes('approved'))) || pool[0];
+    return pool.find(u => !timeOffRequests.some(r => (r.userId === u.id || r.employeeId === u.id) && r.date === date && ['approved','accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()))) || pool[0];
   };
 
   const createShiftDraft = async (row, date, usedIds = []) => {
@@ -2694,7 +2694,16 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     } catch (err) { addToast('Error', err.message); }
   };
 
-  if (!open) return <button onClick={() => setOpen(true)} className={`${T.btnAlt} w-full flex items-center justify-center gap-2`}><ChefHat size={15}/> Open Schedule Copilot</button>;
+  if (!open) return (
+    <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
+      <div className="min-w-0">
+        <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
+        <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts · {missingTargets.length} gaps · {conflictList.length} warnings</div>
+        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}</div>
+      </div>
+      <button onClick={() => setOpen(true)} className={`${T.btnAlt} flex items-center justify-center gap-2 flex-shrink-0`}><ChefHat size={16}/> Open Copilot Tools</button>
+    </div>
+  );
 
   return (
     <div className={`${T.card} schedule-copilot-compact p-3 space-y-2 border-[#D4A381]/30`}>

@@ -352,14 +352,14 @@ const LoginScreen = ({ setAppUser }) => {
 
   return (
     <div 
-      className="min-h-screen flex flex-col items-center justify-center bg-[#0B0E11] bg-cover bg-center bg-no-repeat relative"
+      className="chaos-login-screen min-h-screen flex flex-col items-center justify-center bg-[#0B0E11] bg-cover bg-center bg-no-repeat relative"
       style={{ backgroundImage: `url('/6136.jpg')` }}
     >
       <div className="absolute inset-0 bg-[#0B0E11]/75 backdrop-blur-[3px]"></div>
       
-      <div className="relative z-10 w-full max-w-sm p-8 bg-[#161D22]/95 border border-[#2A353D] rounded-3xl shadow-2xl flex flex-col items-center animate-[slideIn_0.3s_ease-out]">
+      <div className="chaos-login-card relative z-10 w-full max-w-sm p-8 bg-[#161D22]/95 border border-[#2A353D] rounded-3xl shadow-2xl flex flex-col items-center animate-[slideIn_0.3s_ease-out]">
         
-        <img src="/6139.png" alt="86 Chaos OS Logo" className="h-24 w-auto rounded-xl shadow-lg border border-[#2A353D] mb-8 object-contain bg-[#12161A] p-2" />
+        <img src="/6139.png" alt="86 Chaos OS Logo" className="chaos-login-logo h-24 w-auto rounded-xl shadow-lg border border-[#2A353D] mb-8 object-contain bg-[#12161A] p-2" />
         
         {workspaceLoading && (
           <div className="w-full mb-4 p-3 rounded-xl border border-[#2A353D] bg-[#0B0E11]/80 text-center text-xs font-black text-[#D4A381] uppercase tracking-widest flex items-center justify-center gap-2">

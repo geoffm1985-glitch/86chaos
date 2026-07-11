@@ -75,6 +75,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (canUseMenuIntelligence(appUser, clientData)) tabs.push({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
   tabs.push({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/> });
   if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (!appUser?.isDemo && isEnabled('hr')) tabs.push({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
   const isTrueGod = Boolean((MASTER_ADMIN_EMAIL && (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin === true);
@@ -93,7 +94,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' }
   ];
   const menuSections = [
-    { label: 'Account', ids: ['team', 'reminders'] },
+    { label: 'Account', ids: ['team', 'hr-training', 'reminders'] },
     { label: 'Operations', ids: ['published', 'events', 'prep', 'inventory', 'recipes', 'ai-tools', 'menu-intelligence'] },
     { label: 'Manager Tools', ids: ['today', 'ops'] },
     { label: 'Management', ids: ['financials', 'messages', 'maintenance'] },
@@ -187,11 +188,20 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 };
 
 const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
+  const onCloseRef = useRef(onClose);
+  const historyPushedRef = useRef(false);
+
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const handleBackButton = () => onClose(); window.history.pushState({ tab: 'prep', printScreen: true }, ''); window.addEventListener('popstate', handleBackButton);
+    const handleBackButton = () => onCloseRef.current?.();
+    if (!historyPushedRef.current) {
+      window.history.pushState({ tab: 'prep', printScreen: true }, '');
+      historyPushedRef.current = true;
+    }
+    window.addEventListener('popstate', handleBackButton);
     const timer = setTimeout(() => window.print(), 800);
     return () => { clearTimeout(timer); window.removeEventListener('popstate', handleBackButton); };
-  }, [onClose]);
+  }, []);
   return (
     <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black print:static print:block print:overflow-visible print:h-auto print:w-auto">
       <style>{`@media print { 
@@ -199,10 +209,12 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
         body, html { margin: 0 !important; background: white !important; height: auto !important; } 
         #master-print-wrapper { position: static !important; overflow: visible !important; height: auto !important; display: block !important; }
         .no-print { display: none !important; } 
-        .dk-label { width: 3.5in !important; height: 1.1in !important; display: flex !important; flex-direction: column !important; justify-content: center !important; padding: 0.05in 0.15in !important; box-sizing: border-box !important; page-break-after: always !important; margin: 0 !important; font-family: sans-serif !important; overflow: hidden !important; } 
-        .dk-title { font-size: 16px !important; font-weight: 900 !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; } 
-        .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; margin-bottom: 2px !important; } 
-        .dk-exp { display: flex !important; justify-content: center !important; font-size: 14px !important; font-weight: 900 !important; border-top: 2px solid black !important; padding-top: 2px !important; } 
+        .dk-label { width: 3.5in !important; height: 1.1in !important; display: flex !important; flex-direction: column !important; justify-content: center !important; padding: 0.04in 0.13in !important; box-sizing: border-box !important; page-break-after: always !important; break-after: page !important; margin: 0 !important; font-family: Arial, sans-serif !important; overflow: hidden !important; } 
+        .dk-label:last-child { page-break-after: auto !important; break-after: auto !important; } 
+        .dk-title { display: -webkit-box !important; -webkit-box-orient: vertical !important; -webkit-line-clamp: 2 !important; max-height: 0.34in !important; overflow: hidden !important; font-size: 14px !important; line-height: 1.02 !important; font-weight: 900 !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; } 
+        .dk-row { display: flex !important; justify-content: space-between !important; gap: 8px !important; font-size: 9px !important; line-height: 1.05 !important; font-weight: 800 !important; margin-bottom: 2px !important; text-transform: uppercase !important; white-space: nowrap !important; overflow: hidden !important; } 
+        .dk-row span { overflow: hidden !important; text-overflow: ellipsis !important; } 
+        .dk-exp { display: flex !important; justify-content: center !important; font-size: 13px !important; line-height: 1.05 !important; font-weight: 900 !important; border-top: 2px solid black !important; padding-top: 2px !important; } 
       }`}</style>
       <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
          <Loader2 className="animate-spin text-[#8F6040] mb-6" size={64} />
@@ -210,9 +222,12 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
          <button onClick={() => window.history.back()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 w-full max-w-xs mt-8">Return to App</button>
       </div>
       <div id="print-data">
-        {labelsToPrint.map((item, idx) => {
+        {(Array.isArray(labelsToPrint) ? labelsToPrint : []).map((item, idx) => {
           const prepDateParts = formatDisplayDate(prepDate).split(','); const prepStr = prepDateParts.length > 1 ? prepDateParts[1].trim() : formatDisplayDate(prepDate);
-          return (<div key={`print-${idx}`} className="dk-label"><div className="dk-title">{item.text}</div><div className="dk-row"><span>PREP: {prepStr}</span><span>EMP: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span></div><div className="dk-exp">EXP: {getExpDate(prepDate)}</div></div>);
+          const quantity = String(item.labelQuantity || `${item.qty ?? 1} ${item.unit || 'item'}`).trim();
+          const station = String(item.station || 'General').trim();
+          const expiration = item.expirationDate || item.expDate || getExpDate(prepDate);
+          return (<div key={item.printId || `print-${idx}`} className="dk-label"><div className="dk-title">{item.text || item.name || 'Prep Item'}</div><div className="dk-row"><span>PREP: {prepStr}</span><span>BY: {appUser?.name ? appUser.name.split(' ')[0].toUpperCase() : '___'}</span></div><div className="dk-row"><span>QTY: {quantity}</span><span>STATION: {station}</span></div><div className="dk-exp">USE BY: {expiration}</div></div>);
         })}
       </div>
     </div>
