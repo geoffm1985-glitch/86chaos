@@ -1,8 +1,8 @@
 {
-  "version": "15.0.49",
-  "name": "86 Chaos 15.0.49 AI Page Limits and Invoice Noise Filtering",
-  "releasedAt": "2026-07-10",
-  "label": "86 Chaos 15.0.49",
-  "build": "15.0.49",
-  "updatedAt": "2026-07-10T00:00:00.000Z"
+  "version": "15.0.50",
+  "name": "86 Chaos 15.0.50 Inventory Supply Tracking, Visible Page Accounting, and Compact Controls",
+  "releasedAt": "2026-07-11",
+  "label": "86 Chaos 15.0.50",
+  "build": "15.0.50",
+  "updatedAt": "2026-07-11T00:00:00.000Z"
 }

@@ -108,7 +108,7 @@ module.exports = async function handler(req, res) {
       const usage = await getAiUsageSnapshot({ db: caller.db, restaurantId, monthKey, eventLimit: caller.isSuperAdmin ? parseEventLimit(req.query?.eventLimit, 20) : 0 });
       const customerSafeUsage = caller.isSuperAdmin
         ? usage
-        : Object.fromEntries(Object.entries(usage).filter(([key]) => !['events', 'exemptPagesProcessed'].includes(key)));
+        : Object.fromEntries(Object.entries(usage).filter(([key]) => !['events', 'exemptPagesProcessed', 'invoiceBypassPagesProcessed', 'menuBypassPagesProcessed'].includes(key)));
       return res.status(200).json({
         ok: true,
         monthKey,

@@ -1,7 +1,7 @@
 const { authorizeCrossProjectMaster, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
 
-const APP_VERSION = '15.0.48';
+const APP_VERSION = '15.0.50';
 const DEFAULT_MODEL = 'gemini-3.5-flash';
 const MAX_QUESTION_CHARS = 1600;
 const MAX_CONTEXT_CHARS = 26000;

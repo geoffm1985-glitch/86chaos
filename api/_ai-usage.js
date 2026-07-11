@@ -52,6 +52,14 @@ function scansFieldFor(scanType) {
   return scanType === 'menu' ? 'menuScansSubmitted' : 'invoiceScansSubmitted';
 }
 
+function processedFieldFor(scanType) {
+  return scanType === 'menu' ? 'menuPagesProcessed' : 'invoicePagesProcessed';
+}
+
+function bypassPagesFieldFor(scanType) {
+  return scanType === 'menu' ? 'menuBypassPagesProcessed' : 'invoiceBypassPagesProcessed';
+}
+
 function normalizePositiveInteger(value, fallback = 0) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
@@ -139,6 +147,10 @@ function usageDefaults(restaurantId, monthKey) {
     menuPagesLimit: DEFAULT_MENU_PAGE_LIMIT,
     invoiceScansSubmitted: 0,
     menuScansSubmitted: 0,
+    invoicePagesProcessed: 0,
+    menuPagesProcessed: 0,
+    invoiceBypassPagesProcessed: 0,
+    menuBypassPagesProcessed: 0,
     exemptPagesProcessed: 0
   };
 }
@@ -203,6 +215,9 @@ async function checkAndReserveAiScanPages({
         limitBypass: existing.limitBypass === true,
         bypassReason: existing.bypassReason || '',
         wouldHaveExceededLimit: existing.wouldHaveExceededLimit === true,
+        processedBefore: normalizePositiveInteger(existing.processedBefore, normalizePositiveInteger(existing.usedBefore, 0)),
+        processedAfter: normalizePositiveInteger(existing.processedAfter, normalizePositiveInteger(existing.usedAfter, 0)),
+        bypassPagesAfter: normalizePositiveInteger(existing.bypassPagesAfter, 0),
         eventRef,
         usageRef
       };
@@ -213,8 +228,12 @@ async function checkAndReserveAiScanPages({
     const usedField = usedFieldFor(cleanScanType);
     const limitField = limitFieldFor(cleanScanType);
     const scansField = scansFieldFor(cleanScanType);
+    const processedField = processedFieldFor(cleanScanType);
+    const bypassPagesField = bypassPagesFieldFor(cleanScanType);
     const usedBefore = normalizePositiveInteger(base[usedField], 0);
     const limit = normalizePositiveInteger(base[limitField], defaultLimitFor(cleanScanType));
+    const processedBefore = Math.max(normalizePositiveInteger(base[processedField], 0), usedBefore);
+    const bypassPagesBefore = normalizePositiveInteger(base[bypassPagesField], 0);
     const wouldHaveExceededLimit = usedBefore + safePageCount > limit;
     const userEmail = clean(decoded?.email);
     const userId = clean(decoded?.uid || decoded?.user_id || decoded?.sub);
@@ -234,6 +253,7 @@ async function checkAndReserveAiScanPages({
       bypassReason,
       wouldHaveExceededLimit,
       usedBefore,
+      processedBefore,
       limit,
       createdAt: now
     };
@@ -247,6 +267,10 @@ async function checkAndReserveAiScanPages({
       menuPagesLimit: normalizePositiveInteger(base.menuPagesLimit, DEFAULT_MENU_PAGE_LIMIT),
       invoiceScansSubmitted: normalizePositiveInteger(base.invoiceScansSubmitted, 0),
       menuScansSubmitted: normalizePositiveInteger(base.menuScansSubmitted, 0),
+      invoicePagesProcessed: Math.max(normalizePositiveInteger(base.invoicePagesProcessed, 0), normalizePositiveInteger(base.invoicePagesUsed, 0)),
+      menuPagesProcessed: Math.max(normalizePositiveInteger(base.menuPagesProcessed, 0), normalizePositiveInteger(base.menuPagesUsed, 0)),
+      invoiceBypassPagesProcessed: normalizePositiveInteger(base.invoiceBypassPagesProcessed, 0),
+      menuBypassPagesProcessed: normalizePositiveInteger(base.menuBypassPagesProcessed, 0),
       exemptPagesProcessed: normalizePositiveInteger(base.exemptPagesProcessed, 0),
       updatedAt: now
     };
@@ -258,6 +282,8 @@ async function checkAndReserveAiScanPages({
         ...commonEvent,
         status: 'blocked',
         usedAfter: usedBefore,
+        processedAfter: processedBefore,
+        bypassPagesAfter: bypassPagesBefore,
         completedAt: now,
         errorMessage: 'Monthly AI page limit reached.'
       });
@@ -279,21 +305,32 @@ async function checkAndReserveAiScanPages({
         limitBypass: false,
         bypassReason: '',
         wouldHaveExceededLimit: true,
+        processedBefore,
+        processedAfter: processedBefore,
+        bypassPagesAfter: bypassPagesBefore,
         eventRef,
         usageRef
       };
     }
 
     const usedAfter = limitBypass ? usedBefore : usedBefore + safePageCount;
+    const processedAfter = processedBefore + safePageCount;
+    const bypassPagesAfter = bypassPagesBefore + (limitBypass ? safePageCount : 0);
     usageWrite[usedField] = usedAfter;
+    usageWrite[processedField] = processedAfter;
     usageWrite[scansField] = normalizePositiveInteger(base[scansField], 0) + 1;
-    if (limitBypass) usageWrite.exemptPagesProcessed = normalizePositiveInteger(base.exemptPagesProcessed, 0) + safePageCount;
+    if (limitBypass) {
+      usageWrite.exemptPagesProcessed = normalizePositiveInteger(base.exemptPagesProcessed, 0) + safePageCount;
+      usageWrite[bypassPagesField] = bypassPagesAfter;
+    }
 
     transaction.set(usageRef, usageWrite, { merge: true });
     transaction.set(eventRef, {
       ...commonEvent,
       status: 'submitted',
-      usedAfter
+      usedAfter,
+      processedAfter,
+      bypassPagesAfter
     });
 
     return {
@@ -314,6 +351,9 @@ async function checkAndReserveAiScanPages({
       limitBypass,
       bypassReason,
       wouldHaveExceededLimit,
+      processedBefore,
+      processedAfter,
+      bypassPagesAfter,
       eventRef,
       usageRef
     };
@@ -358,12 +398,16 @@ async function cancelAiScanReservation({ db, reservation }) {
       const usage = usageSnap.data() || {};
       const usedField = usedFieldFor(reservation.scanType);
       const scansField = scansFieldFor(reservation.scanType);
+      const processedField = processedFieldFor(reservation.scanType);
+      const bypassPagesField = bypassPagesFieldFor(reservation.scanType);
       const usageUpdate = {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        [scansField]: Math.max(0, normalizePositiveInteger(usage[scansField], 0) - 1)
+        [scansField]: Math.max(0, normalizePositiveInteger(usage[scansField], 0) - 1),
+        [processedField]: Math.max(0, Math.max(normalizePositiveInteger(usage[processedField], 0), normalizePositiveInteger(usage[usedField], 0)) - reservation.pageCount)
       };
       if (reservation.limitBypass) {
         usageUpdate.exemptPagesProcessed = Math.max(0, normalizePositiveInteger(usage.exemptPagesProcessed, 0) - reservation.pageCount);
+        usageUpdate[bypassPagesField] = Math.max(0, normalizePositiveInteger(usage[bypassPagesField], 0) - reservation.pageCount);
       } else {
         usageUpdate[usedField] = Math.max(0, normalizePositiveInteger(usage[usedField], 0) - reservation.pageCount);
       }
@@ -381,6 +425,10 @@ async function getAiUsageSnapshot({ db, restaurantId, monthKey = getMonthKey(), 
     : Promise.resolve({ docs: [] });
   const [usageSnap, eventSnap] = await Promise.all([usageRef.get(), eventPromise]);
   const usage = usageSnap.exists ? { ...usageDefaults(restaurantId, monthKey), ...usageSnap.data() } : usageDefaults(restaurantId, monthKey);
+  usage.invoicePagesProcessed = Math.max(normalizePositiveInteger(usage.invoicePagesProcessed, 0), normalizePositiveInteger(usage.invoicePagesUsed, 0));
+  usage.menuPagesProcessed = Math.max(normalizePositiveInteger(usage.menuPagesProcessed, 0), normalizePositiveInteger(usage.menuPagesUsed, 0));
+  usage.invoiceBypassPagesProcessed = normalizePositiveInteger(usage.invoiceBypassPagesProcessed, 0);
+  usage.menuBypassPagesProcessed = normalizePositiveInteger(usage.menuBypassPagesProcessed, 0);
   return {
     ...usage,
     createdAt: firestoreTimestampToIso(usage.createdAt),
@@ -404,6 +452,10 @@ async function updateAiUsageLimits({ db, restaurantId, monthKey = getMonthKey(),
       menuPagesLimit: normalizePositiveInteger(menuPagesLimit, DEFAULT_MENU_PAGE_LIMIT),
       invoiceScansSubmitted: normalizePositiveInteger(existing.invoiceScansSubmitted, 0),
       menuScansSubmitted: normalizePositiveInteger(existing.menuScansSubmitted, 0),
+      invoicePagesProcessed: Math.max(normalizePositiveInteger(existing.invoicePagesProcessed, 0), normalizePositiveInteger(existing.invoicePagesUsed, 0)),
+      menuPagesProcessed: Math.max(normalizePositiveInteger(existing.menuPagesProcessed, 0), normalizePositiveInteger(existing.menuPagesUsed, 0)),
+      invoiceBypassPagesProcessed: normalizePositiveInteger(existing.invoiceBypassPagesProcessed, 0),
+      menuBypassPagesProcessed: normalizePositiveInteger(existing.menuBypassPagesProcessed, 0),
       exemptPagesProcessed: normalizePositiveInteger(existing.exemptPagesProcessed, 0),
       updatedAt: now
     };
@@ -484,7 +536,8 @@ function buildLimitResponse(reservation) {
     used: reservation.usedBefore,
     limit: reservation.limit,
     remaining: Math.max(0, reservation.limit - reservation.usedBefore),
-    monthKey: reservation.monthKey
+    monthKey: reservation.monthKey,
+    processed: reservation.processedBefore
   };
 }
 
@@ -498,7 +551,9 @@ function buildDuplicateResponse(reservation) {
     used: reservation.used,
     limit: reservation.limit,
     remaining: reservation.remaining,
-    monthKey: reservation.monthKey
+    monthKey: reservation.monthKey,
+    processed: reservation.processedAfter,
+    bypassPages: reservation.bypassPagesAfter
   };
 }
 

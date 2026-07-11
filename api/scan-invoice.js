@@ -10,7 +10,7 @@ const {
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.49';
+const INVOICE_SCANNER_VERSION = '15.0.50';
 const DEFAULT_INVOICE_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 function cleanJsonText(text = '') {
@@ -186,7 +186,7 @@ function normalizeRow(row, index, data = {}) {
     confidence: r.confidence || data.confidence || '',
     ...r
   };
-  normalized.isInventoryLine = isPurchasedProductRow(normalized);
+  normalized.isInventoryLine = ['stock', 'non_food'].includes(classifyInvoiceRow(normalized).kind);
   return normalized;
 }
 
@@ -208,19 +208,19 @@ function normalizeInvoicePayload(parsed) {
       scannerClassification: classification.kind,
       classificationReason: classification.reason,
       classificationCategory: classification.category,
-      isInventoryLine: classification.kind === 'stock'
+      isInventoryLine: ['stock', 'non_food'].includes(classification.kind)
     };
   };
 
   const normalizedAllRows = allExtractedRows.map(annotateRow);
   const normalizedModelLineItems = modelLineItems.map(annotateRow);
 
-  // Build Stock Matcher from BOTH model lineItems and every extracted row. Distributor
-  // invoices often put valid products only in allExtractedRows when the model struggles
-  // with a dense line format. Deterministic classification wins over the model label.
+  // Build Stock Matcher from BOTH model lineItems and every extracted row. Food products
+  // and purchased non-food supplies are both inventory candidates so gloves, paper goods,
+  // chemicals, containers, and similar purchases cannot disappear behind an automatic filter.
   const productMap = new Map();
   [...normalizedModelLineItems, ...normalizedAllRows]
-    .filter(row => row.scannerClassification === 'stock')
+    .filter(row => ['stock', 'non_food'].includes(row.scannerClassification))
     .forEach(row => {
       const key = productRowKey(row);
       const existing = productMap.get(key) || {};
@@ -228,26 +228,18 @@ function normalizeInvoicePayload(parsed) {
         ...existing,
         ...row,
         isInventoryLine: true,
-        rowType: 'product',
-        scannerClassification: 'stock'
+        rowType: row.scannerClassification === 'non_food' ? 'non_food_supply' : 'product'
       });
     });
   const productRows = Array.from(productMap.values());
   const productKeys = new Set(productRows.map(productRowKey));
 
-  const nonFoodMap = new Map();
-  normalizedAllRows
-    .filter(row => row.scannerClassification === 'non_food' && !productKeys.has(productRowKey(row)))
-    .forEach(row => nonFoodMap.set(productRowKey(row), { ...row, isInventoryLine: false }));
-  const excludedNonFoodRows = Array.from(nonFoodMap.values());
-  const nonFoodKeys = new Set(excludedNonFoodRows.map(productRowKey));
-
   // Needs Review contains only purchase-like rows that lack enough evidence. Headers,
-  // addresses, totals, tax, fees, and obvious non-food supplies never inflate this list.
+  // addresses, totals, tax, fees, and other document noise stay out of inventory.
   const reviewMap = new Map();
   normalizedAllRows
     .filter(row => row.scannerClassification === 'review')
-    .filter(row => !productKeys.has(productRowKey(row)) && !nonFoodKeys.has(productRowKey(row)))
+    .filter(row => !productKeys.has(productRowKey(row)))
     .forEach(row => reviewMap.set(productRowKey(row), { ...row, isInventoryLine: false }));
   const skippedRows = Array.from(reviewMap.values());
   const ignoredDocumentRowCount = normalizedAllRows.filter(row => row.scannerClassification === 'document').length;
@@ -281,7 +273,6 @@ function normalizeInvoicePayload(parsed) {
     lineItems: productRows,
     allExtractedRows: normalizedAllRows,
     skippedRows,
-    excludedNonFoodRows,
     ignoredDocumentRowCount,
     rawTranscription: data.rawTranscription || data.fullText || '',
     extractionNotes: data.extractionNotes || [],
@@ -524,20 +515,20 @@ Rules:
 - Return ONLY valid JSON. No markdown.
 - Do not summarize.
 - Do not skip tiny rows, handwritten notes, fees, credits, taxes, deposits, totals, PO numbers, terms, route numbers, vendor/customer info, page numbers, or footer notes.
-- lineItems MUST contain ONLY food, beverage, and ingredient products purchased/delivered that should be eligible to update restaurant food inventory stock.
+- lineItems MUST contain every purchased inventory item that a restaurant may need to count, including food, beverages, ingredients, paper goods, disposables, cleaning supplies, PPE, maintenance supplies, office supplies, and reusable smallwares/equipment.
 - Distributor rows may be one dense OCR string. A row beginning with a purchased quantity and unit such as "1 CS", "2 EA", or "3 PK" is normally a product row when it also contains a pack size, SKU/product code, description, or price.
 - Parse dense product strings into quantity, UOM, packSize, productCode, itemName, unitPrice, and totalPrice instead of putting the whole row in skipped/non-product output.
 - A row with a strong purchase signature such as quantity + case/unit + pack/SKU/description is a product even if OCR or an earlier classifier mislabeled its rowType as note, header, or metadata.
 - Do not classify chicken, meat, dairy, produce, sauces, dressings, or beverages as notes merely because their row formatting is unusual.
-- Obvious non-food supplies must NOT be placed in lineItems. Examples: napkins, paper towels, gloves, chemicals, sanitizer, foil, plastic wrap, disposable cups/lids/straws/cutlery, takeout containers, trash bags, cleaning tools, office supplies, maintenance parts, and reusable equipment. Keep these rows in allExtractedRows and mark rowType as non_food_supply, cleaning_supply, packaging_supply, disposable_supply, equipment, or maintenance_supply.
+- Purchased non-food supplies MUST be placed in lineItems so they reach inventory matching. Examples: napkins, paper towels, gloves, chemicals, sanitizer, foil, plastic wrap, disposable cups/lids/straws/cutlery, takeout containers, trash bags, cleaning tools, office supplies, maintenance parts, and reusable equipment. Mark them with a specific rowType such as non_food_supply, cleaning_supply, packaging_supply, disposable_supply, equipment, or maintenance_supply.
 - Do NOT put email addresses, From/To/Subject lines, vendor contact info, customer/bill-to/ship-to fields, headers, footers, page numbers, terms, totals, taxes, freight, deposits, fees, discounts, credits, payments, balances, notes, signatures, or account metadata in lineItems.
 - Preserve every visible line/row in allExtractedRows, even if it is not an inventory item.
 - If a value is unclear, include it as bestGuess and add a warning.
 - Keep strings short and JSON-safe. Escape quotation marks inside values.
 - rawTranscription may be a compact readable summary of the whole document; do not let rawTranscription make the JSON too large.
-- For inventory/product rows only, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
+- For every purchased inventory row, including non-food supplies, include quantity, orderedQty, shippedQty, backOrderedQty, productCode/SKU/itemNumber, itemName, packSize, UOM, weight/catchWeight, unitPrice, totalPrice, tax, discount, deposit, and rawText.
 - Mark non-product rows in allExtractedRows with rowType such as tax, freight, deposit, subtotal, total, discount, credit, payment, note, header, footer, contact, customer, metadata.
-- Mark obvious purchased non-food supplies with a specific non-food rowType. They are preserved for audit but excluded from food stock matching unless a human deliberately promotes them.
+- Mark obvious purchased non-food supplies with a specific non-food rowType and include them in lineItems. They must be matched to inventory or deliberately added as a new inventory item before approval.
 - For catch-weight foods like chicken, beef, fish, cheese, and produce, include weight and weightPerCaseLbs when visible or strongly implied by pack size.
 - For longer multipage invoices, keep going until every visible product row is represented in lineItems and every visible row is represented in allExtractedRows.
 ${compactRules}
@@ -865,6 +856,8 @@ async function handler(req, res) {
       pageCount,
       usedBefore: usageReservation.usedBefore,
       usedAfter: usageReservation.usedAfter,
+      processedAfter: usageReservation.processedAfter,
+      bypassPagesAfter: usageReservation.bypassPagesAfter,
       limit: usageReservation.limit,
       remaining: usageReservation.remaining,
       limitBypass: usageReservation.limitBypass,

@@ -14,7 +14,7 @@ const {
 const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 
-const MENU_SCANNER_VERSION = '15.0.49';
+const MENU_SCANNER_VERSION = '15.0.50';
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -342,6 +342,8 @@ module.exports = async function handler(req, res) {
         pageCount,
         usedBefore: usageReservation.usedBefore,
         usedAfter: usageReservation.usedAfter,
+        processedAfter: usageReservation.processedAfter,
+        bypassPagesAfter: usageReservation.bypassPagesAfter,
         limit: usageReservation.limit,
         remaining: usageReservation.remaining,
         limitBypass: usageReservation.limitBypass,
