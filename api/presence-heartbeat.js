@@ -1,5 +1,4 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
@@ -14,8 +13,10 @@ function loadServiceAccount() {
   };
 }
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin;
+  admin.initializeApp({ credential: admin.credential.cert(loadServiceAccount()) });
+  return admin;
 }
 
 function safeString(value, fallback = '') {
@@ -31,11 +32,12 @@ function memberDocId(uid, restaurantId) {
   return `${safeString(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${safeString(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
 }
 function hasMembership(user, uid, email, restaurantId) {
-  const mapped = user?.memberships?.[restaurantId];
   return Boolean(
     user?.restaurantId === restaurantId ||
+    user?.activeRestaurantId === restaurantId ||
+    user?.defaultRestaurantId === restaurantId ||
     user?.workspaceIds?.includes?.(restaurantId) ||
-    (mapped && typeof mapped === 'object' && mapped.isActive !== false)
+    user?.memberships?.[restaurantId]?.isActive === true
   );
 }
 async function loadMembership(db, uid, email, restaurantId) {
@@ -55,7 +57,7 @@ module.exports = async function handler(req, res) {
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase login token.' });
 
-    const app = initAdmin(req);
+    const app = initAdmin();
     const decoded = await app.auth().verifyIdToken(token);
     const db = app.firestore();
     const uid = decoded.uid;
@@ -69,10 +71,8 @@ module.exports = async function handler(req, res) {
     if (!restaurantId) return res.status(400).json({ ok: false, error: 'Missing restaurant ID for heartbeat.' });
 
     const isSuperAdmin = decoded.superAdmin === true || user.isSuperAdmin === true;
-    const mapped = user.memberships?.[restaurantId];
-    const mappedMembership = mapped && typeof mapped === 'object' && mapped.isActive !== false ? mapped : null;
-    const storedMembership = await loadMembership(db, uid, decoded.email, restaurantId);
-    const loadedMembership = storedMembership || mappedMembership;
+    const mappedMembership = user.memberships?.[restaurantId] || null;
+    const loadedMembership = mappedMembership || await loadMembership(db, uid, decoded.email, restaurantId);
     const hasWorkspace = hasMembership(user, uid, decoded.email, restaurantId) || !!loadedMembership;
     if (!isSuperAdmin && !hasWorkspace) {
       return res.status(403).json({ ok: false, error: 'Heartbeat restaurant does not match an active workspace membership for this login.' });
@@ -112,7 +112,7 @@ module.exports = async function handler(req, res) {
       userName: safeString(membership?.name || user.name || decoded.name || ''),
       userEmail: safeString(membership?.email || user.email || decoded.email || ''),
       email: safeString(membership?.email || user.email || decoded.email || ''),
-      role: safeString(membership?.role || (user.restaurantId === restaurantId ? user.role : '') || ''),
+      role: safeString(membership?.role || user.role || ''),
       photoURL: safeString(membership?.photoURL || user.photoURL || ''),
       createdAt: user.createdAt || stamp,
       updatedAt: stamp,
@@ -134,7 +134,7 @@ module.exports = async function handler(req, res) {
       state,
       sessionId,
       mode: 'presence-check-in',
-      projectId: app.options?.projectId || process.env.FIREBASE_PROJECT_ID || '',
+      projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount()?.project_id || loadServiceAccount()?.projectId || '',
       written: ['livePresence']
     });
   } catch (err) {

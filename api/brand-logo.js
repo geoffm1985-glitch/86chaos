@@ -1,9 +1,18 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const crypto = require('crypto');
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
+  const serviceAccount = raw ? JSON.parse(raw) : {
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
+  };
+  const projectId = serviceAccount.project_id || serviceAccount.projectId || process.env.FIREBASE_PROJECT_ID;
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || (projectId ? `${projectId}.firebasestorage.app` : undefined);
+  admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
+  return admin;
 }
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
@@ -22,14 +31,7 @@ function memberDocId(uid, restaurantId) {
   return `${cleanString(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${cleanString(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
 }
 function hasWorkspace(user, restaurantId) {
-  const member = user?.memberships?.[restaurantId];
-  return Boolean(
-    restaurantId && (
-      user?.restaurantId === restaurantId ||
-      user?.workspaceIds?.includes?.(restaurantId) ||
-      (member && typeof member === 'object' && member.isActive !== false)
-    )
-  );
+  return Boolean(user?.restaurantId === restaurantId || user?.activeRestaurantId === restaurantId || user?.defaultRestaurantId === restaurantId || user?.workspaceIds?.includes?.(restaurantId) || user?.memberships?.[restaurantId]?.isActive === true);
 }
 async function loadMembership(db, uid, email, restaurantId) {
   const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
@@ -92,25 +94,18 @@ async function verifyCaller(req, db, auth) {
 function canManageBrandingFor(ctx, restaurant, targetRestaurantId, membership = null) {
   const restaurantOwnerEmail = norm(restaurant?.ownerEmail || restaurant?.ownerEmailLower || restaurant?.ownerUserEmail);
   const ownerId = cleanString(restaurant?.ownerUid || restaurant?.ownerUserId);
-  const legacyPrimary = ctx.caller?.restaurantId === targetRestaurantId;
-  const activeMember = membership && membership.isActive !== false ? membership : null;
-  const legacySource = legacyPrimary ? (ctx.caller || {}) : {};
-  const roleSource = activeMember
-    ? {
-        ...legacySource,
-        ...activeMember,
-        permissions: { ...(legacySource.permissions || {}), ...(activeMember.permissions || {}) }
-      }
-    : legacySource;
-  const scopedPerms = roleSource?.permissions || {};
+  const memberPerms = membership?.permissions || {};
   const callerOwnsTarget = Boolean(
     ctx.isSuperAdmin ||
-    ((activeMember || legacyPrimary) && (
-      roleSource?.isOwner === true ||
-      roleSource?.accountOwner === true ||
-      roleSource?.owner === true ||
-      roleSource?.workspaceOwner === true ||
-      norm(roleSource?.accountRole) === 'owner'
+    (ctx.hasWorkspace(targetRestaurantId) && (
+      membership?.isOwner === true ||
+      membership?.accountOwner === true ||
+      membership?.workspaceOwner === true ||
+      ctx.caller?.isOwner === true ||
+      ctx.caller?.accountOwner === true ||
+      ctx.caller?.owner === true ||
+      ctx.caller?.workspaceOwner === true ||
+      norm(ctx.caller?.accountRole) === 'owner'
     )) ||
     (restaurantOwnerEmail && restaurantOwnerEmail === ctx.callerEmail) ||
     (ownerId && (ownerId === ctx.decoded.uid || ownerId === ctx.callerDocId))
@@ -119,10 +114,13 @@ function canManageBrandingFor(ctx, restaurant, targetRestaurantId, membership = 
   return Boolean(
     ctx.isSuperAdmin ||
     callerOwnsTarget ||
-    ((activeMember || legacyPrimary) && (
-      roleSource?.isAdmin === true ||
-      scopedPerms.branding === true ||
-      scopedPerms.settings === true
+    (ctx.hasWorkspace(targetRestaurantId) && (
+      membership?.isAdmin === true ||
+      ctx.caller?.isAdmin === true ||
+      memberPerms.branding === true ||
+      memberPerms.settings === true ||
+      ctx.permissions?.branding === true ||
+      ctx.permissions?.settings === true
     ))
   );
 }
@@ -148,19 +146,14 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const app = initAdmin(req);
+    const app = initAdmin();
     const db = app.firestore();
     const auth = app.auth();
     const ctx = await verifyCaller(req, db, auth);
     const body = req.body || {};
     const targetRestaurantId = safeFilenamePart(body.restaurantId || ctx.userRestaurantId, 'restaurant').replace(/\.+/g, '_');
     if (!targetRestaurantId) return res.status(400).json({ error: 'Missing restaurant workspace for logo upload.' });
-    const mappedMembership = ctx.caller?.memberships?.[targetRestaurantId];
-    const activeMappedMembership = mappedMembership && typeof mappedMembership === 'object' && mappedMembership.isActive !== false
-      ? mappedMembership
-      : null;
-    const storedMembership = await ctx.loadMembership(targetRestaurantId);
-    const membership = storedMembership || activeMappedMembership;
+    const membership = ctx.hasWorkspace(targetRestaurantId) ? (ctx.caller?.memberships?.[targetRestaurantId] || null) : await ctx.loadMembership(targetRestaurantId);
     if (!ctx.isSuperAdmin && !membership && !ctx.hasWorkspace(targetRestaurantId)) {
       return res.status(403).json({ error: 'Logo uploads can only be saved inside an active workspace membership.' });
     }

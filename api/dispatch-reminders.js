@@ -44,7 +44,7 @@ module.exports = async function handler(req, res) {
   const expectedSecret = process.env.CRON_SECRET;
   if (!expectedSecret || getCronSecret(req) !== expectedSecret) return res.status(401).json({ ok: false, error: 'Unauthorized cron request.' });
 
-  const app = initAdmin(req);
+  const app = initAdmin();
   const db = app.firestore();
   const cronRate = await enforceRateLimit({ db, req, routeName: 'dispatch-reminders', limit: Number(process.env.REMINDER_ROUTE_RATE_LIMIT || 12), windowMs: 60 * 1000 });
   if (!cronRate.ok) return sendRateLimited(res, cronRate);

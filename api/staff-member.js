@@ -1,8 +1,20 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
+  if (raw) {
+    admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
+  } else {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
+      })
+    });
+  }
+  return admin;
 }
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
@@ -12,7 +24,7 @@ function cleanMoney(v) {
   return Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0;
 }
 function cleanPerms(perms = {}) {
-  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'menuIntelligence', 'hr', 'wageView', 'wageEdit'];
+  const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'menuIntelligence', 'wageView', 'wageEdit'];
   return allowed.reduce((acc, key) => {
     acc[key] = perms?.[key] === true;
     return acc;
@@ -48,29 +60,19 @@ async function loadWorkspaceMember(db, uid, email, restaurantId) {
   return null;
 }
 function resolveRoleProfile(user, membership, restaurantId) {
-  const legacyPrimary = user?.restaurantId === restaurantId;
-  const activeMembership = membership && membership.isActive !== false ? membership : null;
-  // An explicit inactive membership suppresses the legacy fallback. Top-level
-  // account roles are valid only inside the primary legacy restaurantId.
-  const legacySource = legacyPrimary ? (user || {}) : {};
-  const source = activeMembership
-    ? {
-        ...legacySource,
-        ...activeMembership,
-        permissions: { ...(legacySource.permissions || {}), ...(activeMembership.permissions || {}) }
-      }
-    : (!membership ? legacySource : {});
+  const legacyMatch = user?.restaurantId === restaurantId || user?.defaultRestaurantId === restaurantId || user?.activeRestaurantId === restaurantId;
+  const source = membership || (legacyMatch ? user : {});
   return {
     name: cleanString(source.name || user?.name || ''),
     email: norm(source.email || user?.email || ''),
     phone: cleanString(source.phone || user?.phone || ''),
-    role: cleanString(source.role || 'Staff') || 'Staff',
-    wage: cleanMoney(source.wage ?? 0),
+    role: cleanString(source.role || user?.role || 'Staff') || 'Staff',
+    wage: cleanMoney(source.wage ?? user?.wage ?? 0),
     photoURL: cleanString(source.photoURL || user?.photoURL || ''),
-    isAdmin: source.isAdmin === true,
-    isOwner: source.isOwner === true || source.accountOwner === true || source.owner === true || source.workspaceOwner === true || norm(source.accountRole) === 'owner',
-    permissions: cleanPerms(source.permissions || {}),
-    isActive: Boolean(source && Object.keys(source).length) && source.isActive !== false && user?.isActive !== false
+    isAdmin: source.isAdmin === true || (legacyMatch && user?.isAdmin === true),
+    isOwner: source.isOwner === true || source.accountOwner === true || (legacyMatch && (user?.isOwner === true || user?.accountOwner === true || user?.owner === true || user?.workspaceOwner === true || norm(user?.accountRole) === 'owner')),
+    permissions: cleanPerms({ ...(legacyMatch ? (user?.permissions || {}) : {}), ...(source.permissions || {}) }),
+    isActive: source.isActive !== false && user?.isActive !== false
   };
 }
 
@@ -99,12 +101,10 @@ async function verifyCaller(req, body, db, auth) {
 
   const restSnap = await db.collection('restaurants').doc(requestedRestaurantId).get();
   const restaurant = restSnap.exists ? restSnap.data() : {};
-  const mappedMembership = membershipFromUserMap(caller, requestedRestaurantId);
-  const storedMembership = await loadWorkspaceMember(db, decoded.uid, callerEmail, requestedRestaurantId);
-  const callerMembership = storedMembership || mappedMembership;
+  const callerMembership = membershipFromUserMap(caller, requestedRestaurantId) || await loadWorkspaceMember(db, decoded.uid, callerEmail, requestedRestaurantId);
   const callerProfile = resolveRoleProfile(caller, callerMembership, requestedRestaurantId);
 
-  const isSuperAdmin = decoded.superAdmin === true || caller?.isSuperAdmin === true || caller?.systemAccess?.superAdmin === true || masterEmails().includes(callerEmail);
+  const isSuperAdmin = decoded.superAdmin === true || caller?.isSuperAdmin === true || masterEmails().includes(callerEmail);
   const isOwner = Boolean(
     isSuperAdmin ||
     callerProfile.isOwner ||
@@ -115,14 +115,7 @@ async function verifyCaller(req, body, db, auth) {
     norm(restaurant.ownerEmailLower) === callerEmail ||
     norm(restaurant.ownerUserEmail) === callerEmail
   );
-  const activeScopedMembership = Boolean(callerMembership && callerMembership.isActive !== false);
-  const legacyMembership = Boolean(
-    !callerMembership && (
-      caller.restaurantId === requestedRestaurantId ||
-      caller.workspaceIds?.includes?.(requestedRestaurantId)
-    )
-  );
-  const isMember = Boolean(isSuperAdmin || isOwner || activeScopedMembership || legacyMembership);
+  const isMember = Boolean(isSuperAdmin || isOwner || callerMembership || caller.restaurantId === requestedRestaurantId || caller.workspaceIds?.includes?.(requestedRestaurantId) || caller.memberships?.[requestedRestaurantId]);
   if (!isMember) throw new Error('Your login is not a member of this workspace.');
 
   const permissions = callerProfile.permissions || {};
@@ -164,7 +157,7 @@ function buildMembershipPayload(ctx, uid, base = {}, existing = {}) {
   const incomingPerms = cleanPerms(base.permissions || {});
   if (incomingPerms.wageEdit) incomingPerms.wageView = true;
   const currentPerms = cleanPerms(existing.permissions || {});
-  const ownerOnlyPermissionKeys = ['wageView', 'wageEdit', 'settings', 'branding', 'integrations', 'menuIntelligence', 'hr'];
+  const ownerOnlyPermissionKeys = ['wageView', 'wageEdit', 'settings', 'branding', 'integrations', 'menuIntelligence'];
   const permissions = ctx.canChooseWageAccess ? incomingPerms : { ...currentPerms, ...incomingPerms };
   if (!ctx.canChooseWageAccess) ownerOnlyPermissionKeys.forEach((key) => { permissions[key] = currentPerms[key] === true; });
   if (permissions.wageEdit) permissions.wageView = true;
@@ -259,7 +252,7 @@ async function upsertAccountAndMembership(db, uid, accountBase, membershipPayloa
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const app = initAdmin(req);
+    const app = initAdmin();
     const db = app.firestore();
     const auth = app.auth();
     const body = req.body || {};

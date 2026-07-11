@@ -1,49 +1,9 @@
-const { readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace, requireAppCheckIfEnforced } = require('./_chaos-admin');
-const { verifyRequestToken, downloadFirebaseStorageUrl } = require('./_firebase-project-admin');
+const { initAdmin, readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace, requireAppCheckIfEnforced } = require('./_chaos-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
-const {
-  getIdempotencyKey,
-  resolveScanPageCount,
-  authorizeAiScanWorkspace,
-  checkAndReserveAiScanPages,
-  completeAiScanUsageEvent,
-  cancelAiScanReservation,
-  buildLimitResponse,
-  buildDuplicateResponse
-} = require('./_ai-usage');
+const DEFAULT_MENU_SCAN_MAX_BYTES = 20 * 1024 * 1024;
 
 
-const MENU_SCANNER_VERSION = '15.0.52';
-const {
-  getAllowedGeminiModels,
-  getHardOutputTokenLimit,
-  getHardInputByteLimit,
-  getHardRateLimit,
-  createProviderCallBudget,
-  assertInputWithinHardLimit,
-  assertPageCountWithinHardLimit,
-  detectMimeTypeFromBuffer,
-  assertImageDimensionsWithinHardLimit
-} = require('./_ai-policy');
-
-function requireTenantStoragePath(path = '', restaurantId = '', folder = '') {
-  const clean = String(path || '').trim().replace(/^\/+/, '');
-  const expectedRestaurantId = String(restaurantId || '').trim();
-  const segments = clean.split('/');
-  const invalid = !clean ||
-    !expectedRestaurantId ||
-    clean.includes('\\') ||
-    segments.length < 3 ||
-    segments[0] !== expectedRestaurantId ||
-    segments[1] !== folder ||
-    segments.slice(2).some(segment => !segment || segment === '.' || segment === '..');
-  if (invalid) {
-    const error = new Error('Menu upload path must be inside this workspace\'s approved menuUploads folder.');
-    error.statusCode = 403;
-    throw error;
-  }
-  return clean;
-}
+const MENU_SCANNER_VERSION = '15.0.10';
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -161,15 +121,16 @@ function normalizeMenuPayload(parsed = {}, inventoryItems = []) {
 }
 
 function getMenuModelCandidates() {
-  const configured = process.env.MENU_SCAN_GEMINI_MODEL || process.env.GEMINI_MENU_MODEL || '';
-  return getAllowedGeminiModels({
-    feature: 'menu',
+  const configured = process.env.MENU_SCAN_GEMINI_MODEL || process.env.GEMINI_MENU_MODEL || process.env.GEMINI_MODEL || '';
+  return Array.from(new Set([
     configured,
-    defaults: ['gemini-2.5-flash-lite']
-  });
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash'
+  ].map(v => String(v || '').trim()).filter(Boolean)));
 }
 
-async function callGeminiMenuScan({ apiKey, prompt, contentType, buffer, modelCandidates, callBudget }) {
+async function callGeminiMenuScan({ apiKey, prompt, contentType, buffer }) {
   let lastError = null;
   const requestBody = {
     contents: [{
@@ -179,15 +140,10 @@ async function callGeminiMenuScan({ apiKey, prompt, contentType, buffer, modelCa
         { inlineData: { mimeType: contentType, data: buffer.toString('base64') } }
       ]
     }],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.2,
-      maxOutputTokens: getHardOutputTokenLimit('menu', process.env.MENU_SCAN_MAX_OUTPUT_TOKENS)
-    }
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
   };
 
-  for (const model of modelCandidates) {
-    callBudget.consume({ model, attempt: 'menu-extraction' });
+  for (const model of getMenuModelCandidates()) {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -248,88 +204,50 @@ async function canScanMenu(app, ctx, restaurantId) {
   );
 }
 
-
-const menuScanMemoryRate = new Map();
-function allowMenuScanWithoutDb(decoded, limit = 8, windowMs = 60 * 1000) {
-  const key = String(decoded?.uid || decoded?.email || 'unknown');
-  const now = Date.now();
-  const row = menuScanMemoryRate.get(key) || { startedAt: now, count: 0 };
-  if (now - row.startedAt >= windowMs) {
-    row.startedAt = now;
-    row.count = 0;
-  }
-  row.count += 1;
-  menuScanMemoryRate.set(key, row);
-  return row.count <= limit;
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
-  let usageReservation = null;
-  let usageDb = null;
-  let providerCallStarted = false;
-  let usedModel = '';
-  let providerCallBudget = null;
-  let estimatedInputTokens = 0;
-  let estimatedOutputTokens = 0;
   try {
+    const app = initAdmin();
+    const appCheck = await requireAppCheckIfEnforced(app, req);
+    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
+    const db = app.firestore();
     const body = await readBody(req);
     const restaurantId = String(body.restaurantId || '').trim();
     if (!restaurantId) return res.status(400).json({ ok: false, error: 'restaurantId is required.' });
 
-    const authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
-    const { app, decoded, projectId } = authContext;
-    const access = await authorizeAiScanWorkspace({ app, decoded, restaurantId, scanType: 'menu' });
-    usageDb = access.db;
-    const appCheck = await requireAppCheckIfEnforced(app, req);
-    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
-
-    const scanLimit = getHardRateLimit('menu', process.env.SCAN_MENU_RATE_LIMIT);
-    const rate = await enforceRateLimit({ db: usageDb, req, decoded, routeName: 'scan-menu', limit: scanLimit, windowMs: 60 * 1000 });
+    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase authorization token.' });
+    const decoded = await app.auth().verifyIdToken(token);
+    const rate = await enforceRateLimit({ db, req, decoded, routeName: 'scan-menu', limit: Number(process.env.SCAN_MENU_RATE_LIMIT || 8), windowMs: 60 * 1000 });
     if (!rate.ok) return sendRateLimited(res, rate);
+    const caller = await loadCaller(app, decoded, restaurantId);
+    const ctx = { ...caller, decoded, uid: decoded.uid, email: decoded.email || '', user: caller.accountUser, restaurantId };
+    if (!(await canScanMenu(app, ctx, restaurantId))) return res.status(403).json({ ok: false, error: 'Menu Intelligence access is required.' });
 
-    if (!String(body.storagePath || '').trim()) return res.status(400).json({ ok: false, error: 'storagePath is required.' });
-    const storagePath = requireTenantStoragePath(body.storagePath, restaurantId, 'menuUploads');
+    const storagePath = String(body.storagePath || '').trim();
+    if (!storagePath) return res.status(400).json({ ok: false, error: 'storagePath is required.' });
+    if (!storagePath.startsWith(`${restaurantId}/menuUploads/`)) return res.status(403).json({ ok: false, error: 'Menu upload path is not restaurant-scoped.' });
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing GEMINI_API_KEY in Vercel environment variables.' });
 
-    const maxBytes = getHardInputByteLimit('menu', process.env.MENU_SCAN_MAX_BYTES);
-    let contentType = body.contentType || 'application/octet-stream';
-    let buffer;
     const menuFile = app.storage().bucket().file(storagePath);
     const [metadata] = await menuFile.getMetadata().catch(() => ([{}]));
-    contentType = body.contentType || metadata?.contentType || contentType;
+    const contentType = body.contentType || metadata?.contentType || 'application/octet-stream';
     const purpose = metadata?.metadata?.purpose || '';
-    if (purpose !== 'menu-scan') return res.status(400).json({ ok: false, error: 'This uploaded file is not marked as a menu scan. Upload it again from Menu Intelligence.' });
-    const reportedBytes = Number(metadata?.size || 0);
-    if (reportedBytes && reportedBytes > maxBytes) return res.status(413).json({ ok: false, error: `Menu file is over the current ${Math.round(maxBytes / 1048576)}MB scanner limit.` });
-    [buffer] = await menuFile.download();
-
-    assertInputWithinHardLimit('menu', buffer.length);
-    contentType = detectMimeTypeFromBuffer(buffer, contentType);
+    if (purpose && purpose !== 'menu-scan') return res.status(400).json({ ok: false, error: 'This uploaded file is not marked as a menu scan. Upload it again from Menu Intelligence.' });
     if (!/^image\//i.test(contentType) && contentType !== 'application/pdf') return res.status(415).json({ ok: false, error: 'Menu scans must be an image or PDF.' });
-    assertImageDimensionsWithinHardLimit('menu', buffer, contentType);
-    if (buffer.length > maxBytes) return res.status(413).json({ ok: false, error: `Menu file is over the current ${Math.round(maxBytes / 1048576)}MB scanner limit.` });
-
-    const pageCount = await resolveScanPageCount({ mimeType: contentType, buffer });
-    assertPageCountWithinHardLimit('menu', pageCount);
-    const modelCandidates = getMenuModelCandidates();
-    const idempotencyKey = getIdempotencyKey(req, body);
-    usageReservation = await checkAndReserveAiScanPages({
-      db: usageDb,
-      restaurantId,
-      scanType: 'menu',
-      pageCount,
-      decoded,
-      idempotencyKey,
-      provider: 'google_gemini',
-      model: modelCandidates[0] || '',
-      sourceRoute: '/api/scan-menu'
-    });
-    if (usageReservation.blocked) return res.status(429).json(buildLimitResponse(usageReservation));
-    if (usageReservation.duplicate) return res.status(409).json(buildDuplicateResponse(usageReservation));
-
+    const maxBytes = parseInt(process.env.MENU_SCAN_MAX_BYTES || String(DEFAULT_MENU_SCAN_MAX_BYTES), 10);
+    const reportedBytes = Number(metadata?.size || 0);
+    if (reportedBytes && reportedBytes > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      return res.status(413).json({ ok: false, error: `Menu file is over the current ${mb}MB scanner limit. Compress it, split the PDF, or upload fewer pages.` });
+    }
+    const [buffer] = await menuFile.download();
+    if (buffer.length > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      return res.status(413).json({ ok: false, error: `Menu file is over the current ${mb}MB scanner limit. Compress it, split the PDF, or upload fewer pages.` });
+    }
     const inventoryItems = Array.isArray(body.inventoryItems) ? body.inventoryItems : [];
     const prompt = [
       'You are helping a restaurant build menu-to-inventory dependency records.',
@@ -339,39 +257,13 @@ module.exports = async function handler(req, res) {
       `Known inventory names for matching context: ${inventoryItems.map(i => i.name).filter(Boolean).slice(0, 350).join(', ')}`
     ].join('\n');
 
-    providerCallStarted = true;
-    providerCallBudget = createProviderCallBudget('menu');
-    const { data, model } = await callGeminiMenuScan({ apiKey, prompt, contentType, buffer, modelCandidates, callBudget: providerCallBudget });
-    usedModel = model;
-    estimatedInputTokens += Number(data?.usageMetadata?.promptTokenCount || 0);
-    estimatedOutputTokens += Number(data?.usageMetadata?.candidatesTokenCount || 0);
+    const { data, model } = await callGeminiMenuScan({ apiKey, prompt, contentType, buffer });
     const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
     if (!text) throw new Error('Gemini returned no menu text.');
     const parsed = parseGeminiJson(text || '{}');
     const menuItems = normalizeMenuPayload(parsed, inventoryItems);
 
-    await writeAudit(usageDb, {
-      decoded,
-      uid: decoded.uid,
-      userDocId: access.userDocId,
-      email: decoded.email || '',
-      user: access.workspaceUser || access.accountUser || {},
-      accountUser: access.accountUser || {},
-      restaurantId
-    }, 'MENU_SCAN_REVIEW_CREATED', body.fileName || storagePath, `${menuItems.length} menu items returned for review with ${model}.`, restaurantId);
-
-    await completeAiScanUsageEvent({
-      db: usageDb,
-      reservation: usageReservation,
-      status: 'completed',
-      provider: 'google_gemini',
-      model,
-      estimatedInputTokens,
-      estimatedOutputTokens,
-      providerCallCount: providerCallBudget.used,
-      attempts: providerCallBudget.attempts
-    });
-
+    await writeAudit(db, ctx, 'MENU_SCAN_REVIEW_CREATED', body.fileName || storagePath, `${menuItems.length} menu items returned for review with ${model}.`, restaurantId);
     return res.status(200).json({
       ok: true,
       menuItems,
@@ -380,50 +272,11 @@ module.exports = async function handler(req, res) {
       fileName: body.fileName || '',
       storagePath,
       model,
-      pageCount,
-      aiUsage: {
-        monthKey: usageReservation.monthKey,
-        pageCount,
-        usedBefore: usageReservation.usedBefore,
-        usedAfter: usageReservation.usedAfter,
-        processedAfter: usageReservation.processedAfter,
-        bypassPagesAfter: usageReservation.bypassPagesAfter,
-        limit: usageReservation.limit,
-        remaining: usageReservation.remaining,
-        limitBypass: usageReservation.limitBypass,
-        bypassReason: usageReservation.bypassReason,
-        wouldHaveExceededLimit: usageReservation.wouldHaveExceededLimit
-      },
       scannerVersion: MENU_SCANNER_VERSION,
       compression: body.compression || null,
-      uploadedFileName: body.uploadedFileName || '',
-      firebaseProject: projectId,
-      storageReadMode: 'firebase-admin'
+      uploadedFileName: body.uploadedFileName || ''
     });
   } catch (err) {
-    if (usageReservation && usageDb) {
-      try {
-        if (providerCallStarted) {
-          await completeAiScanUsageEvent({
-            db: usageDb,
-            reservation: usageReservation,
-            status: 'failed',
-            errorMessage: err.message,
-            provider: 'google_gemini',
-            model: usedModel || providerCallBudget?.attempts?.[0]?.model || '',
-            estimatedInputTokens,
-            estimatedOutputTokens,
-            providerCallCount: providerCallBudget?.used || 0,
-            attempts: providerCallBudget?.attempts || []
-          });
-        } else {
-          await cancelAiScanReservation({ db: usageDb, reservation: usageReservation });
-        }
-      } catch (usageError) {
-        console.error('Menu AI usage finalization failed:', usageError?.message || usageError);
-      }
-    }
-    const status = err?.statusCode || (err?.code === 'AI_PDF_PAGE_COUNT_REQUIRED' ? 400 : (/authorization|token|permission|login/i.test(err.message || '') ? 401 : 500));
-    return res.status(status).json({ ok: false, code: err?.code || undefined, error: err.message || 'Menu scan failed.', scannerVersion: MENU_SCANNER_VERSION });
+    return res.status(500).json({ ok: false, error: err.message || 'Menu scan failed.', scannerVersion: MENU_SCANNER_VERSION });
   }
 };

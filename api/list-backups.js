@@ -1,6 +1,5 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
-const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -15,8 +14,16 @@ function loadServiceAccount() {
   };
 }
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin.app();
+  const serviceAccount = loadServiceAccount();
+  const projectId = serviceAccount.project_id || serviceAccount.projectId;
+  if (!projectId) throw new Error('Missing Firebase service account project id.');
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
+  return admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket
+  });
 }
 
 async function authorize(req, adminApp) {
@@ -25,15 +32,14 @@ async function authorize(req, adminApp) {
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const email = (decoded.email || '').toLowerCase().trim();
-    const userSnap = await adminApp.firestore().collection('users').doc(decoded.uid).get();
-    const user = userSnap.exists ? (userSnap.data() || {}) : {};
-    if (masterEmails().includes(email) || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true) {
-      const mfa = requireMfaIfEnforced(decoded, user, true);
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
+    const email = (decoded.email || '').toLowerCase();
+    if ((masterEmail && email === masterEmail) || decoded.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
       if (!mfa.ok) return mfa;
       return { ok: true, actor: decoded.email || decoded.uid, mfa };
     }
-    return { ok: false, status: 403, error: 'Only a System Administrator can list backups.' };
+    return { ok: false, status: 403, error: 'Only the master admin or a super admin can list backups.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }
@@ -50,12 +56,11 @@ function parseDateFromName(name) {
 async function handler(req, res) {
   try {
     if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Use GET.' });
-    const adminApp = initAdmin(req);
+    const adminApp = initAdmin();
     const auth = await authorize(req, adminApp);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
 
     const bucket = adminApp.storage().bucket();
-    const includeSignedUrls = req.query?.includeSignedUrls === '1' || req.query?.includeSignedUrls === 'true';
     const [files] = await bucket.getFiles({ prefix: 'backups/firestore/' });
     const backups = [];
 
@@ -63,18 +68,16 @@ async function handler(req, res) {
       if (!file.name.endsWith('.json.gz')) continue;
       const [metadata] = await file.getMetadata().catch(() => [{}]);
       const custom = metadata?.metadata || {};
-      const modeFromPath = file.name.includes('/manual/') ? 'manual' : file.name.includes('/scheduled/') ? 'scheduled' : file.name.includes('/watchdog/') ? 'watchdog' : 'unknown';
+      const modeFromPath = file.name.includes('/manual/') ? 'manual' : file.name.includes('/scheduled/') ? 'scheduled' : 'unknown';
       const createdAt = metadata.timeCreated || parseDateFromName(file.name) || null;
       const updatedAt = metadata.updated || createdAt;
       const sizeBytes = Number(metadata.size || 0);
       let signedUrl = '';
-      if (includeSignedUrls) {
-        try {
-          const [url] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 15 * 60 * 1000 });
-          signedUrl = url;
-        } catch (_) {}
-      }
-      const backupRow = {
+      try {
+        const [url] = await file.getSignedUrl({ action: 'read', expires: Date.now() + 15 * 60 * 1000 });
+        signedUrl = url;
+      } catch (_) {}
+      backups.push({
         path: file.name,
         name: file.name.split('/').pop(),
         mode: custom.mode || modeFromPath,
@@ -88,10 +91,9 @@ async function handler(req, res) {
         integrityStatus: custom.integrityStatus || 'unknown',
         integrityVerifiedAt: custom.integrityVerifiedAt || '',
         integrityErrors: custom.integrityErrors || '',
-        sha256: custom.sha256 || ''
-      };
-      if (includeSignedUrls) backupRow.signedUrl = signedUrl;
-      backups.push(backupRow);
+        sha256: custom.sha256 || '',
+        signedUrl
+      });
     }
 
     backups.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
@@ -107,7 +109,7 @@ async function handler(req, res) {
       }
       storageUsage = { totalFiles: allFiles.length, totalBytes: allBytes, backupFiles: backups.length, backupBytes: totalBytes };
     }
-    return res.status(200).json({ ok: true, backups: backups.slice(0, 100), count: backups.length, bucket: bucket.name, totalBytes, verifiedCount, storageUsage, signedUrlsIncluded: includeSignedUrls });
+    return res.status(200).json({ ok: true, backups: backups.slice(0, 100), count: backups.length, bucket: bucket.name, totalBytes, verifiedCount, storageUsage });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }

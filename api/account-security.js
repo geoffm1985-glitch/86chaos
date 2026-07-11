@@ -1,12 +1,26 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const crypto = require('crypto');
 
 
 function norm(value = '') { return String(value || '').toLowerCase().trim(); }
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
+  if (raw) {
+    const serviceAccount = JSON.parse(raw);
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket: process.env.FIREBASE_STORAGE_BUCKET || undefined });
+    return admin;
+  }
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
+    }),
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || undefined
+  });
+  return admin;
 }
 
 function boolEnv(name) {
@@ -58,68 +72,7 @@ function masterEmails() {
   return [
     process.env.MASTER_ADMIN_EMAIL,
     process.env.MASTER_ADMIN_EMAILS
-  ]
-    .filter(Boolean)
-    .flatMap(v => String(v).split(/[\s,;]+/))
-    .map(norm)
-    .filter(email => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));
-}
-
-async function firstActiveWorkspaceMembership(db, uid = '', email = '') {
-  const lookups = [];
-  if (uid) {
-    lookups.push(db.collection('workspaceMembers').where('userId', '==', uid).limit(10));
-    lookups.push(db.collection('workspaceMembers').where('uid', '==', uid).limit(10));
-  }
-  if (email) lookups.push(db.collection('workspaceMembers').where('email', '==', norm(email)).limit(10));
-
-  for (const lookup of lookups) {
-    const snap = await lookup.get().catch(() => null);
-    if (!snap || snap.empty) continue;
-    const activeDoc = snap.docs.find(item => item.data()?.isActive !== false);
-    if (activeDoc) return { id: activeDoc.id, ...(activeDoc.data() || {}) };
-  }
-  return null;
-}
-
-async function resolveTrustedProfileRepair({ db, decoded = {}, existingUser = {}, email = '' }) {
-  const existingRestaurantId = String(existingUser.restaurantId || '').trim();
-  const existingActiveRestaurantId = String(existingUser.activeRestaurantId || '').trim();
-  const existingDefaultRestaurantId = String(existingUser.defaultRestaurantId || '').trim();
-  if (existingRestaurantId || existingActiveRestaurantId || existingDefaultRestaurantId) {
-    const fallbackId = existingRestaurantId || existingActiveRestaurantId || existingDefaultRestaurantId;
-    return {
-      restaurantId: existingRestaurantId || fallbackId,
-      activeRestaurantId: existingActiveRestaurantId || fallbackId,
-      defaultRestaurantId: existingDefaultRestaurantId || fallbackId,
-      role: String(existingUser.role || existingUser.accountRole || 'Staff').trim() || 'Staff',
-      membership: null,
-      source: 'existing-user-profile'
-    };
-  }
-
-  const claimedRestaurantId = String(decoded.restaurantId || decoded.activeRestaurantId || decoded.defaultRestaurantId || '').trim();
-  if (claimedRestaurantId) {
-    return {
-      restaurantId: claimedRestaurantId,
-      activeRestaurantId: claimedRestaurantId,
-      defaultRestaurantId: claimedRestaurantId,
-      role: String(decoded.role || existingUser.role || 'Staff').trim() || 'Staff',
-      membership: null,
-      source: 'verified-token-claim'
-    };
-  }
-
-  const membership = await firstActiveWorkspaceMembership(db, decoded.uid, email);
-  const membershipRestaurantId = String(membership?.restaurantId || '').trim();
-  return {
-    restaurantId: membershipRestaurantId,
-    activeRestaurantId: membershipRestaurantId,
-    defaultRestaurantId: membershipRestaurantId,
-    role: String(membership?.role || existingUser.role || 'Staff').trim() || 'Staff',
-    membership,
-    source: membershipRestaurantId ? 'workspace-membership' : 'unassigned-safe-profile'
-  };
+  ].filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
 }
 
 function safeNameFromEmail(email = '') {
@@ -128,14 +81,8 @@ function safeNameFromEmail(email = '') {
 }
 
 
-function recoveryCodeSecretConfigured() {
-  return String(process.env.RECOVERY_CODE_SECRET || '').trim().length >= 32;
-}
-
 function recoveryCodeSecret() {
-  const secret = String(process.env.RECOVERY_CODE_SECRET || '').trim();
-  if (secret.length < 32) throw new Error('RECOVERY_CODE_SECRET is required and should be at least 32 characters before recovery codes can be generated or used.');
-  return secret;
+  return String(process.env.RECOVERY_CODE_SECRET || process.env.CRON_SECRET || process.env.FIREBASE_PROJECT_ID || '86-chaos-recovery-secret');
 }
 
 function normalizeRecoveryCode(value = '') {
@@ -173,7 +120,6 @@ function recoveryCodeStatus(user = {}) {
     recoveryCodeCount: codes.length,
     unusedRecoveryCodeCount: active,
     usedRecoveryCodeCount: used,
-    recoveryCodeSecretConfigured: recoveryCodeSecretConfigured(),
     recoveryCodesGeneratedAt: user?.accountSecurity?.recoveryCodesGeneratedAt || '',
     recoveryCodesLastUsedAt: user?.accountSecurity?.recoveryCodesLastUsedAt || ''
   };
@@ -223,8 +169,8 @@ async function buildStatus({ app, db, decoded, authUser, action = 'sync', extra 
   const emailNorm = norm(email);
   const isMaster = masterEmails().includes(emailNorm);
   const canAdminVerifyEmail = Boolean(isMaster || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true);
-  const canMfaRecovery = isMaster;
-  const firebaseProjectId = app.options?.projectId || process.env.FIREBASE_PROJECT_ID || '';
+  const canMfaRecovery = Boolean(isMaster || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true);
+  const firebaseProjectId = app.app().options?.projectId || process.env.FIREBASE_PROJECT_ID || '';
   const payload = {
     emailVerified: authUser.emailVerified === true,
     mfaEnabled: enabled,
@@ -322,8 +268,8 @@ async function resolveTargetAuthUser(app, { targetUid = '', targetEmail = '' } =
   throw new Error('Choose a user to recover first.');
 }
 
-function canUseMfaRecovery(isMaster = false) {
-  return isMaster === true;
+function canUseMfaRecovery(existingUser = {}, isMaster = false) {
+  return Boolean(isMaster || existingUser.isSuperAdmin === true || existingUser.systemAccess?.superAdmin === true);
 }
 
 function describeFactors(factors = []) {
@@ -337,7 +283,7 @@ module.exports = async function handler(req, res) {
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase ID token.' });
 
-    const app = initAdmin(req);
+    const app = initAdmin();
     const decoded = await app.auth().verifyIdToken(token);
     let authUser = await app.auth().getUser(decoded.uid);
     const db = app.firestore();
@@ -349,43 +295,53 @@ module.exports = async function handler(req, res) {
     const email = decoded.email || authUser.email || '';
     const isMaster = masterEmails().includes(norm(email));
     const canAdminVerifyEmail = Boolean(isMaster || existingUser.isSuperAdmin === true || existingUser.systemAccess?.superAdmin === true);
-    const canMfaRecovery = canUseMfaRecovery(isMaster);
+    const canMfaRecovery = canUseMfaRecovery(existingUser, isMaster);
     const now = new Date().toISOString();
 
     if (action === 'repair-profile') {
-      const trustedProfile = await resolveTrustedProfileRepair({ db, decoded, existingUser, email });
-      const requestedRestaurantId = trustedProfile.restaurantId;
-      const safeRole = trustedProfile.role;
+      const requestedRestaurantId = String(body.restaurantId || existingUser.restaurantId || existingUser.activeRestaurantId || existingUser.defaultRestaurantId || decoded.restaurantId || '').trim();
+      const safeRole = String(existingUser.role || body.role || 'Staff').trim() || 'Staff';
       const baseProfile = {
         email,
         name: existingUser.name || String(body.name || authUser.displayName || safeNameFromEmail(email)).trim(),
         phone: existingUser.phone || String(body.phone || authUser.phoneNumber || '').trim(),
         role: safeRole,
         restaurantId: requestedRestaurantId,
-        activeRestaurantId: trustedProfile.activeRestaurantId,
-        defaultRestaurantId: trustedProfile.defaultRestaurantId,
+        activeRestaurantId: requestedRestaurantId,
+        defaultRestaurantId: requestedRestaurantId,
         isActive: existingUser.isActive !== false,
         profileRepairLastRunAt: now,
         profileRepairSource: 'account-security',
-        profileRepairWorkspaceSource: trustedProfile.source,
         updatedAt: now
       };
       if (!snap.exists) baseProfile.createdAt = now;
       if (isMaster || existingUser.isSuperAdmin === true) {
         baseProfile.isSuperAdmin = true;
         baseProfile.isAdmin = true;
-        baseProfile.role = existingUser.role || 'System Administrator';
+        baseProfile.role = existingUser.role || body.role || 'System Administrator';
       } else if (existingUser.isAdmin === true) {
         baseProfile.isAdmin = true;
       }
       await userRef.set(baseProfile, { merge: true });
+      await writeUserSecurityNotice(db, targetAuthUser.uid, {
+        type: 'mfa-reset',
+        severity: 'critical',
+        title: 'Two-step login was reset',
+        body: `A System Administrator reset MFA for this account. Reason: ${reason}. If this was not expected, contact your owner or support before re-enrolling.`,
+        actorUserId: decoded.uid,
+        actorEmail: email,
+        targetEmail,
+        restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || existingUser.activeRestaurantId || existingUser.restaurantId || 'system'
+      });
+      await bestEffortPush(app, targetUser, '86 Chaos Security Alert', 'Your two-step login was reset by a System Administrator. Open Account Security to re-enroll.');
+
       await audit(db, {
         userId: decoded.uid,
         userName: baseProfile.name || email || 'User',
         userEmail: email,
         action: 'ACCOUNT_PROFILE_REPAIR',
         target: decoded.uid,
-        details: `Account profile repair completed. existedBefore=${snap.exists}; restaurantId=${requestedRestaurantId || 'unassigned'}; role=${baseProfile.role || 'Staff'}; workspaceSource=${trustedProfile.source}`,
+        details: `Account profile repair completed. existedBefore=${snap.exists}; restaurantId=${requestedRestaurantId || 'missing'}; role=${baseProfile.role || 'Staff'}`,
         timestamp: now,
         restaurantId: requestedRestaurantId || 'system',
         securityLevel: 'account-security'
@@ -396,7 +352,6 @@ module.exports = async function handler(req, res) {
     }
 
     if (action === 'generate-recovery-codes') {
-      if (!recoveryCodeSecretConfigured()) return res.status(500).json({ ok: false, error: 'RECOVERY_CODE_SECRET is missing or too short. Add a dedicated 32+ character secret in Vercel, redeploy, then generate recovery codes.' });
       if (!authUser.emailVerified) return res.status(400).json({ ok: false, error: 'Verify your email before generating recovery codes.' });
       const codes = generateRecoveryCodes(10);
       const stampedAt = new Date().toISOString();
@@ -474,7 +429,7 @@ module.exports = async function handler(req, res) {
 
 
     if (action === 'admin-get-user-mfa' || action === 'admin-reset-user-mfa') {
-      if (!canMfaRecovery) return res.status(403).json({ ok: false, error: 'Only the configured Master Admin can use MFA recovery.' });
+      if (!canMfaRecovery) return res.status(403).json({ ok: false, error: 'Only the master admin or a System Administrator can use MFA recovery.' });
       const targetAuthUser = await resolveTargetAuthUser(app, { targetUid: body.targetUid, targetEmail: body.targetEmail });
       const targetSnap = await db.collection('users').doc(targetAuthUser.uid).get();
       const targetUser = targetSnap.exists ? (targetSnap.data() || {}) : {};
@@ -537,17 +492,6 @@ module.exports = async function handler(req, res) {
         restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || existingUser.activeRestaurantId || existingUser.restaurantId || 'system',
         securityLevel: 'account-security'
       });
-      await writeUserSecurityNotice(db, targetAuthUser.uid, {
-        type: 'mfa-reset',
-        severity: 'critical',
-        title: 'Two-step login was reset',
-        body: `The Master Admin reset MFA for this account. Reason: ${reason}. If this was not expected, contact your owner or support before re-enrolling.`,
-        actorUserId: decoded.uid,
-        actorEmail: email,
-        targetEmail,
-        restaurantId: targetUser.activeRestaurantId || targetUser.restaurantId || targetUser.defaultRestaurantId || existingUser.activeRestaurantId || existingUser.restaurantId || 'system'
-      });
-      await bestEffortPush(app, targetUser, '86 Chaos Security Alert', 'Your two-step login was reset by the Master Admin. Open Account Security to re-enroll.');
       const refreshedTargetAuthUser = await app.auth().getUser(targetAuthUser.uid);
       const status = await buildStatus({ app, db, decoded, authUser, action });
       return res.status(200).json({

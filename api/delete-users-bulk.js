@@ -1,27 +1,22 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
-const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (raw) return admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) }), admin;
+  admin.initializeApp({ credential: admin.credential.cert({ projectId: process.env.FIREBASE_PROJECT_ID, clientEmail: process.env.FIREBASE_CLIENT_EMAIL, privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n') }) });
+  return admin;
 }
 
 async function verifySuperAdmin(req) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) throw new Error('Missing Firebase ID token.');
-  const app = initAdmin(req);
+  const app = initAdmin();
   const decoded = await app.auth().verifyIdToken(token);
-  const db = app.firestore();
-  const email = String(decoded.email || '').toLowerCase().trim();
-  let profileSnap = await db.collection('users').doc(decoded.uid).get();
-  let profile = profileSnap.exists ? (profileSnap.data() || {}) : {};
-  if (!profileSnap.exists && email) {
-    const byEmail = await db.collection('users').where('email', '==', email).limit(1).get();
-    if (!byEmail.empty) profile = byEmail.docs[0].data() || {};
-  }
-  const isSuperAdmin = decoded.superAdmin === true || profile.isSuperAdmin === true || profile.systemAccess?.superAdmin === true || masterEmails().includes(email);
-  if (!isSuperAdmin) throw new Error('Super admin access required.');
-  const mfa = requireMfaIfEnforced(decoded, profile, true);
+  const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
+  if (decoded.superAdmin !== true && (decoded.email || '').toLowerCase() !== masterEmail) throw new Error('Super admin access required.');
+  const mfa = requireMfaIfEnforced(decoded, {}, true);
   if (!mfa.ok) throw new Error(mfa.error);
   return decoded;
 }
@@ -38,18 +33,19 @@ function normalizeIds(raw) {
 
 function isProtectedUser(profile, caller, protectedEmails) {
   const email = String(profile?.email || '').toLowerCase().trim();
-  return protectedEmails.has(email) || profile?.id === caller.uid || profile?.isSuperAdmin === true || profile?.systemAccess?.superAdmin === true;
+  return protectedEmails.has(email) || profile?.id === caller.uid;
 }
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
     const caller = await verifySuperAdmin(req);
-    const app = initAdmin(req);
+    const app = initAdmin();
     const db = app.firestore();
     const emails = normalizeEmails(req.body?.emails || req.body?.emailText);
     const userIds = normalizeIds(req.body?.userIds || req.body?.uids || req.body?.profileIds);
-    const protectedEmails = new Set([...masterEmails(), (caller.email || '').toLowerCase()].filter(Boolean));
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
+    const protectedEmails = new Set([masterEmail, (caller.email || '').toLowerCase()]);
 
     let authDeleted = 0;
     let profileDeleted = 0;
@@ -77,7 +73,7 @@ module.exports = async function handler(req, res) {
         try {
           try {
             const authUser = await app.auth().getUser(profile.id);
-            if (protectedEmails.has((authUser.email || '').toLowerCase()) || authUser.uid === caller.uid || authUser.customClaims?.superAdmin === true) throw new Error('Protected admin account.');
+            if ((authUser.email || '').toLowerCase() === masterEmail || authUser.uid === caller.uid) throw new Error('Protected admin account.');
             await app.auth().deleteUser(authUser.uid);
             authDeleted++;
           } catch (err) {
@@ -112,7 +108,7 @@ module.exports = async function handler(req, res) {
       try {
         const user = await app.auth().getUserByEmail(email);
         uidFromAuth = user.uid;
-        if (protectedEmails.has((user.email || '').toLowerCase()) || user.uid === caller.uid || user.customClaims?.superAdmin === true) throw new Error('Protected admin account.');
+        if ((user.email || '').toLowerCase() === masterEmail || user.uid === caller.uid) throw new Error('Protected admin account.');
         await app.auth().deleteUser(user.uid);
         authDeleted++;
       } catch (err) {

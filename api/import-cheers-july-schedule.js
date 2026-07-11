@@ -1,6 +1,5 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
-const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 const {
   stableShiftDocId,
   hardReplaceScheduleMonth
@@ -18,8 +17,12 @@ function loadServiceAccount() {
   };
 }
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin.app();
+  const serviceAccount = loadServiceAccount();
+  const projectId = serviceAccount.project_id || serviceAccount.projectId;
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || (projectId ? `${projectId}.firebasestorage.app` : undefined);
+  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
 }
 
 async function authorize(req, app) {
@@ -28,15 +31,14 @@ async function authorize(req, app) {
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
   try {
     const decoded = await app.auth().verifyIdToken(token);
-    const email = (decoded.email || '').toLowerCase().trim();
-    const callerSnap = await app.firestore().collection('users').doc(decoded.uid).get();
-    const caller = callerSnap.exists ? (callerSnap.data() || {}) : {};
-    if (masterEmails().includes(email) || decoded.superAdmin === true || caller.isSuperAdmin === true || caller.systemAccess?.superAdmin === true) {
-      const mfa = requireMfaIfEnforced(decoded, caller, true);
+    const master = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
+    const email = (decoded.email || '').toLowerCase();
+    if (email === master || decoded.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
       if (!mfa.ok) return mfa;
       return { ok: true, decoded, mfa };
     }
-    return { ok: false, status: 403, error: 'Only a System Administrator can run this legacy import.' };
+    return { ok: false, status: 403, error: 'Only master admin or super admin can run this import.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid token: ${err.message}` };
   }
@@ -95,7 +97,7 @@ function uniqueSorted(values) {
 module.exports = async function handler(req, res) {
   try {
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
-    const app = initAdmin(req);
+    const app = initAdmin();
     const auth = await authorize(req, app);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
     const body = parseBody(req);

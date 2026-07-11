@@ -1,10 +1,9 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
-const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '15.0.52';
+const APP_VERSION = '14.0.2';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -22,8 +21,18 @@ function loadServiceAccount() {
   };
 }
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin.app();
+  const serviceAccount = loadServiceAccount();
+  if (!serviceAccount.project_id && !serviceAccount.projectId) {
+    throw new Error('Missing Firebase service account project id. Set FIREBASE_SERVICE_ACCOUNT_KEY in Vercel.');
+  }
+  const projectId = serviceAccount.project_id || serviceAccount.projectId;
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
+  return admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket
+  });
 }
 
 function isoSafe(date = new Date()) {
@@ -156,15 +165,14 @@ async function authorize(req, adminApp) {
 
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const email = (decoded.email || '').toLowerCase().trim();
-    const userSnap = await adminApp.firestore().collection('users').doc(decoded.uid).get();
-    const user = userSnap.exists ? (userSnap.data() || {}) : {};
-    if (masterEmails().includes(email) || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true) {
-      const mfa = requireMfaIfEnforced(decoded, user, true);
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
+    const email = (decoded.email || '').toLowerCase();
+    if ((masterEmail && email === masterEmail) || decoded.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
       if (!mfa.ok) return mfa;
       return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '', mfa };
     }
-    return { ok: false, status: 403, error: 'Only a System Administrator can run backups.' };
+    return { ok: false, status: 403, error: 'Only the master admin or a super admin can run backups.' };
   } catch (err) {
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }
@@ -295,18 +303,10 @@ async function handler(req, res) {
   try {
     if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'Use GET for cron or POST for manual backup.' });
 
-    const adminApp = initAdmin(req);
+    const adminApp = initAdmin();
     db = adminApp.firestore();
     const auth = await authorize(req, adminApp);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
-
-    const cronInvocation = {
-      scheduleHeader: req.headers['x-vercel-cron-schedule'] || '',
-      userAgent: req.headers['user-agent'] || '',
-      watchdogHeader: req.headers['x-86chaos-watchdog'] || '',
-      host: req.headers['x-forwarded-host'] || req.headers.host || '',
-      vercelEnv: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown'
-    };
 
     const requestedMode = req.query.mode || 'manual';
     if (requestedMode === 'restore') {
@@ -316,7 +316,7 @@ async function handler(req, res) {
     }
 
     const runId = isoSafe(startedAt);
-    const mode = cronInvocation.watchdogHeader ? 'watchdog' : (auth.source === 'vercel-cron' ? 'scheduled' : requestedMode);
+    const mode = auth.source === 'vercel-cron' ? 'scheduled' : requestedMode;
     const statusRef = db.collection('system').doc('backupStatus');
     await statusRef.set({
       status: 'running',
@@ -335,12 +335,10 @@ async function handler(req, res) {
         app: '86 Chaos',
         type: 'firestore-json-backup',
         version: APP_VERSION,
-        projectId: adminApp.options?.projectId || process.env.FIREBASE_PROJECT_ID || null,
+        projectId: process.env.FIREBASE_PROJECT_ID || loadServiceAccount().project_id || loadServiceAccount().projectId || null,
         mode,
         runId,
         actor: auth.actor,
-        source: auth.source,
-        cronInvocation,
         startedAt: startedAt.toISOString()
       },
       collections: {}
@@ -421,12 +419,6 @@ async function handler(req, res) {
       nextScheduledAt: getNextDailyBackupAt(finishedAt),
       nextBackupAt: getNextDailyBackupAt(finishedAt),
       cronSchedule: '0 9 * * *',
-      cronFallbackSchedule: '0 21 * * *',
-      cronScheduleHeader: cronInvocation.scheduleHeader,
-      cronUserAgent: cronInvocation.userAgent,
-      cronHost: cronInvocation.host,
-      cronWatchdogHeader: cronInvocation.watchdogHeader,
-      ...(auth.source === 'vercel-cron' ? { cronSeenAt: startedAt.toISOString(), lastScheduledBackupAt: finishedAt.toISOString() } : {}),
       version: APP_VERSION
     };
 
@@ -472,4 +464,4 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports.config = { maxDuration: 300 };
+module.exports.config = { maxDuration: 60 };

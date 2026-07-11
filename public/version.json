@@ -1,8 +1,7 @@
 {
-  "version": "15.0.52",
-  "name": "86 Chaos 15.0.52 Secure AI, HR & Training, Kitchen Specials, and Unified Interface",
-  "releasedAt": "2026-07-11",
-  "label": "86 Chaos 15.0.52",
-  "build": "15.0.52",
-  "updatedAt": "2026-07-11T00:00:00.000Z"
+  "version": "15.0.28",
+  "name": "86 Chaos 15.0.28 Productization Cleanup",
+  "releasedAt": "2026-07-09",
+  "label": "86 Chaos 15.0.28",
+  "build": "15.0.28"
 }

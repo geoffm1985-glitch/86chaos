@@ -2,7 +2,7 @@ const { initAdmin, readBody, authorize, writeAudit } = require('./_chaos-admin')
 
 module.exports = async (req, res) => {
   try {
-    const app = initAdmin(req);
+    const app = initAdmin();
     const ctx = await authorize(req, app, { allowTenantAdmin: false });
     if (!ctx.ok) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'System Administrator access required.' });
     const db = app.firestore();

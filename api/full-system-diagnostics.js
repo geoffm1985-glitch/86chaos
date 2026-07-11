@@ -1,10 +1,9 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest, projectCredentialStatus } = require('./_firebase-project-admin');
-const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { requireMfaIfEnforced } = require('./_chaos-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const APP_VERSION = '15.0.52';
+const APP_VERSION = '14.0.2';
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -19,8 +18,13 @@ function loadServiceAccount() {
   };
 }
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin.app();
+  const serviceAccount = loadServiceAccount();
+  const projectId = serviceAccount.project_id || serviceAccount.projectId;
+  if (!projectId) throw new Error('Missing Firebase service account project id.');
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
+  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
 }
 
 async function authorize(req, adminApp) {
@@ -28,13 +32,12 @@ async function authorize(req, adminApp) {
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
   try {
     const decoded = await adminApp.auth().verifyIdToken(token);
-    const email = (decoded.email || '').toLowerCase().trim();
-    const userSnap = await adminApp.firestore().collection('users').doc(decoded.uid).get();
-    const user = userSnap.exists ? (userSnap.data() || {}) : {};
-    if (masterEmails().includes(email) || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true) {
-      const mfa = requireMfaIfEnforced(decoded, user, true);
+    const masterEmail = (process.env.MASTER_ADMIN_EMAIL || '').toLowerCase();
+    const email = (decoded.email || '').toLowerCase();
+    if ((masterEmail && email === masterEmail) || decoded.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
       if (!mfa.ok) return mfa;
-      return { ok: true, uid: decoded.uid, email: decoded.email || '', actor: decoded.email || decoded.uid, decoded, mfa };
+      return { ok: true, uid: decoded.uid, email: decoded.email || '', actor: decoded.email || decoded.uid, mfa };
     }
     return { ok: false, status: 403, error: 'Super admin required.' };
   } catch (err) {
@@ -138,7 +141,7 @@ module.exports = async function handler(req, res) {
   const startedAt = new Date();
   try {
     if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use GET or POST.' });
-    const adminApp = initAdmin(req);
+    const adminApp = initAdmin();
     const auth = await authorize(req, adminApp);
     if (!auth.ok) return res.status(auth.status || 401).json({ ok: false, error: auth.error });
 
@@ -181,8 +184,6 @@ module.exports = async function handler(req, res) {
     });
 
     const finishedAt = new Date();
-    const runtimeProjectId = adminApp.options?.projectId || 'unknown';
-    const runtimeCredential = projectCredentialStatus(runtimeProjectId);
     const report = {
       ok: true,
       app: '86 Chaos',
@@ -192,13 +193,11 @@ module.exports = async function handler(req, res) {
       durationMs: finishedAt.getTime() - startedAt.getTime(),
       generatedBy: auth.actor,
       environment: {
-        projectId: runtimeProjectId,
-        tokenProjectId: auth.decoded?.aud || runtimeProjectId,
+        projectId: process.env.FIREBASE_PROJECT_ID || (process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? 'from service account json' : 'missing'),
         storageBucket: bucket.name,
-        masterEmailConfigured: !!(process.env.MASTER_ADMIN_EMAIL || process.env.MASTER_ADMIN_EMAILS),
+        masterEmailConfigured: !!process.env.MASTER_ADMIN_EMAIL,
         cronSecretConfigured: !!process.env.CRON_SECRET,
-        serviceAccountConfigured: runtimeCredential.configured,
-        serviceAccountSource: runtimeCredential.source || runtimeCredential.recommendedEnv || runtimeCredential.error || 'missing'
+        serviceAccountMode: process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? 'json' : 'split-env'
       },
       checks: {
         firestoreStatus,

@@ -1,23 +1,10 @@
 const admin = require('firebase-admin');
 const zlib = require('zlib');
-const crypto = require('crypto');
-const { getAdminAppForRequest, getAdminAppForProject, getRequestedProjectId, verifyTrustedFirebaseIdToken: verifyTrustedFirebaseTokenShared } = require('./_firebase-project-admin');
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
 function memberDocId(uid, restaurantId) { return `${clean(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${clean(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240); }
-function mappedWorkspaceMember(user, restaurantId) {
-  const member = user?.memberships?.[restaurantId];
-  return member && typeof member === 'object' && member.isActive !== false ? member : null;
-}
-function userHasWorkspace(user, restaurantId) {
-  if (!restaurantId) return false;
-  return Boolean(
-    user?.restaurantId === restaurantId ||
-    user?.workspaceIds?.includes?.(restaurantId) ||
-    mappedWorkspaceMember(user, restaurantId)
-  );
-}
+function userHasWorkspace(user, restaurantId) { return Boolean(user?.restaurantId === restaurantId || user?.activeRestaurantId === restaurantId || user?.defaultRestaurantId === restaurantId || user?.workspaceIds?.includes?.(restaurantId) || user?.memberships?.[restaurantId]?.isActive === true); }
 async function readWorkspaceMember(db, uid, email, restaurantId) {
   if (!restaurantId) return null;
   const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
@@ -29,81 +16,21 @@ async function readWorkspaceMember(db, uid, email, restaurantId) {
   return null;
 }
 function profileForWorkspace(user, member, restaurantId) {
-  // activeRestaurantId/defaultRestaurantId are selectors, not authorization.
-  // Top-level legacy roles remain valid only for the account's primary
-  // restaurantId. Every secondary workspace must supply workspace-scoped
-  // membership roles and permissions.
-  const legacyPrimary = user?.restaurantId === restaurantId;
-  const activeMember = member && member.isActive !== false ? member : null;
-  const legacySource = legacyPrimary ? (user || {}) : {};
-  const source = activeMember
-    ? {
-        ...legacySource,
-        ...activeMember,
-        permissions: { ...(legacySource.permissions || {}), ...(activeMember.permissions || {}) }
-      }
-    : legacySource;
+  const legacy = user?.restaurantId === restaurantId || user?.activeRestaurantId === restaurantId || user?.defaultRestaurantId === restaurantId;
+  const source = member || (legacy ? user : {});
   return {
     ...(user || {}),
     ...(source || {}),
     id: user?.id,
     restaurantId,
-    role: clean(source?.role || ''),
-    accountRole: clean(source?.accountRole || ''),
-    permissions: { ...(source?.permissions || {}) },
-    isAdmin: source?.isAdmin === true,
-    isOwner: source?.isOwner === true || source?.accountOwner === true || source?.owner === true || source?.workspaceOwner === true || norm(source?.accountRole) === 'owner',
-    accountOwner: source?.accountOwner === true,
-    owner: source?.owner === true,
-    workspaceOwner: source?.workspaceOwner === true,
-    isActive: source?.isActive !== false && user?.isActive !== false
+    permissions: { ...((legacy && user?.permissions) || {}), ...(source?.permissions || {}) },
+    isAdmin: source?.isAdmin === true || (legacy && user?.isAdmin === true),
+    isOwner: source?.isOwner === true || source?.accountOwner === true || source?.workspaceOwner === true || (legacy && (user?.isOwner === true || user?.accountOwner === true || user?.workspaceOwner === true || norm(user?.accountRole) === 'owner'))
   };
 }
-function parseMasterEmailEnv() {
-  const rawValues = [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
-    .filter(Boolean)
-    .flatMap(v => String(v).split(/[\s,;]+/));
-  const skipped = [];
-  const valid = [];
-  const seen = new Set();
-  for (const raw of rawValues) {
-    const email = norm(raw);
-    if (!email) continue;
-    const looksPlaceholder = /^(second_admin_email_here|admin@example\.com|your-email@example\.com|email@example\.com|none|null|undefined|todo|replace_me)$/i.test(email) || email.includes('placeholder') || email.includes('<') || email.includes('>');
-    const looksEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
-    if (looksPlaceholder || !looksEmail) {
-      skipped.push({ value: email, reason: looksPlaceholder ? 'placeholder' : 'invalid-email-format' });
-      continue;
-    }
-    if (!seen.has(email)) {
-      seen.add(email);
-      valid.push(email);
-    }
-  }
-  return { valid, skipped, rawCount: rawValues.filter(v => String(v || '').trim()).length };
-}
 function masterEmails() {
-  return parseMasterEmailEnv().valid;
-}
-
-// Narrow owner bootstrap used only after a Firebase token has passed full
-// signature, issuer, audience, expiration, and trusted-project validation.
-// This prevents Preview deployments from locking out the verified 86 Chaos
-// owner when MASTER_ADMIN_EMAIL variables are missing from that Vercel scope.
-const OWNER_BOOTSTRAP_MASTER_EMAILS = ['geoffm1985@gmail.com'];
-
-function crossProjectMasterEmails() {
-  const configured = [
-    ...masterEmails(),
-    process.env.REACT_APP_MASTER_ADMIN_EMAIL,
-    process.env.OWNER_BOOTSTRAP_EMAILS
-  ]
-    .filter(Boolean)
-    .flatMap(value => String(value).split(/[\s,;]+/))
-    .map(norm)
-    .filter(value => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value));
-
-  return [...new Set([...configured, ...OWNER_BOOTSTRAP_MASTER_EMAILS])];
+  return [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
+    .filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
 }
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
@@ -117,103 +44,13 @@ function loadServiceAccount() {
     privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
   };
 }
-function initAdmin(reqOrProject = null) {
-  if (typeof reqOrProject === 'string' && reqOrProject.trim()) {
-    return getAdminAppForProject(reqOrProject.trim());
-  }
-  if (reqOrProject && typeof reqOrProject === 'object' && reqOrProject.headers) {
-    return getAdminAppForRequest(reqOrProject);
-  }
-  const fallbackProjectId = String(process.env.VERCEL_ENV || '').toLowerCase() === 'preview'
-    ? 'chaos-test-d1601'
-    : (process.env.FIREBASE_PROJECT_ID || 'cheers-34b8d');
-  return getAdminAppForProject(fallbackProjectId);
-}
-
-
-let secureTokenCertCache = { expiresAt: 0, certs: {} };
-
-function decodeJwtPart(value = '') {
-  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized + '='.repeat((4 - (normalized.length % 4 || 4)) % 4);
-  return Buffer.from(padded, 'base64');
-}
-
-function decodeJwtJson(value = '') {
-  return JSON.parse(decodeJwtPart(value).toString('utf8'));
-}
-
-function trustedFirebaseAuthProjects() {
-  const configured = [
-    process.env.FIREBASE_TRUSTED_AUTH_PROJECT_IDS,
-    process.env.FIREBASE_ALLOWED_PROJECT_IDS,
-    process.env.FIREBASE_PROJECT_ID,
-    process.env.REACT_APP_FIREBASE_PROJECT_ID
-  ]
-    .filter(Boolean)
-    .flatMap(value => String(value).split(/[\s,;]+/))
-    .map(clean)
-    .filter(Boolean);
-  return [...new Set([...configured, 'chaos-test-d1601', 'cheers-34b8d'])];
-}
-
-async function loadSecureTokenCertificates() {
-  if (secureTokenCertCache.expiresAt > Date.now() && Object.keys(secureTokenCertCache.certs).length) {
-    return secureTokenCertCache.certs;
-  }
-  const response = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com');
-  if (!response.ok) throw new Error(`Could not load Firebase token certificates (${response.status}).`);
-  const certs = await response.json();
-  const cacheControl = String(response.headers.get('cache-control') || '');
-  const maxAgeMatch = cacheControl.match(/max-age=(\d+)/i);
-  const maxAgeSeconds = maxAgeMatch ? Number(maxAgeMatch[1]) : 3600;
-  secureTokenCertCache = {
-    certs,
-    expiresAt: Date.now() + Math.max(300, Math.min(maxAgeSeconds, 21600)) * 1000
-  };
-  return certs;
-}
-
-async function verifyTrustedFirebaseIdToken(token) {
-  return verifyTrustedFirebaseTokenShared(token);
-}
-
-async function authorizeCrossProjectMaster(req) {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
-  try {
-    const decoded = await verifyTrustedFirebaseIdToken(token);
-    const email = norm(decoded.email);
-    const claimAllows = decoded.superAdmin === true || decoded.systemAccess?.superAdmin === true;
-    const emailAllows = Boolean(email && decoded.email_verified !== false && crossProjectMasterEmails().includes(email));
-    if (!claimAllows && !emailAllows) {
-      return {
-        ok: false,
-        status: 403,
-        error: 'This verified Firebase account is not approved for the Gemini Administrator Manual. Confirm the Preview deployment includes MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS, then redeploy.'
-      };
-    }
-    const mfa = requireMfaIfEnforced(decoded, { role: 'system administrator', isSuperAdmin: true }, true);
-    if (!mfa.ok) return mfa;
-    return {
-      ok: true,
-      decoded,
-      uid: decoded.uid,
-      userDocId: decoded.uid,
-      email: decoded.email || '',
-      user: { id: decoded.uid, email: decoded.email || '', name: decoded.name || decoded.email || 'System Administrator', isSuperAdmin: true },
-      accountUser: {},
-      workspaceMember: null,
-      isSuperAdmin: true,
-      restaurantId: '',
-      permissions: {},
-      mfa,
-      crossProjectAuth: true,
-      authProjectId: decoded.authProjectId
-    };
-  } catch (error) {
-    return { ok: false, status: 401, error: `Invalid authorization token: ${error.message}` };
-  }
+function initAdmin() {
+  if (admin.apps.length) return admin.app();
+  const serviceAccount = loadServiceAccount();
+  const projectId = serviceAccount.project_id || serviceAccount.projectId || process.env.FIREBASE_PROJECT_ID;
+  if (!projectId) throw new Error('Missing Firebase service account project id.');
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`;
+  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
 }
 
 function boolEnv(name) { return ['true', '1', 'yes', 'enforce'].includes(String(process.env[name] || '').toLowerCase().trim()); }
@@ -251,16 +88,12 @@ async function readBody(req) {
   if (typeof req.body === 'object') return req.body;
   try { return JSON.parse(req.body); } catch (_) { return {}; }
 }
-async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantId = '', allowCrossProjectMaster = false } = {}) {
+async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantId = '' } = {}) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) return { ok: false, status: 401, error: 'Missing Firebase authorization token.' };
   try {
-    const tokenProjectId = getRequestedProjectId(req);
-    const activeApp = (!app || app.options?.projectId !== tokenProjectId)
-      ? getAdminAppForProject(tokenProjectId)
-      : app;
-    const decoded = await activeApp.auth().verifyIdToken(token);
-    const db = activeApp.firestore();
+    const decoded = await app.auth().verifyIdToken(token);
+    const db = app.firestore();
     const email = norm(decoded.email);
     let userSnap = await db.collection('users').doc(decoded.uid).get();
     let userDocId = decoded.uid;
@@ -271,23 +104,15 @@ async function authorize(req, app, { allowTenantAdmin = false, targetRestaurantI
     }
     const isSuperAdmin = Boolean(decoded.superAdmin === true || user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || masterEmails().includes(email));
     const restaurantId = clean(targetRestaurantId || user?.activeRestaurantId || user?.restaurantId || user?.defaultRestaurantId || '');
-    // Always look for the canonical workspace member first. A workspaceIds
-    // entry proves basic membership but must never hide a scoped admin role.
-    const storedMember = restaurantId && !isSuperAdmin
-      ? await readWorkspaceMember(db, decoded.uid, email, restaurantId)
-      : null;
-    const member = storedMember || mappedWorkspaceMember(user, restaurantId);
+    const member = restaurantId && !isSuperAdmin ? (userHasWorkspace(user, restaurantId) ? (user?.memberships?.[restaurantId] || null) : await readWorkspaceMember(db, decoded.uid, email, restaurantId)) : null;
     const workspaceUser = profileForWorkspace({ ...(user || {}), id: userDocId }, member, restaurantId);
     const permissions = workspaceUser?.permissions || {};
     const tenantAdmin = Boolean(allowTenantAdmin && restaurantId && (isSuperAdmin || member || userHasWorkspace(user, restaurantId)) && (workspaceUser?.isAdmin === true || workspaceUser?.isOwner === true || workspaceUser?.accountOwner === true || permissions.settings === true || permissions.team === true));
     if (!isSuperAdmin && !tenantAdmin) return { ok: false, status: 403, error: 'System Administrator access is required for this tool.' };
     const mfa = requireMfaIfEnforced(decoded, workspaceUser || user || {}, isSuperAdmin);
     if (!mfa.ok) return mfa;
-    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions, mfa, app: activeApp, db };
+    return { ok: true, decoded, uid: decoded.uid, userDocId, email: decoded.email || '', user: workspaceUser || user || {}, accountUser: user || {}, workspaceMember: member, isSuperAdmin, restaurantId, permissions, mfa };
   } catch (err) {
-    if (allowCrossProjectMaster && /audience|aud\b|project/i.test(String(err?.message || ''))) {
-      return authorizeCrossProjectMaster(req);
-    }
     return { ok: false, status: 401, error: `Invalid authorization token: ${err.message}` };
   }
 }
@@ -313,4 +138,4 @@ async function writeAudit(db, ctx, action, target, details, restaurantId = '') {
     });
   } catch (_) {}
 }
-module.exports = { admin, initAdmin, getAdminAppForRequest, getAdminAppForProject, readBody, authorize, authorizeCrossProjectMaster, verifyTrustedFirebaseIdToken, trustedFirebaseAuthProjects, crossProjectMasterEmails, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, parseMasterEmailEnv, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };
+module.exports = { admin, initAdmin, readBody, authorize, requireAppCheckIfEnforced, parseBackupBuffer, serializeIssue, writeAudit, norm, clean, masterEmails, memberDocId, userHasWorkspace, readWorkspaceMember, profileForWorkspace, mfaEnforcementEnabled, decodedHasMfa, roleNeedsMfa, requireMfaIfEnforced };

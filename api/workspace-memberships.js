@@ -1,8 +1,16 @@
 const admin = require('firebase-admin');
-const { getAdminAppForRequest } = require('./_firebase-project-admin');
 
-function initAdmin(req) {
-  return getAdminAppForRequest(req, { requireCredentials: true });
+function initAdmin() {
+  if (admin.apps.length) return admin.app();
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
+  const serviceAccount = raw ? JSON.parse(raw) : {
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
+  };
+  const projectId = serviceAccount.project_id || serviceAccount.projectId || process.env.FIREBASE_PROJECT_ID;
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || (projectId ? `${projectId}.firebasestorage.app` : undefined);
+  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket });
 }
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
@@ -80,7 +88,7 @@ async function addWorkspaceMembersByQuery(db, options, queryRef, uid, email, sou
 module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'Method not allowed' });
   try {
-    const app = initAdmin(req);
+    const app = initAdmin();
     const db = app.firestore();
     const auth = app.auth();
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
@@ -100,9 +108,10 @@ module.exports = async function handler(req, res) {
       options.set(restaurantId, { ...current, ...raw, restaurantId, membershipSource: clean(raw.membershipSource || source || current.membershipSource) });
     };
 
-    // Only restaurantId is a legacy membership. activeRestaurantId and
-    // defaultRestaurantId are UI selectors and cannot create workspace access.
+    // Legacy user fields are still valid memberships for older restaurants.
     if (user.restaurantId) addRaw({ ...user, restaurantId: user.restaurantId, restaurantName: user.restaurantName, membershipSource: 'legacy-user-restaurantId' });
+    if (user.defaultRestaurantId && user.defaultRestaurantId !== user.restaurantId) addRaw({ restaurantId: user.defaultRestaurantId, membershipSource: 'legacy-defaultRestaurantId' });
+    if (user.activeRestaurantId && user.activeRestaurantId !== user.restaurantId) addRaw({ restaurantId: user.activeRestaurantId, membershipSource: 'legacy-activeRestaurantId' });
 
     // New multi-workspace map on the account profile.
     if (user.memberships && typeof user.memberships === 'object') {
