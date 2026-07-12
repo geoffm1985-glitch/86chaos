@@ -64,6 +64,37 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "A confirmed 86 command posts one important alert to Message Board and surfaces it in Manager Brief and Kitchen Command. The 86-alert workflow never edits the inventory quantity; update Inventory separately when the physical count changed.",
         "The optional AI fallback is never allowed to choose or send a risky 86 alert. At most, it can recognize that the wording may be an 86 request and return it to the safe review flow."
       ]},
+      { title: "Intelligent command examples", steps: [
+        "Prep examples: Prep 2 pans onions, Add two containers ranch, Chop 2 pans of onion, Need 3 containers ranch, or prep onions and tomatoes for tomorrow.",
+        "Done examples: Mark tomatoes done, Finish onions, Check off burgers, Done with ranch bottles, or Mark fryer wall done.",
+        "Task examples: Add clean wall behind fryers to tasks, Add dump hood oil pan to tonight, Add deep clean ovens monthly, or Put check nacho cheese machine on daily tasks.",
+        "Question examples: What needs done?, What prep is left?, What are we out of?, What does chicken breast affect?, or What menu items use ribeye?",
+        "Search/navigation examples: Open prep, Open daily close, Show beer cheese recipe, Search Help for invoice scanning, or Open time clock."
+      ]},
+      { title: "Marking work done and avoiding duplicates", steps: [
+        "86Voice searches current prep rows or task rows before creating another item. A confident match updates or completes the existing row instead of duplicating it.",
+        "Fuzzy matching handles plural words, partial phrases, and common kitchen wording such as onions matching dice onion, ranch matching fill ranch bottles, and fryer wall matching clean wall and floor behind fryers.",
+        "When two matches are close, the panel asks you to choose the right row. Do not confirm an item unless the preview names the correct prep item or task.",
+        "Completed prep and task commands add completion metadata showing who marked the work done and that the source was 86Voice."
+      ]},
+      { title: "86 alerts and menu impact questions", steps: [
+        "Out-of-stock speech such as 86 chicken breast, we're out of ribeye, no more brioche buns, or kill ribeye for tonight creates an 86 alert path, not an inventory count edit.",
+        "When approved Menu Intelligence dependency links exist, 86Voice can show affected menu items. If those links are missing, the app explains that menu impact needs approved ingredient links first.",
+        "Ask What does chicken breast affect? or If we're out of brioche buns, what can’t we make? to review approved dependency impact without posting a new alert.",
+        "Inventory counts still need to be updated through Inventory or another explicit, permissioned workflow."
+      ]},
+      { title: "Reminders, shared reminders, and recurring reminders", steps: [
+        "Personal examples include Remind me tomorrow at 10 to call Performance or Remind me Friday to order fryer oil. Personal reminders remain private to the creator and assigned user.",
+        "Shared examples include Remind Sarah to check hood filters Wednesday. Shared reminders require permission and the teammate must be selected from real workspace staff records.",
+        "Recurring examples include Create weekly reminder to clean oven vents. Recurring reminders are scheduled through the existing reminder dispatch system and move to the next due date after successful delivery.",
+        "If a teammate name or time is unclear, 86Voice asks you to choose or opens My Reminders so you can finish safely."
+      ]},
+      { title: "Undo, confirmation, and safety limits", steps: [
+        "Say Undo that, Cancel last command, Never mind, or Take that back to roll back a recent safe voice-created or voice-updated action when rollback is possible.",
+        "Undo is limited to safe work such as newly created prep, task, reminder, or recent prep/task update and completion metadata. The panel shows when an undo is available.",
+        "86Voice never auto-approves invoice scans, menu scans, payroll readiness, Daily Close signoff, financial reports, plan/billing changes, Firebase/security/admin settings, or integrations.",
+        "If a command is blocked by plan or permission, the result explains the block and should not leak restricted financial, wage, admin, or owner-only data."
+      ]},
       { title: "Local first, optional AI last", steps: [
         "Known commands are parsed on the device first. Navigation, schedule views, Help searches, recipe lookup, reminders, prep, recurring tasks, 86 matching, messages, maintenance, and burn wording do not need AI interpretation when the local parser understands them.",
         "Only an unrecognized phrase may reach the optional server parser. That route requires a verified account and App Check, has a strict rate limit, accepts at most 1,200 characters, permits one low-cost Flash-Lite call, and limits the answer to 512 tokens.",
@@ -823,5 +854,214 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       ]}
     ],
     notes: ["Danger Zone is the last stop, not a shortcut. If scope or recovery is unclear, stop and investigate."]
+  }
+,
+  {
+    id: "complete-app-feature-map",
+    group: "Coverage Index",
+    title: "Complete App Feature Map",
+    tab: "Whole app",
+    audience: "Owners, managers, trainers, and System Administrators",
+    summary: "A plain-language map of every major 86 Chaos area so training does not miss hidden or restricted tools.",
+    keywords: "complete app feature map all tabs prep inventory invoices ai scans menu intelligence alerts recipes reminders message board schedule time clock labor financials daily close tips cogs pnl reports settings plan billing system administrator security backup push help manual training",
+    sections: [
+      { title: "Core daily operation areas", steps: [
+        "Manager Brief is the daily command snapshot for permitted managers. Shift users may see Today Home instead so they are not stranded on a locked Manager Brief screen.",
+        "Kitchen Command Center collects kitchen priorities such as prep status, 86 alerts, low-stock signals, menu impact alerts, specials, and service readiness for users whose plan and role allow it.",
+        "Prep & Tasks covers food prep plus recurring daily, weekly, and monthly task routines. Inventory & Orders covers counts, par levels, vendors, invoice history, and burn/waste logging. Recipe Book stores recipe cards and kitchen reference information.",
+        "Message Board is the team communication hub for announcements, important notices, 86 alerts, read receipts, and staff-facing updates. My Reminders stores private reminders and supported shared reminders/tasks.",
+        "Never put confidential HR notes, wage details, passwords, provider secrets, recovery codes, signed links, or private customer data in team-facing tools."
+      ]},
+      { title: "Scheduling, labor, and financial areas", steps: [
+        "Time Clock & Schedule includes My Schedule, Full Schedule, Month View, Trade Board, Time Off, and Schedule Builder where allowed.",
+        "Labor Command and timesheets cover open punches, missed punches, long shifts, overtime risk, geofence review, payroll readiness, tip summaries, punch correction, and labor exports.",
+        "Financial Center covers Overview, Daily Close, Sales Breakdown, Labor & Payroll, Tip Center, Cost Center / COGS, Expenses, P&L Snapshot, Targets, and Reports.",
+        "Daily Close feeds Financial Center with sales, cash, card, gift card, tax, tips paid out, deposits, close status, variance, manager sign-off, and notes.",
+        "Prime Cost, Cost Center, P&L, and owner snapshots are operational visibility tools, not full accounting or tax filing replacements."
+      ]},
+      { title: "AI-assisted and smart kitchen areas", steps: [
+        "AI Tools include approved scanning workflows such as invoice scanning and recipe/file extraction where available.",
+        "Invoice scanning is AI-assisted and review-first. Scanned rows do not affect inventory, vendor spend, reports, or Cost Center until a manager reviews and approves the result.",
+        "Menu Intelligence is AI-assisted and review-first. Menu scan results and inferred dependencies should be reviewed before they power menu impact alerts.",
+        "86 alerts can show affected menu items when approved dependencies exist. When dependencies are missing, the app should guide managers to complete menu/inventory setup.",
+        "Voice Assistant Preview can navigate, search Help, find recipes, create prep/reminders, and stage 86 alerts without bypassing plan gates or permissions."
+      ]},
+      { title: "Account, admin, and support areas", steps: [
+        "Staff Roster manages employees, custom Roster Roles, permissions, wages where allowed, generated logins, active status, and staff records.",
+        "Any feature that uses roles must use owner-created Roster Roles as the source of truth, with generic labels only as fallback when no roles exist.",
+        "HR & Training manages training-manual uploads, acknowledgments, onboarding tasks, certifications, and confidential performance notes. Training uploads do not use AI and are size-limited.",
+        "Settings contains profile, account security, preferences, alerts, Plan & Billing, workspace configuration, branding, integrations-coming-soon, ownership transfer, and security/workspace controls according to permission.",
+        "System Audit gives permitted owners/admins a restaurant-level change trail. System Administrator gives internal platform operators the deeper platform tools, diagnostics, backups, plan controls, push center, access control, and repair utilities."
+      ]}
+    ],
+    notes: ["Use this chapter as the first checklist when training a new owner or checking whether Help Center and the Administrator Manual mention every major feature."]
+  },
+  {
+    id: "security-ip-whitelisting-access-controls",
+    group: "Security & Access",
+    title: "IP Whitelisting, Geofencing, MFA, and Access Controls",
+    tab: "Settings > Workspace / System Administrator > Security Center",
+    audience: "Owners, managers with workspace permission, and System Administrators",
+    summary: "Explains strict IP whitelisting and the surrounding security controls so restaurants do not accidentally lock themselves out.",
+    keywords: "ip whitelist whitelisting whistling allowed ip address strict ip security center geofence mfa app check account security access locked out wifi static dynamic mobile data vpn",
+    sections: [
+      { title: "What IP whitelisting does", steps: [
+        "Strict IP Whitelisting allows access only from configured public IP addresses, such as a restaurant's secure Wi-Fi connection.",
+        "It is different from geofencing. Geofencing reviews GPS location for time-clock behavior; IP whitelisting limits network access to the app itself when enabled.",
+        "The control is plan-gated and should appear only where Security Center or internal access allows it.",
+        "Use comma-separated public IP addresses only. Local router addresses such as 192.168.x.x are usually not the public address that the app sees."
+      ]},
+      { title: "Before turning it on", steps: [
+        "Confirm the restaurant has a stable public IP from the internet provider.",
+        "Test from the restaurant Wi-Fi, from the owner's normal device, and from a manager account before relying on the setting during service.",
+        "Keep a verified owner/System Administrator recovery path available.",
+        "Phones on mobile data, employees at home, VPN users, and traveling owners may be blocked if their current public IP is not listed."
+      ]},
+      { title: "How to recover or troubleshoot", steps: [
+        "If users suddenly cannot load the app after IP controls are enabled, confirm whether they are on the approved network or a different network/mobile data.",
+        "Have a permitted owner or System Administrator review Settings > Workspace security controls or System Administrator support tools from an approved location.",
+        "If the restaurant's public IP changed, update the authorized IP list before asking staff to retry.",
+        "Do not use IP whitelisting as the only security control. Keep role permissions, plan gates, Firebase rules, App Check, MFA for elevated users, and audit logging active."
+      ]},
+      { title: "Related controls", steps: [
+        "Account Security covers password reset, email verification, MFA status, recovery-code behavior, and sign-in hygiene.",
+        "Security Center tracks App Check, MFA, rules status, suspicious activity, elevated access, environment readiness, and required secrets.",
+        "Geofence review helps managers understand off-site clock activity without replacing payroll review.",
+        "System Audit and admin audit logs should record sensitive changes such as access changes, subscription changes, restore actions, punch edits, and security setting changes."
+      ]}
+    ],
+    notes: ["If someone calls this IP whistling, search Help Center for whistling or whitelist; both should lead here."]
+  },
+  {
+    id: "plans-founder-beta-billing-integrations",
+    group: "Plans & Billing",
+    title: "Plans, Founder Beta, Scan Limits, Billing, and Integrations",
+    tab: "Settings > Plan & Billing / Settings > Integrations",
+    audience: "Owners and managers who are allowed to view billing; System Administrators for manual changes",
+    summary: "Explains the tier system, beta access, scan usage, coming-soon billing, and why integrations are locked for customers.",
+    keywords: "plan billing founder beta shift operations smart kitchen owner pro scan limits invoice pages menu pages integrations coming soon pricing selected future tier discount payments stripe locked",
+    sections: [
+      { title: "Customer tiers", steps: [
+        "Shift includes basic dashboard/home, roster view, messages, prep, basic 86 alerts, recipes, reminders, Help Center, schedule viewing, basic permissions, and mobile access.",
+        "Operations adds Schedule Builder, Time Clock, Timesheets, Labor Command, geofence review, payroll readiness, Tip Center, Daily Close, Sales Breakdown, Manager Brief, Kitchen Command Center, routines, basic inventory, Burn Log, basic reports, and basic audit.",
+        "Smart Kitchen adds Financial Overview, Prime Cost, Cost Center / COGS, invoice totals, vendor spend, scan tools, Menu Intelligence, smart 86 alerts, Budget & Targets, P&L Snapshot, monthly owner report, advanced reports, backups, and security visibility where appropriate.",
+        "Owner Pro adds Smart Kitchen plus multi-location/cross-location placeholders, higher scan limits, more backup history, priority support placeholders, advanced audit exports, custom onboarding placeholders, and tier-eligible early access. Master Admin/System Admin is internal only."
+      ]},
+      { title: "Founder Beta lifecycle", steps: [
+        "Founder Beta restaurants use the app free during active beta. Intended beta is 60 days, with one 30-day extension controlled by Master Admin/System Administrator.",
+        "Founder Beta workspaces should default to Smart Kitchen access unless a selected future tier is set.",
+        "After beta, Founder Beta accounts receive 50% off the selected future tier for 12 months.",
+        "While live billing is not implemented, beta restaurants should not suddenly be locked out merely because beta ended. Internal admins should manually convert status after confirming with the customer."
+      ]},
+      { title: "Scan limits and integrations", steps: [
+        "Invoice and menu scan limits are tracked monthly by workspace, scan type, pages used, and user when possible and must be checked before an expensive AI/API call starts.",
+        "Plan & Billing shows current plan, beta status, normal launch price, founder price, discount end date, scan usage, included features, integration lock status, and Payments coming soon.",
+        "Staff should not see billing controls or upgrade clutter.",
+        "Integrations are locked for all customer tiers, including Founder Beta. Do not store future live POS, payroll, or accounting secrets in normal customer Firestore fields."
+      ]}
+    ],
+    notes: ["Plan access and user permissions are separate. A user needs both before the feature is usable."]
+  },
+  {
+    id: "push-notifications-restaurant-groups",
+    group: "Communication",
+    title: "Push Notifications and Restaurant Group Broadcasts",
+    tab: "System Administrator > Push Control Center / Message Board",
+    audience: "Owners for normal push behavior; System Administrators for group broadcasts",
+    summary: "Explains device opt-in, token health, individual tests, workspace messages, and internal restaurant-group push sends.",
+    keywords: "push notifications restaurant group broadcast selected workspace all workspaces tokens permission quiet hours stale token message board alert test critical system administrator",
+    sections: [
+      { title: "Normal push behavior", steps: [
+        "Users must allow notifications on the browser/device. If they deny permission, the app cannot force the operating system to show notifications.",
+        "Push tokens can become stale when a user changes device, clears browser data, disables notifications, or reinstalls/adds the app again.",
+        "Message Board, 86 alerts, reminders, schedule alerts, and important workspace notices can surface through push where supported and user preferences allow it.",
+        "A successful server send means the message was handed to Firebase Cloud Messaging; it does not guarantee the phone or desktop displayed it."
+      ]},
+      { title: "Push Control Center", steps: [
+        "System Administrator can inspect token age, permission state, stale/missing tokens, repair hints, and test sends from Push Control Center.",
+        "Targeted Push Broadcast can send to one selected workspace, one selected restaurant group, or all workspaces. Group/platform sends are internal-only.",
+        "Restaurant groups are detected from workspace group fields such as restaurantGroupName, groupName, restaurantGroupId, branding/system settings group labels, or owner email fallback.",
+        "Before sending, preview the matching workspace, user, and token counts."
+      ]},
+      { title: "Safe sending rules", steps: [
+        "Use clear titles and short messages. Do not include passwords, recovery codes, employee private details, wages, provider keys, or signed file links.",
+        "Respect quiet hours unless the message is genuinely critical and the workflow supports a critical flag.",
+        "Audit logs should capture meaningful push send details.",
+        "If a customer says they did not receive a push, check in-app notification, token health, device permission, and the last send result."
+      ]}
+    ],
+    notes: ["Restaurant-group push is an internal platform tool, not a normal staff feature."]
+  },
+  {
+    id: "owner-snapshots-reports-exports",
+    group: "Reports & Snapshots",
+    title: "Owner Snapshots, Reports, and Exports",
+    tab: "Financial Center > Reports / System Audit / Inventory / Labor",
+    audience: "Owners and permitted managers",
+    summary: "Explains which reports are operational snapshots, how exports are used, and where numbers come from.",
+    keywords: "owner snapshot report export csv pdf print daily close labor tips cogs vendor spend pnl prime cost inventory sales audit role filters roster roles",
+    sections: [
+      { title: "Operational snapshot rule", steps: [
+        "86 Chaos reports are owner-ready operational snapshots. They are not a full accounting ledger or tax-ready bookkeeping system.",
+        "Daily Close reports use saved close records. Labor and tip reports use time punches, staff records, and wage/tip permissions.",
+        "COGS and vendor visibility use approved invoice history, burn/waste data, and item cost information where available.",
+        "If setup data is missing, the report should say what is missing instead of showing a blank or pretending the data is complete."
+      ]},
+      { title: "Exports and role filters", steps: [
+        "Labor exports can show detailed time-punch rows or total-hours summaries.",
+        "Reports, exports, schedule coverage, dashboards, and filters that group by role must use the account owner's custom Roster Roles from Preferences / Roster Roles.",
+        "Financial exports and owner reports should be restricted to users with a real business need.",
+        "Use System Audit or admin audit logs when you need to understand who edited sensitive records."
+      ]}
+    ],
+    notes: ["If a report cannot explain the source of a number, treat it as incomplete until the source wiring is confirmed."]
+  },
+  {
+    id: "system-admin-feature-access-resolver-plan-tools",
+    group: "System Administrator",
+    title: "System Administrator: Plan Tools, Feature Resolver, and Beta Controls",
+    tab: "System Administrator > Workspaces / Plans / Feature Access Resolver",
+    audience: "Configured System Administrators only",
+    summary: "Use internal tools to answer why a feature is available or locked without exposing internal controls to customers.",
+    keywords: "system administrator feature access resolver plan allowed role allowed manual enabled final allowed reason founder beta extension selected future tier scan usage reset audit subscription",
+    sections: [
+      { title: "Feature access resolver", steps: [
+        "Select the workspace, user, and feature key. Review current plan, selected future tier, beta status, planAllowed, roleAllowed, manualEnabled, final allowed/locked result, and reason.",
+        "Use the resolver before changing permissions. If planAllowed is false, a role edit will not unlock the feature. If roleAllowed is false, a plan upgrade alone will not give the user access.",
+        "Master Admin/System Administrator may bypass plan locks for testing, but customer owners and staff should still see the normal plan/permission result.",
+        "Document the reason in the support note or audit log when you change plan, permission, beta, or manual feature settings."
+      ]},
+      { title: "Founder Beta and scan tools", steps: [
+        "Existing workspaces with no subscription data should be backfilled safely rather than falling into Shift and losing access.",
+        "For a new beta workspace, set status beta, isFounderBeta true, planId smart_kitchen, selectedFutureTier smart_kitchen unless changed, beta dates, founderDiscountPercent 50, billingProvider none/manual, integrationsLocked true, and timestamps.",
+        "Use the manual flow to extend beta by 30 days, end beta, cancel, or convert beta ended to active manual with founder discount.",
+        "Every plan, beta, discount, scan reset, or integration-lock change must write an audit log."
+      ]}
+    ],
+    notes: ["Feature resolver output is an internal diagnostic aid. Help Center should explain plan/permission concepts without exposing internal bypass behavior."]
+  },
+  {
+    id: "system-admin-integrations-ip-secret-safety",
+    group: "System Administrator",
+    title: "System Administrator: Integrations, IP Controls, and Secret Safety",
+    tab: "System Administrator > Security / Settings > Integrations",
+    audience: "Configured System Administrators only",
+    summary: "Keep customer integration screens locked, prevent accidental secret storage, and use IP controls carefully.",
+    keywords: "system administrator integrations locked oauth api keys pos accounting payroll secrets firestore encrypted server side ip whitelist strict ip lockout recovery provider setup placeholder",
+    sections: [
+      { title: "Integration lock and secret safety", steps: [
+        "All customer tiers, including Founder Beta, Shift, Operations, Smart Kitchen, and Owner Pro, should see Integrations are coming soon rather than unfinished provider setup.",
+        "Only Master Admin/System Administrator testing accounts should access internal integration test screens.",
+        "Do not expose unfinished OAuth flows, provider credentials, API-key fields, accounting setup, payroll setup, or POS tools to customers until the full server-side security design is complete.",
+        "Never store future live POS, payroll, or accounting secrets in customer-readable Firestore documents or normal workspace settings."
+      ]},
+      { title: "IP whitelist operations", steps: [
+        "Before enabling strict IP whitelisting, verify the public IP from the restaurant network and confirm the owner has a tested recovery path.",
+        "Do not test strict IP controls for the first time during peak service.",
+        "When investigating lockouts, compare the user's current public IP and network type against the saved whitelist, then update or disable the control from an approved admin path if necessary.",
+        "IP whitelisting complements, but does not replace, authentication, MFA, App Check, plan gates, Firestore rules, and role permissions."
+      ]}
+    ],
+    notes: ["Secrets and lockout controls are two of the easiest ways to turn a normal support ticket into a kitchen fire. Slow down and verify scope."]
   }
 ];

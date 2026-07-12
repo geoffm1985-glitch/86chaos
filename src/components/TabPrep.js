@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { ClipboardList, Plus, Check, Repeat, Trash2, X } from 'lucide-react';
+import { ClipboardList, Plus, Check, Repeat, Trash2, X, Edit } from 'lucide-react';
 
 const TabPrep = ({ currentDate, prepItems, tasks = [], appUser, setLabelsToPrint, db, T, dbPrepCats = [], formatDate, getToday, addToast }) => {
   const [subTab, setSubTab] = useState('prep');

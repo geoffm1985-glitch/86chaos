@@ -27,6 +27,23 @@ function safeInt(value, fallback, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
+function getNextRecurringReminderAt(scheduledAt, recurrence) {
+  const mode = String(recurrence || 'none').toLowerCase();
+  if (!['daily', 'weekly', 'monthly'].includes(mode)) return '';
+  const base = new Date(scheduledAt || Date.now());
+  if (Number.isNaN(base.getTime())) return '';
+  const next = new Date(base.getTime());
+  const now = Date.now();
+  let guard = 0;
+  while (next.getTime() <= now && guard < 36) {
+    if (mode === 'daily') next.setDate(next.getDate() + 1);
+    if (mode === 'weekly') next.setDate(next.getDate() + 7);
+    if (mode === 'monthly') next.setMonth(next.getMonth() + 1);
+    guard += 1;
+  }
+  return Number.isNaN(next.getTime()) ? '' : next.toISOString();
+}
+
 async function runWithConcurrency(items, limit, worker) {
   let cursor = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -122,13 +139,28 @@ module.exports = async function handler(req, res) {
         const result = await messaging.sendEachForMulticast(payload);
         if (result.successCount > 0) {
           stats.sent += 1;
-          await ref.update({
-            status: 'sent',
-            dispatchedAt: nowIso,
-            dispatchKey,
-            pushSuccessCount: result.successCount,
-            pushFailureCount: result.failureCount || 0
-          });
+          const nextScheduledAt = getNextRecurringReminderAt(reminder.scheduledAt, reminder.recurrence);
+          if (nextScheduledAt) {
+            await ref.update({
+              status: 'scheduled',
+              scheduledAt: nextScheduledAt,
+              lastDispatchedAt: nowIso,
+              dispatchedAt: null,
+              previousDispatchKey: dispatchKey,
+              dispatchKey: '',
+              pushSuccessCount: result.successCount,
+              pushFailureCount: result.failureCount || 0,
+              updatedAt: nowIso
+            });
+          } else {
+            await ref.update({
+              status: 'sent',
+              dispatchedAt: nowIso,
+              dispatchKey,
+              pushSuccessCount: result.successCount,
+              pushFailureCount: result.failureCount || 0
+            });
+          }
         } else {
           stats.failed += 1;
           await ref.update({

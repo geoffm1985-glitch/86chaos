@@ -1,9 +1,9 @@
 {
-  "version": "15.0.58",
-  "name": "86 Chaos 15.0.58 Website Claims Hardening",
+  "version": "15.0.61",
+  "name": "86 Chaos 15.0.61 86Voice Intelligent Commands",
   "releasedAt": "2026-07-12",
-  "label": "86 Chaos 15.0.58",
-  "build": "15.0.58",
+  "label": "86 Chaos 15.0.61",
+  "build": "15.0.61",
   "updatedAt": "2026-07-12T00:00:00.000Z",
-  "notes": "Desktop UI refinement pass for professional PC density, scanability, modals, tables, navigation, and page widths while preserving mobile comfort and all features."
+  "notes": "Intelligent 86Voice command hardening: prep/task upsert and completion, 86 alert menu impact, reminders, status questions, undo, permission/plan-safe voice results."
 }

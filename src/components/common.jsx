@@ -6,9 +6,10 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
-import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, isLikelyPrepCommand, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
+import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, isLikelyPrepCommand, normalizePrepText, parsePrepCommandItems, parsePrepTargetDate, summarizePrepResults } from '../core/smartPrep';
 import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveStrictEightySixMatch } from '../core/menuIntelligence';
 import { parseReminderCommand } from '../core/reminderUtils';
+import { getVoiceMatchScore, resolveVoiceMatch } from '../core/voiceIntelligence';
 import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
 import { FEATURE_KEYS } from '../config/plans';
 
@@ -553,9 +554,11 @@ const parseNextWeekday = (phrase = '') => {
 
 const isVoiceSuperAdmin = (user = {}) => Boolean((MASTER_ADMIN_EMAIL && (user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true);
 const isVoiceAdmin = (user = {}) => Boolean(isVoiceSuperAdmin(user) || user?.isAdmin === true);
-const isVoiceManagerOrAdmin = (user = {}) => {
+const isVoiceManagerOrAdmin = (user = {}, clientData = {}) => {
   const role = normalizeVoiceText(user?.role || '');
   const perms = user?.permissions || {};
+  const rosterRoles = Array.isArray(clientData?.rosterRoles) ? clientData.rosterRoles : (Array.isArray(clientData?.systemSettings?.rosterRoles) ? clientData.systemSettings.rosterRoles : []);
+  const allowLegacyRoleFallback = rosterRoles.length === 0;
   return Boolean(
     isVoiceAdmin(user) ||
     user?.isOwner === true ||
@@ -563,8 +566,9 @@ const isVoiceManagerOrAdmin = (user = {}) => {
     user?.owner === true ||
     user?.workspaceOwner === true ||
     perms.team === true ||
-    ['general manager', 'manager', 'kitchen manager', 'bar manager', 'schedule manager', 'operations manager', 'store manager', 'owner', 'shift lead', 'lead', 'supervisor'].includes(role) ||
-    /\b(manager|owner|supervisor|lead|gm)\b/.test(role)
+    perms.ops === true ||
+    perms.prep === true ||
+    (allowLegacyRoleFallback && (['general manager', 'manager', 'kitchen manager', 'bar manager', 'schedule manager', 'operations manager', 'store manager', 'owner', 'shift lead', 'lead', 'supervisor'].includes(role) || /\b(manager|owner|supervisor|lead|gm)\b/.test(role)))
   );
 };
 const voiceFeatureEnabled = (features = {}, feature) => !feature || features?.[feature] !== false;
@@ -626,7 +630,359 @@ const fetchVoicePrepMatchCandidates = async (restaurantId = '', prepDates = [], 
 };
 
 
-const fetchVoiceEightySixContext = async (restaurantId = '', loadedInventoryItems = [], loadedMenuDependencies = []) => {
+
+const isVoiceCompletionCommand = (text = '') => {
+  const q = normalizeVoiceText(text);
+  if (!q) return false;
+  return /\b(mark|marked|check|checked|complete|completed|finish|finished|done|clear|cleared|cross|crossed)\b/.test(q) &&
+    /\b(done|complete|completed|finished|off|task|tasks|prep|prepped|list|clear|cleared|check|checked|mark|marked)\b/.test(q);
+};
+
+const extractVoiceCompletionPayload = (text = '') => {
+  const raw = String(text || '').trim();
+  const q = normalizeVoiceText(raw);
+  if (!isVoiceCompletionCommand(q)) return null;
+  const dateInfo = parsePrepTargetDate(raw);
+  const date = dateInfo.date || getToday();
+  const cleanedForDate = dateInfo.cleanedText || raw;
+  const frequency = /\bweekly|week\b/.test(q) ? 'weekly' : /\bmonthly|month\b/.test(q) ? 'monthly' : /\bdaily|day\b/.test(q) ? 'daily' : '';
+  const scopeHint = /\bprep|prepped|prep list|food prep\b/.test(q)
+    ? 'prep'
+    : /\btask|tasks|daily task|weekly task|monthly task|cleaning|routine|routines\b/.test(q)
+      ? 'task'
+      : '';
+  let itemText = normalizeVoiceText(cleanedForDate)
+    .replace(/\b(i|i'm|im|i am|we|we're|were|we are|it's|its|it is|the|a|an|please|can you|could you)\b/g, ' ')
+    .replace(/\b(mark|marked|check|checked|complete|completed|finish|finished|done|clear|cleared|cross|crossed|off|with|up|out|that|this|item|items|prep|prepped|prepare|list|task|tasks|daily|weekly|monthly|today|tonight)\b/g, ' ')
+    .replace(/\bis\s+done\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  itemText = cleanVoiceItemName(itemText);
+  if (!itemText) return null;
+  return { itemText, date, frequency, scopeHint };
+};
+
+const normalizeVoiceListName = (value = '') => normalizePrepText(value)
+  .replace(/\b(cleaning|general|station|master)\b/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const singularizeVoiceToken = (value = '') => String(value || '').replace(/\b([a-z]{4,})s\b/g, '$1').trim();
+
+const levenshteinDistance = (a = '', b = '') => {
+  const aa = String(a || '');
+  const bb = String(b || '');
+  if (aa === bb) return 0;
+  if (!aa) return bb.length;
+  if (!bb) return aa.length;
+  const prev = Array.from({ length: bb.length + 1 }, (_, idx) => idx);
+  const curr = Array.from({ length: bb.length + 1 }, () => 0);
+  for (let i = 1; i <= aa.length; i += 1) {
+    curr[0] = i;
+    for (let j = 1; j <= bb.length; j += 1) {
+      const cost = aa[i - 1] === bb[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= bb.length; j += 1) prev[j] = curr[j];
+  }
+  return prev[bb.length];
+};
+
+const scoreVoiceListCandidate = (spoken = '', candidateName = '') => {
+  const q = singularizeVoiceToken(normalizeVoiceListName(spoken));
+  const name = singularizeVoiceToken(normalizeVoiceListName(candidateName));
+  if (!q || !name) return 0;
+  return getVoiceMatchScore(q, name);
+};
+
+const getVoiceTaskPeriodKey = (frequency = 'daily', prepDate = getToday()) => {
+  if (frequency === 'weekly') {
+    const d = new Date(`${prepDate}T12:00:00`);
+    const day = d.getDay();
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+    return formatDate(d);
+  }
+  if (frequency === 'monthly') return String(prepDate || getToday()).substring(0, 7);
+  return prepDate || getToday();
+};
+
+const isVoicePrepDone = (item = {}, prepDate = getToday()) => item?.isMaster || item?.date === 'MASTER'
+  ? !!item?.completedDates?.[prepDate]
+  : !!item?.isCompleted;
+
+const fetchVoiceTaskCandidates = async (restaurantId = '', existingTasks = []) => {
+  const byId = new Map();
+  (existingTasks || []).forEach(task => { if (task?.id) byId.set(task.id, task); });
+  if (!restaurantId) return Array.from(byId.values());
+  try {
+    const snap = await getDocs(query(collection(db, 'tasks'), where('restaurantId', '==', restaurantId)));
+    snap.forEach(docSnap => byId.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
+  } catch (err) {
+    console.warn('86 Voice task match refresh failed; using loaded task snapshot.', err?.message || err);
+  }
+  return Array.from(byId.values());
+};
+
+const resolveVoiceCompletionMatch = async ({ restaurantId = '', parsed = {}, prepItems = [], tasks = [] }) => {
+  const prepDate = parsed.date || getToday();
+  const allowPrep = parsed.scopeHint !== 'task';
+  const allowTasks = parsed.scopeHint !== 'prep';
+  const candidates = [];
+  if (allowPrep) {
+    const prepCandidates = await fetchVoicePrepMatchCandidates(restaurantId, [prepDate], prepItems);
+    prepCandidates
+      .filter(item => item && (item.isMaster || item.date === 'MASTER' || item.date === prepDate))
+      .forEach(item => {
+        const name = item.text || item.title || item.name || 'Prep item';
+        const score = scoreVoiceListCandidate(parsed.itemText, name) + (isVoicePrepDone(item, prepDate) ? -14 : 8);
+        candidates.push({ type:'prep', item, label:name, listLabel:'Prep List', prepDate, score, alreadyDone:isVoicePrepDone(item, prepDate) });
+      });
+  }
+  if (allowTasks) {
+    const taskCandidates = await fetchVoiceTaskCandidates(restaurantId, tasks);
+    taskCandidates
+      .filter(task => !parsed.frequency || task.frequency === parsed.frequency)
+      .forEach(task => {
+        const name = task.title || task.text || task.name || 'Task';
+        const periodKey = getVoiceTaskPeriodKey(task.frequency || 'daily', prepDate);
+        const alreadyDone = !!task?.completions?.[periodKey];
+        const score = scoreVoiceListCandidate(parsed.itemText, name) + (alreadyDone ? -14 : 6) + (parsed.frequency && task.frequency === parsed.frequency ? 10 : 0);
+        candidates.push({ type:'task', item:task, label:name, listLabel:`${String(task.frequency || 'daily').replace(/^./, c => c.toUpperCase())} Tasks`, prepDate, periodKey, score, alreadyDone });
+      });
+  }
+  const ranked = candidates
+    .filter(candidate => candidate.score >= 42)
+    .sort((a, b) => (b.score - a.score) || (a.alreadyDone === b.alreadyDone ? 0 : a.alreadyDone ? 1 : -1));
+  const top = ranked[0] || null;
+  const second = ranked[1] || null;
+  const isConfident = !!top && top.score >= 86 && (!second || top.score - second.score >= 18);
+  return { top, candidates: ranked.slice(0, 5), isConfident };
+};
+
+
+const isVoiceUndoCommand = (text = '') => {
+  const q = normalizeVoiceText(text);
+  return /\b(undo that|undo last|cancel last|cancel that|take that back|never mind|nevermind|scratch that)\b/.test(q);
+};
+
+const cleanVoiceTaskTitle = (text = '') => cleanVoiceItemName(String(text || '')
+  .replace(/^(add|create|make|put|new)\s+/i, '')
+  .replace(/\b(to|into|onto)\s+(the\s+)?(task|tasks|task list|daily tasks|weekly tasks|monthly tasks|prep tasks)\b/ig, ' ')
+  .replace(/\b(task|tasks|list|please|tonight|today|tomorrow)\b/ig, ' ')
+  .replace(/\s+/g, ' ')
+  .trim());
+
+const parseVoiceTaskUpsertPayload = (text = '') => {
+  const raw = String(text || '').trim();
+  const q = normalizeVoiceText(raw);
+  if (!/\b(add|create|make|put|new)\b/.test(q)) return null;
+  if (!/\b(task|tasks|daily task|weekly task|monthly task|line check|checklist|cleaning list|routine|routines|tonight)\b/.test(q)) return null;
+  const recurring = parseRecurringTaskVoicePayload(raw);
+  if (recurring) return { ...recurring, mode: 'upsert_task' };
+  let frequency = 'daily';
+  if (/\bweekly|week\b/.test(q)) frequency = 'weekly';
+  if (/\bmonthly|month\b/.test(q)) frequency = 'monthly';
+  const weekday = getVoiceWeekdayName(q);
+  const monthlyDate = parseVoiceMonthlyDate(q);
+  let title = q
+    .replace(/\b(add|create|make|put|new|please|to|into|onto|the|a|an|called|named)\b/g, ' ')
+    .replace(/\b(task|tasks|task list|line check|checklist|cleaning list|routine|routines|tonight|today|tomorrow|daily|weekly|monthly|day|week|month|every|each|on|for)\b/g, ' ')
+    .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/g, ' ')
+    .replace(/\b([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  title = cleanVoiceTaskTitle(title) || '';
+  if (!title) return null;
+  const properTitle = titleCaseVoiceTask(title);
+  return {
+    mode: 'upsert_task',
+    title: properTitle,
+    frequency,
+    category: inferVoiceTaskCategory(title),
+    targetDay: frequency === 'weekly' ? (weekday || getCurrentWeekdayName()) : null,
+    targetDate: frequency === 'monthly' ? (monthlyDate || getCurrentMonthDay()) : null
+  };
+};
+
+const getVoiceRosterRoles = (clientData = {}) => Array.isArray(clientData?.rosterRoles)
+  ? clientData.rosterRoles
+  : (Array.isArray(clientData?.systemSettings?.rosterRoles) ? clientData.systemSettings.rosterRoles : []);
+
+const canVoiceManageRecurringTasks = (user = {}, clientData = {}) => {
+  const perms = user?.permissions || {};
+  if (isVoiceSuperAdmin(user) || isVoiceAdmin(user) || user?.isOwner || user?.accountOwner || user?.owner || user?.workspaceOwner || perms.team || perms.ops || perms.prep) return true;
+  const rosterRoles = getVoiceRosterRoles(clientData);
+  if (rosterRoles.length) return false;
+  const role = normalizeVoiceText(user?.role || '');
+  return ['general manager', 'manager', 'kitchen manager', 'bar manager', 'schedule manager', 'operations manager', 'store manager', 'owner', 'shift lead', 'lead', 'supervisor'].includes(role) || /\b(manager|owner|supervisor|lead|gm)\b/.test(role);
+};
+
+const canVoiceShareReminder = (user = {}, clientData = {}) => {
+  const perms = user?.permissions || {};
+  if (isVoiceSuperAdmin(user) || isVoiceAdmin(user) || user?.isOwner || user?.accountOwner || user?.workspaceOwner || perms.team || perms.schedule || perms.ops) return true;
+  const rosterRoles = getVoiceRosterRoles(clientData);
+  if (rosterRoles.length) return false;
+  const role = normalizeVoiceText(user?.role || '');
+  return /\b(manager|owner|supervisor|lead|gm)\b/.test(role);
+};
+
+
+const makeVoiceDefaultReminderIso = (dateKey = '', hour = 9, minute = 0) => {
+  const base = dateKey ? new Date(`${dateKey}T12:00:00`) : new Date();
+  if (!dateKey) base.setDate(base.getDate() + 1);
+  base.setHours(hour, minute, 0, 0);
+  return base.toISOString();
+};
+
+const parseVoiceRecurringReminderPayload = (text = '') => {
+  const raw = String(text || '').trim();
+  const q = normalizeVoiceText(raw);
+  if (!/\b(reminder|remind me)\b/.test(q) || !/\b(daily|weekly|monthly|every day|every week|every month)\b/.test(q)) return null;
+  const frequency = /\b(monthly|every month)\b/.test(q) ? 'monthly' : /\b(weekly|every week)\b/.test(q) ? 'weekly' : 'daily';
+  const parsed = parseReminderCommand(raw);
+  const dateInfo = parsePrepTargetDate(raw);
+  let title = String(parsed?.title || raw)
+    .replace(/\b(create|add|set|make|a|an|the|reminder|remind me|to|daily|weekly|monthly|every day|every week|every month|recurring|repeat|repeating)\b/ig, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  title = cleanVoiceItemName(title) || 'Recurring reminder';
+  let scheduledAt = parsed?.scheduledAt || '';
+  if (!scheduledAt) scheduledAt = makeVoiceDefaultReminderIso(dateInfo.date || '', 9, 0);
+  return {
+    title,
+    scheduledAt,
+    recurrence: frequency,
+    recurrenceLabel: frequency === 'daily' ? 'daily' : frequency === 'weekly' ? 'weekly' : 'monthly'
+  };
+};
+
+const parseVoiceSharedReminderPayload = (text = '') => {
+  const raw = String(text || '').trim();
+  const q = normalizeVoiceText(raw);
+  if (!/^remind\s+/.test(q) || /^remind\s+me\b/.test(q)) return null;
+  const match = raw.match(/^remind\s+(.+?)\s+(?:to\s+)?(.+)$/i);
+  if (!match?.[1] || !match?.[2]) return null;
+  const assigneePhrase = cleanVoiceItemName(match[1]);
+  const reminderText = match[2].trim();
+  if (!assigneePhrase || !reminderText) return null;
+  const parsed = parseReminderCommand(`remind me to ${reminderText}`);
+  let scheduledAt = parsed?.scheduledAt || '';
+  if (!scheduledAt) {
+    const dateOnly = parsePrepTargetDate(reminderText).date;
+    if (dateOnly) scheduledAt = new Date(`${dateOnly}T09:00:00`).toISOString();
+  }
+  return {
+    assigneePhrase,
+    title: cleanVoiceItemName(parsed?.title || reminderText) || reminderText,
+    scheduledAt,
+    needsManualTime: !scheduledAt,
+    rawReminderText: reminderText
+  };
+};
+
+const resolveVoiceUserMatch = (users = [], spokenName = '') => resolveVoiceMatch(
+  (users || []).filter(u => u && (u.id || u.email || u.name)),
+  spokenName,
+  {
+    getLabel: (user) => `${user.name || ''} ${user.displayName || ''} ${user.email || ''}`.trim(),
+    getAliases: (user) => [user.name, user.displayName, user.firstName, user.email].filter(Boolean),
+    minScore: 35,
+    highThreshold: 92,
+    margin: 16,
+    limit: 5
+  }
+);
+
+const filterApprovedVoiceMenuDependencies = (deps = []) => (deps || []).filter(dep => {
+  const status = normalizeVoiceText(dep.status || dep.reviewStatus || dep.approvalStatus || dep.sourceStatus || 'approved');
+  return !status || ['approved', 'active', 'verified', 'manager approved', 'reviewed'].includes(status) || dep.approved === true || dep.managerApproved === true;
+});
+
+const getVoiceMenuImpactRows = (itemOrPhrase = '', inventoryItems = [], menuDependencies = []) => {
+  const approvedDeps = filterApprovedVoiceMenuDependencies(menuDependencies);
+  const itemName = typeof itemOrPhrase === 'string' ? itemOrPhrase : (itemOrPhrase?.name || itemOrPhrase?.title || '');
+  const itemId = typeof itemOrPhrase === 'string' ? '' : (itemOrPhrase?.id || '');
+  const requested = normalizeVoiceText(itemName);
+  return approvedDeps.filter(dep => {
+    const depItemId = dep.inventoryItemId || dep.itemId || dep.inventoryId || '';
+    const depIngredient = dep.inventoryItemName || dep.ingredientName || dep.itemName || dep.name || '';
+    const depMenu = dep.menuItemName || dep.recipeName || dep.dishName || dep.menuName || '';
+    if (itemId && depItemId === itemId) return true;
+    return getVoiceMatchScore(requested, depIngredient) >= 78 || getVoiceMatchScore(requested, depMenu) >= 116;
+  }).map(dep => ({
+    menuItemName: dep.menuItemName || dep.recipeName || dep.dishName || dep.menuName || dep.name || 'Menu item',
+    ingredientName: dep.inventoryItemName || dep.ingredientName || dep.itemName || itemName,
+    severity: dep.severity || dep.impactSeverity || dep.impact || 'check stock'
+  }));
+};
+
+const extractVoiceMenuImpactQuestion = (text = '') => {
+  const q = normalizeVoiceText(text);
+  const patterns = [
+    /^what\s+does\s+(.+?)\s+(?:affect|impact)\??$/,
+    /^what\s+menu\s+items\s+(?:use|need|have)\s+(.+)\??$/,
+    /^if\s+(?:we are|we're|were)\s+out\s+of\s+(.+?)\s+what\s+(?:can'?t|cannot|can't)\s+we\s+make\??$/,
+    /^(?:show|find|check)\s+(?:menu\s+)?(?:impact|effects?)\s+(?:for|of|from)\s+(.+)$/
+  ];
+  for (const pattern of patterns) {
+    const match = q.match(pattern);
+    if (match?.[1]) return cleanVoiceItemName(match[1]);
+  }
+  return '';
+};
+
+const isVoiceWorkStatusQuestion = (text = '') => {
+  const q = normalizeVoiceText(text);
+  return /\b(what needs done|what needs to be done|what prep is left|prep left|how many prep tasks are left|what needs attention|any urgent issues|what is late|what's late|whats late)\b/.test(q);
+};
+
+const isVoiceOutOfStockQuestion = (text = '') => {
+  const q = normalizeVoiceText(text);
+  return /\b(what are we out of|what am i out of|what is eighty sixed|what is 86ed|what's 86|whats 86|active 86|low stock)\b/.test(q);
+};
+
+const getActiveVoice86Alerts = (events = []) => (events || [])
+  .filter(event => {
+    const haystack = normalizeVoiceText(`${event.title || ''} ${event.category || ''} ${event.messageCategory || ''} ${event.notes || ''}`);
+    return event.type === 'note' && (event.isImportant || event.commandCenterAlert || event.managerBriefAlert) && /\b(86|eighty six|out of|alert)\b/.test(haystack);
+  })
+  .slice(0, 8);
+
+const buildVoiceOutOfStockSummary = ({ events = [], inventoryItems = [], appUser = {}, clientFeatures = {}, clientData = {} }) => {
+  const alerts = getActiveVoice86Alerts(events);
+  const canSeeInventory = canVoiceOpenTab(appUser, clientFeatures, 'inventory', clientData);
+  const lowStock = canSeeInventory ? (inventoryItems || [])
+    .filter(item => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) <= Number(item.parLevel || 0))
+    .sort((a, b) => (Number(a.currentStock || 0) - Number(a.parLevel || 0)) - (Number(b.currentStock || 0) - Number(b.parLevel || 0)))
+    .slice(0, 8) : [];
+  const lines = [];
+  if (alerts.length) lines.push(`Active 86 alerts: ${alerts.map(a => a.title || a.inventoryItemName || '86 alert').join(', ')}.`);
+  if (lowStock.length) lines.push(`Low stock: ${lowStock.map(i => `${i.name || 'Item'} (${i.currentStock || 0}/${i.parLevel || 0})`).join(', ')}.`);
+  if (!alerts.length && !lowStock.length) lines.push(canSeeInventory ? 'No active 86 alerts or low-stock items were found in the current workspace snapshot.' : 'No active 86 alerts were found. Low-stock inventory is restricted for your account.');
+  return lines.join(' ');
+};
+
+const buildVoiceWorkStatusSummary = ({ prepItems = [], tasks = [], events = [], inventoryItems = [], maintenanceLogs = [], appUser = {}, clientFeatures = {}, clientData = {} }) => {
+  const today = getToday();
+  const openPrep = (prepItems || []).filter(item => (item.date === today || item.date === 'MASTER' || item.isMaster) && !isVoicePrepDone(item, today)).slice(0, 8);
+  const openTasks = (tasks || []).filter(task => {
+    const key = getVoiceTaskPeriodKey(task.frequency || 'daily', today);
+    return !task?.completions?.[key];
+  }).slice(0, 8);
+  const alerts = getActiveVoice86Alerts(events).slice(0, 5);
+  const lowSummary = buildVoiceOutOfStockSummary({ events: [], inventoryItems, appUser, clientFeatures, clientData });
+  const canSeeMaintenance = canVoiceOpenTab(appUser, clientFeatures, 'maintenance', clientData);
+  const urgentMaint = canSeeMaintenance ? (maintenanceLogs || []).filter(m => !['completed','closed','resolved'].includes(normalizeVoiceText(m.status || ''))).slice(0, 5) : [];
+  const parts = [];
+  parts.push(openPrep.length ? `Open prep: ${openPrep.map(p => p.text || p.title || p.name || 'Prep item').join(', ')}.` : 'Prep looks clear for today.');
+  parts.push(openTasks.length ? `Open tasks: ${openTasks.map(t => t.title || t.text || t.name || 'Task').join(', ')}.` : 'No open daily/weekly/monthly task rows were found.');
+  if (alerts.length) parts.push(`Active alerts: ${alerts.map(a => a.title || '86 alert').join(', ')}.`);
+  if (urgentMaint.length) parts.push(`Maintenance needing attention: ${urgentMaint.map(m => m.equipment || m.issue || 'Maintenance issue').join(', ')}.`);
+  if (!/No active 86 alerts/.test(lowSummary)) parts.push(lowSummary);
+  return parts.join(' ');
+};
+
+const fetchVoiceEightySixContext = async (restaurantId = '', loadedInventoryItems = [], loadedMenuDependencies = [], options = {}) => {
   const inventoryById = new Map();
   const depById = new Map();
   (loadedInventoryItems || []).forEach(item => { if (item?.id) inventoryById.set(item.id, item); });
@@ -634,13 +990,22 @@ const fetchVoiceEightySixContext = async (restaurantId = '', loadedInventoryItem
   if (!restaurantId) {
     return { inventoryItems: Array.from(inventoryById.values()), menuDependencies: Array.from(depById.values()) };
   }
+  const allowInventory = options.allowInventory !== false;
+  const allowMenuDependencies = options.allowMenuDependencies !== false;
   try {
-    const [inventorySnap, depSnap] = await Promise.all([
-      getDocs(query(collection(db, 'inventoryItems'), where('restaurantId', '==', restaurantId))),
-      getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', restaurantId)))
-    ]);
-    inventorySnap.forEach(docSnap => inventoryById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
-    depSnap.forEach(docSnap => depById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
+    const reads = [];
+    if (allowInventory) reads.push(getDocs(query(collection(db, 'inventoryItems'), where('restaurantId', '==', restaurantId))));
+    if (allowMenuDependencies) reads.push(getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', restaurantId))));
+    const snaps = await Promise.all(reads);
+    let idx = 0;
+    if (allowInventory) {
+      const inventorySnap = snaps[idx++];
+      inventorySnap.forEach(docSnap => inventoryById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
+    }
+    if (allowMenuDependencies) {
+      const depSnap = snaps[idx++];
+      depSnap.forEach(docSnap => depById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }));
+    }
   } catch (err) {
     console.warn('86 Voice 86-context refresh failed; using loaded snapshots.', err?.message || err);
   }
@@ -712,12 +1077,14 @@ const isPlainNavigationPhrase = (q = '') => {
   return cleaned.split(' ').length <= 4 && !!buildVoiceNavigationAction(cleaned);
 };
 
-const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
+const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
   const [manualText, setManualText] = useState('');
   const [pending, setPending] = useState(null);
+  const [lastUndo, setLastUndo] = useState(null);
+  const [voiceResult, setVoiceResult] = useState(null);
   const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const canUseSpeech = Boolean(SpeechRecognition);
   const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
@@ -728,7 +1095,10 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     if (cached.restaurantId === appUser?.restaurantId && now - Number(cached.loadedAt || 0) < 90000 && cached.inventoryItems?.length) {
       return { inventoryItems: cached.inventoryItems || [], menuDependencies: cached.menuDependencies || [] };
     }
-    const fresh = await fetchVoiceEightySixContext(appUser?.restaurantId, inventoryItems, menuDependencies);
+    const fresh = await fetchVoiceEightySixContext(appUser?.restaurantId, inventoryItems, menuDependencies, {
+      allowInventory: canVoiceOpenTab(appUser, clientFeatures, 'inventory', clientData) || isVoiceSuperAdmin(appUser),
+      allowMenuDependencies: canUseMenuIntelligence(appUser, clientData) || isVoiceSuperAdmin(appUser)
+    });
     eightySixContextRef.current = { restaurantId: appUser?.restaurantId || '', loadedAt: now, ...fresh };
     return fresh;
   };
@@ -738,6 +1108,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setPending(null);
     setHeardText('');
     setManualText('');
+    setVoiceResult(null);
     setTimeout(() => startListening(), 80);
   };
 
@@ -745,6 +1116,107 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     const raw = String(spokenText || '').trim();
     const q = normalizeVoiceText(raw);
     if (!q) return null;
+
+    if (isVoiceUndoCommand(raw)) {
+      return { intent:'undo_last_voice', label:'Undo last voice command', summary:'Undo the most recent safe voice action if rollback is available.', needsConfirmation:false, safe:true };
+    }
+
+    if (isVoiceWorkStatusQuestion(raw)) {
+      return {
+        intent:'status_summary',
+        label:'What needs done',
+        summary: buildVoiceWorkStatusSummary({ prepItems, tasks, events, inventoryItems, maintenanceLogs, appUser, clientFeatures, clientData }),
+        tab:'prep',
+        safe:true,
+        needsConfirmation:false
+      };
+    }
+
+    if (isVoiceOutOfStockQuestion(raw)) {
+      return {
+        intent:'out_of_stock_summary',
+        label:'What are we out of',
+        summary: buildVoiceOutOfStockSummary({ events, inventoryItems, appUser, clientFeatures, clientData }),
+        tab:'messages',
+        safe:true,
+        needsConfirmation:false
+      };
+    }
+
+    const impactQuestion = extractVoiceMenuImpactQuestion(raw);
+    if (impactQuestion) {
+      if (!canUseMenuIntelligence(appUser, clientData) && !isVoiceSuperAdmin(appUser)) {
+        return { intent:'blocked', label:'Menu impact unavailable', summary:'Menu impact questions require Menu Intelligence access for this workspace and user.', blocked:true, needsConfirmation:false, safe:true };
+      }
+      const liveContext = await getVoiceEightySixContext();
+      const voiceInventoryItems = liveContext.inventoryItems || inventoryItems || [];
+      const voiceMenuDependencies = liveContext.menuDependencies || menuDependencies || [];
+      const match = resolveVoiceMatch(voiceInventoryItems, impactQuestion, { getLabel: item => item.name || item.title || '', getAliases: item => [item.category, item.vendor, ...(Array.isArray(item.aliases) ? item.aliases : [])].filter(Boolean), minScore: 40, highThreshold: 90, margin: 14 });
+      const subject = match.top?.item || impactQuestion;
+      const impactRows = getVoiceMenuImpactRows(subject, voiceInventoryItems, voiceMenuDependencies);
+      const displayName = match.top?.item?.name || impactQuestion;
+      return {
+        intent:'menu_impact_answer',
+        label:`Menu impact: ${displayName}`,
+        itemName: displayName,
+        impactRows,
+        matchConfidence: match.confidence,
+        summary: impactRows.length
+          ? `${displayName} affects: ${impactRows.slice(0, 8).map(row => `${row.menuItemName}${row.severity ? ` (${row.severity})` : ''}`).join(', ')}.`
+          : 'Menu impact needs approved menu ingredient links first. Scan or enter the menu, review the ingredient links, and approve them before 86Voice can answer impact questions.',
+        safe:true,
+        needsConfirmation:false
+      };
+    }
+
+    const parsedRecurringReminder = parseVoiceRecurringReminderPayload(raw);
+    if (parsedRecurringReminder) {
+      return {
+        intent:'create_personal_reminder',
+        label:`Create ${parsedRecurringReminder.recurrenceLabel} reminder`,
+        title: parsedRecurringReminder.title,
+        scheduledAt: parsedRecurringReminder.scheduledAt,
+        recurrence: parsedRecurringReminder.recurrence,
+        summary:`Create a ${parsedRecurringReminder.recurrenceLabel} reminder: ${parsedRecurringReminder.title} starting ${formatClockDateTime(parsedRecurringReminder.scheduledAt)}.`,
+        needsConfirmation:false,
+        safe:true
+      };
+    }
+
+    const parsedSharedReminder = parseVoiceSharedReminderPayload(raw);
+    if (parsedSharedReminder) {
+      const resolvedUser = resolveVoiceUserMatch(users, parsedSharedReminder.assigneePhrase);
+      if (!canVoiceShareReminder(appUser, clientData)) {
+        return { intent:'blocked', label:'Shared reminder blocked', summary:'You do not have permission to assign shared reminders by voice.', blocked:true, needsConfirmation:false, safe:true };
+      }
+      if (parsedSharedReminder.needsManualTime) {
+        return { intent:'navigate', label:'Open My Reminders', tab:'reminders', summary:'Open My Reminders so you can choose the exact shared reminder date and time.', safe:true };
+      }
+      if (!resolvedUser.isHighConfidence || !resolvedUser.top?.item) {
+        return {
+          intent:'shared_reminder_review',
+          label:'Choose teammate for reminder',
+          assigneePhrase: parsedSharedReminder.assigneePhrase,
+          title: parsedSharedReminder.title,
+          scheduledAt: parsedSharedReminder.scheduledAt,
+          candidates: resolvedUser.alternatives,
+          summary: resolvedUser.alternatives.length ? `I found more than one possible teammate for “${parsedSharedReminder.assigneePhrase}.” Choose the right person before sharing.` : `I could not find a teammate matching “${parsedSharedReminder.assigneePhrase}.”`,
+          needsConfirmation:true,
+          safe:true
+        };
+      }
+      return {
+        intent:'create_shared_reminder',
+        label:`Share reminder with ${resolvedUser.top.item.name || resolvedUser.top.item.email}`,
+        assignee: resolvedUser.top.item,
+        title: parsedSharedReminder.title,
+        scheduledAt: parsedSharedReminder.scheduledAt,
+        matchConfidence: resolvedUser.confidence,
+        summary:`Share reminder with ${resolvedUser.top.item.name || resolvedUser.top.item.email}: ${parsedSharedReminder.title} at ${formatClockDateTime(parsedSharedReminder.scheduledAt)}.`,
+        needsConfirmation:true,
+        safe:true
+      };
+    }
 
     const parsedReminder = parseReminderCommand(raw);
     if (parsedReminder) {
@@ -804,7 +1276,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       /^(?:we are|we're|were)\s+outta\s+(.+)$/,
       /^(?:we\s+)?ran out of\s+(.+)$/,
       /^out of\s+(.+)$/,
-      /^all out of\s+(.+)$/
+      /^all out of\s+(.+)$/,
+      /^no more\s+(.+)$/,
+      /^kill\s+(.+?)(?:\s+for\s+tonight|\s+tonight)?$/
     ];
     if (!itemPhrase) {
       for (const pattern of outPatterns) {
@@ -821,17 +1295,27 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       const requestedItemName = cleaned || 'Item';
 
       if (resolved.status !== 'strong' || !resolved.item?.id) {
+        if (resolved.candidates?.length) {
+          return {
+            intent:'eighty_six_review',
+            label:`Review 86 item: ${requestedItemName}`,
+            requestedItemName,
+            candidates: resolved.candidates || [],
+            resolvedMenuDependencies: voiceMenuDependencies,
+            summary:`I could not safely choose one inventory item for “${requestedItemName}.” Select the correct item below. Nothing will be sent or changed until you choose an item and confirm the alert.`,
+            highRisk:true,
+            needsConfirmation:true
+          };
+        }
         return {
-          intent:'eighty_six_review',
-          label:`Review 86 item: ${requestedItemName}`,
+          intent:'eighty_six_text_alert',
+          label:`Confirm 86 alert: ${requestedItemName}`,
           requestedItemName,
-          candidates: resolved.candidates || [],
           resolvedMenuDependencies: voiceMenuDependencies,
-          summary: resolved.candidates?.length
-            ? `I could not safely choose one inventory item for “${requestedItemName}.” Select the correct item below. Nothing will be sent or changed until you choose an item and confirm the alert.`
-            : `I could not find a safe inventory match for “${requestedItemName}.” No alert was sent and inventory was not changed. Check the item name in Inventory and try again.`,
+          summary:`Confirm a basic 86 alert for “${requestedItemName}.” I did not find approved inventory/menu links yet, so the alert will include setup guidance and inventory stock will not be changed.`,
           highRisk:true,
-          needsConfirmation:true
+          needsConfirmation:true,
+          matchVerified:false
         };
       }
 
@@ -858,15 +1342,56 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       };
     }
 
-    // Recurring daily/weekly/monthly tasks. Only managers/admins can add these.
-    // Keep this ahead of prep parsing so “add weekly task clean fryer” becomes a recurring task, not a one-off prep item.
-    const parsedRecurringTask = parseRecurringTaskVoicePayload(raw);
-    if (parsedRecurringTask) {
+    // Mark prep-list or recurring task items done by voice. The parser uses fuzzy matching because kitchen speech rarely matches the row exactly.
+    const parsedCompletion = extractVoiceCompletionPayload(raw);
+    if (parsedCompletion) {
+      const resolvedCompletion = await resolveVoiceCompletionMatch({
+        restaurantId: appUser?.restaurantId,
+        parsed: parsedCompletion,
+        prepItems,
+        tasks
+      });
+      if (resolvedCompletion.isConfident && resolvedCompletion.top) {
+        const candidate = resolvedCompletion.top;
+        return {
+          intent:'complete_list_item',
+          label:`Mark done: ${candidate.label}`,
+          ...candidate,
+          requestedItemName: parsedCompletion.itemText,
+          summary:`Mark ${candidate.label} done on ${candidate.listLabel}${candidate.alreadyDone ? ' (already marked done)' : ''}.`,
+          needsConfirmation:false,
+          safe:true
+        };
+      }
+      if (resolvedCompletion.candidates.length) {
+        return {
+          intent:'complete_list_review',
+          label:`Choose item to mark done`,
+          requestedItemName: parsedCompletion.itemText,
+          candidates: resolvedCompletion.candidates,
+          summary:`I heard “${parsedCompletion.itemText}.” Choose the matching prep item or task so I do not mark the wrong row done.`,
+          needsConfirmation:true,
+          safe:true
+        };
+      }
       return {
-        intent:'create_task',
-        label:`Create ${parsedRecurringTask.frequency} task`,
-        ...parsedRecurringTask,
-        summary:`Add ${describeRecurringTaskSchedule(parsedRecurringTask)} task: ${parsedRecurringTask.title}. Managers/admins only.`,
+        intent:'navigate',
+        label:'Open Prep & Tasks',
+        tab:'prep',
+        summary:`I could not find an open prep item or task matching “${parsedCompletion.itemText}.” Opening Prep & Tasks so you can check the list.`,
+        safe:true
+      };
+    }
+
+    // Daily/weekly/monthly task commands. 86Voice upserts when a matching routine already exists.
+    // Keep this ahead of prep parsing so “add weekly task clean fryer” becomes a task, not a prep item.
+    const parsedTaskUpsert = parseVoiceTaskUpsertPayload(raw);
+    if (parsedTaskUpsert) {
+      return {
+        intent:'upsert_task',
+        label:`Update ${parsedTaskUpsert.frequency} task`,
+        ...parsedTaskUpsert,
+        summary:`Add or update ${describeRecurringTaskSchedule(parsedTaskUpsert)} task: ${parsedTaskUpsert.title}. Managers/admins only.`,
         needsConfirmation:false
       };
     }
@@ -942,7 +1467,11 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
             needsConfirmation:true
           };
         }
-        if (ai?.intent && ai.intent !== 'unknown') return { ...ai, summary: ai.summary || `AI understood: ${ai.intent}`, needsConfirmation: true };
+        if (ai?.intent && ai.intent !== 'unknown') {
+          const safeAiIntents = ['navigate', 'navigate_schedule', 'help', 'help_search'];
+          if (safeAiIntents.includes(ai.intent)) return { ...ai, summary: ai.summary || `AI suggested: ${ai.intent}`, needsConfirmation: true, source:'optional_ai_voice_parser' };
+          return { intent:'help', label:'Search Help', tab:'help', summary:`I recognized a possible ${ai.intent} command, but 86Voice needs the local parser or a review screen before changing restaurant data. Try a more direct phrase or open the target screen.`, safe:true };
+        }
       }
     } catch(e) {}
 
@@ -950,11 +1479,18 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   };
 
   const processText = async (text) => {
+    if (pending && /\b(cancel|never mind|nevermind|stop|scratch that)\b/i.test(String(text || ''))) {
+      setPending(null);
+      setVoiceResult({ label:'Voice command cancelled', summary:'Pending voice action was cancelled before anything else was saved.' });
+      setHeardText(text);
+      addToast('Voice Cancelled', 'Pending voice action cancelled.');
+      return;
+    }
     const action = await parseCommand(text);
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     setPending(action);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'create_personal_reminder', 'create_task'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'undo_last_voice', 'blocked'];
     if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
       await executeAction(action, text, true, false);
     }
@@ -983,6 +1519,33 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     }
   };
 
+  const rememberVoiceUndo = (label, operations = []) => {
+    const safeOps = (operations || []).filter(op => op && op.collectionName && op.id && ['delete', 'update'].includes(op.kind));
+    if (!safeOps.length) return;
+    setLastUndo({ label, operations: safeOps, createdAt: Date.now() });
+  };
+
+  const runVoiceUndo = async (sourceText = '') => {
+    if (!lastUndo?.operations?.length) {
+      addToast('Nothing to Undo', 'No safe recent voice action can be undone here. Review it manually if needed.');
+      return;
+    }
+    const tooOld = Date.now() - Number(lastUndo.createdAt || 0) > 10 * 60 * 1000;
+    if (tooOld) {
+      setLastUndo(null);
+      addToast('Undo Expired', 'That voice action is too old to undo safely here. Review it manually.');
+      return;
+    }
+    for (const op of lastUndo.operations) {
+      if (op.kind === 'delete') await deleteDoc(doc(db, op.collectionName, op.id));
+      if (op.kind === 'update') await updateDoc(doc(db, op.collectionName, op.id), { ...(op.data || {}), lastUndoAt: new Date().toISOString(), lastUndoBy: appUser?.id || appUser?.email || '', lastUndoSource: '86_voice_undo' });
+    }
+    await logAudit(appUser, 'VOICE_UNDO', lastUndo.label || 'Last voice action', sourceText || 'Undo last voice command');
+    addToast('Voice Undo Complete', `${lastUndo.label || 'Last voice action'} was rolled back where possible.`);
+    setVoiceResult({ label:'Undo complete', summary:`Rolled back: ${lastUndo.label || 'last safe voice action'}.` });
+    setLastUndo(null);
+  };
+
   const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true, confirmedByUser = false) => {
     if (!actionToRun || !appUser?.restaurantId) return;
     try {
@@ -1009,17 +1572,81 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         if (closeWhenDone) setOpen(false);
         return;
       }
+      if (actionToRun.intent === 'undo_last_voice') {
+        await runVoiceUndo(sourceText);
+        return;
+      }
+      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer'].includes(actionToRun.intent)) {
+        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
+        addToast(actionToRun.label || '86 Voice', actionToRun.summary || 'Done.');
+        return;
+      }
+      if (actionToRun.intent === 'blocked') {
+        await logAudit(appUser, 'VOICE_BLOCKED', actionToRun.label || 'Blocked voice command', `${sourceText} | ${actionToRun.summary || ''}`);
+        setVoiceResult({ label: actionToRun.label || 'Blocked', summary: actionToRun.summary || 'This command is not available for your account.' });
+        addToast(actionToRun.label || 'Access Blocked', actionToRun.summary || 'You do not have access to that voice action.');
+        return;
+      }
       if (appUser?.isDemo) return addToast('Demo Mode', 'Demo mode is read-only. Nothing was saved.');
       if (actionToRun.intent === 'eighty_six_review') {
         addToast('86 Review Required', 'Choose a specific inventory item before an 86 alert can be confirmed.');
         return;
+      }
+      if (actionToRun.intent === 'eighty_six_text_alert') {
+        if (!confirmedByUser) {
+          addToast('86 Alert Needs Confirmation', 'Confirm before posting a basic 86 alert. Inventory stock will not be changed.');
+          return;
+        }
+        if (!voiceFeatureEnabled(clientFeatures, 'messages') || !canVoiceOpenTab(appUser, clientFeatures, 'messages', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_86_ALERT', actionToRun.requestedItemName || '86 alert', sourceText);
+          addToast('Access Blocked', 'You do not have permission to post 86 alerts.');
+          return;
+        }
+        const requestedName = String(actionToRun.requestedItemName || 'Item').trim();
+        const alertTitle = `86 ${requestedName}`;
+        const details = `Voice-created 86 alert. Inventory stock was not changed. Menu impact needs approved menu ingredient links first.`;
+        await addDoc(collection(db, 'events'), {
+          restaurantId: appUser.restaurantId,
+          type:'note',
+          category:'86 Alert',
+          messageCategory:'86 Alert',
+          title: alertTitle,
+          notes: details,
+          author: appUser.name || appUser.email || 'Voice Command',
+          date:new Date().toISOString(),
+          isImportant:true,
+          replies:[],
+          readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }],
+          voiceCommand: sourceText,
+          createdAt:new Date().toISOString(),
+          confirmedAt:new Date().toISOString(),
+          confirmedBy:appUser.id || appUser.email || '',
+          source:'86_voice_basic_text_alert',
+          inventoryNotModified:true,
+          commandCenterAlert:true,
+          managerBriefAlert:true,
+          kitchenCommandCenterAlert:true,
+          menuImpact:'Menu impact needs approved menu ingredient links first.',
+          menuImpactItems:[],
+          requestedItemName: requestedName,
+          voiceMatchStatus:'text_only_confirmed',
+          voiceMatchConfidence:0
+        });
+        await logAudit(appUser, 'VOICE_86_TEXT_ALERT', requestedName, `${sourceText} | ${details}`);
+        addToast('86 Alert Sent', `${requestedName} was posted as a basic 86 alert. Inventory was not changed.`);
+        setActiveTab('today'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'eighty_six_alert') {
         if (!confirmedByUser || actionToRun.matchVerified !== true || !actionToRun.item?.id) {
           addToast('86 Alert Blocked', 'This high-risk alert needs a verified inventory match and your confirmation. Nothing was sent.');
           return;
         }
-        const freshContext = await fetchVoiceEightySixContext(appUser?.restaurantId, inventoryItems, menuDependencies);
+        if (!voiceFeatureEnabled(clientFeatures, 'messages') || !canVoiceOpenTab(appUser, clientFeatures, 'messages', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_86_ALERT', actionToRun.itemName || actionToRun.requestedItemName || '86 alert', sourceText);
+          addToast('Access Blocked', 'You do not have permission to post 86 alerts.');
+          return;
+        }
+        const freshContext = await fetchVoiceEightySixContext(appUser?.restaurantId, inventoryItems, menuDependencies, { allowInventory: true, allowMenuDependencies: canUseMenuIntelligence(appUser, clientData) || isVoiceSuperAdmin(appUser) });
         eightySixContextRef.current = { restaurantId: appUser?.restaurantId || '', loadedAt: Date.now(), ...freshContext };
         const liveItem = (freshContext.inventoryItems || []).find(item => item.id === actionToRun.item.id);
         if (!liveItem) {
@@ -1092,37 +1719,198 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         addToast('86 Alert Sent', `${requestedName} was added to Manager Brief, Kitchen Command Center, and Message Board.`);
         setActiveTab('today'); if (closeWhenDone) setOpen(false); return;
       }
-      if (actionToRun.intent === 'create_task') {
-        if (!isVoiceManagerOrAdmin(appUser)) {
-          addToast('Access Blocked', 'Only managers or admins can add recurring daily, weekly, or monthly tasks by voice.');
+      if (actionToRun.intent === 'complete_list_review') {
+        addToast('Choose a Match', 'Select the correct prep item or task before marking anything done.');
+        return;
+      }
+      if (actionToRun.intent === 'complete_list_item') {
+        if (!voiceFeatureEnabled(clientFeatures, 'prep') || !canVoiceOpenTab(appUser, clientFeatures, 'prep', clientData)) {
+          addToast('Access Blocked', 'You do not have permission to update Prep & Tasks.');
           if (closeWhenDone) setOpen(false);
           return;
         }
-        if (!voiceFeatureEnabled(clientFeatures, 'prep')) {
-          addToast('Prep & Tasks Disabled', 'The Prep & Tasks module is disabled for this workspace.');
+        const actor = appUser.name || appUser.email || 'Voice Command';
+        const prepDate = actionToRun.prepDate || getToday();
+        if (actionToRun.type === 'prep') {
+          const item = actionToRun.item || {};
+          if (!item.id) throw new Error('No prep item was selected.');
+          const previousPrepUndo = item.isMaster || item.date === 'MASTER'
+            ? { completedDates: { ...(item.completedDates || {}) }, lastCompletedAt: item.lastCompletedAt || null, lastCompletedBy: item.lastCompletedBy || null, lastCompletedById: item.lastCompletedById || null, lastCompletionSource: item.lastCompletionSource || null, lastVoiceCommand: item.lastVoiceCommand || null }
+            : { isCompleted: !!item.isCompleted, completedBy: item.completedBy || null, completedAt: item.completedAt || null, lastCompletedAt: item.lastCompletedAt || null, lastCompletedBy: item.lastCompletedBy || null, lastCompletedById: item.lastCompletedById || null, lastCompletionSource: item.lastCompletionSource || null, lastVoiceCommand: item.lastVoiceCommand || null };
+          if (item.isMaster || item.date === 'MASTER') {
+            const updatedDates = { ...(item.completedDates || {}) };
+            if (!updatedDates[prepDate]) updatedDates[prepDate] = actor;
+            await updateDoc(doc(db, 'prepItems', item.id), {
+              completedDates: updatedDates,
+              lastCompletedAt: new Date().toISOString(),
+              lastCompletedBy: actor,
+              lastCompletedById: appUser.id || '',
+              lastCompletionSource: '86_voice_mark_done',
+              lastVoiceCommand: sourceText
+            });
+          } else {
+            await updateDoc(doc(db, 'prepItems', item.id), {
+              isCompleted: true,
+              completedBy: item.completedBy || actor,
+              completedAt: item.completedAt || new Date().toISOString(),
+              lastCompletedAt: new Date().toISOString(),
+              lastCompletedBy: actor,
+              lastCompletedById: appUser.id || '',
+              lastCompletionSource: '86_voice_mark_done',
+              lastVoiceCommand: sourceText
+            });
+          }
+          rememberVoiceUndo(`prep completion: ${item.text || item.title || item.name || 'Prep item'}`, [{ kind:'update', collectionName:'prepItems', id:item.id, data:previousPrepUndo }]);
+          await logAudit(appUser, 'VOICE_MARK_PREP_DONE', item.text || item.title || item.name || 'Prep item', sourceText);
+          addToast(actionToRun.alreadyDone ? 'Already Done' : 'Prep Marked Done', `${actionToRun.label || item.text || 'Prep item'} is marked done for ${formatDisplayDate(prepDate)}.`);
+          if (setCurrentDate) setCurrentDate(prepDate);
+          setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
+        }
+        if (actionToRun.type === 'task') {
+          const task = actionToRun.item || {};
+          if (!task.id) throw new Error('No task was selected.');
+          const periodKey = actionToRun.periodKey || getVoiceTaskPeriodKey(task.frequency || 'daily', prepDate);
+          const previousTaskUndo = { completions: { ...(task.completions || {}) }, lastCompletedAt: task.lastCompletedAt || null, lastCompletedBy: task.lastCompletedBy || null, lastCompletedById: task.lastCompletedById || null, lastCompletionSource: task.lastCompletionSource || null, lastVoiceCommand: task.lastVoiceCommand || null };
+          const completions = { ...(task.completions || {}) };
+          if (!completions[periodKey]) completions[periodKey] = { by: actor, at: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), source: '86_voice_mark_done' };
+          await updateDoc(doc(db, 'tasks', task.id), {
+            completions,
+            lastCompletedAt: new Date().toISOString(),
+            lastCompletedBy: actor,
+            lastCompletedById: appUser.id || '',
+            lastCompletionSource: '86_voice_mark_done',
+            lastVoiceCommand: sourceText
+          });
+          rememberVoiceUndo(`task completion: ${task.title || task.text || task.name || 'Task'}`, [{ kind:'update', collectionName:'tasks', id:task.id, data:previousTaskUndo }]);
+          await logAudit(appUser, 'VOICE_MARK_TASK_DONE', task.title || task.text || task.name || 'Task', sourceText);
+          addToast(actionToRun.alreadyDone ? 'Already Done' : 'Task Marked Done', `${actionToRun.label || task.title || 'Task'} is marked done.`);
+          if (setCurrentDate) setCurrentDate(prepDate);
+          setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
+        }
+      }
+      if (actionToRun.intent === 'upsert_task') {
+        if (!canVoiceManageRecurringTasks(appUser, clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_TASK', actionToRun.title || 'Task', sourceText);
+          addToast('Access Blocked', 'Only managers/admins or users with task permissions can add or update recurring tasks by voice.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        if (!voiceFeatureEnabled(clientFeatures, 'prep') || !canVoiceOpenTab(appUser, clientFeatures, 'prep', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_TASK', actionToRun.title || 'Task', sourceText);
+          addToast('Prep & Tasks Disabled', 'The Prep & Tasks module is not available for your plan or permissions.');
           if (closeWhenDone) setOpen(false);
           return;
         }
         const title = String(actionToRun.title || 'Task').trim();
         const frequency = ['daily', 'weekly', 'monthly'].includes(actionToRun.frequency) ? actionToRun.frequency : 'daily';
+        const candidateTasks = await fetchVoiceTaskCandidates(appUser?.restaurantId, tasks);
+        const sameFrequencyTasks = candidateTasks.filter(task => (task.frequency || 'daily') === frequency);
+        const match = resolveVoiceMatch(sameFrequencyTasks, title, { getLabel: task => task.title || task.text || task.name || '', getAliases: task => [task.category].filter(Boolean), minScore: 45, highThreshold: 96, margin: 18 });
         const payload = {
-          restaurantId: appUser.restaurantId,
           title,
           category: actionToRun.category || inferVoiceTaskCategory(title),
           frequency,
           targetDay: frequency === 'weekly' ? (actionToRun.targetDay || getCurrentWeekdayName()) : null,
           targetDate: frequency === 'monthly' ? String(actionToRun.targetDate || getCurrentMonthDay()) : null,
-          completions: {},
-          createdAt: new Date().toISOString(),
-          createdBy: appUser.name || appUser.email || 'Voice Command',
-          createdById: appUser.id || '',
-          source: '86_voice_recurring_task',
-          voiceCommand: sourceText
+          updatedAt: new Date().toISOString(),
+          lastUpdatedBy: appUser.name || appUser.email || 'Voice Command',
+          lastUpdatedById: appUser.id || '',
+          lastVoiceCommand: sourceText,
+          source: '86_voice_task_upsert'
         };
-        await addDoc(collection(db, 'tasks'), payload);
-        await logAudit(appUser, 'VOICE_RECURRING_TASK', `${frequency}: ${title}`, sourceText);
-        addToast('Task Added', `${title} was added as a ${describeRecurringTaskSchedule(payload)} task.`);
+        const forcedTask = actionToRun.forcedTaskId ? candidateTasks.find(task => task.id === actionToRun.forcedTaskId) : null;
+        if ((forcedTask?.id) || (match.isHighConfidence && match.top?.item?.id)) {
+          const existing = forcedTask || match.top.item;
+          const previous = {
+            title: existing.title || '',
+            category: existing.category || 'General',
+            frequency: existing.frequency || 'daily',
+            targetDay: existing.targetDay || null,
+            targetDate: existing.targetDate || null
+          };
+          await updateDoc(doc(db, 'tasks', existing.id), payload);
+          rememberVoiceUndo(`task update: ${title}`, [{ kind:'update', collectionName:'tasks', id:existing.id, data:previous }]);
+          await logAudit(appUser, 'VOICE_UPDATE_TASK', title, `${sourceText} | matched ${existing.title || existing.name || ''} with confidence ${match.confidence}`);
+          addToast('Task Updated', `${existing.title || title} was updated instead of duplicated.`);
+        } else if (match.alternatives?.length && match.confidence >= 70) {
+          setPending({
+            intent:'task_upsert_review',
+            label:'Review task match',
+            title,
+            frequency,
+            category: payload.category,
+            targetDay: payload.targetDay,
+            targetDate: payload.targetDate,
+            candidates: match.alternatives,
+            summary:`I found similar ${frequency} tasks. Choose one to update, or cancel and add it manually so I do not duplicate or overwrite the wrong task.`,
+            needsConfirmation:true,
+            safe:true
+          });
+          return;
+        } else {
+          const createdRef = await addDoc(collection(db, 'tasks'), { ...payload, restaurantId: appUser.restaurantId, completions: {}, createdAt: new Date().toISOString(), createdBy: appUser.name || appUser.email || 'Voice Command', createdById: appUser.id || '' });
+          rememberVoiceUndo(`task create: ${title}`, [{ kind:'delete', collectionName:'tasks', id:createdRef.id }]);
+          await logAudit(appUser, 'VOICE_CREATE_TASK', `${frequency}: ${title}`, sourceText);
+          addToast('Task Added', `${title} was added as a ${describeRecurringTaskSchedule(payload)} task.`);
+        }
         setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'task_upsert_review') {
+        addToast('Choose a Task', 'Choose the matching task before updating it.');
+        return;
+      }
+      if (actionToRun.intent === 'shared_reminder_review') {
+        addToast('Choose Teammate', 'Select the teammate before the shared reminder is saved.');
+        return;
+      }
+      if (actionToRun.intent === 'create_shared_reminder') {
+        if (!confirmedByUser) {
+          addToast('Shared Reminder Needs Confirmation', 'Confirm before sending a shared reminder to a teammate.');
+          return;
+        }
+        if (!canVoiceShareReminder(appUser, clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_SHARED_REMINDER', actionToRun.title || 'Shared reminder', sourceText);
+          addToast('Access Blocked', 'You do not have permission to assign shared reminders by voice.');
+          return;
+        }
+        const assignee = actionToRun.assignee || {};
+        if (!assignee.id && !assignee.email) throw new Error('No teammate was selected.');
+        const title = String(actionToRun.title || 'Shared reminder').trim();
+        if (!actionToRun.scheduledAt) {
+          setActiveTab('reminders');
+          addToast('Reminder Needs Time', 'Open My Reminders and choose the date and time.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
+        const reminderRef = await addDoc(collection(db, 'personalReminders'), {
+          restaurantId: appUser.restaurantId,
+          userId: appUser.id || '',
+          userEmail: appUser.email || '',
+          assignedToUserId: assignee.id || '',
+          assignedToName: assignee.name || assignee.displayName || assignee.email || 'Teammate',
+          assignedToEmail: assignee.email || '',
+          createdByName: appUser.name || appUser.email || '',
+          createdByEmail: appUser.email || '',
+          shared: true,
+          visibility: 'shared_reminder',
+          title,
+          notes: '',
+          scheduledAt: actionToRun.scheduledAt,
+          recurrence: actionToRun.recurrence || 'none',
+          recurrenceSource: actionToRun.recurrence ? '86_voice_recurring_reminder' : '',
+          status: 'scheduled',
+          createdAt: new Date().toISOString(),
+          createdBy: appUser.id || '',
+          source: '86_voice_shared_reminder',
+          voiceCommand: sourceText,
+          voiceMatchConfidence: Number(actionToRun.matchConfidence || 0),
+          dispatchedAt: null,
+          dispatchKey: ''
+        });
+        rememberVoiceUndo(`shared reminder: ${title}`, [{ kind:'delete', collectionName:'personalReminders', id:reminderRef.id }]);
+        await logAudit(appUser, 'VOICE_SHARED_REMINDER', title, `Assigned to ${assignee.name || assignee.email || 'teammate'} | ${actionToRun.scheduledAt}`);
+        addToast('Shared Reminder Saved', `${title} was assigned to ${assignee.name || assignee.email || 'teammate'}.`);
+        setActiveTab('reminders'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'create_personal_reminder') {
         const title = String(actionToRun.title || 'Personal reminder').trim();
@@ -1132,7 +1920,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        await addDoc(collection(db, 'personalReminders'), {
+        const reminderRef = await addDoc(collection(db, 'personalReminders'), {
           restaurantId: appUser.restaurantId,
           userId: appUser.id || '',
           userEmail: appUser.email || '',
@@ -1146,21 +1934,25 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           title,
           notes: '',
           scheduledAt: actionToRun.scheduledAt,
+          recurrence: actionToRun.recurrence || 'none',
+          recurrenceSource: actionToRun.recurrence ? '86_voice_recurring_reminder' : '',
           status: 'scheduled',
           createdAt: new Date().toISOString(),
           createdBy: appUser.id || '',
-          source: '86_voice_personal_reminder',
+          source: actionToRun.recurrence ? '86_voice_recurring_reminder' : '86_voice_personal_reminder',
           voiceCommand: sourceText,
           dispatchedAt: null,
           dispatchKey: ''
         });
+        rememberVoiceUndo(`personal reminder: ${title}`, [{ kind:'delete', collectionName:'personalReminders', id:reminderRef.id }]);
         await logAudit(appUser, 'VOICE_PERSONAL_REMINDER', title, actionToRun.scheduledAt);
         addToast('Reminder Saved', `${title} at ${formatClockDateTime(actionToRun.scheduledAt)}.`);
         setActiveTab('reminders'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'smart_prep') {
-        if (!voiceFeatureEnabled(clientFeatures, 'prep')) {
-          addToast('Prep & Tasks Disabled', 'The Prep & Tasks module is disabled for this workspace.');
+        if (!voiceFeatureEnabled(clientFeatures, 'prep') || !canVoiceOpenTab(appUser, clientFeatures, 'prep', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_PREP', 'Smart prep', sourceText);
+          addToast('Prep & Tasks Disabled', 'The Prep & Tasks module is not available for your plan or permissions.');
           if (closeWhenDone) setOpen(false);
           return;
         }
@@ -1169,10 +1961,12 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         const prepDatesToCheck = Array.from(new Set(requestedPrepItems.map(item => item.prepDate || targetPrepDate).filter(Boolean)));
         const matchCandidates = await fetchVoicePrepMatchCandidates(appUser?.restaurantId, prepDatesToCheck, prepItems);
         const results = [];
+        const undoOps = [];
         for (const parsed of requestedPrepItems) {
           const prepDate = parsed.prepDate || targetPrepDate;
           const match = findPrepMatch(matchCandidates, parsed, prepDate);
           if (match?.id) {
+            const previousPrepData = { qty: match.qty ?? 1, unit: match.unit || 'item', amount: match.amount || null, text: match.text || '', station: match.station || '', isCompleted: !!match.isCompleted, completedDates: { ...(match.completedDates || {}) }, lastVoiceCommand: match.lastVoiceCommand || null, lastUpdatedAt: match.lastUpdatedAt || null };
             const data = buildPrepQuantityUpdate({
               existingItem: match,
               parsedItem: parsed,
@@ -1181,10 +1975,11 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
               source: '86_voice_smart_prep'
             });
             await updateDoc(doc(db, 'prepItems', match.id), data);
+            undoOps.push({ kind:'update', collectionName:'prepItems', id:match.id, data:previousPrepData });
             Object.assign(match, data);
             results.push({ type: 'updated', name: match.text || parsed.itemText });
           } else {
-            await addDoc(collection(db, 'prepItems'), buildPrepCreatePayload({
+            const createdPrepRef = await addDoc(collection(db, 'prepItems'), buildPrepCreatePayload({
               parsedItem: parsed,
               appUser,
               prepDate,
@@ -1193,34 +1988,55 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
               sourceText,
               source: '86_voice_smart_prep'
             }));
+            undoOps.push({ kind:'delete', collectionName:'prepItems', id:createdPrepRef.id });
             results.push({ type: 'created', name: parsed.itemText });
           }
           await logAudit(appUser, 'VOICE_SMART_PREP', parsed.itemText, sourceText);
         }
+        if (undoOps.length) rememberVoiceUndo('smart prep update', undoOps);
         if (setCurrentDate) setCurrentDate(targetPrepDate);
         addToast('Prep Updated', `${summarizePrepResults(results)} for ${formatDisplayDate(targetPrepDate)}`);
         setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'create_prep') {
         const text = String(actionToRun.itemText || 'Prep task').trim();
-        await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date:getToday(), text, station:'Voice', isCompleted:false, qty: actionToRun.amount || 1, unit: actionToRun.unit || 'item', createdAt:new Date().toISOString(), createdBy: appUser.name || appUser.email || 'Voice Command', voiceCommand: sourceText });
+        const createdPrepRef = await addDoc(collection(db, 'prepItems'), { restaurantId: appUser.restaurantId, date:getToday(), text, station:'Voice', isCompleted:false, qty: actionToRun.amount || 1, unit: actionToRun.unit || 'item', createdAt:new Date().toISOString(), createdBy: appUser.name || appUser.email || 'Voice Command', voiceCommand: sourceText });
+        rememberVoiceUndo(`prep create: ${text}`, [{ kind:'delete', collectionName:'prepItems', id:createdPrepRef.id }]);
         await logAudit(appUser, 'VOICE_PREP_TASK', text, sourceText);
         addToast('Prep Added', text);
         setActiveTab('prep'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'post_message') {
+        if (!canVoiceOpenTab(appUser, clientFeatures, 'messages', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_MESSAGE', 'Message Board', sourceText);
+          addToast('Access Blocked', 'You do not have permission to post messages.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
         await addDoc(collection(db, 'events'), { restaurantId: appUser.restaurantId, type:'note', category:'Announcement', title: actionToRun.messageText, author: appUser.name || appUser.email || 'Voice Command', date:new Date().toISOString(), isImportant:false, replies:[], voiceCommand: sourceText, createdAt:new Date().toISOString() });
         await logAudit(appUser, 'VOICE_MESSAGE', 'Message Board', actionToRun.messageText);
         addToast('Message Posted', actionToRun.messageText);
         setActiveTab('messages'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'maintenance') {
+        if (!canVoiceOpenTab(appUser, clientFeatures, 'maintenance', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_MAINTENANCE', 'Maintenance', sourceText);
+          addToast('Access Blocked', 'You do not have permission to create maintenance issues.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
         await addDoc(collection(db, 'maintenanceLogs'), { restaurantId: appUser.restaurantId, equipment:'Voice Report', issue: actionToRun.issue, status:'Open', priority:'Medium', reportedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), createdAt:new Date().toISOString(), voiceCommand: sourceText });
         await logAudit(appUser, 'VOICE_MAINTENANCE', 'Maintenance', actionToRun.issue);
         addToast('Maintenance Added', actionToRun.issue);
         setActiveTab('maintenance'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'burn_log') {
+        if (!canVoiceOpenTab(appUser, clientFeatures, 'inventory', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_BURN_LOG', actionToRun.item?.name || 'Burn log', sourceText);
+          addToast('Access Blocked', 'You do not have permission to update inventory or burn logs.');
+          if (closeWhenDone) setOpen(false);
+          return;
+        }
         if (actionToRun.needsSetup) { setActiveTab('inventory'); if (closeWhenDone) setOpen(false); return; }
         const item = actionToRun.item;
         const stockDeducted = Math.max(0, Number(actionToRun.stockDeducted || 0));
@@ -1260,6 +2076,52 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     });
   };
 
+  const selectVoiceCompletionCandidate = (candidate = {}) => {
+    if (!candidate?.item?.id) return;
+    setPending({
+      intent:'complete_list_item',
+      label:`Mark done: ${candidate.label}`,
+      ...candidate,
+      requestedItemName: pending?.requestedItemName || candidate.label,
+      summary:`You selected ${candidate.label} from ${candidate.listLabel}. Confirm to mark it done.`,
+      needsConfirmation:true,
+      safe:true
+    });
+  };
+
+  const selectVoiceTaskCandidate = (candidate = {}) => {
+    if (!candidate?.item?.id) return;
+    setPending({
+      intent:'upsert_task',
+      label:`Update task: ${candidate.label}`,
+      title: pending?.title || candidate.label,
+      frequency: pending?.frequency || candidate.item?.frequency || 'daily',
+      category: pending?.category || candidate.item?.category || 'General',
+      targetDay: pending?.targetDay || candidate.item?.targetDay || null,
+      targetDate: pending?.targetDate || candidate.item?.targetDate || null,
+      forcedTaskId: candidate.item.id,
+      summary:`You selected ${candidate.label}. Confirm to update this existing task instead of creating a duplicate.`,
+      needsConfirmation:true,
+      safe:true
+    });
+  };
+
+  const selectSharedReminderCandidate = (candidate = {}) => {
+    if (!candidate?.item) return;
+    const assignee = candidate.item;
+    setPending({
+      intent:'create_shared_reminder',
+      label:`Share reminder with ${assignee.name || assignee.email}`,
+      assignee,
+      title: pending?.title || 'Shared reminder',
+      scheduledAt: pending?.scheduledAt || '',
+      matchConfidence: candidate.score || 0,
+      summary:`You selected ${assignee.name || assignee.email}. Confirm to send the shared reminder: ${pending?.title || 'Shared reminder'}.`,
+      needsConfirmation:true,
+      safe:true
+    });
+  };
+
   const executePending = () => executeAction(pending, heardText, true, true);
 
   return <div className="fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
@@ -1272,12 +2134,17 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         <button type="button" onClick={startListening} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
-        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "add weekly task clean fryer Monday", "prep 2 pans tomatoes", "open Friday schedule"' />
+        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "mark onions done", "finish clean fryer", "open Friday schedule"' />
         <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
         {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
           <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{pending.highRisk ? 'High-Risk Review' : 'Suggested Action'}</div>
           <div className="text-sm font-black text-white mt-1">{pending.label || pending.intent}</div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 bg-[#12161A] border border-[#2A353D] rounded-full px-2 py-0.5">Intent: {pending.intent}</span>
+            {(pending.matchConfidence || pending.score) && <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 bg-[#12161A] border border-[#2A353D] rounded-full px-2 py-0.5">Confidence: {Math.round(Number(pending.matchConfidence || pending.score || 0))}</span>}
+            {pending.blocked && <span className="text-[9px] font-black uppercase tracking-widest text-red-300 bg-red-900/20 border border-red-900/40 rounded-full px-2 py-0.5">Blocked</span>}
+          </div>
           <div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{pending.summary}</div>
           {pending.intent === 'eighty_six_review' && pending.candidates?.length > 0 && <div className="space-y-2 mt-3">
             <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Choose the exact inventory item</div>
@@ -1286,9 +2153,37 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
               <div className="text-[9px] font-bold text-slate-500 mt-0.5">{candidate.item?.category || 'Inventory'} • {candidate.method === 'menuIntelligence' ? 'Menu Intelligence match' : 'Inventory match'}</div>
             </button>)}
           </div>}
+          {pending.intent === 'complete_list_review' && pending.candidates?.length > 0 && <div className="space-y-2 mt-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Choose the prep item or task</div>
+            {pending.candidates.map((candidate, idx) => <button key={`${candidate.type || 'list'}-${candidate.item?.id || candidate.label || 'candidate'}-${idx}`} type="button" onClick={() => selectVoiceCompletionCandidate(candidate)} className="w-full text-left bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 rounded-xl px-3 py-2 transition-colors">
+              <div className="text-xs font-black text-white">{candidate.label || 'Unnamed item'}</div>
+              <div className="text-[9px] font-bold text-slate-500 mt-0.5">{candidate.listLabel || 'Prep & Tasks'} • {candidate.alreadyDone ? 'already done' : 'open'} • match {candidate.score}</div>
+            </button>)}
+          </div>}
+          {pending.intent === 'task_upsert_review' && pending.candidates?.length > 0 && <div className="space-y-2 mt-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Choose existing task to update</div>
+            {pending.candidates.map((candidate, idx) => <button key={`task-${candidate.item?.id || candidate.label || 'candidate'}-${idx}`} type="button" onClick={() => selectVoiceTaskCandidate(candidate)} className="w-full text-left bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 rounded-xl px-3 py-2 transition-colors">
+              <div className="text-xs font-black text-white">{candidate.label || candidate.item?.title || 'Task'}</div>
+              <div className="text-[9px] font-bold text-slate-500 mt-0.5">{candidate.item?.frequency || 'daily'} • {candidate.item?.category || 'General'} • match {candidate.score}</div>
+            </button>)}
+          </div>}
+          {pending.intent === 'shared_reminder_review' && pending.candidates?.length > 0 && <div className="space-y-2 mt-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Choose teammate</div>
+            {pending.candidates.map((candidate, idx) => <button key={`share-${candidate.item?.id || candidate.item?.email || candidate.label || 'candidate'}-${idx}`} type="button" onClick={() => selectSharedReminderCandidate(candidate)} className="w-full text-left bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 rounded-xl px-3 py-2 transition-colors">
+              <div className="text-xs font-black text-white">{candidate.item?.name || candidate.item?.displayName || candidate.item?.email || 'Teammate'}</div>
+              <div className="text-[9px] font-bold text-slate-500 mt-0.5">{candidate.item?.role || 'Staff'} • match {candidate.score}</div>
+            </button>)}
+          </div>}
+          {voiceResult && <div className="mt-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-2">
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Last result</div>
+            <div className="text-xs font-black text-white mt-1">{voiceResult.label}</div>
+            <div className="text-[11px] text-slate-400 font-bold leading-snug mt-1">{voiceResult.summary}</div>
+            {voiceResult.rows?.length > 0 && <div className="mt-2 space-y-1">{voiceResult.rows.slice(0, 6).map((row, idx) => <div key={idx} className="text-[10px] text-slate-300 bg-[#0B0E11] rounded-lg px-2 py-1 border border-[#2A353D]">{row.menuItemName} • {row.severity || 'check stock'}</div>)}</div>}
+          </div>}
+          {lastUndo && <button type="button" onClick={() => executeAction({ intent:'undo_last_voice', label:'Undo last voice command', safe:true }, 'Undo button', false, true)} className={`${T.btnAlt} w-full mt-3`}>Undo Last Safe Voice Action</button>}
           <div className="flex gap-2 mt-3">
-            {pending.intent !== 'eighty_six_review' && <button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button>}
-            <button onClick={() => setPending(null)} className={`${T.btnAlt} ${pending.intent === 'eighty_six_review' ? 'w-full' : ''}`}>Cancel</button>
+            {!['eighty_six_review','complete_list_review','task_upsert_review','shared_reminder_review'].includes(pending.intent) && <button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button>}
+            <button onClick={() => setPending(null)} className={`${T.btnAlt} ${['eighty_six_review','complete_list_review','task_upsert_review','shared_reminder_review'].includes(pending.intent) ? 'w-full' : ''}`}>Cancel</button>
           </div>
         </div>}
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
