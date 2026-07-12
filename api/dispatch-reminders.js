@@ -44,7 +44,18 @@ module.exports = async function handler(req, res) {
   const expectedSecret = process.env.CRON_SECRET;
   if (!expectedSecret || getCronSecret(req) !== expectedSecret) return res.status(401).json({ ok: false, error: 'Unauthorized cron request.' });
 
-  const app = initAdmin(req);
+  let app;
+  try {
+    app = initAdmin(req);
+  } catch (error) {
+    console.error('[dispatch-reminders] Firebase Admin setup is missing or invalid:', error?.message || error);
+    return res.status(503).json({
+      ok: false,
+      code: 'firebase_admin_not_configured',
+      error: 'Firebase server credentials are not configured for this Vercel environment.',
+      details: error?.message || String(error || 'Unknown Firebase Admin setup error')
+    });
+  }
   const db = app.firestore();
   const cronRate = await enforceRateLimit({ db, req, routeName: 'dispatch-reminders', limit: Number(process.env.REMINDER_ROUTE_RATE_LIMIT || 12), windowMs: 60 * 1000 });
   if (!cronRate.ok) return sendRateLimited(res, cronRate);
